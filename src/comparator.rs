@@ -1,4 +1,4 @@
-use crate::parser::LogEntry;
+use crate::parser::{LogEntry, LogEntryKind};
 use colored::Colorize;
 use serde_json::{Value, json};
 use similar::{ChangeTag, TextDiff};
@@ -94,7 +94,7 @@ pub fn compare_logs(
             // Compare all entries of the same type
             for (idx1, log1) in entries1.iter().enumerate() {
                 for (idx2, log2) in entries2.iter().enumerate() {
-                    if let (Some(payload1), Some(payload2)) = (&log1.payload, &log2.payload) {
+                    if let (Some(payload1), Some(payload2)) = (&log1.payload(), &log2.payload()) {
                         let diff = compare_json(payload1, payload2);
                         if !diff.is_empty() || !diff_only {
                             println!(
@@ -152,29 +152,23 @@ pub fn compare_logs(
 
                                 // Only show text differences if the messages are not identical
                                 if text1 != text2 {
-                                    // Check if the differences might be just JSON formatting
-                                    let is_formatting_difference =
-                                        is_only_json_formatting_difference(&text1, &text2);
+                                    let diff = TextDiff::from_lines(&text1, &text2);
 
-                                    if !is_formatting_difference {
-                                        let diff = TextDiff::from_lines(&text1, &text2);
-
-                                        println!("\nText differences:");
-                                        for change in diff.iter_all_changes() {
-                                            let formatted = match change.tag() {
-                                                ChangeTag::Delete => {
-                                                    format!("{}", change.to_string().red())
-                                                }
-                                                ChangeTag::Insert => {
-                                                    format!("{}", change.to_string().green())
-                                                }
-                                                ChangeTag::Equal => continue,
-                                            };
-                                            print!("{}", formatted);
-
-                                            if let Some(ref mut file) = output_file {
-                                                write!(file, "{}", change)?;
+                                    println!("\nText differences:");
+                                    for change in diff.iter_all_changes() {
+                                        let formatted = match change.tag() {
+                                            ChangeTag::Delete => {
+                                                format!("{}", change.to_string().red())
                                             }
+                                            ChangeTag::Insert => {
+                                                format!("{}", change.to_string().green())
+                                            }
+                                            ChangeTag::Equal => continue,
+                                        };
+                                        print!("{}", formatted);
+
+                                        if let Some(ref mut file) = output_file {
+                                            write!(file, "{}", change)?;
                                         }
                                     }
                                 }
@@ -190,14 +184,7 @@ pub fn compare_logs(
 }
 
 fn get_log_key(log: &LogEntry) -> String {
-    let suffix = log
-        .event_type
-        .as_ref()
-        .or_else(|| log.command.as_ref())
-        .or_else(|| log.request.as_ref())
-        .map_or(String::new(), |value| format!("_{}", value));
-
-    format!("{}_{}{}", log.component, log.level, suffix)
+    format!("{}_{}_{}", log.component, log.level, log.log_key())
 }
 
 fn should_include_log(
@@ -221,135 +208,6 @@ fn should_include_log(
     component_match && level_match && contains_match
 }
 
-/// Determines if the only differences between two strings are JSON formatting/property order
-/// This is used to prevent showing text diffs for messages that differ only in JSON formatting
-pub fn is_only_json_formatting_difference(text1: &str, text2: &str) -> bool {
-    // Extract all JSON objects from both texts
-    let json_objects1 = extract_all_json_objects(text1);
-    let json_objects2 = extract_all_json_objects(text2);
-
-    // If we don't have the same number of JSON objects, this is not just a formatting difference
-    if json_objects1.len() != json_objects2.len() {
-        return false;
-    }
-
-    // If there are no JSON objects, we can't be dealing with a JSON formatting difference
-    if json_objects1.is_empty() {
-        return false;
-    }
-
-    // Compare each JSON object semantically
-    for (json1, json2) in json_objects1.iter().zip(json_objects2.iter()) {
-        if let (Ok(v1), Ok(v2)) = (
-            serde_json::from_str::<Value>(json1),
-            serde_json::from_str::<Value>(json2),
-        ) {
-            let differences = compare_json(&v1, &v2);
-            if !differences.is_empty() {
-                return false;
-            }
-        } else {
-            // If we can't parse the JSON, assume it's not just a formatting difference
-            return false;
-        }
-    }
-
-    // If we get here, all JSON objects are semantically equivalent
-    // Now check if the non-JSON parts of the strings are identical
-
-    // Replace each JSON object with a placeholder in both strings
-    let mut placeholder_text1 = text1.to_string();
-    let mut placeholder_text2 = text2.to_string();
-
-    for (i, json) in json_objects1.iter().enumerate() {
-        placeholder_text1 = placeholder_text1.replace(json, &format!("__JSON_PLACEHOLDER_{}", i));
-    }
-
-    for (i, json) in json_objects2.iter().enumerate() {
-        placeholder_text2 = placeholder_text2.replace(json, &format!("__JSON_PLACEHOLDER_{}", i));
-    }
-
-    // If the placeholdered texts are identical, then only the JSON formatting differed
-    placeholder_text1 == placeholder_text2
-}
-
-/// Extracts all JSON objects from a string
-pub fn extract_all_json_objects(text: &str) -> Vec<String> {
-    let mut results = Vec::new();
-    let mut start_indices = Vec::new();
-
-    // Find all potential JSON object start positions
-    for (i, c) in text.char_indices() {
-        if c == '{' || c == '[' {
-            start_indices.push(i);
-        }
-    }
-
-    // For each start position, try to extract a valid JSON object
-    for &start_idx in &start_indices {
-        if let Some(end_idx) = find_json_end(text, start_idx) {
-            let json_str = &text[start_idx..=end_idx];
-            // Only add if it parses as valid JSON
-            if serde_json::from_str::<Value>(json_str).is_ok() {
-                results.push(json_str.to_string());
-            }
-        }
-    }
-
-    results
-}
-
-/// Finds the end index of a JSON object or array starting at start_idx
-fn find_json_end(text: &str, start_idx: usize) -> Option<usize> {
-    let first_char = text[start_idx..].chars().next()?;
-    if first_char != '{' && first_char != '[' {
-        return None;
-    }
-
-    let mut brace_count = 0;
-    let mut bracket_count = 0;
-    let mut in_string = false;
-    let mut escape_next = false;
-
-    for (i, c) in text[start_idx..].char_indices() {
-        if in_string {
-            if escape_next {
-                escape_next = false;
-                continue;
-            }
-            if c == '\\' {
-                escape_next = true;
-                continue;
-            }
-            if c == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-
-        match c {
-            '"' => in_string = true,
-            '{' => brace_count += 1,
-            '}' => {
-                brace_count -= 1;
-                if brace_count == 0 && first_char == '{' && bracket_count == 0 {
-                    return Some(start_idx + i);
-                }
-            }
-            '[' => bracket_count += 1,
-            ']' => {
-                bracket_count -= 1;
-                if bracket_count == 0 && first_char == '[' && brace_count == 0 {
-                    return Some(start_idx + i);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-
 pub fn display_log_info(logs: &[LogEntry]) {
     let mut components = std::collections::HashSet::new();
     let mut event_types = std::collections::HashSet::new();
@@ -359,15 +217,12 @@ pub fn display_log_info(logs: &[LogEntry]) {
 
     for log in logs {
         components.insert(&log.component);
-        if let Some(event_type) = &log.event_type {
-            event_types.insert(event_type);
-        }
-        if let Some(command) = &log.command {
-            commands.insert(command);
-        }
-        if let Some(req) = &log.request {
-            requests.insert(req);
-        }
+        match log.kind.clone() {
+            LogEntryKind::Event { event_type, .. } => event_types.insert(event_type),
+            LogEntryKind::Command { command, .. } => commands.insert(command),
+            LogEntryKind::Request { request, .. } => requests.insert(request),
+            LogEntryKind::Generic { .. } => true,
+        };
         levels.insert(&log.level);
     }
 

@@ -14,8 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             full,
         } => {
-            let logs1 = parse_log_file(file1)?;
-            let logs2 = parse_log_file(file2)?;
+            let logs1 = parse_log_file(file1).unwrap();
+            let logs2 = parse_log_file(file2).unwrap();
 
             compare_logs(
                 &logs1,
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
         }
         Commands::Info { file } => {
-            let logs = parse_log_file(file)?;
+            let logs = parse_log_file(file).unwrap();
             display_log_info(&logs);
         }
     }

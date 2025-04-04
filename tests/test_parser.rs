@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use log_analyzer::parser::parse_log_entry;
+    use log_analyzer::parser::{LogEntryKind, RequestDirection, parse_log_entry};
     use serde_json::json;
 
     // Test for a core-universal initialization log entry.
@@ -37,8 +37,8 @@ mod tests {
         assert_eq!(record.timestamp, "2025-04-03T21:35:06.108Z");
         assert_eq!(record.level, "INFO");
         assert_eq!(
-            record.payload,
-            Some(serde_json::json!({
+            record.payload(),
+            Some(&serde_json::json!({
               "debug": false,
               "shutdownMode": "stdin",
               "idleTimeout": 900000,
@@ -142,7 +142,11 @@ mod tests {
             record.component_id,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx"
         );
-        assert!(record.message.contains("Taking dom snapshot"));
+        assert!(
+            record
+                .message
+                .contains("Taking dom snapshot for viewport size")
+        );
     }
 
     // Test for a core-requests log for the "openEyes" request.
@@ -181,7 +185,30 @@ mod tests {
             record.component_id,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/render-t7j/start-render-request-cly"
         );
-        assert!(record.message.contains("startRenders"));
+        match record.kind {
+            LogEntryKind::Request {
+                request,
+                payload,
+                direction,
+                ..
+            } => {
+                assert_eq!(request, "startRenders");
+                assert_eq!(direction, RequestDirection::Receive);
+                assert_eq!(
+                    payload,
+                    Some(json!( [
+                      {
+                        "jobId": "54db7691-c742-49e5-a4dd-a2db1f4377b9",
+                        "renderId": "c1cc643b-b811-49f2-a4d6-e0b252fb6924",
+                        "status": "rendering",
+                        "needMoreResources": null,
+                        "needMoreDom": null
+                      }
+                    ]))
+                )
+            }
+            _ => panic!("Wrong kind of log entry"),
+        }
     }
     // Test for a ufg-requests log for the "getActualEnvironments" event.
     #[test]
@@ -191,18 +218,30 @@ mod tests {
 
         // Check that the component is correct and the message mentions getActualEnvironments.
         assert_eq!(record.component, "ufg-requests");
-        assert_eq!(record.request, Some("getActualEnvironments".to_string()));
-        assert_eq!(
-            record.request_id,
-            Some("0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb".to_string())
-        );
-        assert!(record.message.contains("getActualEnvironments"));
-        assert_eq!(
-            record.payload,
-            Some(
-                json!([{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":400,"height":800,"target":"viewport"}},{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":1000,"height":800,"target":"viewport"}}])
-            )
-        );
+
+        match record.kind {
+            LogEntryKind::Request {
+                request,
+                request_id,
+                payload,
+                direction,
+                ..
+            } => {
+                assert_eq!(request, "getActualEnvironments");
+                assert_eq!(
+                    request_id,
+                    Some("0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb".to_string()),
+                );
+                assert_eq!(
+                    payload,
+                    Some(
+                        json!([{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":400,"height":800,"target":"viewport"}},{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":1000,"height":800,"target":"viewport"}}])
+                    )
+                );
+                assert_eq!(direction, RequestDirection::Send)
+            }
+            _ => panic!("Wrong kind of log entry"),
+        }
     }
     // Test for a ufg-requests log for the "getActualEnvironments" event.
     #[test]
@@ -212,18 +251,30 @@ mod tests {
 
         // Check that the component is correct and the message mentions getActualEnvironments.
         assert_eq!(record.component, "core-requests");
-        assert_eq!(record.request, Some("openEyes".to_string()));
-        assert_eq!(
-            record.request_id,
-            Some("0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90".to_string())
-        );
-        assert!(record.message.contains("openEyes"));
-        assert_eq!(
-            record.payload,
-            Some(
-                json!({"startInfo":{"agentId":"eyes-universal/4.35.0/eyes.selenium.visualgrid.python/6.1.0","agentSessionId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","agentRunId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","appIdOrName":"Applitools Eyes SDK","scenarioIdOrName":"CheckWindowWithReloadLayoutBreakpoints","properties":[{"name":"browserVersion","value":"135.0.7049.52"}],"batchInfo":{"id":"6e8afcf5-bc7a-406a-9104-728d710183d5","name":"Py3.12|Sel4.15.2 Generated tests","startedAt":"2025-04-03T21:35:04Z"},"egSessionId":"f03c5a9b-dbad-4d04-8c65-d1abf3300f7a","environment":{"ufgJobType":"web","inferred":"useragent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/135.0.0.0 Safari/537.36","deviceInfo":"Desktop","displaySize":{"width":400,"height":800},"0.sg1fmhj9ufh":"got you!"},"branchName":"master","parentBranchName":"master","compareWithParentBranch":false,"ignoreBaseline":false,"latestCommitInfo":{"sha":"32dba3b1ba58911956b430911eeb7624e51cad66","timestamp":"2025-04-03T21:37:57+02:00"},"processId":"056b3f40-e104-4df2-b3df-5baefcbc35b9"}})
-            )
-        );
+
+        match record.kind {
+            LogEntryKind::Request {
+                request,
+                request_id,
+                payload,
+                direction,
+                ..
+            } => {
+                assert_eq!(request, "openEyes");
+                assert_eq!(
+                    request_id,
+                    Some("0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90".to_string())
+                );
+                assert_eq!(
+                    payload,
+                    Some(
+                        json!({"startInfo":{"agentId":"eyes-universal/4.35.0/eyes.selenium.visualgrid.python/6.1.0","agentSessionId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","agentRunId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","appIdOrName":"Applitools Eyes SDK","scenarioIdOrName":"CheckWindowWithReloadLayoutBreakpoints","properties":[{"name":"browserVersion","value":"135.0.7049.52"}],"batchInfo":{"id":"6e8afcf5-bc7a-406a-9104-728d710183d5","name":"Py3.12|Sel4.15.2 Generated tests","startedAt":"2025-04-03T21:35:04Z"},"egSessionId":"f03c5a9b-dbad-4d04-8c65-d1abf3300f7a","environment":{"ufgJobType":"web","inferred":"useragent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/135.0.0.0 Safari/537.36","deviceInfo":"Desktop","displaySize":{"width":400,"height":800},"0.sg1fmhj9ufh":"got you!"},"branchName":"master","parentBranchName":"master","compareWithParentBranch":false,"ignoreBaseline":false,"latestCommitInfo":{"sha":"32dba3b1ba58911956b430911eeb7624e51cad66","timestamp":"2025-04-03T21:37:57+02:00"},"processId":"056b3f40-e104-4df2-b3df-5baefcbc35b9"}})
+                    )
+                );
+                assert_eq!(direction, RequestDirection::Send)
+            }
+            _ => panic!("Wrong kind of log entry"),
+        }
     }
 
     // Test for a ufg-requests log for the "getActualEnvironments" event.
@@ -236,8 +287,13 @@ mod tests {
 }"#;
         let record = parse_log_entry(log_line).expect("Failed to parse openEyes log");
 
-        // Check that the component is correct and the message mentions getActualEnvironments.
         assert_eq!(record.component, "core-base");
-        assert_eq!(record.command, Some("close".to_string()));
+
+        match record.kind {
+            LogEntryKind::Command { command, .. } => {
+                assert_eq!(command, "close".to_string());
+            }
+            _ => panic!("Wrong kind of log entry"),
+        }
     }
 }
