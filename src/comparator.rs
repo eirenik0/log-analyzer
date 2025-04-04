@@ -186,7 +186,11 @@ fn get_log_key(log: &LogEntry) -> String {
         if let Some(event_type) = &log.event_type {
             format!("_{}", event_type)
         } else {
-            String::new()
+            if let Some(command) = &log.command {
+                format!("_{}", command)
+            } else {
+                String::new()
+            }
         }
     )
 }
@@ -215,12 +219,16 @@ fn should_include_log(
 pub fn display_log_info(logs: &[LogEntry]) {
     let mut components = std::collections::HashSet::new();
     let mut event_types = std::collections::HashSet::new();
+    let mut commands = std::collections::HashSet::new();
     let mut levels = std::collections::HashSet::new();
 
     for log in logs {
         components.insert(&log.component);
         if let Some(event_type) = &log.event_type {
             event_types.insert(event_type);
+        }
+        if let Some(command) = &log.command {
+            commands.insert(command);
         }
         levels.insert(&log.level);
     }
@@ -240,10 +248,19 @@ pub fn display_log_info(logs: &[LogEntry]) {
         println!("  - {}", event_type);
     }
 
+    println!("\nCommands:");
+    for command in commands {
+        println!("  - {}", command);
+    }
+
     println!("\nTotal log entries: {}", logs.len());
 }
 
-fn compare_json(json1: &Value, json2: &Value) -> Vec<(String, Value, Value)> {
+/// Compares two JSON values and returns a vector of differences.
+///
+/// Each difference is represented as a tuple with the JSON path and the differing values.
+/// This function compares values semantically, ignoring the order of object properties.
+pub fn compare_json(json1: &Value, json2: &Value) -> Vec<(String, Value, Value)> {
     let mut differences = Vec::new();
     compare_json_recursive(json1, json2, "".to_string(), &mut differences);
     differences
@@ -257,7 +274,7 @@ fn compare_json_recursive(
 ) {
     match (json1, json2) {
         (Value::Object(obj1), Value::Object(obj2)) => {
-            // Check keys that exist in both objects
+            // Check keys that exist in both objects.
             for (key, val1) in obj1 {
                 let current_path = if path.is_empty() {
                     key.clone()
@@ -271,7 +288,7 @@ fn compare_json_recursive(
                 }
             }
 
-            // Check keys that only exist in obj2
+            // Check keys that only exist in obj2.
             for (key, val2) in obj2 {
                 if !obj1.contains_key(key) {
                     let current_path = if path.is_empty() {
@@ -284,6 +301,54 @@ fn compare_json_recursive(
             }
         }
         (Value::Array(arr1), Value::Array(arr2)) => {
+            // Special handling for arrays containing objects
+            // If both arrays have the same length and contain only objects,
+            // try to match objects by their content rather than their position
+            if arr1.len() == arr2.len()
+                && arr1.iter().all(|v| v.is_object())
+                && arr2.iter().all(|v| v.is_object())
+            {
+                // Try to match objects between arrays
+                let mut matched_indices = vec![false; arr2.len()];
+
+                for (i, obj1) in arr1.iter().enumerate() {
+                    let mut best_match_idx = None;
+                    let mut fewest_differences = usize::MAX;
+
+                    // Find the best matching object in arr2
+                    for (j, obj2) in arr2.iter().enumerate() {
+                        if !matched_indices[j] {
+                            let mut temp_differences = Vec::new();
+                            compare_json_recursive(
+                                obj1,
+                                obj2,
+                                "temp".to_string(),
+                                &mut temp_differences,
+                            );
+
+                            if temp_differences.is_empty() {
+                                // Perfect match
+                                best_match_idx = Some(j);
+                                break;
+                            } else if temp_differences.len() < fewest_differences {
+                                fewest_differences = temp_differences.len();
+                                best_match_idx = Some(j);
+                            }
+                        }
+                    }
+
+                    // Compare with best match
+                    if let Some(j) = best_match_idx {
+                        matched_indices[j] = true;
+                        let current_path = format!("{}[{}]", path, i);
+                        compare_json_recursive(&arr1[i], &arr2[j], current_path, differences);
+                    }
+                }
+
+                return;
+            }
+
+            // Standard array comparison for non-object arrays or different length arrays
             let max_len = arr1.len().max(arr2.len());
             for i in 0..max_len {
                 let current_path = format!("{}[{}]", path, i);

@@ -1,4 +1,3 @@
-use clap::command;
 use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -228,7 +227,6 @@ fn extract_log_parts(rest: &str) -> Option<(&str, &str, &str)> {
 fn extract_event_info(message: &str) -> (Option<String>, Option<String>, Option<Value>) {
     let mut payload_str = message;
     let mut event_type = None;
-    let mut payload = None;
     let mut command = None;
 
     // Check if message contains event information
@@ -252,7 +250,7 @@ fn extract_event_info(message: &str) -> (Option<String>, Option<String>, Option<
     }
 
     // Try to extract JSON payload regardless of the message pattern
-    payload = extract_json(payload_str);
+    let payload = extract_json(payload_str);
     (event_type, command, payload)
 }
 
