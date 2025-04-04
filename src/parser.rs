@@ -1,3 +1,4 @@
+use clap::command;
 use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -9,6 +10,7 @@ pub struct LogEntry {
     pub timestamp: String,
     pub level: String,
     pub event_type: Option<String>,
+    pub command: Option<String>,
     pub payload: Option<Value>,
     pub message: String,
     pub raw_logline: String,
@@ -17,7 +19,8 @@ pub struct LogEntry {
 /// Extracts JSON content from a log message
 fn extract_json(input: &str) -> Option<Value> {
     // Common JSON indicators to look for
-    const JSON_INDICATORS: [&str; 3] = ["with body [", "with body {", "with body"];
+    const JSON_INDICATORS: [&str; 4] =
+        ["with settings {", "with body [", "with body {", "with body"];
 
     // First try to extract JSON from known patterns
     for indicator in &JSON_INDICATORS {
@@ -171,13 +174,14 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
     let (timestamp, level, message) = extract_log_parts(rest)?;
 
     // Process message for event type and payload
-    let (event_type, payload) = extract_event_info(message);
+    let (event_type, command, payload) = extract_event_info(message);
 
     Some(LogEntry {
         component: component.to_string(),
         component_rest: component_rest.to_string(),
         timestamp: timestamp.to_string(),
         level: level.to_string(),
+        command,
         event_type,
         payload,
         message: message.to_string(),
@@ -221,29 +225,35 @@ fn extract_log_parts(rest: &str) -> Option<(&str, &str, &str)> {
 }
 
 /// Extracts event type and payload from the message
-fn extract_event_info(message: &str) -> (Option<String>, Option<Value>) {
+fn extract_event_info(message: &str) -> (Option<String>, Option<String>, Option<Value>) {
+    let mut payload_str = message;
     let mut event_type = None;
     let mut payload = None;
+    let mut command = None;
 
     // Check if message contains event information
     if message.contains("Emit event of type") || message.contains("Received event of type") {
         let event_parts: Vec<&str> = message.split("with payload").collect();
         if event_parts.len() >= 2 {
-            // Extract event type
             event_type = extract_event_type(event_parts[0]);
+            payload_str = event_parts[1].trim();
+        }
+    } else if message.contains(r#"Command ""#) && message.contains(r#"" is called"#) {
+        // Extract command name
+        let cmd_prefix = r#"Command ""#;
+        let cmd_suffix = r#"" is called"#;
 
-            // Extract payload from the second part
-            let payload_str = event_parts[1].trim();
-            if payload_str.starts_with('{') {
-                payload = json5::from_str::<Value>(payload_str).ok();
+        if let Some(start_idx) = message.find(cmd_prefix) {
+            let cmd_name_start = start_idx + cmd_prefix.len();
+            if let Some(end_idx) = message[cmd_name_start..].find(cmd_suffix) {
+                command = Some(message[cmd_name_start..cmd_name_start + end_idx].to_string());
             }
         }
-    } else {
-        // Try to extract any JSON from the message
-        payload = extract_json(message);
     }
 
-    (event_type, payload)
+    // Try to extract JSON payload regardless of the message pattern
+    payload = extract_json(payload_str);
+    (event_type, command, payload)
 }
 
 /// Extracts the event type string from the event part of the message

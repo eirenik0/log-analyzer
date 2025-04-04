@@ -215,4 +215,19 @@ mod tests {
             )
         );
     }
+
+    // Test for a ufg-requests log for the "getActualEnvironments" event.
+    #[test]
+    fn test_parse_command_with_settings() {
+        let log_line = r#"core-base (manager-ufg-hoh/eyes-ufg-aif/close-p78/check-ufg-ebh/environment-lrd/eyes-base-e8f/close-base-5wk) | 2025-04-03T21:08:25.197Z [INFO ] Command "close" is called with settings {
+  updateBaselineIfNew: false,
+  testMetadata: undefined,
+  environments: undefined
+}"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse openEyes log");
+
+        // Check that the component is correct and the message mentions getActualEnvironments.
+        assert_eq!(record.component, "core-base");
+        assert_eq!(record.command, Some("close".to_string()));
+    }
 }
