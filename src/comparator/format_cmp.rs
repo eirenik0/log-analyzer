@@ -1,34 +1,37 @@
 use crate::comparator::{ComparisonOptions, ComparisonResults, JsonDifference, LogComparison};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{self, Write};
-use std::path::Path;
 
-/// Writes comparison results to a file with the same formatting as console output
-pub fn write_results_to_file(
+/// Output formatter trait that abstracts over console and file output
+pub trait OutputFormatter {
+    fn write_header(&mut self, text: &str) -> std::io::Result<()>;
+    fn write_divider(&mut self, char: &str, count: usize) -> std::io::Result<()>;
+    fn write_line(&mut self, text: &str) -> std::io::Result<()>;
+    fn write_source_file1(&mut self, text: &str) -> std::io::Result<()>;
+    fn write_source_file2(&mut self, text: &str) -> std::io::Result<()>;
+    fn write_highlight(&mut self, text: &str) -> std::io::Result<()>;
+    fn write_label(&mut self, text: &str) -> std::io::Result<()>;
+}
+
+/// Formats comparison results using the provided formatter
+pub fn format_comparison_results<F: OutputFormatter>(
+    formatter: &mut F,
     results: &ComparisonResults,
     options: &ComparisonOptions,
-    path: &Path,
-) -> io::Result<()> {
-    let mut file = File::create(path)?;
+) -> std::io::Result<()> {
+    // Display summary header with clear separation
+    formatter.write_divider("=", 80)?;
+    formatter.write_header("LOG COMPARISON SUMMARY")?;
+    formatter.write_divider("=", 80)?;
 
-    // Write header
-    writeln!(file, "{}", "=".repeat(80))?;
-    writeln!(file, "LOG COMPARISON SUMMARY")?;
-    writeln!(file, "{}", "=".repeat(80))?;
-
-    writeln!(
-        file,
+    formatter.write_line(&format!(
         "{} unique log types in file 1 (source) [src:1]",
         results.unique_to_log1.len()
-    )?;
-    writeln!(
-        file,
+    ))?;
+    formatter.write_line(&format!(
         "{} unique log types in file 2 (target) [src:2]",
         results.unique_to_log2.len()
-    )?;
-    writeln!(
-        file,
+    ))?;
+    formatter.write_line(&format!(
         "{} shared log types with {} comparisons [src:3]",
         results.shared_comparisons.len(),
         results
@@ -36,46 +39,44 @@ pub fn write_results_to_file(
             .iter()
             .map(|c| c.json_differences.len())
             .sum::<usize>()
-    )?;
+    ))?;
 
-    // Write unique keys
+    // Display unique keys with better formatting
     if !options.diff_only {
         if !results.unique_to_log1.is_empty() {
-            writeln!(file, "\nLOGS UNIQUE TO FILE 1 [src:10]")?;
-            writeln!(file, "{}", "-".repeat(80))?;
+            formatter.write_line("\nLOGS UNIQUE TO FILE 1 [src:10]")?;
+            formatter.write_divider("-", 80)?;
             for (index, key) in results.unique_to_log1.iter().enumerate() {
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
-                    writeln!(
-                        file,
+                    formatter.write_source_file1(&format!(
                         "[L{}] {}  {}  {}",
                         index + 1,
                         parts[0],
                         parts[1],
                         parts[2].trim()
-                    )?;
+                    ))?;
                 } else {
-                    writeln!(file, "[L{}] {}", index + 1, key)?;
+                    formatter.write_source_file1(&format!("[L{}] {}", index + 1, key))?;
                 }
             }
         }
 
         if !results.unique_to_log2.is_empty() {
-            writeln!(file, "\nLOGS UNIQUE TO FILE 2 [src:30]")?;
-            writeln!(file, "{}", "-".repeat(80))?;
+            formatter.write_line("\nLOGS UNIQUE TO FILE 2 [src:30]")?;
+            formatter.write_divider("-", 80)?;
             for (index, key) in results.unique_to_log2.iter().enumerate() {
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
-                    writeln!(
-                        file,
+                    formatter.write_source_file2(&format!(
                         "[L{}] {}  {}  {}",
                         index + 1,
                         parts[0],
                         parts[1],
                         parts[2].trim()
-                    )?;
+                    ))?;
                 } else {
-                    writeln!(file, "[L{}] {}", index + 1, key)?;
+                    formatter.write_source_file2(&format!("[L{}] {}", index + 1, key))?;
                 }
             }
         }
@@ -94,20 +95,20 @@ pub fn write_results_to_file(
     let mut keys: Vec<&String> = grouped_comparisons.keys().copied().collect();
     keys.sort();
 
-    // Write shared key comparisons
+    // Display shared key comparisons with improved formatting
     if !results.shared_comparisons.is_empty() {
-        writeln!(file, "\nSHARED LOGS WITH DIFFERENCES [src:50]")?;
-        writeln!(file, "{}", "=".repeat(80))?;
+        formatter.write_line("\nSHARED LOGS WITH DIFFERENCES [src:50]")?;
+        formatter.write_divider("=", 80)?;
 
         for (key_idx, key) in keys.iter().enumerate() {
             let comparisons = grouped_comparisons.get(key).unwrap();
             let parts: Vec<&str> = key.split('|').collect();
 
-            // Write key header with source line reference
-            writeln!(file, "\n{}", "▼".repeat(80))?;
+            // Print formatted key header with source line reference
+            formatter.write_line("")?;
+            formatter.write_divider("▼", 80)?;
             if parts.len() >= 3 {
-                writeln!(
-                    file,
+                formatter.write_highlight(&format!(
                     "[K{}] {} {} {} {} ({} instances)",
                     key_idx + 1,
                     parts[0],
@@ -115,22 +116,20 @@ pub fn write_results_to_file(
                     parts[2].trim(),
                     parts[3].trim(),
                     comparisons.len()
-                )?;
+                ))?;
             } else {
-                writeln!(
-                    file,
+                formatter.write_highlight(&format!(
                     "[K{}] {} ({} instances)",
                     key_idx + 1,
                     key,
                     comparisons.len()
-                )?;
+                ))?;
             }
-            writeln!(file, "{}", "▲".repeat(80))?;
+            formatter.write_divider("▲", 80)?;
 
-            // Write each comparison for this key
+            // Display each comparison for this key
             for (idx, comparison) in comparisons.iter().enumerate() {
-                writeln!(
-                    file,
+                formatter.write_line(&format!(
                     "\n{}/{}. FILE1 #{} [S:{}] ↔ FILE2 #{} [T:{}]",
                     idx + 1,
                     comparisons.len(),
@@ -138,22 +137,22 @@ pub fn write_results_to_file(
                     comparison.log1_index + 100, // Source file line reference
                     comparison.log2_index,
                     comparison.log2_index + 200 // Target file line reference
-                )?;
+                ))?;
 
                 if options.show_full_json {
-                    write_full_json_to_file(&mut file, comparison)?;
+                    format_full_json_comparison(formatter, comparison)?;
                 } else {
-                    write_json_differences_to_file(&mut file, comparison)?;
+                    format_json_differences(formatter, comparison)?;
                 }
 
                 if let Some(text_diff) = &comparison.text_difference {
-                    writeln!(file, "\nTEXT DIFFERENCES: [src:70]")?;
-                    writeln!(file, "{}", text_diff)?;
+                    formatter.write_line("\nTEXT DIFFERENCES: [src:70]")?;
+                    formatter.write_line(text_diff)?;
                 }
 
                 // Add separator between comparisons
                 if idx < comparisons.len() - 1 {
-                    writeln!(file, "\n{}", "-".repeat(40))?;
+                    formatter.write_divider("-", 40)?;
                 }
             }
         }
@@ -162,14 +161,17 @@ pub fn write_results_to_file(
     Ok(())
 }
 
-/// Writes JSON differences to file with proper JSON formatting
-fn write_json_differences_to_file(file: &mut File, comparison: &LogComparison) -> io::Result<()> {
+/// Formats differences between JSON objects
+pub fn format_json_differences<F: OutputFormatter>(
+    formatter: &mut F,
+    comparison: &LogComparison,
+) -> std::io::Result<()> {
     if comparison.json_differences.is_empty() {
-        writeln!(file, "  [No JSON differences]")?;
+        formatter.write_line("  [No JSON differences]")?;
         return Ok(());
     }
 
-    writeln!(file, "  JSON DIFFERENCES: [src:90]")?;
+    formatter.write_label("  JSON DIFFERENCES: [src:90]")?;
 
     // Group differences by path prefix for better organization
     let mut grouped_diffs: HashMap<String, Vec<&JsonDifference>> = HashMap::new();
@@ -193,7 +195,7 @@ fn write_json_differences_to_file(file: &mut File, comparison: &LogComparison) -
         let diffs = grouped_diffs.get(prefix).unwrap();
 
         if prefix != "root" {
-            writeln!(file, "  {} [P:{}]", prefix, prefix_idx + 1)?;
+            formatter.write_highlight(&format!("  {} [P:{}]", prefix, prefix_idx + 1))?;
         }
 
         for (diff_idx, diff) in diffs.iter().enumerate() {
@@ -222,42 +224,41 @@ fn write_json_differences_to_file(file: &mut File, comparison: &LogComparison) -
             let value1_display = if value1_str.len() > max_len {
                 format!("{}...", &value1_str[0..max_len])
             } else {
-                value1_str
+                value1_str.clone()
             };
 
             let value2_display = if value2_str.len() > max_len {
                 format!("{}...", &value2_str[0..max_len])
             } else {
-                value2_str
+                value2_str.clone()
             };
 
-            writeln!(
-                file,
-                "    [D:{}] {} :\n      {} ➔\n      {}",
-                diff_idx + 1,
-                path_display,
-                value1_display,
-                value2_display
-            )?;
+            formatter.write_line(&format!("    [D:{}] {} :", diff_idx + 1, path_display))?;
+            formatter.write_source_file1(&format!("      {}", value1_display))?;
+            formatter.write_line("      ➔")?;
+            formatter.write_source_file2(&format!("      {}", value2_display))?;
         }
     }
 
     Ok(())
 }
 
-/// Writes full JSON comparison to file with proper formatting
-fn write_full_json_to_file(file: &mut File, comparison: &LogComparison) -> io::Result<()> {
+/// Formats full JSON comparison
+pub fn format_full_json_comparison<F: OutputFormatter>(
+    formatter: &mut F,
+    comparison: &LogComparison,
+) -> std::io::Result<()> {
     if !comparison.json_differences.is_empty() {
-        writeln!(file, "Log file 1 [src:130]:")?;
+        formatter.write_line("Log file 1 [src:130]:")?;
         match serde_json::to_string_pretty(&comparison.json_differences[0].value1) {
-            Ok(json) => writeln!(file, "{}", json)?,
-            Err(_) => writeln!(file, "Error formatting JSON")?,
+            Ok(json) => formatter.write_source_file1(&json)?,
+            Err(_) => formatter.write_line("Error formatting JSON")?,
         }
 
-        writeln!(file, "\nLog file 2 [src:140]:")?;
+        formatter.write_line("\nLog file 2 [src:140]:")?;
         match serde_json::to_string_pretty(&comparison.json_differences[0].value2) {
-            Ok(json) => writeln!(file, "{}", json)?,
-            Err(_) => writeln!(file, "Error formatting JSON")?,
+            Ok(json) => formatter.write_source_file2(&json)?,
+            Err(_) => formatter.write_line("Error formatting JSON")?,
         }
     }
 

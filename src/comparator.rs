@@ -1,14 +1,16 @@
-mod display_comparison;
-mod display_summary;
+mod console_cmp;
+mod console_summary;
 mod entities;
+mod file_cmp;
+mod format_cmp;
 mod helpers;
-mod write_comparison;
 
-pub use display_comparison::display_comparison_results;
-pub use display_summary::display_log_summary;
+pub use console_cmp::display_comparison_results;
+pub use console_summary::display_log_summary;
 pub use entities::*;
+pub use file_cmp::write_results_to_file;
+pub use format_cmp::*;
 pub use helpers::*;
-pub use write_comparison::write_results_to_file;
 
 use crate::parser::LogEntry;
 use serde_json::{Value, json};
