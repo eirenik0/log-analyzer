@@ -1,7 +1,9 @@
+use chrono::{DateTime, Local};
 use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+
 mod entities;
 
 pub use entities::{
@@ -88,11 +90,12 @@ pub fn parse_log_entry(log_text: &str) -> Result<LogEntry, ParseError> {
     let (timestamp, level, message) = extract_log_parts(rest)
         .ok_or_else(|| ParseError::InvalidLogFormat("Invalid log format".to_string()))?;
 
+    let timestamp = timestamp.parse::<DateTime<Local>>().unwrap();
     // Process message to determine the log entry kind
     determine_log_entry_kind(
         component.to_string(),
         component_id.to_string(),
-        timestamp.to_string(),
+        timestamp,
         level.to_string(),
         message.to_string(),
         log_text.to_string(),
@@ -139,7 +142,7 @@ fn extract_log_parts(rest: &str) -> Option<(&str, &str, &str)> {
 fn determine_log_entry_kind(
     component: String,
     component_id: String,
-    timestamp: String,
+    timestamp: DateTime<Local>,
     level: String,
     mut message_text: String,
     raw_logline: String,

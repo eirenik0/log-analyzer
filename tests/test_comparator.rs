@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Local};
     use log_analyzer::comparator::LogFilter;
     use log_analyzer::{ComparisonOptions, LogEntry, LogEntryKind, compare_json, compare_logs};
     use serde_json::json;
@@ -455,9 +456,9 @@ mod tests {
         message: &str,
         payload: serde_json::Value,
     ) -> LogEntry {
-        let timestamp = "2023-01-01T00:00:00Z";
+        let timestamp = "2023-01-01T00:00:00Z".parse::<DateTime<Local>>().unwrap();
         LogEntry {
-            timestamp: timestamp.to_string(),
+            timestamp: timestamp,
             component: component.to_string(),
             component_id: "some-id".to_string(),
             level: level.to_string(),

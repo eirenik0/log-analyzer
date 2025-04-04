@@ -2,9 +2,9 @@ pub mod cli;
 pub mod comparator;
 pub mod parser;
 
-use crate::comparator::{LogFilter, display_comparison_results, display_log_summary};
+use crate::comparator::{LogFilter, display_log_summary};
 pub use cli::{Commands, cli_parse};
-pub use comparator::{ComparisonOptions, compare_json, compare_logs};
+pub use comparator::{ComparisonOptions, compare_json, compare_logs, display_comparison_results};
 pub use parser::{LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_file};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {

@@ -4,6 +4,7 @@
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Local};
     use log_analyzer::parser::{LogEntryKind, RequestDirection, parse_log_entry};
     use serde_json::json;
 
@@ -34,7 +35,12 @@ mod tests {
             parse_log_entry(log_line).expect("Failed to parse core-universal initialization log");
 
         assert_eq!(record.component, "core-universal");
-        assert_eq!(record.timestamp, "2025-04-03T21:35:06.108Z");
+        assert_eq!(
+            record.timestamp,
+            "2025-04-03T21:35:06.108Z"
+                .parse::<DateTime<Local>>()
+                .unwrap()
+        );
         assert_eq!(record.level, "INFO");
         assert_eq!(
             record.payload(),

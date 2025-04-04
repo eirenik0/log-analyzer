@@ -1,6 +1,6 @@
 use crate::LogEntry;
 use crate::comparator::entities::{
-    ComparisonError, ComparisonOptions, ComparisonResults, LogComparison, LogFilter,
+    ComparisonError, ComparisonOptions, ComparisonResults, LogFilter,
 };
 use colored::Colorize;
 use similar::{ChangeTag, TextDiff};
@@ -45,35 +45,6 @@ pub fn compute_text_diff(text1: &str, text2: &str) -> String {
     }
 
     result
-}
-
-/// Displays full JSON objects for both sides of a comparison
-pub fn display_full_json_comparison(comparison: &LogComparison) -> Result<(), serde_json::Error> {
-    if !comparison.json_differences.is_empty() {
-        println!("Log file 1:");
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&comparison.json_differences[0].value1)?
-        );
-        println!("\nLog file 2:");
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&comparison.json_differences[0].value2)?
-        );
-    }
-    Ok(())
-}
-
-/// Displays only the differences between JSON objects
-pub fn display_json_differences(comparison: &LogComparison) {
-    for diff in &comparison.json_differences {
-        println!(
-            "{}: {} => {}",
-            diff.path.yellow(),
-            format!("{:?}", diff.value1).cyan(),
-            format!("{:?}", diff.value2).magenta()
-        );
-    }
 }
 
 /// Writes comparison results to a file

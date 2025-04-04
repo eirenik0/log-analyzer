@@ -1,13 +1,15 @@
+mod display_comparison;
+mod display_summary;
 mod entities;
 mod helpers;
 
+pub use display_comparison::display_comparison_results;
+pub use display_summary::display_log_summary;
 pub use entities::*;
 pub use helpers::*;
 
-use crate::parser::{LogEntry, LogEntryKind};
-use colored::Colorize;
+use crate::parser::LogEntry;
 use serde_json::{Value, json};
-use std::collections::HashSet;
 use std::path::Path;
 
 /// Compares two sets of logs with the provided filter and options
@@ -99,107 +101,6 @@ pub fn compare_logs(
     }
 
     Ok(results)
-}
-
-/// Formats and displays the comparison results to the console
-pub fn display_comparison_results(results: &ComparisonResults, options: &ComparisonOptions) {
-    println!(
-        "Log file 1 has {} unique log types",
-        results.unique_to_log1.len()
-    );
-    println!(
-        "Log file 2 has {} unique log types",
-        results.unique_to_log2.len()
-    );
-    println!("Shared log types: {}", results.shared_comparisons.len());
-
-    // Display unique keys
-    if !options.diff_only {
-        for key in &results.unique_to_log1 {
-            println!("\nLog type only in file 1: {}", key.cyan());
-        }
-
-        for key in &results.unique_to_log2 {
-            println!("\nLog type only in file 2: {}", key.magenta());
-        }
-    }
-
-    // Display shared key comparisons
-    for comparison in &results.shared_comparisons {
-        println!(
-            "\n{} - Compare log {} #{} with log {} #{}",
-            comparison.key.yellow(),
-            "file1".cyan(),
-            comparison.log1_index,
-            "file2".magenta(),
-            comparison.log2_index
-        );
-
-        if options.show_full_json {
-            _ = display_full_json_comparison(&comparison);
-        } else {
-            display_json_differences(&comparison);
-        }
-
-        if let Some(text_diff) = &comparison.text_difference {
-            println!("\nText differences:");
-            println!("{}", text_diff);
-        }
-    }
-}
-
-/// Displays all statistics about the logs
-pub fn display_log_summary(logs: &[LogEntry]) {
-    // Collect unique components, event types, commands, etc.
-    let components: HashSet<_> = logs.iter().map(|log| &log.component).collect();
-    let levels: HashSet<_> = logs.iter().map(|log| &log.level).collect();
-
-    let mut event_types = HashSet::new();
-    let mut commands = HashSet::new();
-    let mut requests = HashSet::new();
-
-    for log in logs {
-        match &log.kind {
-            LogEntryKind::Event { event_type, .. } => {
-                event_types.insert(event_type);
-            }
-            LogEntryKind::Command { command, .. } => {
-                commands.insert(command);
-            }
-            LogEntryKind::Request { request, .. } => {
-                requests.insert(request);
-            }
-            LogEntryKind::Generic { .. } => {}
-        }
-    }
-
-    // Display statistics
-    println!("Log Components:");
-    for component in components {
-        println!("  - {}", component);
-    }
-
-    println!("\nLog Levels:");
-    for level in levels {
-        println!("  - {}", level);
-    }
-
-    println!("\nEvent Types:");
-    for event_type in event_types {
-        println!("  - {}", event_type);
-    }
-
-    println!("\nCommands:");
-    for command in commands {
-        println!("  - {}", command);
-    }
-
-    println!("\nRequests:");
-    for req in requests {
-        println!("  - {}", req);
-    }
-
-    println!("\nTotal log entries: {}", logs.len());
 }
 
 /// Compares two JSON values and returns a vector of differences.

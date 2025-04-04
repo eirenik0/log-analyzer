@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local};
 use serde_json::Value;
 use std::fmt;
 
@@ -80,7 +81,7 @@ pub struct LogEntry {
     /// Optional component ID (e.g., "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx")
     pub component_id: String,
     /// Timestamp of the log entry
-    pub timestamp: String,
+    pub timestamp: DateTime<Local>,
     /// Log level (e.g., "INFO", "WARN", "ERROR")
     pub level: String,
     /// The clean message with JSON content removed
@@ -159,7 +160,7 @@ impl LogEntry {
 pub fn create_event_log(
     component: String,
     component_id: String,
-    timestamp: String,
+    timestamp: DateTime<Local>,
     level: String,
     message: String,
     raw_logline: String,
@@ -185,7 +186,7 @@ pub fn create_event_log(
 pub fn create_command_log(
     component: String,
     component_id: String,
-    timestamp: String,
+    timestamp: DateTime<Local>,
     level: String,
     message: String,
     raw_logline: String,
@@ -206,7 +207,7 @@ pub fn create_command_log(
 pub fn create_request_log(
     component: String,
     component_id: String,
-    timestamp: String,
+    timestamp: DateTime<Local>,
     level: String,
     message: String,
     raw_logline: String,
@@ -236,7 +237,7 @@ pub fn create_request_log(
 pub fn create_generic_log(
     component: String,
     component_id: String,
-    timestamp: String,
+    timestamp: DateTime<Local>,
     level: String,
     message: String,
     raw_logline: String,
