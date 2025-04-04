@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Commands,
+    pub command: Commands,
 }
 
 #[derive(Subcommand)]
@@ -51,4 +51,8 @@ pub enum Commands {
         #[arg(short, long)]
         file: PathBuf,
     },
+}
+
+pub fn cli_parse() -> Cli {
+    Cli::parse()
 }

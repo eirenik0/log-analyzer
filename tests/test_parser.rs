@@ -1,0 +1,185 @@
+// Assume the parser is implemented in parser.rs with a function:
+//   fn parse_log_entry(line: &str) -> Result<LogRecord, ParseError>
+// and a LogRecord struct with fields such as component, timestamp, level, message, etc.
+
+#[cfg(test)]
+mod tests {
+    use log_analyzer::parser::parse_log_entry;
+
+    // Test for a core-universal initialization log entry.
+    #[test]
+    fn test_parse_core_universal_initialization() {
+        let log_line = r#"core-universal | 2025-04-03T21:35:06.108Z [INFO ] Core universal is going to be initialized with options {
+  debug: false,
+  shutdownMode: 'stdin',
+  idleTimeout: 900000,
+  printStdout: false,
+  defaultEnvironment: undefined,
+  _: [ 'universal' ],
+  singleton: false,
+  'shutdown-mode': 'stdin',
+  shutdown: 'stdin',
+  port: 21077,
+  fork: false,
+  'port-resolution-mode': 'next',
+  'port-resolution': 'next',
+  portResolution: 'next',
+  portResolutionMode: 'next',
+  'idle-timeout': 900000,
+  'mask-log': false,
+  '$0': '../core_universal/applitools/core_universal/bin/core'
+}"#;
+        let record =
+            parse_log_entry(log_line).expect("Failed to parse core-universal initialization log");
+
+        assert_eq!(record.component, "core-universal");
+        assert_eq!(record.timestamp, "2025-04-03T21:35:06.108Z");
+        assert_eq!(record.level, "INFO");
+        assert_eq!(
+            record.payload,
+            Some(serde_json::json!({
+              "debug": false,
+              "shutdownMode": "stdin",
+              "idleTimeout": 900000,
+              "printStdout": false,
+              "defaultEnvironment": null,
+              "_": [ "universal" ],
+              "singleton": false,
+              "shutdown-mode": "stdin",
+              "shutdown": "stdin",
+              "port": 21077,
+              "fork": false,
+              "port-resolution-mode": "next",
+              "port-resolution": "next",
+              "portResolution": "next",
+              "portResolutionMode": "next",
+              "idle-timeout": 900000,
+              "mask-log": false,
+              "$0": "../core_universal/applitools/core_universal/bin/core"
+            }
+                    ))
+        );
+    }
+
+    // Test for a socket log emitting an event.
+    #[test]
+    fn test_parse_socket_emit_event() {
+        let log_line = r#"socket | 2025-04-03T21:35:06.157Z [INFO ] Emit event of type "Logger.log" with payload {
+    "level": "info",
+    "message": "Logs saved in: /Users/eirenik0/Projects/APPLITOOLS/eyes.sdk/logs"
+}"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse socket emit event log");
+
+        // Assert component and level.
+        assert_eq!(record.component, "socket");
+        assert_eq!(record.level, "INFO");
+        // Optionally check that the event type and payload are parsed from the message.
+        // For example, if record.event_type is available:
+        // assert_eq!(record.event_type, "Logger.log");
+    }
+
+    // Test for a socket log receiving an event.
+    #[test]
+    fn test_parse_socket_received_event() {
+        let log_line = r#"socket | 2025-04-03T21:35:06.163Z [INFO ] Received event of type {"name":"Core.makeCore"} with payload {
+    "agentId": "eyes.sdk.python/6.1.0",
+    "cwd": "/Users/eirenik0/Projects/APPLITOOLS/eyes.sdk/python/tests",
+    "environment": {
+        "versions": {
+            "appium-python-client": "3.2.1",
+            "eyes-common": "6.1.0",
+            "eyes-images": "6.1.0",
+            "eyes-playwright": "6.1.0",
+            "eyes-robotframework": "6.1.0",
+            "eyes-selenium": "6.1.0",
+            "robotframework": "7.2.2",
+            "robotframework-appiumlibrary": "2.1.0",
+            "robotframework-seleniumlibrary": "6.7.0",
+            "selenium": "4.16.0",
+            "python": "3.12.3"
+        },
+        "sdk": {
+            "lang": "python",
+            "name": "eyes-selenium",
+            "currentVersion": "6.1.0"
+        }
+    },
+    "spec": "webdriver"
+}"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse received event log");
+
+        // Validate basic fields.
+        assert_eq!(record.component, "socket");
+        assert_eq!(record.level, "INFO");
+        // Additional assertions should validate the JSON event type and payload if your parser extracts them.
+    }
+
+    // Test for a driver log related to switching context.
+    #[test]
+    fn test_parse_driver_switch_context() {
+        let log_line = r#"driver (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx) | 2025-04-03T21:35:14.042Z [INFO ] Switching to a child context with depth: 0"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse driver context switch log");
+
+        // Assert that the component and message contain expected keywords.
+        assert_eq!(record.component, "driver");
+        assert_eq!(
+            record.component_rest,
+            "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx"
+        );
+        assert!(record.raw_message.contains("Switching to a child context"));
+    }
+
+    // Test for a core-ufg log taking a DOM snapshot.
+    #[test]
+    fn test_parse_dom_snapshot_log() {
+        let log_line = r#"core-ufg (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx) | 2025-04-03T21:35:15.301Z [INFO ] Taking dom snapshot for viewport size [object Object]"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse DOM snapshot log");
+
+        // Validate that the log message indicates a DOM snapshot.
+        assert_eq!(record.component, "core-ufg");
+        assert_eq!(
+            record.component_rest,
+            "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx"
+        );
+        assert!(record.raw_message.contains("Taking dom snapshot"));
+    }
+
+    // Test for a core-requests log for the "openEyes" request.
+    #[test]
+    fn test_parse_open_eyes_request() {
+        let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.applitools.com/api/sessions/running" with body {"startInfo":{ ... }}"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse openEyes request log");
+
+        // Assert that the log has been parsed with correct component and request information.
+        assert_eq!(record.component, "core-requests");
+        assert_eq!(
+            record.component_rest,
+            "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg"
+        );
+        // If your parser extracts the request name:
+        // assert_eq!(record.request_name, "openEyes");
+    }
+
+    // Test for a ufg-requests log for the "startRenders" event.
+    #[test]
+    fn test_parse_start_renders() {
+        let log_line = r#"ufg-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/render-t7j/start-render-request-cly) | 2025-04-03T21:35:32.628Z [INFO ] Request "startRenders" finished successfully with body [
+  {
+    jobId: '54db7691-c742-49e5-a4dd-a2db1f4377b9',
+    renderId: 'c1cc643b-b811-49f2-a4d6-e0b252fb6924',
+    status: 'rendering',
+    needMoreResources: undefined,
+    needMoreDom: undefined
+  }
+]"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse startRenders log");
+
+        // Check that the component is correct and the message mentions startRenders.
+        assert_eq!(record.component, "ufg-requests");
+        assert_eq!(
+            record.component_rest,
+            "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/render-t7j/start-render-request-cly"
+        );
+        assert!(record.raw_message.contains("startRenders"));
+    }
+}
