@@ -124,7 +124,7 @@ mod tests {
         // Assert that the component and message contain expected keywords.
         assert_eq!(record.component, "driver");
         assert_eq!(
-            record.component_rest,
+            record.component_id,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx"
         );
         assert!(record.message.contains("Switching to a child context"));
@@ -139,7 +139,7 @@ mod tests {
         // Validate that the log message indicates a DOM snapshot.
         assert_eq!(record.component, "core-ufg");
         assert_eq!(
-            record.component_rest,
+            record.component_id,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx"
         );
         assert!(record.message.contains("Taking dom snapshot"));
@@ -154,7 +154,7 @@ mod tests {
         // Assert that the log has been parsed with correct component and request information.
         assert_eq!(record.component, "core-requests");
         assert_eq!(
-            record.component_rest,
+            record.component_id,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg"
         );
         // If your parser extracts the request name:
@@ -178,7 +178,7 @@ mod tests {
         // Check that the component is correct and the message mentions startRenders.
         assert_eq!(record.component, "ufg-requests");
         assert_eq!(
-            record.component_rest,
+            record.component_id,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/render-t7j/start-render-request-cly"
         );
         assert!(record.message.contains("startRenders"));
@@ -193,7 +193,7 @@ mod tests {
         assert_eq!(record.component, "ufg-requests");
         assert_eq!(record.request, Some("getActualEnvironments".to_string()));
         assert_eq!(
-            record.request_rest,
+            record.request_id,
             Some("0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb".to_string())
         );
         assert!(record.message.contains("getActualEnvironments"));
@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(record.component, "core-requests");
         assert_eq!(record.request, Some("openEyes".to_string()));
         assert_eq!(
-            record.request_rest,
+            record.request_id,
             Some("0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90".to_string())
         );
         assert!(record.message.contains("openEyes"));

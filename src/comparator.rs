@@ -190,7 +190,8 @@ pub fn compare_logs(
 }
 
 fn get_log_key(log: &LogEntry) -> String {
-    let suffix = log.event_type
+    let suffix = log
+        .event_type
         .as_ref()
         .or_else(|| log.command.as_ref())
         .or_else(|| log.request.as_ref())

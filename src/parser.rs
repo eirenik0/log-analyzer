@@ -5,13 +5,13 @@ use std::path::PathBuf;
 
 pub struct LogEntry {
     pub component: String,
-    pub component_rest: String,
+    pub component_id: String,
     pub timestamp: String,
     pub level: String,
     pub event_type: Option<String>,
     pub command: Option<String>,
     pub request: Option<String>,
-    pub request_rest: Option<String>, // Added field for request ID/rest info
+    pub request_id: Option<String>, // Added field for request ID/rest info
     pub payload: Option<Value>,
     pub message: String,
     pub raw_logline: String,
@@ -177,7 +177,7 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
 
     // Extract component information
     let component_part = parts.next()?;
-    let (component, component_rest) = extract_component_info(component_part);
+    let (component, component_id) = extract_component_info(component_part);
 
     // Extract the rest of the log entry
     let rest = parts.next()?;
@@ -191,14 +191,14 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
 
     Some(LogEntry {
         component: component.to_string(),
-        component_rest: component_rest.to_string(),
+        component_id: component_id.to_string(),
         timestamp: timestamp.to_string(),
         level: level.to_string(),
         command,
         event_type,
         payload,
         request,
-        request_rest: request_id,
+        request_id: request_id,
         message: cleaned_message.to_string(),
         raw_logline: log_text.to_string(),
     })
@@ -213,8 +213,8 @@ fn extract_component_info(component_part: &str) -> (&str, &str) {
             && component_part.as_bytes()[space_pos + 1] == b'('
             && component_part.ends_with(')')
         {
-            let component_rest = &component_part[space_pos + 2..component_part.len() - 1];
-            return (component, component_rest);
+            let component_id = &component_part[space_pos + 2..component_part.len() - 1];
+            return (component, component_id);
         }
     }
     (component_part, "")
@@ -255,7 +255,7 @@ fn extract_event_info(
     let mut event_type = None;
     let mut command = None;
     let mut request = None;
-    let mut request_rest = None;
+    let mut request_id = None;
     let mut cleaned_message = message.to_string();
 
     // Check if message contains event information
@@ -300,7 +300,7 @@ fn extract_event_info(
         // Extract request name and rest information
         let (req_name, req_id) = extract_request_info(message);
         request = req_name;
-        request_rest = req_id;
+        request_id = req_id;
 
         // Clean request-related JSON
         for indicator in &["with settings {", "with body [", "with body {", "with body"] {
@@ -330,7 +330,7 @@ fn extract_event_info(
         event_type,
         command,
         request,
-        request_rest,
+        request_id,
         payload,
         cleaned_message,
     )
