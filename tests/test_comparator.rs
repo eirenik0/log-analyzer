@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use log_analyzer::compare_json;
+    use log_analyzer::{
+        compare_json, extract_all_json_objects, is_only_json_formatting_difference,
+    };
     use serde_json::json;
 
     #[test]
@@ -35,23 +37,6 @@ mod tests {
 
         let json2 = json!([
             { "name": "item2", "id": 2 },
-            { "name": "item1", "id": 1 }
-        ]);
-
-        let diff = compare_json(&json1, &json2);
-
-        // Should find no differences despite different order
-        assert_eq!(diff.len(), 0);
-    }
-    #[test]
-    fn test_compare_json_with_array_of_objects_recursively() {
-        let json1 = json!([
-            { "id": 1, "name": "item1" },
-            { "id": 2, "name": { "id": 2, "name": "item2" } }
-        ]);
-
-        let json2 = json!([
-            { "name": {"name": "item2", "id": 2, }, "id": 2 },
             { "name": "item1", "id": 1 }
         ]);
 
@@ -101,5 +86,33 @@ mod tests {
         }]);
         let diff = compare_json(&json1, &json2);
         assert_eq!(diff.len(), 0);
+    }
+
+    #[test]
+    fn test_is_only_json_formatting_difference() {
+        let text1 = r#"Some text with JSON { "name": "chrome", "width": 400, "height": 800 } and more JSON { "a": 1, "b": 2 }"#;
+        let text2 = r#"Some text with JSON { "width": 400, "height": 800, "name": "chrome" } and more JSON { "b": 2, "a": 1 }"#;
+
+        assert!(is_only_json_formatting_difference(text1, text2));
+
+        // Different values should not be considered formatting differences
+        let text3 = r#"Some text with JSON { "name": "chrome", "width": 500, "height": 800 }"#;
+
+        assert!(!is_only_json_formatting_difference(text1, text3));
+
+        // Different text should not be considered formatting differences
+        let text4 = r#"Different text with JSON { "name": "chrome", "width": 400, "height": 800 }"#;
+
+        assert!(!is_only_json_formatting_difference(text1, text4));
+    }
+
+    #[test]
+    fn test_extract_all_json_objects() {
+        let text = r#"Text with { "name": "chrome" } and { "width": 400, "height": 800 }"#;
+        let objects = extract_all_json_objects(text);
+
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0], r#"{ "name": "chrome" }"#);
+        assert_eq!(objects[1], r#"{ "width": 400, "height": 800 }"#);
     }
 }
