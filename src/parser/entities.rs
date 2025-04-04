@@ -57,8 +57,8 @@ pub enum RequestDirection {
 impl fmt::Display for EventDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EventDirection::Emit => write!(f, "emit"),
-            EventDirection::Receive => write!(f, "receive"),
+            EventDirection::Emit => write!(f, "Emit"),
+            EventDirection::Receive => write!(f, "Receive"),
         }
     }
 }
@@ -66,8 +66,8 @@ impl fmt::Display for EventDirection {
 impl fmt::Display for RequestDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RequestDirection::Send => write!(f, "send"),
-            RequestDirection::Receive => write!(f, "receive"),
+            RequestDirection::Send => write!(f, "Send"),
+            RequestDirection::Receive => write!(f, "Receive"),
         }
     }
 }
@@ -129,27 +129,29 @@ impl LogEntry {
     /// Get the type of this log entry as a string
     pub fn entry_type(&self) -> &'static str {
         match self.kind {
-            LogEntryKind::Event { .. } => "event",
-            LogEntryKind::Command { .. } => "command",
-            LogEntryKind::Request { .. } => "request",
-            LogEntryKind::Generic { .. } => "generic",
+            LogEntryKind::Event { .. } => "Event",
+            LogEntryKind::Command { .. } => "Command",
+            LogEntryKind::Request { .. } => "Request",
+            LogEntryKind::Generic { .. } => "Generic",
         }
     }
 
     /// Get the type of this log entry as a string
     pub fn log_key(&self) -> String {
-        match self.kind.clone() {
+        let entry_type = self.entry_type();
+        let key = match self.kind.clone() {
             LogEntryKind::Event {
                 event_type,
                 direction,
                 ..
-            } => format!("{event_type}_{direction}"),
-            LogEntryKind::Command { command, .. } => command,
+            } => format!("{direction}|`{event_type}`"),
+            LogEntryKind::Command { command, .. } => format!("`{command}`"),
             LogEntryKind::Request {
                 request, direction, ..
-            } => format!("{request}_{direction}"),
-            LogEntryKind::Generic { .. } => "generic".to_string(),
-        }
+            } => format!("{direction}|`{request}`"),
+            LogEntryKind::Generic { .. } => self.message.clone(),
+        };
+        format!("{entry_type}|{key}:")
     }
 }
 

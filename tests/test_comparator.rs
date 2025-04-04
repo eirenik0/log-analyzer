@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use log_analyzer::{LogEntry, LogEntryKind, compare_json, compare_logs};
+    use log_analyzer::comparator::LogFilter;
+    use log_analyzer::{ComparisonOptions, LogEntry, LogEntryKind, compare_json, compare_logs};
     use serde_json::json;
     use tempfile::NamedTempFile;
 
@@ -266,7 +267,9 @@ mod tests {
         let path = temp_file.path();
 
         // Run comparison
-        let result = compare_logs(&logs1, &logs2, None, None, None, false, Some(path), false);
+        let filter = LogFilter::new();
+        let options = ComparisonOptions::new().output_to_file(path.to_str());
+        let result = compare_logs(&logs1, &logs2, &filter, &options);
 
         assert!(result.is_ok());
 
@@ -320,17 +323,11 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
 
+        let filter = LogFilter::new().with_component(Some("backend"));
+        let options = ComparisonOptions::new().output_to_file(path.to_str());
+
         // Run comparison with a component filter
-        let result = compare_logs(
-            &logs1,
-            &logs2,
-            Some("backend"),
-            None,
-            None,
-            false,
-            Some(path),
-            false,
-        );
+        let result = compare_logs(&logs1, &logs2, &filter, &options);
 
         assert!(result.is_ok());
 
@@ -382,7 +379,11 @@ mod tests {
         let path = temp_file.path();
 
         // Run comparison with diff_only=true
-        let result = compare_logs(&logs1, &logs2, None, None, None, true, Some(path), false);
+        let filter = LogFilter::new();
+        let options = ComparisonOptions::new()
+            .diff_only(true)
+            .output_to_file(path.to_str());
+        let result = compare_logs(&logs1, &logs2, &filter, &options);
 
         assert!(result.is_ok());
 
@@ -430,7 +431,11 @@ mod tests {
         let path = temp_file.path();
 
         // Run comparison with show_full=true
-        let result = compare_logs(&logs1, &logs2, None, None, None, false, Some(path), true);
+        let filter = LogFilter::new();
+        let options = ComparisonOptions::new()
+            .show_full_json(true)
+            .output_to_file(path.to_str());
+        let result = compare_logs(&logs1, &logs2, &filter, &options);
 
         assert!(result.is_ok());
 
@@ -438,9 +443,9 @@ mod tests {
         let content = std::fs::read_to_string(path).unwrap();
 
         // Should contain full JSON objects rather than just differences
-        assert!(content.contains("\"key1\": \"value1\""));
-        assert!(content.contains("\"key1\": \"value2\""));
-        assert!(content.contains("\"key2\": \"same\"")); // Should include unchanged values too
+        assert!(content.contains(r#"with json key: `"key1"`"#));
+        assert!(content.contains(r#"- file1: "value1""#));
+        assert!(content.contains(r#"- file2: "value2""#)); // Should include unchanged values too
     }
 
     // Helper function to create test log entries
