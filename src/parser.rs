@@ -186,7 +186,8 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
     let (timestamp, level, message) = extract_log_parts(rest)?;
 
     // Process message for event type and payload
-    let (event_type, command, request, request_id, payload) = extract_event_info(message);
+    let (event_type, command, request, request_id, payload, cleaned_message) =
+        extract_event_info(message);
 
     Some(LogEntry {
         component: component.to_string(),
@@ -198,7 +199,7 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
         payload,
         request,
         request_rest: request_id,
-        message: message.to_string(),
+        message: cleaned_message.to_string(),
         raw_logline: log_text.to_string(),
     })
 }
@@ -239,6 +240,7 @@ fn extract_log_parts(rest: &str) -> Option<(&str, &str, &str)> {
 }
 
 /// Extracts event type, command, request and payload from the message
+/// Also returns a cleaned message with JSON content removed
 fn extract_event_info(
     message: &str,
 ) -> (
@@ -247,12 +249,14 @@ fn extract_event_info(
     Option<String>,
     Option<String>,
     Option<Value>,
+    String, // Added return value for cleaned message
 ) {
     let mut payload_str = message;
     let mut event_type = None;
     let mut command = None;
     let mut request = None;
     let mut request_rest = None;
+    let mut cleaned_message = message.to_string();
 
     // Check if message contains event information
     if message.contains("Emit event of type") || message.contains("Received event of type") {
@@ -260,6 +264,10 @@ fn extract_event_info(
         if event_parts.len() >= 2 {
             event_type = extract_event_type(event_parts[0]);
             payload_str = event_parts[1].trim();
+
+            // Remove the payload part from the cleaned message
+            cleaned_message = event_parts[0].to_string();
+            cleaned_message.push_str(" with payload [JSON removed]");
         }
     } else if message.contains(r#"Command ""#) && message.contains(r#"" is called"#) {
         // Extract command name
@@ -272,16 +280,60 @@ fn extract_event_info(
                 command = Some(message[cmd_name_start..cmd_name_start + end_idx].to_string());
             }
         }
+
+        // Clean command-related JSON
+        for indicator in &[
+            "with settings [",
+            "with settings {",
+            "with body [",
+            "with body {",
+            "with body",
+        ] {
+            if let Some(start_idx) = cleaned_message.find(indicator) {
+                cleaned_message = cleaned_message[..start_idx].to_string();
+                cleaned_message.push_str(indicator);
+                cleaned_message.push_str(" [JSON removed]");
+                break;
+            }
+        }
     } else if message.contains(r#"Request ""#) {
         // Extract request name and rest information
         let (req_name, req_id) = extract_request_info(message);
         request = req_name;
         request_rest = req_id;
+
+        // Clean request-related JSON
+        for indicator in &["with settings {", "with body [", "with body {", "with body"] {
+            if let Some(start_idx) = cleaned_message.find(indicator) {
+                cleaned_message = cleaned_message[..start_idx].to_string();
+                cleaned_message.push_str(indicator);
+                cleaned_message.push_str(" [JSON removed]");
+                break;
+            }
+        }
+    } else {
+        // For any other message, try to find and remove JSON content
+        for (i, c) in message.char_indices() {
+            if c == '{' || c == '[' {
+                if let Some(_) = extract_json_from_position(message, i) {
+                    cleaned_message = message[..i].to_string();
+                    cleaned_message.push_str("[JSON removed]");
+                    break;
+                }
+            }
+        }
     }
 
     // Try to extract JSON payload regardless of the message pattern
     let payload = extract_json(payload_str);
-    (event_type, command, request, request_rest, payload)
+    (
+        event_type,
+        command,
+        request,
+        request_rest,
+        payload,
+        cleaned_message,
+    )
 }
 
 /// Extracts request name and ID from messages containing request information

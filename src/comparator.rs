@@ -190,20 +190,13 @@ pub fn compare_logs(
 }
 
 fn get_log_key(log: &LogEntry) -> String {
-    format!(
-        "{}_{}{}",
-        log.component,
-        log.level,
-        if let Some(event_type) = &log.event_type {
-            format!("_{}", event_type)
-        } else {
-            if let Some(command) = &log.command {
-                format!("_{}", command)
-            } else {
-                String::new()
-            }
-        }
-    )
+    let suffix = log.event_type
+        .as_ref()
+        .or_else(|| log.command.as_ref())
+        .or_else(|| log.request.as_ref())
+        .map_or(String::new(), |value| format!("_{}", value));
+
+    format!("{}_{}{}", log.component, log.level, suffix)
 }
 
 fn should_include_log(
