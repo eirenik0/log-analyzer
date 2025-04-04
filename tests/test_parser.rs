@@ -5,6 +5,7 @@
 #[cfg(test)]
 mod tests {
     use log_analyzer::parser::parse_log_entry;
+    use serde_json::json;
 
     // Test for a core-universal initialization log entry.
     #[test]
@@ -126,7 +127,7 @@ mod tests {
             record.component_rest,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx"
         );
-        assert!(record.raw_message.contains("Switching to a child context"));
+        assert!(record.message.contains("Switching to a child context"));
     }
 
     // Test for a core-ufg log taking a DOM snapshot.
@@ -141,7 +142,7 @@ mod tests {
             record.component_rest,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx"
         );
-        assert!(record.raw_message.contains("Taking dom snapshot"));
+        assert!(record.message.contains("Taking dom snapshot"));
     }
 
     // Test for a core-requests log for the "openEyes" request.
@@ -180,6 +181,38 @@ mod tests {
             record.component_rest,
             "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/render-t7j/start-render-request-cly"
         );
-        assert!(record.raw_message.contains("startRenders"));
+        assert!(record.message.contains("startRenders"));
+    }
+    // Test for a ufg-requests log for the "getActualEnvironments" event.
+    #[test]
+    fn test_parse_with_request() {
+        let log_line = r#"ufg-requests (manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-lrd/get-actual-environment-4bu/get-actual-environments-g55 & manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-g6p/get-actual-environment-fpc/get-actual-environments-g55) | 2025-04-03T21:08:12.795Z [INFO ] Request "getActualEnvironments" [0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb] will be sent to the address "[POST]https://ufg-wus.applitools.com/job-info" with body [{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":400,"height":800,"target":"viewport"}},{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":1000,"height":800,"target":"viewport"}}]"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse getActualEnvironments log");
+
+        // Check that the component is correct and the message mentions getActualEnvironments.
+        assert_eq!(record.component, "ufg-requests");
+        assert!(record.message.contains("getActualEnvironments"));
+        assert_eq!(
+            record.payload,
+            Some(
+                json!([{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":400,"height":800,"target":"viewport"}},{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":1000,"height":800,"target":"viewport"}}])
+            )
+        );
+    }
+    // Test for a ufg-requests log for the "getActualEnvironments" event.
+    #[test]
+    fn test_parse_with_request2() {
+        let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.applitools.com/api/sessions/running" with body {"startInfo":{"agentId":"eyes-universal/4.35.0/eyes.selenium.visualgrid.python/6.1.0","agentSessionId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","agentRunId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","appIdOrName":"Applitools Eyes SDK","scenarioIdOrName":"CheckWindowWithReloadLayoutBreakpoints","properties":[{"name":"browserVersion","value":"135.0.7049.52"}],"batchInfo":{"id":"6e8afcf5-bc7a-406a-9104-728d710183d5","name":"Py3.12|Sel4.15.2 Generated tests","startedAt":"2025-04-03T21:35:04Z"},"egSessionId":"f03c5a9b-dbad-4d04-8c65-d1abf3300f7a","environment":{"ufgJobType":"web","inferred":"useragent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/135.0.0.0 Safari/537.36","deviceInfo":"Desktop","displaySize":{"width":400,"height":800},"0.sg1fmhj9ufh":"got you!"},"branchName":"master","parentBranchName":"master","compareWithParentBranch":false,"ignoreBaseline":false,"latestCommitInfo":{"sha":"32dba3b1ba58911956b430911eeb7624e51cad66","timestamp":"2025-04-03T21:37:57+02:00"},"processId":"056b3f40-e104-4df2-b3df-5baefcbc35b9"}}"#;
+        let record = parse_log_entry(log_line).expect("Failed to parse openEyes log");
+
+        // Check that the component is correct and the message mentions getActualEnvironments.
+        assert_eq!(record.component, "core-requests");
+        assert!(record.message.contains("openEyes"));
+        assert_eq!(
+            record.payload,
+            Some(
+                json!({"startInfo":{"agentId":"eyes-universal/4.35.0/eyes.selenium.visualgrid.python/6.1.0","agentSessionId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","agentRunId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","appIdOrName":"Applitools Eyes SDK","scenarioIdOrName":"CheckWindowWithReloadLayoutBreakpoints","properties":[{"name":"browserVersion","value":"135.0.7049.52"}],"batchInfo":{"id":"6e8afcf5-bc7a-406a-9104-728d710183d5","name":"Py3.12|Sel4.15.2 Generated tests","startedAt":"2025-04-03T21:35:04Z"},"egSessionId":"f03c5a9b-dbad-4d04-8c65-d1abf3300f7a","environment":{"ufgJobType":"web","inferred":"useragent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/135.0.0.0 Safari/537.36","deviceInfo":"Desktop","displaySize":{"width":400,"height":800},"0.sg1fmhj9ufh":"got you!"},"branchName":"master","parentBranchName":"master","compareWithParentBranch":false,"ignoreBaseline":false,"latestCommitInfo":{"sha":"32dba3b1ba58911956b430911eeb7624e51cad66","timestamp":"2025-04-03T21:37:57+02:00"},"processId":"056b3f40-e104-4df2-b3df-5baefcbc35b9"}})
+            )
+        );
     }
 }

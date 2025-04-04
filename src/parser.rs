@@ -10,96 +10,146 @@ pub struct LogEntry {
     pub level: String,
     pub event_type: Option<String>,
     pub payload: Option<Value>,
-    pub raw_message: String,
+    pub message: String,
+    pub raw_logline: String,
 }
 
-fn extract_json(input: &str) -> Option<String> {
-    // Find where the JSON-like content begins (either { or [)
-    let mut json_start = None;
-    let mut in_string = false;
-    let mut escape_next = false;
+fn extract_json(input: &str) -> Option<Value> {
+    // Try to find and extract valid JSON starting from different positions
+    let mut search_position = 0;
 
-    // Find the first unquoted { or [ in the input
-    for (i, c) in input.char_indices() {
-        if in_string {
-            if escape_next {
-                escape_next = false;
-                continue;
-            }
-            if c == '\\' {
-                escape_next = true;
-                continue;
-            }
-            if c == '"' {
-                in_string = false;
-            }
-            continue;
-        }
+    while search_position < input.len() {
+        // Find the first potential JSON start from current search position
+        let mut json_start = None;
+        let mut in_string = false;
+        let mut escape_next = false;
+        let remaining = &input[search_position..];
 
-        match c {
-            '"' => in_string = true,
-            '{' | '[' => {
-                json_start = Some(i);
-                break;
-            }
-            _ => {}
-        }
-    }
+        // Look for "with body" markers in different formats
+        if let Some(marker_pos) = remaining.find("with body [") {
+            json_start = Some(search_position + marker_pos + "with body ".len());
+        } else if let Some(marker_pos) = remaining.find("with body {") {
+            json_start = Some(search_position + marker_pos + "with body ".len());
+        } else if let Some(marker_pos) = remaining.find("with body") {
+            // General case for "with body" followed by JSON
+            let start_pos = search_position + marker_pos + "with body".len();
 
-    let start_index = json_start?;
-
-    // Determine if we're dealing with an object or array
-    let first_char = input[start_index..].chars().next()?;
-
-    // Initialize counters
-    let mut brace_count = 0;
-    let mut bracket_count = 0;
-    in_string = false;
-    escape_next = false;
-    let mut end_index = None;
-
-    // Parse through to find matching end
-    for (i, c) in input[start_index..].char_indices() {
-        // Handle string content
-        if in_string {
-            if escape_next {
-                escape_next = false;
-                continue;
-            }
-            if c == '\\' {
-                escape_next = true;
-                continue;
-            }
-            if c == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-
-        match c {
-            '"' => in_string = true,
-            '{' => brace_count += 1,
-            '}' => {
-                brace_count -= 1;
-                if brace_count == 0 && first_char == '{' && bracket_count == 0 {
-                    end_index = Some(start_index + i + 1);
+            // Scan for the first { or [ after "with body"
+            for (i, c) in input[start_pos..].char_indices() {
+                if c == '{' || c == '[' {
+                    json_start = Some(start_pos + i);
                     break;
                 }
             }
-            '[' => bracket_count += 1,
-            ']' => {
-                bracket_count -= 1;
-                if bracket_count == 0 && first_char == '[' && brace_count == 0 {
-                    end_index = Some(start_index + i + 1);
-                    break;
+        } else {
+            // Look for the first unquoted { or [ in the input
+            for (i, c) in remaining.char_indices() {
+                if in_string {
+                    if escape_next {
+                        escape_next = false;
+                        continue;
+                    }
+                    if c == '\\' {
+                        escape_next = true;
+                        continue;
+                    }
+                    if c == '"' {
+                        in_string = false;
+                    }
+                    continue;
+                }
+
+                match c {
+                    '"' => in_string = true,
+                    '{' | '[' => {
+                        json_start = Some(search_position + i);
+                        break;
+                    }
+                    _ => {}
                 }
             }
-            _ => {}
         }
+
+        // If no potential JSON start found, return None
+        let start_index = match json_start {
+            Some(idx) => idx,
+            None => return None,
+        };
+
+        // Determine if we're dealing with an object or array
+        let first_char = match input[start_index..].chars().next() {
+            Some(c) if c == '{' || c == '[' => c,
+            _ => {
+                // Move search position past this non-JSON start and continue
+                search_position = start_index + 1;
+                continue;
+            }
+        };
+
+        // Initialize counters
+        let mut brace_count = 0;
+        let mut bracket_count = 0;
+        in_string = false;
+        escape_next = false;
+        let mut end_index = None;
+
+        // Parse through to find matching end
+        for (i, c) in input[start_index..].char_indices() {
+            // Handle string content
+            if in_string {
+                if escape_next {
+                    escape_next = false;
+                    continue;
+                }
+                if c == '\\' {
+                    escape_next = true;
+                    continue;
+                }
+                if c == '"' {
+                    in_string = false;
+                }
+                continue;
+            }
+
+            match c {
+                '"' => in_string = true,
+                '{' => brace_count += 1,
+                '}' => {
+                    brace_count -= 1;
+                    if brace_count == 0 && first_char == '{' && bracket_count == 0 {
+                        end_index = Some(start_index + i + 1);
+                        break;
+                    }
+                },
+                '[' => bracket_count += 1,
+                ']' => {
+                    bracket_count -= 1;
+                    if bracket_count == 0 && first_char == '[' && brace_count == 0 {
+                        end_index = Some(start_index + i + 1);
+                        break;
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        // If we found a potential JSON substring
+        if let Some(ei) = end_index {
+            let json_str = input[start_index..ei].replace("undefined", "null");
+
+            // Validate the JSON
+            let valid_json = json5::from_str::<Value>(&json_str);
+            if valid_json.is_ok(){
+                return valid_json.ok();
+            }
+        }
+
+        // If we didn't find valid JSON, move search position past this attempt
+        search_position = start_index + 1;
     }
 
-    // Extract and process the JSON substring
-    end_index.map(|ei| input[start_index..ei].replace("undefined", "null"))
+    // If we've searched the entire string and found no valid JSON
+    None
 }
 
 pub fn parse_log_file(path: &PathBuf) -> Result<Vec<LogEntry>, Box<dyn std::error::Error>> {
@@ -113,7 +163,7 @@ pub fn parse_log_file(path: &PathBuf) -> Result<Vec<LogEntry>, Box<dyn std::erro
         let line = line?;
 
         // Check if this is a new log entry
-        if let Some((component, rest)) = line.split_once(" | ") {
+        if let Some((_component, _rest)) = line.split_once(" | ") {
             // Save the previous log entry if it exists
             if let Some(log_text) = current_log.take() {
                 if let Some(entry) = parse_log_entry(&log_text) {
@@ -200,20 +250,8 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
                 }
             }
         }
-    } else if let Some(json_str) = extract_json(message) {
-        // Preprocess to replace "undefined" with "null"
-        let json_str = json_str.trim().replace("undefined", "null");
-        match json5::from_str::<serde_json::Value>(&json_str) {
-            Ok(json_value) => {
-                payload = Some(json_value);
-            }
-            Err(err) => {
-                println!("Invalid JSON: {err} in line {json_str}");
-                payload = None;
-            }
-        }
     } else {
-        println!("No valid JSON found in the message");
+        payload = extract_json(message)
     }
 
     Some(LogEntry {
@@ -223,6 +261,7 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
         level: level.to_string(),
         event_type,
         payload,
-        raw_message: log_text.to_string(),
+        message: message.to_string(),
+        raw_logline: log_text.to_string(),
     })
 }

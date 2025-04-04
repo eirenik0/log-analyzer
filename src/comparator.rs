@@ -145,8 +145,8 @@ pub fn compare_logs(
                             }
 
                             // Show text diff for non-JSON parts
-                            let text1 = log1.raw_message.clone();
-                            let text2 = log2.raw_message.clone();
+                            let text1 = log1.message.clone();
+                            let text2 = log2.message.clone();
                             if text1 != text2 {
                                 let diff = TextDiff::from_lines(&text1, &text2);
 
@@ -206,7 +206,7 @@ fn should_include_log(
         .unwrap_or(true);
 
     let contains_match = contains_filter
-        .map(|filter| log.raw_message.contains(filter))
+        .map(|filter| log.message.contains(filter))
         .unwrap_or(true);
 
     component_match && level_match && contains_match
