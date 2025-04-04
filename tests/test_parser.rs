@@ -191,6 +191,11 @@ mod tests {
 
         // Check that the component is correct and the message mentions getActualEnvironments.
         assert_eq!(record.component, "ufg-requests");
+        assert_eq!(record.request, Some("getActualEnvironments".to_string()));
+        assert_eq!(
+            record.request_rest,
+            Some("0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb".to_string())
+        );
         assert!(record.message.contains("getActualEnvironments"));
         assert_eq!(
             record.payload,
@@ -207,6 +212,11 @@ mod tests {
 
         // Check that the component is correct and the message mentions getActualEnvironments.
         assert_eq!(record.component, "core-requests");
+        assert_eq!(record.request, Some("openEyes".to_string()));
+        assert_eq!(
+            record.request_rest,
+            Some("0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90".to_string())
+        );
         assert!(record.message.contains("openEyes"));
         assert_eq!(
             record.payload,

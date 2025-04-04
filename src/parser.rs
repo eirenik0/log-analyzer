@@ -10,6 +10,8 @@ pub struct LogEntry {
     pub level: String,
     pub event_type: Option<String>,
     pub command: Option<String>,
+    pub request: Option<String>,
+    pub request_rest: Option<String>, // Added field for request ID/rest info
     pub payload: Option<Value>,
     pub message: String,
     pub raw_logline: String,
@@ -18,8 +20,13 @@ pub struct LogEntry {
 /// Extracts JSON content from a log message
 fn extract_json(input: &str) -> Option<Value> {
     // Common JSON indicators to look for
-    const JSON_INDICATORS: [&str; 4] =
-        ["with settings {", "with body [", "with body {", "with body"];
+    const JSON_INDICATORS: [&str; 5] = [
+        "with settings {",
+        "with body [",
+        "with body {",
+        "with body",
+        "with body ",
+    ];
 
     // First try to extract JSON from known patterns
     for indicator in &JSON_INDICATORS {
@@ -27,10 +34,16 @@ fn extract_json(input: &str) -> Option<Value> {
             let start_pos = marker_pos + indicator.len();
 
             // Find the start of the actual JSON content
-            let json_start = if *indicator == "with body" {
-                input[start_pos..]
-                    .find(|c| c == '[' || c == '{')
-                    .map(|i| start_pos + i)
+            let json_start = if *indicator == "with body" || *indicator == "with body " {
+                // Find the first occurrence of an opening brace or bracket
+                let mut idx = None;
+                for (i, c) in input[start_pos..].char_indices() {
+                    if c == '[' || c == '{' {
+                        idx = Some(start_pos + i);
+                        break;
+                    }
+                }
+                idx
             } else {
                 // We want to include `[ {`
                 Some(start_pos - 1)
@@ -173,8 +186,9 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
     let (timestamp, level, message) = extract_log_parts(rest)?;
 
     // Process message for event type and payload
-    let (event_type, command, payload) = extract_event_info(message);
+    let (event_type, command, request, request_id, payload) = extract_event_info(message);
 
+    let message_without_payload = extract_message_without_payload(message, &payload);
     Some(LogEntry {
         component: component.to_string(),
         component_rest: component_rest.to_string(),
@@ -183,9 +197,161 @@ pub fn parse_log_entry(log_text: &str) -> Option<LogEntry> {
         command,
         event_type,
         payload,
-        message: message.to_string(),
+        request,
+        request_rest: request_id,
+        message: message_without_payload.to_string(),
         raw_logline: log_text.to_string(),
     })
+}
+
+/// Extract the message text without the JSON payload
+fn extract_message_without_payload(message: &str, payload: &Option<Value>) -> String {
+    // If there's no payload, return the original message
+    if payload.is_none() {
+        return message.to_string();
+    }
+
+    let payload = payload.as_ref().unwrap();
+
+    // Convert the payload to a string representation
+    let payload_str = serde_json::to_string(payload).unwrap_or_default();
+
+    // Try to find this payload in the message and remove it
+    if let Some(idx) = message.find(&payload_str) {
+        let without_payload = format!(
+            "{}{}",
+            &message[..idx].trim(),
+            &message[idx + payload_str.len()..].trim()
+        );
+        return clean_message(without_payload);
+    }
+
+    // If we can't find the exact payload string, try a more flexible approach
+    // by removing any JSON object/array from the message that could be the payload
+    let json_objects = extract_all_json_objects(message);
+    let mut result = message.to_string();
+
+    for json_obj in json_objects {
+        // Check if this JSON object is equivalent to our payload
+        if let Ok(value) = serde_json::from_str::<Value>(&json_obj) {
+            if value == *payload {
+                result = result.replace(&json_obj, "");
+                break;
+            }
+        }
+    }
+
+    clean_message(result)
+}
+
+/// Clean up a message string by removing common JSON markers and excess whitespace
+fn clean_message(message: String) -> String {
+    let mut result = message;
+
+    // Cleanup any remaining JSON markers or whitespace
+    let markers = [
+        "with payload",
+        "with body",
+        "with settings",
+        "with parameters",
+        "will be sent to the address",
+        "finished successfully",
+    ];
+
+    for marker in &markers {
+        result = result.replace(marker, "");
+    }
+
+    // Also clean up any remaining square bracket content that might be URLs
+    if let Some(start) = result.find("[POST]") {
+        if let Some(end) = result[start..].find("\"") {
+            result = format!("{}{}", &result[..start], &result[start + end..]);
+        }
+    }
+
+    // Clean up multiple spaces and trim
+    while result.contains("  ") {
+        result = result.replace("  ", " ");
+    }
+
+    result.trim().to_string()
+}
+
+// Add this helper function if it's not already in parser.rs
+fn extract_all_json_objects(text: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    let mut start_indices = Vec::new();
+
+    // Find all potential JSON object start positions
+    for (i, c) in text.char_indices() {
+        if c == '{' || c == '[' {
+            start_indices.push(i);
+        }
+    }
+
+    // For each start position, try to extract a valid JSON object
+    for &start_idx in &start_indices {
+        if let Some(end_idx) = find_json_end(text, start_idx) {
+            let json_str = &text[start_idx..=end_idx];
+            // Only add if it parses as valid JSON
+            if serde_json::from_str::<Value>(json_str).is_ok() {
+                results.push(json_str.to_string());
+            }
+        }
+    }
+
+    results
+}
+
+/// Finds the end index of a JSON object or array starting at start_idx
+fn find_json_end(text: &str, start_idx: usize) -> Option<usize> {
+    let first_char = text[start_idx..].chars().next()?;
+    if first_char != '{' && first_char != '[' {
+        return None;
+    }
+
+    let mut brace_count = 0;
+    let mut bracket_count = 0;
+    let mut in_string = false;
+    let mut escape_next = false;
+
+    for (i, c) in text[start_idx..].char_indices() {
+        if in_string {
+            if escape_next {
+                escape_next = false;
+                continue;
+            }
+            if c == '\\' {
+                escape_next = true;
+                continue;
+            }
+            if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match c {
+            '"' => in_string = true,
+            '{' => brace_count += 1,
+            '}' => {
+                brace_count -= 1;
+                if brace_count == 0 && first_char == '{' && bracket_count == 0 {
+                    return Some(start_idx + i);
+                }
+            }
+            '[' => bracket_count += 1,
+            ']' => {
+                bracket_count -= 1;
+                if bracket_count == 0 && first_char == '[' && brace_count == 0 {
+                    return Some(start_idx + i);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 /// Extracts component name and additional component info
@@ -223,11 +389,21 @@ fn extract_log_parts(rest: &str) -> Option<(&str, &str, &str)> {
     Some((timestamp, level, message))
 }
 
-/// Extracts event type and payload from the message
-fn extract_event_info(message: &str) -> (Option<String>, Option<String>, Option<Value>) {
+/// Extracts event type, command, request and payload from the message
+fn extract_event_info(
+    message: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<Value>,
+) {
     let mut payload_str = message;
     let mut event_type = None;
     let mut command = None;
+    let mut request = None;
+    let mut request_rest = None;
 
     // Check if message contains event information
     if message.contains("Emit event of type") || message.contains("Received event of type") {
@@ -247,11 +423,51 @@ fn extract_event_info(message: &str) -> (Option<String>, Option<String>, Option<
                 command = Some(message[cmd_name_start..cmd_name_start + end_idx].to_string());
             }
         }
+    } else if message.contains(r#"Request ""#) {
+        // Extract request name and rest information
+        let (req_name, req_id) = extract_request_info(message);
+        request = req_name;
+        request_rest = req_id;
     }
 
     // Try to extract JSON payload regardless of the message pattern
     let payload = extract_json(payload_str);
-    (event_type, command, payload)
+    (event_type, command, request, request_rest, payload)
+}
+
+/// Extracts request name and ID from messages containing request information
+fn extract_request_info(message: &str) -> (Option<String>, Option<String>) {
+    // Pattern: Request "name" [id]
+    let req_prefix = r#"Request ""#;
+
+    if let Some(start_idx) = message.find(req_prefix) {
+        // Extract request name
+        let req_name_start = start_idx + req_prefix.len();
+        if let Some(end_idx) = message[req_name_start..].find('"') {
+            let request_name = message[req_name_start..req_name_start + end_idx].to_string();
+
+            // Extract request ID - look for square brackets after the request name
+            let rest_pos = req_name_start + end_idx + 1;
+            if rest_pos < message.len() {
+                let rest_of_message = &message[rest_pos..];
+
+                // Find the opening bracket
+                if let Some(id_start) = rest_of_message.find('[') {
+                    // Find the matching closing bracket
+                    if let Some(id_end) = rest_of_message[id_start + 1..].find(']') {
+                        let request_id =
+                            rest_of_message[id_start + 1..id_start + 1 + id_end].to_string();
+                        return (Some(request_name), Some(request_id));
+                    }
+                }
+            }
+
+            // Return just the request name if no ID is found
+            return (Some(request_name), None);
+        }
+    }
+
+    (None, None)
 }
 
 /// Extracts the event type string from the event part of the message

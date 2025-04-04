@@ -360,6 +360,7 @@ pub fn display_log_info(logs: &[LogEntry]) {
     let mut components = std::collections::HashSet::new();
     let mut event_types = std::collections::HashSet::new();
     let mut commands = std::collections::HashSet::new();
+    let mut requests = std::collections::HashSet::new();
     let mut levels = std::collections::HashSet::new();
 
     for log in logs {
@@ -369,6 +370,9 @@ pub fn display_log_info(logs: &[LogEntry]) {
         }
         if let Some(command) = &log.command {
             commands.insert(command);
+        }
+        if let Some(req) = &log.request {
+            requests.insert(req);
         }
         levels.insert(&log.level);
     }
@@ -391,6 +395,10 @@ pub fn display_log_info(logs: &[LogEntry]) {
     println!("\nCommands:");
     for command in commands {
         println!("  - {}", command);
+    }
+    println!("\nRequests:");
+    for req in requests {
+        println!("  - {}", req);
     }
 
     println!("\nTotal log entries: {}", logs.len());
