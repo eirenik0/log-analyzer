@@ -2,11 +2,13 @@ mod display_comparison;
 mod display_summary;
 mod entities;
 mod helpers;
+mod write_comparison;
 
 pub use display_comparison::display_comparison_results;
 pub use display_summary::display_log_summary;
 pub use entities::*;
 pub use helpers::*;
+pub use write_comparison::write_results_to_file;
 
 use crate::parser::LogEntry;
 use serde_json::{Value, json};
