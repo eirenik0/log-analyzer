@@ -145,11 +145,11 @@ impl LogEntry {
                 event_type,
                 direction,
                 ..
-            } => format!("{direction}|`{event_type}`"),
+            } => format!("{direction} `{event_type}`"),
             LogEntryKind::Command { command, .. } => format!("`{command}`"),
             LogEntryKind::Request {
                 request, direction, ..
-            } => format!("{direction}|`{request}`"),
+            } => format!("{direction} `{request}`"),
             LogEntryKind::Generic { .. } => self.message.clone(),
         };
         format!("{entry_type}|{key}:")

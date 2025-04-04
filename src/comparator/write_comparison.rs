@@ -108,11 +108,12 @@ pub fn write_results_to_file(
             if parts.len() >= 3 {
                 writeln!(
                     file,
-                    "[K{}] {} {} {} ({} instances)",
+                    "[K{}] {} {} {} {} ({} instances)",
                     key_idx + 1,
                     parts[0],
                     parts[1],
                     parts[2].trim(),
+                    parts[3].trim(),
                     comparisons.len()
                 )?;
             } else {

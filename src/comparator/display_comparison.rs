@@ -101,11 +101,12 @@ pub fn display_comparison_results(results: &ComparisonResults, options: &Compari
             println!("\n{}", "▼".repeat(80).yellow());
             if parts.len() >= 3 {
                 println!(
-                    "[K{}] {} {} {} ({} instances)",
+                    "[K{}] {} {} {} {} ({} instances)",
                     key_idx + 1,
                     parts[0].yellow().bold(),
                     parts[1].yellow(),
                     parts[2].trim().yellow(),
+                    parts[3].trim().yellow(),
                     comparisons.len()
                 );
             } else {
