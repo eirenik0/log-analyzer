@@ -65,11 +65,10 @@ pub fn display_log_summary(logs: &[LogEntry]) {
 
             // Print header row
             println!(
-                "  {:<width$} │ {:<count_width$} │ {:<8} │ {}",
+                "  {:<width$} │ {:<count_width$} │ {:<8} │ Distribution",
                 "Name",
                 "Count",
                 "Percent",
-                "Distribution",
                 width = max_name_len,
                 count_width = count_width,
             );
@@ -110,7 +109,7 @@ pub fn display_log_summary(logs: &[LogEntry]) {
             "info" => s.green(),
             "debug" => s.bright_blue(),
             "trace" => s.bright_black(),
-            _ => s.white().into(),
+            _ => s.white(),
         }
     });
 

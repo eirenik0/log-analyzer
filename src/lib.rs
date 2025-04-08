@@ -17,6 +17,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             component,
             level,
             contains,
+            direction,
             diff_only,
             output,
             full,
@@ -32,7 +33,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let filter = LogFilter::new()
                 .with_component(component.as_deref())
                 .with_level(level.as_deref())
-                .contains_text(contains.as_deref());
+                .contains_text(contains.as_deref())
+                .with_direction(direction);
 
             // Create options with the correct method name
             let options = ComparisonOptions::new()

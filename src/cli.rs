@@ -1,4 +1,7 @@
+mod direction;
+
 use clap::{Parser, Subcommand};
+pub use direction::Direction;
 use std::path::PathBuf;
 
 /// A tool to analyze and compare two log files containing JSON objects
@@ -32,6 +35,10 @@ pub enum Commands {
         /// Filter logs by containing a specific text
         #[arg(long)]
         contains: Option<String>,
+
+        /// Filter logs by communication direction
+        #[arg(long)]
+        direction: Option<Direction>,
 
         /// Show only differences, skip matching objects
         #[arg(short, long)]

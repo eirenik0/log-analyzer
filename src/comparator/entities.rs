@@ -1,3 +1,5 @@
+use crate::LogEntryKind;
+use crate::cli::Direction;
 use crate::parser::LogEntry;
 use serde_json::Value;
 
@@ -44,6 +46,7 @@ pub struct LogFilter {
     component: Option<String>,
     level: Option<String>,
     message_contains: Option<String>,
+    direction: Option<Direction>,
 }
 
 impl LogFilter {
@@ -66,6 +69,11 @@ impl LogFilter {
         self
     }
 
+    pub fn with_direction(mut self, direction: &Option<Direction>) -> Self {
+        self.direction = direction.clone();
+        self
+    }
+
     pub fn matches(&self, log: &LogEntry) -> bool {
         let component_match = self
             .component
@@ -85,7 +93,30 @@ impl LogFilter {
             .map(|filter| log.message.contains(filter))
             .unwrap_or(true);
 
-        component_match && level_match && contains_match
+        let direction_match = self
+            .direction
+            .as_ref()
+            .map(|filter| match &log.kind {
+                LogEntryKind::Event { direction, .. } => {
+                    // Convert event direction to Direction for comparison
+                    let event_as_direction: Direction = direction.clone().into();
+                    // Compare with the filter (which is already a Direction)
+                    &event_as_direction == filter
+                }
+                LogEntryKind::Request { direction, .. } => {
+                    // Convert request direction to Direction for comparison
+                    let request_as_direction: Direction = direction.clone().into();
+                    // Compare with the filter (which is already a Direction)
+                    &request_as_direction == filter
+                }
+                LogEntryKind::Command { .. } => {
+                    // For commands, check if the filter direction is outgoing
+                    matches!(filter, Direction::Outgoing)
+                }
+                LogEntryKind::Generic { .. } => false,
+            })
+            .unwrap_or(true);
+        component_match && direction_match && level_match && contains_match
     }
 }
 

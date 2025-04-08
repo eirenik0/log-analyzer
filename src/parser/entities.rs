@@ -2,6 +2,38 @@ use chrono::{DateTime, Local};
 use serde_json::Value;
 use std::fmt;
 
+/// Direction of an event (emitted or received)
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventDirection {
+    Emit,
+    Receive,
+}
+
+/// Direction of a request (sending or receiving a response)
+#[derive(Debug, Clone, PartialEq)]
+pub enum RequestDirection {
+    Send,
+    Receive,
+}
+
+impl fmt::Display for EventDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EventDirection::Emit => write!(f, "Emit"),
+            EventDirection::Receive => write!(f, "Receive"),
+        }
+    }
+}
+
+impl fmt::Display for RequestDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RequestDirection::Send => write!(f, "Send"),
+            RequestDirection::Receive => write!(f, "Receive"),
+        }
+    }
+}
+
 /// Different types of log entries based on their purpose
 #[derive(Debug, Clone)]
 pub enum LogEntryKind {
@@ -39,38 +71,6 @@ pub enum LogEntryKind {
         /// Optional JSON payload found in the message
         payload: Option<Value>,
     },
-}
-
-/// Direction of an event (emitted or received)
-#[derive(Debug, Clone, PartialEq)]
-pub enum EventDirection {
-    Emit,
-    Receive,
-}
-
-/// Direction of a request (sending or receiving a response)
-#[derive(Debug, Clone, PartialEq)]
-pub enum RequestDirection {
-    Send,
-    Receive,
-}
-
-impl fmt::Display for EventDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EventDirection::Emit => write!(f, "Emit"),
-            EventDirection::Receive => write!(f, "Receive"),
-        }
-    }
-}
-
-impl fmt::Display for RequestDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RequestDirection::Send => write!(f, "Send"),
-            RequestDirection::Receive => write!(f, "Receive"),
-        }
-    }
 }
 
 /// Main log entry structure with integrated base fields
