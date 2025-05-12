@@ -1,8 +1,16 @@
 mod direction;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 pub use direction::Direction;
 use std::path::PathBuf;
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OutputFormat {
+    /// Human-readable text output (default)
+    Text,
+    /// JSON output for LLM consumption
+    Json,
+}
 
 /// A tool to analyze and compare two log files containing JSON objects
 #[derive(Parser)]
@@ -51,6 +59,14 @@ pub enum Commands {
         /// Show full JSON objects, not just the differences
         #[arg(short, long)]
         full: bool,
+
+        /// Output format (text or json)
+        #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+
+        /// Use compact mode for JSON output (shorter keys, optimized structure)
+        #[arg(short = 'c', long)]
+        compact: bool,
     },
     /// List all components, event types, and log levels in a log file
     Info {

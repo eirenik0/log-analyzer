@@ -126,6 +126,8 @@ pub struct ComparisonOptions {
     pub diff_only: bool,
     pub show_full_json: bool,
     pub output_path: Option<String>,
+    pub compact_mode: bool,
+    pub readable_mode: bool,
 }
 
 impl ComparisonOptions {
@@ -145,6 +147,16 @@ impl ComparisonOptions {
 
     pub fn output_to_file(mut self, path: Option<impl Into<String>>) -> Self {
         self.output_path = path.map(|p| p.into());
+        self
+    }
+
+    pub fn compact_mode(mut self, value: bool) -> Self {
+        self.compact_mode = value;
+        self
+    }
+
+    pub fn readable_mode(mut self, value: bool) -> Self {
+        self.readable_mode = value;
         self
     }
 }

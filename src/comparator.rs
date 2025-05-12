@@ -4,6 +4,7 @@ mod entities;
 mod file_cmp;
 mod format_cmp;
 mod helpers;
+mod json_cmp;
 
 pub use console_cmp::display_comparison_results;
 pub use console_summary::display_log_summary;
@@ -11,6 +12,7 @@ pub use entities::*;
 pub use file_cmp::write_comparison_results;
 pub use format_cmp::*;
 pub use helpers::*;
+pub use json_cmp::generate_json_output;
 
 use crate::parser::LogEntry;
 use serde_json::{Value, json};
