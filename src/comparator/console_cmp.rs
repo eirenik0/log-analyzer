@@ -5,12 +5,12 @@ use crate::comparator::format_cmp::format_comparison_results;
 use colored::Colorize;
 use std::io;
 
-/// Console output formatter implementation
+/// Console output formatter implementation with improved styling
 pub struct ConsoleFormatter;
 
 impl OutputFormatter for ConsoleFormatter {
     fn write_header(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.bold().bright_white());
+        println!("{}", text.bold().bright_white().on_bright_black());
         Ok(())
     }
 
@@ -35,12 +35,33 @@ impl OutputFormatter for ConsoleFormatter {
     }
 
     fn write_highlight(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.yellow());
+        println!("{}", text.yellow().bold());
         Ok(())
     }
 
     fn write_label(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.bold());
+        println!("{}", text.bold().bright_blue());
+        Ok(())
+    }
+
+    // New methods with semantic coloring
+    fn write_success(&mut self, text: &str) -> io::Result<()> {
+        println!("{}", text.green().bold());
+        Ok(())
+    }
+
+    fn write_warning(&mut self, text: &str) -> io::Result<()> {
+        println!("{}", text.yellow().bold());
+        Ok(())
+    }
+
+    fn write_error(&mut self, text: &str) -> io::Result<()> {
+        println!("{}", text.red().bold());
+        Ok(())
+    }
+
+    fn write_info(&mut self, text: &str) -> io::Result<()> {
+        println!("{}", text.bright_white().bold());
         Ok(())
     }
 }

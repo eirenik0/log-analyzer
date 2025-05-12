@@ -48,8 +48,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Display results
             display_comparison_results(&results, &options);
-
-            println!("\nComparison completed successfully.");
         }
         Commands::Info { file } => {
             // Parse log file with proper error handling

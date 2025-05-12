@@ -17,11 +17,11 @@ pub enum Commands {
     /// Compare two log files and show differences between JSON objects
     Compare {
         /// First log file
-        #[arg(short = 'a', long)]
+        #[arg(index = 1, required = true)]
         file1: PathBuf,
 
         /// Second log file
-        #[arg(short = 'b', long)]
+        #[arg(index = 2, required = true)]
         file2: PathBuf,
 
         /// Filter logs by component (e.g. "core-universal", "socket")
@@ -55,7 +55,7 @@ pub enum Commands {
     /// List all components, event types, and log levels in a log file
     Info {
         /// Log file to analyze
-        #[arg(short, long)]
+        #[arg(index = 1, required = true)]
         file: PathBuf,
     },
 }

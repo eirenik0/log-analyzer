@@ -8,7 +8,7 @@ mod helpers;
 pub use console_cmp::display_comparison_results;
 pub use console_summary::display_log_summary;
 pub use entities::*;
-pub use file_cmp::write_results_to_file;
+pub use file_cmp::write_comparison_results;
 pub use format_cmp::*;
 pub use helpers::*;
 
@@ -101,7 +101,7 @@ pub fn compare_logs(
 
     // Write to output file if specified
     if let Some(path) = &options.output_path {
-        write_results_to_file(&results, options, Path::new(path))?;
+        write_comparison_results(&results, options, Path::new(path))?;
     }
 
     Ok(results)
