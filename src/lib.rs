@@ -11,6 +11,9 @@ pub use parser::{LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
+    let format = cli.format;
+    let compact = cli.compact;
+    let output = &cli.output;
 
     match &cli.command {
         Commands::Compare {
@@ -21,10 +24,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             contains,
             direction,
             diff_only,
-            output,
             full,
-            format,
-            compact,
         } => {
             // Parse log files with proper error handling - using {:?} for ParseError
             let logs1 = parse_log_file(file1)
@@ -44,7 +44,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let options = ComparisonOptions::new()
                 .diff_only(*diff_only)
                 .show_full_json(*full)
-                .compact_mode(*compact)
+                .compact_mode(compact)
                 .readable_mode(true)
                 .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
 

@@ -63,40 +63,54 @@ log-analyzer compare path/to/first.log path/to/second.log
 log-analyzer info path/to/logfile.log
 ```
 
+### Global Options
+
+The following options can be used with any command:
+
+| Option | Description |
+|--------|-------------|
+| `-F, --format <format>` | Output format: `text` (default) or `json` |
+| `-c, --compact` | Use compact mode for output (shorter keys, optimized structure) |
+| `-o, --output <path>` | Path to output file for the results |
+
 ### Compare Options
 
 The `compare` command supports several options to fine-tune your analysis:
 
 | Option | Description |
 |--------|-------------|
-| `--component <name>` | Filter logs by component (e.g., "core-universal", "socket") |
-| `--level <level>` | Filter logs by log level (e.g., "INFO", "ERROR") |
-| `--contains <text>` | Filter logs containing specific text |
-| `--direction <direction>` | Filter logs by communication direction (Incoming/Outgoing) |
-| `-d, --diff-only` | Show only differences, skip matching objects |
-| `-o, --output <path>` | Path to output file for the differences |
+| `-C, --component <name>` | Filter logs by component (e.g., "core-universal", "socket") |
+| `-l, --level <level>` | Filter logs by log level (e.g., "INFO", "ERROR") |
+| `-t, --contains <text>` | Filter logs containing specific text |
+| `-d, --direction <direction>` | Filter logs by communication direction (Incoming/Outgoing) |
+| `-D, --diff-only` | Show only differences, skip matching objects |
 | `-f, --full` | Show full JSON objects, not just the differences |
 
 ### Examples
 
 **Compare logs from two test runs showing only differences:**
 ```bash
-log-analyzer compare universal-1.log universal-2.log --diff-only
+log-analyzer compare universal-1.log universal-2.log -D
 ```
 
 **Compare logs filtering by component and level:**
 ```bash
-log-analyzer compare universal-1.log universal-2.log --component core-universal --level ERROR
+log-analyzer compare universal-1.log universal-2.log -C core-universal -l ERROR
 ```
 
 **Save comparison results to a file:**
 ```bash
-log-analyzer compare universal-1.log universal-2.log --output diff.log
+log-analyzer -o diff.log compare universal-1.log universal-2.log
 ```
 
-**Filter logs by direction:**
+**Filter logs by direction and output as JSON:**
 ```bash
-log-analyzer compare universal-1.log universal-2.log --direction Outgoing
+log-analyzer -F json compare universal-1.log universal-2.log -d Outgoing
+```
+
+**Use compact mode with JSON output:**
+```bash
+log-analyzer -F json -c compare universal-1.log universal-2.log
 ```
 
 ## Features
@@ -105,8 +119,10 @@ log-analyzer compare universal-1.log universal-2.log --direction Outgoing
 - **Intelligent comparison**: Semantically compares JSON objects, regardless of property order
 - **Filtering capabilities**: Filter logs by component, level, content, or direction
 - **Log categorization**: Automatically categorizes logs into events, commands, and requests
+- **Multiple output formats**: Choose between human-readable text or JSON for programmatic processing
 - **Detailed output**: Clear, readable comparison output with highlighting for differences
-- **File output**: Option to save comparison results to a file
+- **Flexible output options**: Save results to a file, use compact mode for more concise output
+- **Optimized CLI**: Well-organized command structure with global and command-specific options
 
 ## License
 

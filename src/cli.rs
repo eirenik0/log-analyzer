@@ -16,6 +16,18 @@ pub enum OutputFormat {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
+    /// Output format (text or json)
+    #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text, global = true, group = "output_options")]
+    pub format: OutputFormat,
+
+    /// Use compact mode for output (shorter keys, optimized structure)
+    #[arg(short = 'c', long, global = true, group = "output_options")]
+    pub compact: bool,
+
+    /// Path to output file for results
+    #[arg(short, long, global = true)]
+    pub output: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -25,53 +37,41 @@ pub enum Commands {
     /// Compare two log files and show differences between JSON objects
     Compare {
         /// First log file
-        #[arg(index = 1, required = true)]
+        #[arg(required = true)]
         file1: PathBuf,
 
         /// Second log file
-        #[arg(index = 2, required = true)]
+        #[arg(required = true)]
         file2: PathBuf,
 
         /// Filter logs by component (e.g. "core-universal", "socket")
-        #[arg(long)]
+        #[arg(short = 'C', long, group = "filters")]
         component: Option<String>,
 
         /// Filter logs by log level (e.g. "INFO", "ERROR")
-        #[arg(short, long)]
+        #[arg(short = 'l', long, group = "filters")]
         level: Option<String>,
 
         /// Filter logs by containing a specific text
-        #[arg(long)]
+        #[arg(short = 't', long, group = "filters")]
         contains: Option<String>,
 
-        /// Filter logs by communication direction
-        #[arg(long)]
+        /// Filter logs by communication direction (Incoming or Outgoing)
+        #[arg(short = 'd', long, group = "filters")]
         direction: Option<Direction>,
 
         /// Show only differences, skip matching objects
-        #[arg(short, long)]
+        #[arg(short = 'D', long, group = "display_options")]
         diff_only: bool,
 
-        /// Path to output file for the differences
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
         /// Show full JSON objects, not just the differences
-        #[arg(short, long)]
+        #[arg(short, long, group = "display_options")]
         full: bool,
-
-        /// Output format (text or json)
-        #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text)]
-        format: OutputFormat,
-
-        /// Use compact mode for JSON output (shorter keys, optimized structure)
-        #[arg(short = 'c', long)]
-        compact: bool,
     },
     /// List all components, event types, and log levels in a log file
     Info {
         /// Log file to analyze
-        #[arg(index = 1, required = true)]
+        #[arg(required = true)]
         file: PathBuf,
     },
 }
