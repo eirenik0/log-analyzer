@@ -13,6 +13,7 @@ pub use file_cmp::write_comparison_results;
 pub use format_cmp::*;
 pub use helpers::*;
 pub use json_cmp::generate_json_output;
+use crate::cli::SortOrder;
 
 use crate::parser::LogEntry;
 use serde_json::{Value, json};
@@ -54,7 +55,50 @@ pub fn compare_logs(
         .filter(|k| grouped_logs2.contains_key(*k))
         .cloned()
         .collect();
-    keys.sort();
+
+    // Sort the keys based on the specified sort order
+    match options.sort_order {
+        SortOrder::Time => keys.sort(), // Default sort by key (which typically contains timestamp)
+        SortOrder::Component => {
+            keys.sort_by(|a, b| {
+                let component_a = a.split(':').next().unwrap_or("");
+                let component_b = b.split(':').next().unwrap_or("");
+                component_a.cmp(component_b)
+            });
+        },
+        SortOrder::Level => {
+            // Sort by log level severity (ERROR > WARN > INFO > DEBUG > TRACE)
+            let level_priority = |level: &str| -> u8 {
+                match level.to_uppercase().as_str() {
+                    "ERROR" => 5,
+                    "WARN" => 4,
+                    "WARNING" => 4,
+                    "INFO" => 3,
+                    "DEBUG" => 2,
+                    "TRACE" => 1,
+                    _ => 0,
+                }
+            };
+
+            keys.sort_by(|a, b| {
+                let level_a = a.split(':').nth(1).unwrap_or("");
+                let level_b = b.split(':').nth(1).unwrap_or("");
+                level_priority(level_b).cmp(&level_priority(level_a)) // Higher priority first
+            });
+        },
+        SortOrder::Type => {
+            // Sort by message type (Event, Command, Request, etc.)
+            keys.sort_by(|a, b| {
+                let type_a = a.split(':').nth(2).unwrap_or("");
+                let type_b = b.split(':').nth(2).unwrap_or("");
+                type_a.cmp(type_b)
+            });
+        },
+        SortOrder::DiffCount => {
+            // We'll need to calculate diff counts first, then sort
+            // This will be applied after computing all diffs
+        },
+    };
 
     for key in keys {
         let entries1 = grouped_logs1.get(&key).unwrap();
@@ -92,6 +136,13 @@ pub fn compare_logs(
                 }
             }
         }
+    }
+
+    // Apply DiffCount sorting if selected
+    if options.sort_order == SortOrder::DiffCount {
+        shared_comparisons.sort_by(|a, b| {
+            b.json_differences.len().cmp(&a.json_differences.len())
+        });
     }
 
     // Create and return results

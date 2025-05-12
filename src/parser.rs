@@ -2,7 +2,7 @@ use chrono::{DateTime, Local};
 use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::Path;
 
 mod entities;
 
@@ -26,7 +26,7 @@ impl From<std::io::Error> for ParseError {
 }
 
 /// Parses a log file into a vector of LogEntry structs
-pub fn parse_log_file(path: &PathBuf) -> Result<Vec<LogEntry>, ParseError> {
+pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseError> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let mut logs = Vec::new();

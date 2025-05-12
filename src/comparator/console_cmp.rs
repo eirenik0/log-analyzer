@@ -5,6 +5,17 @@ use crate::comparator::format_cmp::format_comparison_results;
 use colored::Colorize;
 use std::io;
 
+// Helper function to determine if we should print based on verbosity level
+pub fn should_print(options: &ComparisonOptions, required_level: u8) -> bool {
+    if options.quiet {
+        // In quiet mode, only print errors (level 0)
+        required_level == 0
+    } else {
+        // Otherwise print if verbosity level is high enough
+        options.verbosity >= required_level
+    }
+}
+
 /// Console output formatter implementation with improved styling
 pub struct ConsoleFormatter;
 

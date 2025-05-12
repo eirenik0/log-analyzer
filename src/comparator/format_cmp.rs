@@ -23,10 +23,13 @@ pub fn format_comparison_results<F: OutputFormatter>(
     results: &ComparisonResults,
     options: &ComparisonOptions,
 ) -> std::io::Result<()> {
-    // Display summary header with clear separation
-    formatter.write_divider("=", 80)?;
-    formatter.write_header("LOG COMPARISON SUMMARY")?;
-    formatter.write_divider("=", 80)?;
+    // Check if we can print based on verbosity
+    if crate::comparator::console_cmp::should_print(options, 1) {
+        // Display summary header with clear separation
+        formatter.write_divider("=", 80)?;
+        formatter.write_header("LOG COMPARISON SUMMARY")?;
+        formatter.write_divider("=", 80)?;
+    }
 
     // Improved summary statistics with colorization
     let unique_log1_count = results.unique_to_log1.len();
@@ -38,21 +41,22 @@ pub fn format_comparison_results<F: OutputFormatter>(
         .map(|c| c.json_differences.len())
         .sum::<usize>();
 
+    // Always show basic summary information (verbosity level 0, even in quiet mode)
     formatter.write_info(&format!(
-        "{} unique log types in file 1 (source)",
-        unique_log1_count
-    ))?;
-    formatter.write_info(&format!(
-        "{} unique log types in file 2 (target)",
-        unique_log2_count
-    ))?;
-    formatter.write_info(&format!(
-        "{} shared log types with {} comparisons",
-        shared_log_count, total_comparisons
+        "{} unique log types in file 1 (source), {} unique in file 2 (target), {} shared",
+        unique_log1_count, unique_log2_count, shared_log_count
     ))?;
 
-    // Display unique keys with better formatting
-    if !options.diff_only {
+    // Show more detailed info at higher verbosity levels
+    if crate::comparator::console_cmp::should_print(options, 2) {
+        formatter.write_info(&format!(
+            "{} total comparisons across shared log types",
+            total_comparisons
+        ))?;
+    }
+
+    // Display unique keys with better formatting - only in normal/verbose mode
+    if !options.diff_only && crate::comparator::console_cmp::should_print(options, 1) {
         if !results.unique_to_log1.is_empty() {
             formatter.write_divider("=", 80)?;
             formatter.write_header("LOGS UNIQUE TO FILE 1")?;

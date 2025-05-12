@@ -44,8 +44,11 @@ pub struct LogComparison {
 #[derive(Default, Clone)]
 pub struct LogFilter {
     component: Option<String>,
+    exclude_component: Option<String>,
     level: Option<String>,
+    exclude_level: Option<String>,
     message_contains: Option<String>,
+    message_excludes: Option<String>,
     direction: Option<Direction>,
 }
 
@@ -59,13 +62,28 @@ impl LogFilter {
         self
     }
 
+    pub fn exclude_component(mut self, component: Option<impl Into<String>>) -> Self {
+        self.exclude_component = component.map(|c| c.into());
+        self
+    }
+
     pub fn with_level(mut self, level: Option<impl Into<String>>) -> Self {
         self.level = level.map(|l| l.into());
         self
     }
 
+    pub fn exclude_level(mut self, level: Option<impl Into<String>>) -> Self {
+        self.exclude_level = level.map(|l| l.into());
+        self
+    }
+
     pub fn contains_text(mut self, text: Option<impl Into<String>>) -> Self {
         self.message_contains = text.map(|t| t.into());
+        self
+    }
+
+    pub fn excludes_text(mut self, text: Option<impl Into<String>>) -> Self {
+        self.message_excludes = text.map(|t| t.into());
         self
     }
 
@@ -75,6 +93,7 @@ impl LogFilter {
     }
 
     pub fn matches(&self, log: &LogEntry) -> bool {
+        // Include filters (log must match these if specified)
         let component_match = self
             .component
             .as_ref()
@@ -91,6 +110,25 @@ impl LogFilter {
             .message_contains
             .as_ref()
             .map(|filter| log.message.contains(filter))
+            .unwrap_or(true);
+
+        // Exclude filters (log must NOT match these if specified)
+        let exclude_component_match = self
+            .exclude_component
+            .as_ref()
+            .map(|filter| !log.component.contains(filter))
+            .unwrap_or(true);
+
+        let exclude_level_match = self
+            .exclude_level
+            .as_ref()
+            .map(|filter| !log.level.contains(filter))
+            .unwrap_or(true);
+
+        let excludes_match = self
+            .message_excludes
+            .as_ref()
+            .map(|filter| !log.message.contains(filter))
             .unwrap_or(true);
 
         let direction_match = self
@@ -116,9 +154,13 @@ impl LogFilter {
                 LogEntryKind::Generic { .. } => false,
             })
             .unwrap_or(true);
-        component_match && direction_match && level_match && contains_match
+
+        component_match && direction_match && level_match && contains_match &&
+        exclude_component_match && exclude_level_match && excludes_match
     }
 }
+
+use crate::cli::SortOrder;
 
 /// Options for controlling the comparison output
 #[derive(Default)]
@@ -128,6 +170,9 @@ pub struct ComparisonOptions {
     pub output_path: Option<String>,
     pub compact_mode: bool,
     pub readable_mode: bool,
+    pub sort_order: SortOrder,
+    pub verbosity: u8,  // 0: quiet, 1: normal, 2+: verbose
+    pub quiet: bool,
 }
 
 impl ComparisonOptions {
@@ -157,6 +202,21 @@ impl ComparisonOptions {
 
     pub fn readable_mode(mut self, value: bool) -> Self {
         self.readable_mode = value;
+        self
+    }
+
+    pub fn sort_by(mut self, order: SortOrder) -> Self {
+        self.sort_order = order;
+        self
+    }
+
+    pub fn verbosity(mut self, level: u8) -> Self {
+        self.verbosity = level;
+        self
+    }
+
+    pub fn quiet_mode(mut self, value: bool) -> Self {
+        self.quiet = value;
         self
     }
 }
