@@ -155,8 +155,13 @@ impl LogFilter {
             })
             .unwrap_or(true);
 
-        component_match && direction_match && level_match && contains_match &&
-        exclude_component_match && exclude_level_match && excludes_match
+        component_match
+            && direction_match
+            && level_match
+            && contains_match
+            && exclude_component_match
+            && exclude_level_match
+            && excludes_match
     }
 }
 
@@ -171,7 +176,7 @@ pub struct ComparisonOptions {
     pub compact_mode: bool,
     pub readable_mode: bool,
     pub sort_order: SortOrder,
-    pub verbosity: u8,  // 0: quiet, 1: normal, 2+: verbose
+    pub verbosity: u8, // 0: quiet, 1: normal, 2+: verbose
     pub quiet: bool,
 }
 

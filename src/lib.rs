@@ -3,12 +3,12 @@ pub mod comparator;
 pub mod parser;
 
 use crate::comparator::{LogFilter, display_log_summary};
-use std::path::{Path, PathBuf};
-pub use cli::{Commands, OutputFormat, ColorMode, SortOrder, cli_parse, Direction};
+pub use cli::{ColorMode, Commands, Direction, OutputFormat, SortOrder, cli_parse};
 pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
 pub use parser::{LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_file};
+use std::path::{Path, PathBuf};
 
 fn handle_compare(
     file1: &Path,
@@ -22,7 +22,7 @@ fn handle_compare(
     direction: &Option<Direction>,
     diff_only: bool,
     full: bool,
-    format: OutputFormat, 
+    format: OutputFormat,
     compact: bool,
     sort_by: SortOrder,
     verbose: u8,
@@ -66,7 +66,7 @@ fn handle_compare(
         OutputFormat::Text => display_comparison_results(&results, &options),
         OutputFormat::Json => println!("{}", generate_json_output(&results, &options)),
     }
-    
+
     Ok(())
 }
 
@@ -83,12 +83,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     match color_mode {
         ColorMode::Always => {
             // Force colors on
-            unsafe { std::env::set_var("CLICOLOR_FORCE", "1"); }
-        },
+            unsafe {
+                std::env::set_var("CLICOLOR_FORCE", "1");
+            }
+        }
         ColorMode::Never => {
             // Disable colors
-            unsafe { std::env::set_var("NO_COLOR", "1"); }
-        },
+            unsafe {
+                std::env::set_var("NO_COLOR", "1");
+            }
+        }
         ColorMode::Auto => {
             // Default behavior - let the terminal decide
         }
@@ -137,7 +141,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 quiet,
                 output,
             )?;
-        },
+        }
         Commands::Diff {
             file1,
             file2,
@@ -171,7 +175,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 quiet,
                 output,
             )?;
-        },
+        }
         Commands::LlmDiff {
             file1,
             file2,
@@ -195,23 +199,72 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 contains,
                 exclude_text,
                 direction,
-                true, // diff_only fixed to true
-                false, // full fixed to false
+                true,               // diff_only fixed to true
+                false,              // full fixed to false
                 OutputFormat::Json, // Fixed to JSON
-                true, // compact fixed to true
+                true,               // compact fixed to true
                 *sort_by,
                 verbose,
                 quiet,
                 output,
             )?;
-        },
-        Commands::Info { file } => {
+        }
+        Commands::Info {
+            file,
+            samples,
+            json_schema,
+            component,
+            level,
+            payloads,
+            timeline,
+        } => {
             // Parse log file with proper error handling
             let logs = parse_log_file(file)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
-            // Display log summary
-            display_log_summary(&logs);
+            // Create filter based on provided options
+            let filter = if component.is_some() || level.is_some() {
+                Some(
+                    LogFilter::new()
+                        .with_component(component.as_deref())
+                        .with_level(level.as_deref()),
+                )
+            } else {
+                None
+            };
+
+            // Filter logs if needed
+            let filtered_logs = if let Some(ref filter) = filter {
+                logs.iter()
+                    .filter(|log| filter.matches(log))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            } else {
+                logs
+            };
+
+            // Display log summary with enhanced options
+            display_log_summary(&filtered_logs, *samples, *json_schema, *payloads, *timeline);
+
+            // Show filtering information if applied
+            if let Some(ref _filter) = filter {
+                if !filtered_logs.is_empty() {
+                    println!(
+                        "\nShowing {} log entries after applying filters.",
+                        filtered_logs.len()
+                    );
+
+                    if component.is_some() {
+                        println!("Component filter: {}", component.as_ref().unwrap());
+                    }
+
+                    if level.is_some() {
+                        println!("Level filter: {}", level.as_ref().unwrap());
+                    }
+                } else {
+                    println!("\nNo log entries match the specified filters.");
+                }
+            }
 
             println!("\nLog analysis completed successfully.");
         }

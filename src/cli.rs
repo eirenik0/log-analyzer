@@ -47,7 +47,13 @@ pub struct Cli {
     pub format: OutputFormat,
 
     /// Use compact mode for output (shorter keys, optimized structure)
-    #[arg(short = 'c', long, global = true, group = "output_options", env = "COMPACT")]
+    #[arg(
+        short = 'c',
+        long,
+        global = true,
+        group = "output_options",
+        env = "COMPACT"
+    )]
     pub compact: bool,
 
     /// Path to output file for results
@@ -88,7 +94,11 @@ pub enum Commands {
         component: Option<String>,
 
         /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(long = "exclude-component", group = "exclude_filters", env = "EXCLUDE_COMPONENT")]
+        #[arg(
+            long = "exclude-component",
+            group = "exclude_filters",
+            env = "EXCLUDE_COMPONENT"
+        )]
         exclude_component: Option<String>,
 
         /// Filter logs by log level (e.g. "INFO", "ERROR")
@@ -96,7 +106,11 @@ pub enum Commands {
         level: Option<String>,
 
         /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(long = "exclude-level", group = "exclude_filters", env = "EXCLUDE_LEVEL")]
+        #[arg(
+            long = "exclude-level",
+            group = "exclude_filters",
+            env = "EXCLUDE_LEVEL"
+        )]
         exclude_level: Option<String>,
 
         /// Filter logs by containing a specific text
@@ -139,7 +153,11 @@ pub enum Commands {
         component: Option<String>,
 
         /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(long = "exclude-component", group = "exclude_filters", env = "EXCLUDE_COMPONENT")]
+        #[arg(
+            long = "exclude-component",
+            group = "exclude_filters",
+            env = "EXCLUDE_COMPONENT"
+        )]
         exclude_component: Option<String>,
 
         /// Filter logs by log level (e.g. "INFO", "ERROR")
@@ -147,7 +165,11 @@ pub enum Commands {
         level: Option<String>,
 
         /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(long = "exclude-level", group = "exclude_filters", env = "EXCLUDE_LEVEL")]
+        #[arg(
+            long = "exclude-level",
+            group = "exclude_filters",
+            env = "EXCLUDE_LEVEL"
+        )]
         exclude_level: Option<String>,
 
         /// Filter logs by containing a specific text
@@ -170,12 +192,36 @@ pub enum Commands {
         #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
         sort_by: SortOrder,
     },
-    /// List all components, event types, and log levels in a log file
+    /// List all components, event types, log levels, and detailed statistics in a log file
     #[command(alias = "i", alias = "inspect")]
     Info {
         /// Log file to analyze
         #[arg(required = true)]
         file: PathBuf,
+
+        /// Show sample log messages for each component
+        #[arg(short, long)]
+        samples: bool,
+
+        /// Display detailed JSON schema information for event payloads
+        #[arg(short, long)]
+        json_schema: bool,
+
+        /// Filter logs by component (e.g. "core-universal", "socket")
+        #[arg(short = 'C', long, env = "COMPONENT")]
+        component: Option<String>,
+
+        /// Filter logs by log level (e.g. "INFO", "ERROR")
+        #[arg(short = 'l', long, env = "LEVEL")]
+        level: Option<String>,
+
+        /// Show payload statistics for each event/command/request type
+        #[arg(short = 'p', long)]
+        payloads: bool,
+
+        /// Show detailed timeline analysis with event distribution
+        #[arg(short = 't', long)]
+        timeline: bool,
     },
 
     /// Generate LLM-friendly compact JSON output of differences (shortcut for compare --diff-only -F json -c)
@@ -194,7 +240,11 @@ pub enum Commands {
         component: Option<String>,
 
         /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(long = "exclude-component", group = "exclude_filters", env = "EXCLUDE_COMPONENT")]
+        #[arg(
+            long = "exclude-component",
+            group = "exclude_filters",
+            env = "EXCLUDE_COMPONENT"
+        )]
         exclude_component: Option<String>,
 
         /// Filter logs by log level (e.g. "INFO", "ERROR")
@@ -202,7 +252,11 @@ pub enum Commands {
         level: Option<String>,
 
         /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(long = "exclude-level", group = "exclude_filters", env = "EXCLUDE_LEVEL")]
+        #[arg(
+            long = "exclude-level",
+            group = "exclude_filters",
+            env = "EXCLUDE_LEVEL"
+        )]
         exclude_level: Option<String>,
 
         /// Filter logs by containing a specific text

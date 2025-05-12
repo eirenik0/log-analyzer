@@ -10,45 +10,6 @@ This tool helps you extract, filter, and compare structured log data from Applit
 - Debugging test failures
 - Analyzing log patterns
 
-## Installation
-
-### Quick Install (macOS/Linux)
-
-```bash
-# Clone the repository
-git clone https://github.com/eirenik0/log-analyzer.git
-cd log-analyzer
-
-# Run the install script
-./install.sh
-```
-
-This will install the `log-analyzer` command to your PATH, allowing you to run it from anywhere.
-
-### From Source
-
-```bash
-# Clone the repository
-git clone https://github.com/eirenik0/log-analyzer.git
-cd log-analyzer
-
-# Build the project
-cargo build --release
-
-# The binary will be available at target/release/log-analyzer
-```
-
-### Cross-Platform Builds
-
-To build for multiple platforms:
-
-```bash
-# Run the build script
-./build.sh
-```
-
-This creates binaries for Linux and Windows in the `builds` directory.
-
 ## Usage
 
 ### Basic Commands
@@ -264,12 +225,37 @@ log-analyzer llm [OPTIONS] <FILE1> <FILE2>
 Supports filtering options from `compare` but always uses JSON format, compact mode, and shows only differences.
 
 #### `info` (aliases: `i`, `inspect`)
-List all components, event types, and log levels in a log file
+List all components, event types, log levels, and detailed statistics in a log file
 
 ```bash
-log-analyzer info <FILE>
+log-analyzer info [OPTIONS] <FILE>
 ```
 
-## License
+| Option | Description |
+|--------|-------------|
+| `-s, --samples` | Show sample log messages for each component |
+| `-j, --json-schema` | Display detailed JSON schema information for event payloads |
+| `-C, --component <n>` | Filter logs by component |
+| `-l, --level <level>` | Filter logs by log level |
+| `-p, --payloads` | Show payload statistics for each event/command/request type |
+| `-t, --timeline` | Show detailed timeline analysis with event distribution |
 
-[MIT](LICENSE)
+The enhanced `info` command provides deep insights into log structure and content:
+
+```bash
+# Show sample log messages for each component
+log-analyzer info --samples universal-1.log
+
+# Display detailed timeline analysis with event distribution
+log-analyzer info --timeline universal-1.log
+
+# Show JSON schema information and payload statistics
+log-analyzer info --json-schema --payloads universal-1.log
+
+# Filter to analyze only specific component
+log-analyzer info --component core-ufg --timeline universal-1.log
+
+# Comprehensive analysis with all options
+log-analyzer info --samples --json-schema --payloads --timeline universal-1.log
+```
+
