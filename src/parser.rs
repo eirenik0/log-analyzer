@@ -7,8 +7,9 @@ use std::path::Path;
 mod entities;
 
 pub use entities::{
-    EventDirection, LogEntry, LogEntryKind, RequestDirection, create_command_log, create_event_log,
-    create_generic_log, create_request_log,
+    CommandLogParams, EventDirection, EventLogParams, LogEntry, LogEntryBase, LogEntryKind,
+    RequestDirection, RequestLogParams, create_command_log, create_event_log, create_generic_log,
+    create_request_log,
 };
 
 /// Parse error types
@@ -162,17 +163,19 @@ fn determine_log_entry_kind(
             // Update cleaned message
             message_text = format!("{} with payload [JSON removed]", event_parts[0]);
 
-            return Ok(create_event_log(
-                component,
-                component_id,
-                timestamp,
-                level,
-                message_text,
-                raw_logline,
+            return Ok(create_event_log(EventLogParams {
+                base: LogEntryBase {
+                    component,
+                    component_id,
+                    timestamp,
+                    level,
+                    message: message_text,
+                    raw_logline,
+                },
                 event_type,
-                EventDirection::Emit,
+                direction: EventDirection::Emit,
                 payload,
-            ));
+            }));
         }
     } else if message.contains("Received event of type") {
         let event_parts: Vec<&str> = message.split("with payload").collect();
@@ -187,17 +190,19 @@ fn determine_log_entry_kind(
             // Update cleaned message
             message_text = format!("{} with payload [JSON removed]", event_parts[0]);
 
-            return Ok(create_event_log(
-                component,
-                component_id,
-                timestamp,
-                level,
-                message_text,
-                raw_logline,
+            return Ok(create_event_log(EventLogParams {
+                base: LogEntryBase {
+                    component,
+                    component_id,
+                    timestamp,
+                    level,
+                    message: message_text,
+                    raw_logline,
+                },
                 event_type,
-                EventDirection::Receive,
+                direction: EventDirection::Receive,
                 payload,
-            ));
+            }));
         }
     }
     // Check for command logs
@@ -229,16 +234,18 @@ fn determine_log_entry_kind(
                 }
 
                 message_text = cleaned_message;
-                return Ok(create_command_log(
-                    component,
-                    component_id,
-                    timestamp,
-                    level,
-                    message_text,
-                    raw_logline,
+                return Ok(create_command_log(CommandLogParams {
+                    base: LogEntryBase {
+                        component,
+                        component_id,
+                        timestamp,
+                        level,
+                        message: message_text,
+                        raw_logline,
+                    },
                     command,
                     settings,
-                ));
+                }));
             }
         }
     }
@@ -261,19 +268,21 @@ fn determine_log_entry_kind(
 
             message_text = cleaned_message;
 
-            return Ok(create_request_log(
-                component,
-                component_id,
-                timestamp,
-                level,
-                message_text,
-                raw_logline,
-                req_name,
+            return Ok(create_request_log(RequestLogParams {
+                base: LogEntryBase {
+                    component,
+                    component_id,
+                    timestamp,
+                    level,
+                    message: message_text,
+                    raw_logline,
+                },
+                request: req_name,
                 request_id,
                 endpoint,
                 direction,
                 payload,
-            ));
+            }));
         }
     }
 

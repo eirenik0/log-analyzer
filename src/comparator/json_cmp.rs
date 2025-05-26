@@ -550,7 +550,7 @@ impl JsonFormatter {
         let mut path_groups: HashMap<String, Vec<(&JsonDifference, usize, usize)>> = HashMap::new();
 
         // Collect all differences by path
-        for (_idx, comparison) in comparisons.iter().enumerate() {
+        for comparison in comparisons.iter() {
             for diff in &comparison.json_differences {
                 let entry = path_groups.entry(diff.path.clone()).or_default();
                 entry.push((diff, comparison.log1_index, comparison.log2_index));

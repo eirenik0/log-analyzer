@@ -51,9 +51,7 @@ pub fn display_log_summary(
 
         // Add to component samples (limited to 3 samples per component)
         if show_samples {
-            let samples = component_samples
-                .entry(&log.component)
-                .or_insert_with(Vec::new);
+            let samples = component_samples.entry(&log.component).or_default();
             if samples.len() < 3 {
                 samples.push(log);
             }
@@ -64,7 +62,7 @@ pub fn display_log_summary(
             timestamps.push(log.timestamp);
             component_timeline
                 .entry(&log.component)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(log.timestamp);
         }
 
@@ -83,7 +81,7 @@ pub fn display_log_summary(
                         .unwrap_or(0);
                     event_payload_sizes
                         .entry(event_type)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(payload_size);
                 }
 
@@ -92,9 +90,7 @@ pub fn display_log_summary(
                     collect_json_keys(
                         payload.as_ref().unwrap(),
                         "",
-                        event_payload_keys
-                            .entry(event_type)
-                            .or_insert_with(HashMap::new),
+                        event_payload_keys.entry(event_type).or_default(),
                     );
                 }
             }
@@ -110,7 +106,7 @@ pub fn display_log_summary(
                         .unwrap_or(0);
                     command_payload_sizes
                         .entry(command)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(payload_size);
                 }
 
@@ -119,9 +115,7 @@ pub fn display_log_summary(
                     collect_json_keys(
                         settings.as_ref().unwrap(),
                         "",
-                        command_payload_keys
-                            .entry(command)
-                            .or_insert_with(HashMap::new),
+                        command_payload_keys.entry(command).or_default(),
                     );
                 }
             }
@@ -137,7 +131,7 @@ pub fn display_log_summary(
                         .unwrap_or(0);
                     request_payload_sizes
                         .entry(request)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(payload_size);
                 }
 
@@ -146,9 +140,7 @@ pub fn display_log_summary(
                     collect_json_keys(
                         payload.as_ref().unwrap(),
                         "",
-                        request_payload_keys
-                            .entry(request)
-                            .or_insert_with(HashMap::new),
+                        request_payload_keys.entry(request).or_default(),
                     );
                 }
             }
@@ -629,10 +621,9 @@ fn get_time_range(logs: &[LogEntry]) -> Option<(DateTime<Local>, DateTime<Local>
         }
     }
 
-    if earliest.is_some() && latest.is_some() {
-        Some((earliest.unwrap(), latest.unwrap()))
-    } else {
-        None
+    match (earliest, latest) {
+        (Some(e), Some(l)) => Some((e, l)),
+        _ => None,
     }
 }
 

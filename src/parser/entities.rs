@@ -156,80 +156,84 @@ impl LogEntry {
     }
 }
 
+// Parameter structs for creating log entries
+pub struct LogEntryBase {
+    pub component: String,
+    pub component_id: String,
+    pub timestamp: DateTime<Local>,
+    pub level: String,
+    pub message: String,
+    pub raw_logline: String,
+}
+
+pub struct EventLogParams {
+    pub base: LogEntryBase,
+    pub event_type: String,
+    pub direction: EventDirection,
+    pub payload: Option<Value>,
+}
+
+pub struct CommandLogParams {
+    pub base: LogEntryBase,
+    pub command: String,
+    pub settings: Option<Value>,
+}
+
+pub struct RequestLogParams {
+    pub base: LogEntryBase,
+    pub request: String,
+    pub request_id: Option<String>,
+    pub endpoint: Option<String>,
+    pub direction: RequestDirection,
+    pub payload: Option<Value>,
+}
+
 // Helper functions for creating log entries
-pub fn create_event_log(
-    component: String,
-    component_id: String,
-    timestamp: DateTime<Local>,
-    level: String,
-    message: String,
-    raw_logline: String,
-    event_type: String,
-    direction: EventDirection,
-    payload: Option<Value>,
-) -> LogEntry {
+pub fn create_event_log(params: EventLogParams) -> LogEntry {
     LogEntry {
-        component,
-        component_id,
-        timestamp,
-        level,
-        message,
-        raw_logline,
+        component: params.base.component,
+        component_id: params.base.component_id,
+        timestamp: params.base.timestamp,
+        level: params.base.level,
+        message: params.base.message,
+        raw_logline: params.base.raw_logline,
         kind: LogEntryKind::Event {
-            event_type,
-            direction,
-            payload,
+            event_type: params.event_type,
+            direction: params.direction,
+            payload: params.payload,
         },
     }
 }
 
-pub fn create_command_log(
-    component: String,
-    component_id: String,
-    timestamp: DateTime<Local>,
-    level: String,
-    message: String,
-    raw_logline: String,
-    command: String,
-    settings: Option<Value>,
-) -> LogEntry {
+pub fn create_command_log(params: CommandLogParams) -> LogEntry {
     LogEntry {
-        component,
-        component_id,
-        timestamp,
-        level,
-        message,
-        raw_logline,
-        kind: LogEntryKind::Command { command, settings },
+        component: params.base.component,
+        component_id: params.base.component_id,
+        timestamp: params.base.timestamp,
+        level: params.base.level,
+        message: params.base.message,
+        raw_logline: params.base.raw_logline,
+        kind: LogEntryKind::Command {
+            command: params.command,
+            settings: params.settings,
+        },
     }
 }
 
-pub fn create_request_log(
-    component: String,
-    component_id: String,
-    timestamp: DateTime<Local>,
-    level: String,
-    message: String,
-    raw_logline: String,
-    request: String,
-    request_id: Option<String>,
-    endpoint: Option<String>,
-    direction: RequestDirection,
-    payload: Option<Value>,
-) -> LogEntry {
+pub fn create_request_log(params: RequestLogParams) -> LogEntry {
     LogEntry {
-        component,
-        component_id,
-        timestamp,
-        level,
-        message,
-        raw_logline,
+        component: params.base.component,
+        component_id: params.base.component_id,
+        timestamp: params.base.timestamp,
+        level: params.base.level,
+        message: params.base.message,
+        raw_logline: params.base.raw_logline,
         kind: LogEntryKind::Request {
-            request,
-            request_id,
-            endpoint,
-            direction,
-            payload,
+            request: params.request,
+            request_id: params.request_id,
+            endpoint: params.endpoint,
+            direction: params.direction,
+            payload: params.payload,
         },
     }
 }

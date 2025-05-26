@@ -10,16 +10,16 @@ pub use comparator::{
 pub use parser::{LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_file};
 use std::path::{Path, PathBuf};
 
-fn handle_compare(
-    file1: &Path,
-    file2: &Path,
-    component: &Option<String>,
-    exclude_component: &Option<String>,
-    level: &Option<String>,
-    exclude_level: &Option<String>,
-    contains: &Option<String>,
-    exclude_text: &Option<String>,
-    direction: &Option<Direction>,
+struct CompareParams<'a> {
+    file1: &'a Path,
+    file2: &'a Path,
+    component: &'a Option<String>,
+    exclude_component: &'a Option<String>,
+    level: &'a Option<String>,
+    exclude_level: &'a Option<String>,
+    contains: &'a Option<String>,
+    exclude_text: &'a Option<String>,
+    direction: &'a Option<Direction>,
     diff_only: bool,
     full: bool,
     format: OutputFormat,
@@ -27,42 +27,54 @@ fn handle_compare(
     sort_by: SortOrder,
     verbose: u8,
     quiet: bool,
-    output: &Option<PathBuf>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Parse log files with proper error handling - using {:?} for ParseError
-    let logs1 = parse_log_file(file1)
-        .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
+    output: &'a Option<PathBuf>,
+}
 
-    let logs2 = parse_log_file(file2)
-        .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
+fn handle_compare(params: CompareParams) -> Result<(), Box<dyn std::error::Error>> {
+    // Parse log files with proper error handling - using {:?} for ParseError
+    let logs1 = parse_log_file(params.file1).map_err(|e| {
+        format!(
+            "Failed to parse log file '{}': {:?}",
+            params.file1.display(),
+            e
+        )
+    })?;
+
+    let logs2 = parse_log_file(params.file2).map_err(|e| {
+        format!(
+            "Failed to parse log file '{}': {:?}",
+            params.file2.display(),
+            e
+        )
+    })?;
 
     // Create filter with proper handling of Option<&str>
     let filter = LogFilter::new()
-        .with_component(component.as_deref())
-        .exclude_component(exclude_component.as_deref())
-        .with_level(level.as_deref())
-        .exclude_level(exclude_level.as_deref())
-        .contains_text(contains.as_deref())
-        .excludes_text(exclude_text.as_deref())
-        .with_direction(direction);
+        .with_component(params.component.as_deref())
+        .exclude_component(params.exclude_component.as_deref())
+        .with_level(params.level.as_deref())
+        .exclude_level(params.exclude_level.as_deref())
+        .contains_text(params.contains.as_deref())
+        .excludes_text(params.exclude_text.as_deref())
+        .with_direction(params.direction);
 
     // Create options
     let options = ComparisonOptions::new()
-        .diff_only(diff_only)
-        .show_full_json(full)
-        .compact_mode(compact)
+        .diff_only(params.diff_only)
+        .show_full_json(params.full)
+        .compact_mode(params.compact)
         .readable_mode(true)
-        .sort_by(sort_by)
-        .verbosity(verbose)
-        .quiet_mode(quiet)
-        .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
+        .sort_by(params.sort_by)
+        .verbosity(params.verbose)
+        .quiet_mode(params.quiet)
+        .output_to_file(params.output.as_deref().map(|o| o.to_str().unwrap()));
 
     // Compare logs with proper error handling for ComparisonError
     let results = compare_logs(&logs1, &logs2, &filter, &options)
         .map_err(|e| format!("Comparison failed: {:?}", e))?;
 
     // Display results in the selected format
-    match format {
+    match params.format {
         OutputFormat::Text => display_comparison_results(&results, &options),
         OutputFormat::Json => println!("{}", generate_json_output(&results, &options)),
     }
@@ -122,7 +134,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             full,
             sort_by,
         } => {
-            handle_compare(
+            handle_compare(CompareParams {
                 file1,
                 file2,
                 component,
@@ -132,15 +144,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 contains,
                 exclude_text,
                 direction,
-                *diff_only,
-                *full,
+                diff_only: *diff_only,
+                full: *full,
                 format,
                 compact,
-                *sort_by,
+                sort_by: *sort_by,
                 verbose,
                 quiet,
                 output,
-            )?;
+            })?;
         }
         Commands::Diff {
             file1,
@@ -156,7 +168,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // For Diff command, always use diff_only=true
-            handle_compare(
+            handle_compare(CompareParams {
                 file1,
                 file2,
                 component,
@@ -166,15 +178,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 contains,
                 exclude_text,
                 direction,
-                true, // diff_only fixed to true
-                *full,
+                diff_only: true, // diff_only fixed to true
+                full: *full,
                 format,
                 compact,
-                *sort_by,
+                sort_by: *sort_by,
                 verbose,
                 quiet,
                 output,
-            )?;
+            })?;
         }
         Commands::LlmDiff {
             file1,
@@ -189,7 +201,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // For LlmDiff command, customize several parameters
-            handle_compare(
+            handle_compare(CompareParams {
                 file1,
                 file2,
                 component,
@@ -199,15 +211,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 contains,
                 exclude_text,
                 direction,
-                true,               // diff_only fixed to true
-                false,              // full fixed to false
-                OutputFormat::Json, // Fixed to JSON
-                true,               // compact fixed to true
-                *sort_by,
+                diff_only: true,            // diff_only fixed to true
+                full: false,                // full fixed to false
+                format: OutputFormat::Json, // Fixed to JSON
+                compact: true,              // compact fixed to true
+                sort_by: *sort_by,
                 verbose,
                 quiet,
                 output,
-            )?;
+            })?;
         }
         Commands::Info {
             file,
