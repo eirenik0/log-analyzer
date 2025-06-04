@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod comparator;
+pub mod llm_processor;
 pub mod parser;
 
 use crate::comparator::{LogFilter, display_log_summary};
@@ -279,6 +280,50 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             println!("\nLog analysis completed successfully.");
+        }
+        Commands::Process {
+            file,
+            component,
+            exclude_component,
+            level,
+            exclude_level,
+            contains,
+            exclude_text,
+            direction,
+            sort_by: _,
+            limit,
+            sanitize,
+        } => {
+            // Parse log file with proper error handling
+            let logs = parse_log_file(file)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+
+            // Create filter based on provided options
+            let filter = LogFilter::new()
+                .with_component(component.as_deref())
+                .exclude_component(exclude_component.as_deref())
+                .with_level(level.as_deref())
+                .exclude_level(exclude_level.as_deref())
+                .contains_text(contains.as_deref())
+                .excludes_text(exclude_text.as_deref())
+                .with_direction(direction);
+
+            // Filter logs
+            let filtered_logs: Vec<_> = logs
+                .iter()
+                .filter(|log| filter.matches(log))
+                .cloned()
+                .collect();
+
+            // Process logs for LLM consumption (default sanitize to true if not specified)
+            let llm_output =
+                crate::llm_processor::process_logs_for_llm(&filtered_logs, *limit, *sanitize);
+
+            // Output as JSON
+            match serde_json::to_string_pretty(&llm_output) {
+                Ok(json) => println!("{}", json),
+                Err(e) => eprintln!("Error serializing output: {}", e),
+            }
         }
     }
 

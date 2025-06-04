@@ -348,6 +348,7 @@ dependencies = [
  "clap",
  "colored",
  "json5",
+ "serde",
  "serde_json",
  "similar",
  "tempfile",

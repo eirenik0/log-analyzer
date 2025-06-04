@@ -225,7 +225,6 @@ pub enum Commands {
     },
 
     /// Generate LLM-friendly compact JSON output of differences (shortcut for compare --diff-only -F json -c)
-    #[command(visible_alias = "llm")]
     LlmDiff {
         /// First log file
         #[arg(required = true)]
@@ -274,6 +273,62 @@ pub enum Commands {
         /// Sort output by given field
         #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
         sort_by: SortOrder,
+    },
+
+    /// Generate LLM-friendly compact JSON output of a single log file with sanitized content
+    #[command(visible_alias = "llm")]
+    Process {
+        /// Log file to process
+        #[arg(required = true)]
+        file: PathBuf,
+
+        /// Filter logs by component (e.g. "core-universal", "socket")
+        #[arg(short = 'C', long, group = "include_filters", env = "COMPONENT")]
+        component: Option<String>,
+
+        /// Exclude logs by component (e.g. "legacy", "debug")
+        #[arg(
+            long = "exclude-component",
+            group = "exclude_filters",
+            env = "EXCLUDE_COMPONENT"
+        )]
+        exclude_component: Option<String>,
+
+        /// Filter logs by log level (e.g. "INFO", "ERROR")
+        #[arg(short = 'l', long, group = "include_filters", env = "LEVEL")]
+        level: Option<String>,
+
+        /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
+        #[arg(
+            long = "exclude-level",
+            group = "exclude_filters",
+            env = "EXCLUDE_LEVEL"
+        )]
+        exclude_level: Option<String>,
+
+        /// Filter logs by containing a specific text
+        #[arg(short = 't', long, group = "include_filters", env = "CONTAINS")]
+        contains: Option<String>,
+
+        /// Exclude logs containing a specific text
+        #[arg(long = "exclude-text", group = "exclude_filters", env = "EXCLUDE_TEXT")]
+        exclude_text: Option<String>,
+
+        /// Filter logs by communication direction (Incoming or Outgoing)
+        #[arg(short = 'd', long, group = "include_filters", env = "DIRECTION")]
+        direction: Option<Direction>,
+
+        /// Sort output by given field
+        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
+        sort_by: SortOrder,
+
+        /// Maximum number of log entries to include (0 = unlimited)
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Hide sensitive fields from JSON payloads
+        #[arg(long)]
+        sanitize: bool,
     },
 }
 
