@@ -1,10 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Local};
-    use log_analyzer::comparator::LogFilter;
-    use log_analyzer::{ComparisonOptions, LogEntry, LogEntryKind, compare_json, compare_logs};
+
+    use log_analyzer::compare_json;
     use serde_json::json;
-    use tempfile::NamedTempFile;
 
     // Import existing tests
     #[test]
@@ -449,25 +447,4 @@ mod tests {
     //     assert!(content.contains(r#"- file1: "value1""#));
     //     assert!(content.contains(r#"- file2: "value2""#)); // Should include unchanged values too
     // }
-
-    // Helper function to create test log entries
-    fn create_log_entry(
-        component: &str,
-        level: &str,
-        message: &str,
-        payload: serde_json::Value,
-    ) -> LogEntry {
-        let timestamp = "2023-01-01T00:00:00Z".parse::<DateTime<Local>>().unwrap();
-        LogEntry {
-            timestamp: timestamp,
-            component: component.to_string(),
-            component_id: "some-id".to_string(),
-            level: level.to_string(),
-            message: message.to_string(),
-            kind: LogEntryKind::Generic {
-                payload: Some(payload),
-            },
-            raw_logline: format!("{timestamp} {component} {message}"),
-        }
-    }
 }

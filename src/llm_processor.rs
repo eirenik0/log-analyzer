@@ -82,12 +82,27 @@ pub fn sanitize_json_value(value: &Value) -> Value {
             let mut sanitized_map = Map::new();
             for (key, val) in map {
                 let key_lower = key.to_lowercase();
-                let is_sensitive = SENSITIVE_FIELDS
+                let is_sensitive_field = SENSITIVE_FIELDS
                     .iter()
                     .any(|&sensitive| key_lower.contains(sensitive));
 
-                if is_sensitive {
-                    sanitized_map.insert(key.clone(), json!("[REDACTED]"));
+                if is_sensitive_field {
+                    // Only redact if the value could contain sensitive data
+                    match val {
+                        Value::String(s) if !s.is_empty() => {
+                            sanitized_map.insert(key.clone(), json!("[REDACTED]"));
+                        }
+                        Value::Object(_) => {
+                            sanitized_map.insert(key.clone(), json!("[REDACTED]"));
+                        }
+                        Value::Array(_) => {
+                            sanitized_map.insert(key.clone(), json!("[REDACTED]"));
+                        }
+                        // Keep booleans, numbers, and null values as-is
+                        _ => {
+                            sanitized_map.insert(key.clone(), val.clone());
+                        }
+                    }
                 } else {
                     sanitized_map.insert(key.clone(), sanitize_json_value(val));
                 }
@@ -95,6 +110,7 @@ pub fn sanitize_json_value(value: &Value) -> Value {
             Value::Object(sanitized_map)
         }
         Value::Array(arr) => Value::Array(arr.iter().map(sanitize_json_value).collect()),
+        Value::String(_) => value.clone(),
         _ => value.clone(),
     }
 }
@@ -107,10 +123,9 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
     match value {
         Value::Object(map) => {
             let mut compacted_map = Map::new();
-            let mut count = 0;
             const MAX_FIELDS: usize = 20;
 
-            for (key, val) in map {
+            for (count, (key, val)) in map.into_iter().enumerate() {
                 if count >= MAX_FIELDS {
                     compacted_map.insert("_truncated_fields".to_string(), json!(map.len() - count));
                     break;
@@ -127,7 +142,6 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
                     compact_key,
                     compact_json_value(val, max_depth, current_depth + 1),
                 );
-                count += 1;
             }
             Value::Object(compacted_map)
         }
@@ -270,15 +284,15 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
             };
 
             let processed_payload = log.payload().map(|payload| {
-                let mut processed = if sanitize {
+                // First sanitize if requested
+                let sanitized = if sanitize {
                     sanitize_json_value(payload)
                 } else {
                     payload.clone()
                 };
 
-                // Always compact for LLM output
-                processed = compact_json_value(&processed, 3, 0);
-                processed
+                // Then compact the sanitized data
+                compact_json_value(&sanitized, 3, 0)
             });
 
             // Compact message text
@@ -303,5 +317,38 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
     LlmLogOutput {
         metadata,
         logs: processed_logs,
+    }
+}
+
+/// Sanitize a single log entry's payload in-place
+pub fn sanitize_log_entry(log: &mut LogEntry) {
+    match &mut log.kind {
+        LogEntryKind::Event { payload, .. } => {
+            if let Some(payload) = payload {
+                *payload = sanitize_json_value(payload);
+            }
+        }
+        LogEntryKind::Command { settings, .. } => {
+            if let Some(settings) = settings {
+                *settings = sanitize_json_value(settings);
+            }
+        }
+        LogEntryKind::Request { payload, .. } => {
+            if let Some(payload) = payload {
+                *payload = sanitize_json_value(payload);
+            }
+        }
+        LogEntryKind::Generic { payload } => {
+            if let Some(payload) = payload {
+                *payload = sanitize_json_value(payload);
+            }
+        }
+    }
+}
+
+/// Sanitize a vector of log entries
+pub fn sanitize_logs(logs: &mut [LogEntry]) {
+    for log in logs.iter_mut() {
+        sanitize_log_entry(log);
     }
 }

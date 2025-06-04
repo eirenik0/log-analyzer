@@ -200,27 +200,48 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             exclude_text,
             direction,
             sort_by,
+            no_sanitize,
         } => {
-            // For LlmDiff command, customize several parameters
-            handle_compare(CompareParams {
-                file1,
-                file2,
-                component,
-                exclude_component,
-                level,
-                exclude_level,
-                contains,
-                exclude_text,
-                direction,
-                diff_only: true,            // diff_only fixed to true
-                full: false,                // full fixed to false
-                format: OutputFormat::Json, // Fixed to JSON
-                compact: true,              // compact fixed to true
-                sort_by: *sort_by,
-                verbose,
-                quiet,
-                output,
-            })?;
+            // Parse log files with proper error handling
+            let mut logs1 = parse_log_file(file1)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
+
+            let mut logs2 = parse_log_file(file2)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
+
+            // Apply sanitization if enabled (default behavior unless --no-sanitize is used)
+            if !no_sanitize {
+                crate::llm_processor::sanitize_logs(&mut logs1);
+                crate::llm_processor::sanitize_logs(&mut logs2);
+            }
+
+            // Create filter with proper handling of Option<&str>
+            let filter = LogFilter::new()
+                .with_component(component.as_deref())
+                .exclude_component(exclude_component.as_deref())
+                .with_level(level.as_deref())
+                .exclude_level(exclude_level.as_deref())
+                .contains_text(contains.as_deref())
+                .excludes_text(exclude_text.as_deref())
+                .with_direction(direction);
+
+            // Create options for LlmDiff with fixed parameters
+            let options = ComparisonOptions::new()
+                .diff_only(true) // diff_only fixed to true
+                .show_full_json(false) // full fixed to false
+                .compact_mode(true) // compact fixed to true
+                .readable_mode(true)
+                .sort_by(*sort_by)
+                .verbosity(verbose)
+                .quiet_mode(quiet)
+                .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
+
+            // Compare logs with proper error handling
+            let results = compare_logs(&logs1, &logs2, &filter, &options)
+                .map_err(|e| format!("Comparison failed: {:?}", e))?;
+
+            // Output as JSON (fixed format for LlmDiff)
+            println!("{}", generate_json_output(&results, &options));
         }
         Commands::Info {
             file,
@@ -292,7 +313,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             direction,
             sort_by: _,
             limit,
-            sanitize,
+            no_sanitize,
         } => {
             // Parse log file with proper error handling
             let logs = parse_log_file(file)
@@ -315,9 +336,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .cloned()
                 .collect();
 
-            // Process logs for LLM consumption (default sanitize to true if not specified)
+            // Process logs for LLM consumption (sanitize by default, unless --no-sanitize is used)
             let llm_output =
-                crate::llm_processor::process_logs_for_llm(&filtered_logs, *limit, *sanitize);
+                crate::llm_processor::process_logs_for_llm(&filtered_logs, *limit, !no_sanitize);
 
             // Output as JSON
             match serde_json::to_string_pretty(&llm_output) {

@@ -273,6 +273,10 @@ pub enum Commands {
         /// Sort output by given field
         #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
         sort_by: SortOrder,
+
+        /// Disable hiding of sensitive fields from JSON payloads (sanitization is enabled by default)
+        #[arg(long)]
+        no_sanitize: bool,
     },
 
     /// Generate LLM-friendly compact JSON output of a single log file with sanitized content
@@ -326,9 +330,9 @@ pub enum Commands {
         #[arg(long, default_value = "100")]
         limit: usize,
 
-        /// Hide sensitive fields from JSON payloads
+        /// Disable hiding of sensitive fields from JSON payloads (sanitization is enabled by default)
         #[arg(long)]
-        sanitize: bool,
+        no_sanitize: bool,
     },
 }
 
