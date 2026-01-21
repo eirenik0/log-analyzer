@@ -6,6 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Log-analyzer is a Rust command-line tool designed to analyze and compare JSON logs from the Applitools testing framework. It can parse complex log files, extract JSON payloads, and identify differences between log files.
 
+## Claude Code Skill
+
+This project includes a Claude Code skill for interactive log analysis. Use it in Claude Code with:
+
+```
+/analyze-logs diff file1.log file2.log     # Compare two logs
+/analyze-logs perf test.log                 # Performance analysis
+/analyze-logs info test.log --samples       # Log structure overview
+```
+
+The skill is defined in `.claude/skills/analyze-logs/`.
+
 ## Commands
 
 ### Building the Project
@@ -20,8 +32,18 @@ cargo run -- <arguments>
 # Build for release
 cargo build --release
 
-# Cross-compile for multiple platforms using the build script
-./build.sh
+# Install locally
+cargo install --path .
+```
+
+### Installation from Release
+
+```bash
+# Auto-detect platform and install latest release
+./scripts/install.sh
+
+# Or manually download from GitHub Releases
+curl -LO https://github.com/eirenik0/log-analyzer/releases/latest/download/log-analyzer-VERSION-TARGET.tar.gz
 ```
 
 ### Running the Application

@@ -73,7 +73,7 @@ mod tests {
     fn test_parse_socket_emit_event() {
         let log_line = r#"socket | 2025-04-03T21:35:06.157Z [INFO ] Emit event of type "Logger.log" with payload {
     "level": "info",
-    "message": "Logs saved in: /Users/eirenik0/Projects/APPLITOOLS/eyes.sdk/logs"
+    "message": "Logs saved in: /Users/eiro/sdk/logs"
 }"#;
         let record = parse_log_entry(log_line).expect("Failed to parse socket emit event log");
 
@@ -90,7 +90,7 @@ mod tests {
     fn test_parse_socket_received_event() {
         let log_line = r#"socket | 2025-04-03T21:35:06.163Z [INFO ] Received event of type {"name":"Core.makeCore"} with payload {
     "agentId": "eyes.sdk.python/6.1.0",
-    "cwd": "/Users/eirenik0/Projects/APPLITOOLS/eyes.sdk/python/tests",
+    "cwd": "/Users/eiro/sdk/logs/python/tests",
     "environment": {
         "versions": {
             "appium-python-client": "3.2.1",
