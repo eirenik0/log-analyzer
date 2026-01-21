@@ -1,5 +1,8 @@
 # Log Analyzer
 
+[![CI](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml)
+[![Release](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml)
+
 A CLI tool for analyzing and comparing JSON logs from the Applitools testing framework.
 
 ## Installation
