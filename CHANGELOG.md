@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1 (2026-01-21)
+
+### Features
+
+- add filter for connection direction
+- add advanced filtering, sorting, and CLI enhancements
+- enhance `info` command with detailed analysis options
+- add individual llm log preparation
+- sanitize by default
+- improve request parsing for name, ID, and direction detection
+- add performance analysis command to CLI
+- add installation scripts and Claude Code skill for log analysis
+
 ## 0.1.0
 
 ### Features
