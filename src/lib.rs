@@ -2,6 +2,7 @@ pub mod cli;
 pub mod comparator;
 pub mod llm_processor;
 pub mod parser;
+pub mod perf_analyzer;
 
 use crate::comparator::{LogFilter, display_log_summary};
 pub use cli::{ColorMode, Commands, Direction, OutputFormat, SortOrder, cli_parse};
@@ -344,6 +345,62 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             match serde_json::to_string_pretty(&llm_output) {
                 Ok(json) => println!("{}", json),
                 Err(e) => eprintln!("Error serializing output: {}", e),
+            }
+        }
+        Commands::Perf {
+            file,
+            component,
+            exclude_component,
+            level,
+            exclude_level,
+            contains,
+            exclude_text,
+            direction,
+            threshold_ms,
+            top_n,
+            orphans_only,
+            op_type,
+            sort_by,
+        } => {
+            // Parse log file with proper error handling
+            let logs = parse_log_file(file)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+
+            // Create filter based on provided options
+            let filter = LogFilter::new()
+                .with_component(component.as_deref())
+                .exclude_component(exclude_component.as_deref())
+                .with_level(level.as_deref())
+                .exclude_level(exclude_level.as_deref())
+                .contains_text(contains.as_deref())
+                .excludes_text(exclude_text.as_deref())
+                .with_direction(direction);
+
+            // Convert op_type filter to string
+            let op_type_filter = op_type.map(|t| match t {
+                crate::cli::OperationType::Request => "Request",
+                crate::cli::OperationType::Event => "Event",
+                crate::cli::OperationType::Command => "Command",
+            });
+
+            // Analyze performance
+            let results = crate::perf_analyzer::analyze_performance(&logs, &filter, op_type_filter);
+
+            // Display results based on format
+            match format {
+                OutputFormat::Text => {
+                    crate::perf_analyzer::display_perf_results(
+                        &results,
+                        *threshold_ms,
+                        *top_n,
+                        *orphans_only,
+                        *sort_by,
+                    );
+                }
+                OutputFormat::Json => {
+                    let json = crate::perf_analyzer::format_perf_results_json(&results);
+                    println!("{}", json);
+                }
             }
         }
     }

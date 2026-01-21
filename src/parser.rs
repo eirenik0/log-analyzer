@@ -61,10 +61,10 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
     }
 
     // Add the last log entry
-    if let Some(log_text) = current_log {
-        if let Ok(entry) = parse_log_entry(&log_text) {
-            logs.push(entry);
-        }
+    if let Some(log_text) = current_log
+        && let Ok(entry) = parse_log_entry(&log_text)
+    {
+        logs.push(entry);
     }
 
     Ok(logs)
@@ -346,13 +346,13 @@ fn extract_request_info(
             if after_name < message.len() {
                 let rest = &message[after_name..];
                 // Request ID pattern: " [id]" right after the name
-                if rest.starts_with(" [") {
-                    if let Some(id_end) = rest[2..].find(']') {
-                        let potential_id = &rest[2..2 + id_end];
-                        // Validate it looks like a request ID (contains -- which is the ID separator)
-                        if potential_id.contains("--") && !potential_id.contains(' ') {
-                            request_id = Some(potential_id.to_string());
-                        }
+                if rest.starts_with(" [")
+                    && let Some(id_end) = rest[2..].find(']')
+                {
+                    let potential_id = &rest[2..2 + id_end];
+                    // Validate it looks like a request ID (contains -- which is the ID separator)
+                    if potential_id.contains("--") && !potential_id.contains(' ') {
+                        request_id = Some(potential_id.to_string());
                     }
                 }
             }
@@ -397,22 +397,22 @@ fn extract_request_info(
 fn extract_event_type(event_part: &str) -> Option<String> {
     if event_part.contains("\"name\":") {
         // Handle JSON event type format
-        if let Some(start) = event_part.find('{') {
-            if let Some(end) = event_part.find('}') {
-                let type_json = &event_part[start..=end];
-                if let Ok(v) = serde_json::from_str::<Value>(type_json) {
-                    if let Some(name) = v.get("name") {
-                        return Some(name.as_str().unwrap_or("").to_string());
-                    }
-                }
+        if let Some(start) = event_part.find('{')
+            && let Some(end) = event_part.find('}')
+        {
+            let type_json = &event_part[start..=end];
+            if let Ok(v) = serde_json::from_str::<Value>(type_json)
+                && let Some(name) = v.get("name")
+            {
+                return Some(name.as_str().unwrap_or("").to_string());
             }
         }
     } else {
         // Handle string event type format
-        if let Some(start) = event_part.find('"') {
-            if let Some(end) = event_part[start + 1..].find('"') {
-                return Some(event_part[start + 1..start + 1 + end].to_string());
-            }
+        if let Some(start) = event_part.find('"')
+            && let Some(end) = event_part[start + 1..].find('"')
+        {
+            return Some(event_part[start + 1..start + 1 + end].to_string());
         }
     }
 
@@ -451,20 +451,20 @@ fn extract_json(input: &str) -> Option<Value> {
                 Some(start_pos - 1)
             };
 
-            if let Some(start_idx) = json_start {
-                if let Some(json_value) = extract_json_from_position(input, start_idx) {
-                    return Some(json_value);
-                }
+            if let Some(start_idx) = json_start
+                && let Some(json_value) = extract_json_from_position(input, start_idx)
+            {
+                return Some(json_value);
             }
         }
     }
 
     // If not found with indicators, try to find any JSON in the string
     for (i, c) in input.char_indices() {
-        if c == '{' || c == '[' {
-            if let Some(json_value) = extract_json_from_position(input, i) {
-                return Some(json_value);
-            }
+        if (c == '{' || c == '[')
+            && let Some(json_value) = extract_json_from_position(input, i)
+        {
+            return Some(json_value);
         }
     }
 

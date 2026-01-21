@@ -37,6 +37,27 @@ pub enum SortOrder {
     DiffCount,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
+pub enum OperationType {
+    /// Request operations (send/receive)
+    Request,
+    /// Event operations (emit/receive)
+    Event,
+    /// Command operations (start/finish)
+    Command,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
+pub enum PerfSortOrder {
+    /// Sort by duration (slowest first, default)
+    #[default]
+    Duration,
+    /// Sort by operation count
+    Count,
+    /// Sort by operation name alphabetically
+    Name,
+}
+
 /// A tool to analyze and compare two log files containing JSON objects
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -333,6 +354,69 @@ pub enum Commands {
         /// Disable hiding of sensitive fields from JSON payloads (sanitization is enabled by default)
         #[arg(long)]
         no_sanitize: bool,
+    },
+
+    /// Analyze operation timing and identify performance bottlenecks
+    Perf {
+        /// Log file to analyze
+        #[arg(required = true)]
+        file: PathBuf,
+
+        /// Filter logs by component (e.g. "core-universal", "socket")
+        #[arg(short = 'C', long, group = "include_filters", env = "COMPONENT")]
+        component: Option<String>,
+
+        /// Exclude logs by component (e.g. "legacy", "debug")
+        #[arg(
+            long = "exclude-component",
+            group = "exclude_filters",
+            env = "EXCLUDE_COMPONENT"
+        )]
+        exclude_component: Option<String>,
+
+        /// Filter logs by log level (e.g. "INFO", "ERROR")
+        #[arg(short = 'l', long, group = "include_filters", env = "LEVEL")]
+        level: Option<String>,
+
+        /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
+        #[arg(
+            long = "exclude-level",
+            group = "exclude_filters",
+            env = "EXCLUDE_LEVEL"
+        )]
+        exclude_level: Option<String>,
+
+        /// Filter logs by containing a specific text
+        #[arg(short = 't', long, group = "include_filters", env = "CONTAINS")]
+        contains: Option<String>,
+
+        /// Exclude logs containing a specific text
+        #[arg(long = "exclude-text", group = "exclude_filters", env = "EXCLUDE_TEXT")]
+        exclude_text: Option<String>,
+
+        /// Filter logs by communication direction (Incoming or Outgoing)
+        #[arg(short = 'd', long, group = "include_filters", env = "DIRECTION")]
+        direction: Option<Direction>,
+
+        /// Duration threshold in milliseconds for highlighting slow operations
+        #[arg(long, default_value = "1000")]
+        threshold_ms: u64,
+
+        /// Number of slowest operations to display
+        #[arg(long, default_value = "20")]
+        top_n: usize,
+
+        /// Show only orphan operations (started but never finished)
+        #[arg(long)]
+        orphans_only: bool,
+
+        /// Filter by operation type (Request, Event, Command)
+        #[arg(long)]
+        op_type: Option<OperationType>,
+
+        /// Sort results by field
+        #[arg(short = 's', long, value_enum, default_value_t = PerfSortOrder::Duration)]
+        sort_by: PerfSortOrder,
     },
 }
 
