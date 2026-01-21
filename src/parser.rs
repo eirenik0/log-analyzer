@@ -333,19 +333,29 @@ fn extract_request_info(
     let mut direction = RequestDirection::Send;
     let mut payload = None;
 
-    // Extract request name
+    // Extract request name and ID
+    // Pattern: Request "name" [id] ... OR Request "name" called/finished...
     let req_prefix = r#"Request ""#;
     if let Some(start_idx) = message.find(req_prefix) {
         let req_name_start = start_idx + req_prefix.len();
         if let Some(end_idx) = message[req_name_start..].find('"') {
             request_name = Some(message[req_name_start..req_name_start + end_idx].to_string());
-        }
-    }
 
-    // Extract request ID - look for square brackets after the request name
-    if let Some(id_start) = message.find('[') {
-        if let Some(id_end) = message[id_start + 1..].find(']') {
-            request_id = Some(message[id_start + 1..id_start + 1 + id_end].to_string());
+            // Look for [id] immediately after the request name (within next 2 chars: '" [')
+            let after_name = req_name_start + end_idx + 1;
+            if after_name < message.len() {
+                let rest = &message[after_name..];
+                // Request ID pattern: " [id]" right after the name
+                if rest.starts_with(" [") {
+                    if let Some(id_end) = rest[2..].find(']') {
+                        let potential_id = &rest[2..2 + id_end];
+                        // Validate it looks like a request ID (contains -- which is the ID separator)
+                        if potential_id.contains("--") && !potential_id.contains(' ') {
+                            request_id = Some(potential_id.to_string());
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -358,9 +368,16 @@ fn extract_request_info(
     }
 
     // Determine direction
-    if message.contains("will be sent") {
+    // "will be sent" = outgoing request (Send)
+    // "that was sent ... respond with" or "is going to retried" = incoming response (Receive)
+    // "finished successfully" = request completed (Receive)
+    if message.contains("will be sent") && !message.contains("that was sent") {
         direction = RequestDirection::Send;
-    } else if message.contains("finished successfully") {
+    } else if message.contains("finished successfully")
+        || message.contains("respond with")
+        || message.contains("that was sent")
+        || message.contains("is going to retried")
+    {
         direction = RequestDirection::Receive;
     }
 
