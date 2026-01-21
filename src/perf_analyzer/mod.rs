@@ -1,7 +1,7 @@
 mod display;
 mod entities;
 
-pub use display::{display_perf_results, format_perf_results_json};
+pub use display::{display_perf_results, format_perf_results_json, truncate_string};
 pub use entities::{OperationStats, OrphanOperation, PerfAnalysisResults, TimedOperation};
 
 use crate::comparator::LogFilter;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 /// Extracts the request ID from a log message containing [request_id] pattern
 /// The pattern is: Request "name" [id] where id contains "--" (e.g., "0--uuid" or "0--uuid#2")
-fn extract_request_id(message: &str) -> Option<String> {
+pub fn extract_request_id(message: &str) -> Option<String> {
     // Look for pattern: Request "name" [id] where id contains "--"
     let req_prefix = r#"Request ""#;
     if let Some(start_idx) = message.find(req_prefix) {
@@ -37,7 +37,7 @@ fn extract_request_id(message: &str) -> Option<String> {
 }
 
 /// Extracts event key from event payload
-fn extract_event_key(payload: &serde_json::Value) -> Option<String> {
+pub fn extract_event_key(payload: &serde_json::Value) -> Option<String> {
     // Try to get the "key" field from the event payload
     payload
         .get("key")
@@ -295,48 +295,4 @@ pub fn analyze_performance(
     results.calculate_stats();
 
     results
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_request_id() {
-        // Valid request ID patterns
-        assert_eq!(
-            extract_request_id(r#"Request "check" [0--abc123-def] will be sent"#),
-            Some("0--abc123-def".to_string())
-        );
-        assert_eq!(
-            extract_request_id(r#"Request "openEyes" [1--uuid-here#2] that was sent"#),
-            Some("1--uuid-here#2".to_string())
-        );
-
-        // Invalid patterns - no request ID after name
-        assert_eq!(extract_request_id("No brackets here"), None);
-        assert_eq!(
-            extract_request_id(r#"Request "check" called for target {"#),
-            None
-        );
-        // Brackets in wrong place (JSON content)
-        assert_eq!(
-            extract_request_id(r#"Request "check" called for renders [1,2,3]"#),
-            None
-        );
-    }
-
-    #[test]
-    fn test_extract_event_key() {
-        let json = serde_json::json!({
-            "key": "test-event-key",
-            "data": "some data"
-        });
-        assert_eq!(extract_event_key(&json), Some("test-event-key".to_string()));
-
-        let json_no_key = serde_json::json!({
-            "data": "some data"
-        });
-        assert_eq!(extract_event_key(&json_no_key), None);
-    }
 }

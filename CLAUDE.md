@@ -304,28 +304,3 @@ The release workflow requires a `PAT` secret (Personal Access Token) with write 
 | macOS Intel | x86_64-apple-darwin | tar.gz |
 | macOS Apple Silicon | aarch64-apple-darwin | tar.gz |
 | Windows x86_64 | x86_64-pc-windows-msvc | zip |
-
-## Project Structure
-
-```
-.
-├── src/                    # Rust source code
-│   ├── cli.rs              # CLI argument parsing
-│   ├── parser.rs           # Log file parsing
-│   ├── comparator/         # Comparison logic
-│   ├── llm_processor.rs    # LLM output generation
-│   └── perf_analyzer/      # Performance analysis
-├── .changeset/             # Changeset files for releases
-├── .claude/
-│   └── skills/
-│       └── analyze-logs/   # Claude Code skill
-├── .github/
-│   └── workflows/
-│       ├── ci.yml          # CI (tests, lint, fmt)
-│       └── release.yml     # Release automation (Knope)
-├── scripts/
-│   ├── install.sh          # Binary installation
-│   └── install-skill.sh    # Skill installation
-├── CHANGELOG.md            # Auto-generated changelog
-└── knope.toml              # Knope configuration
-```

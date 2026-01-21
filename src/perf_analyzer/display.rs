@@ -233,7 +233,7 @@ fn display_timed_operation(index: usize, op: &TimedOperation) {
 }
 
 /// Truncate a string to a maximum length with ellipsis
-fn truncate_string(s: &str, max_len: usize) -> String {
+pub fn truncate_string(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
@@ -244,19 +244,4 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 /// Format performance analysis results as JSON
 pub fn format_perf_results_json(results: &PerfAnalysisResults) -> String {
     serde_json::to_string_pretty(results).unwrap_or_else(|_| "{}".to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_truncate_string() {
-        assert_eq!(truncate_string("short", 10), "short");
-        assert_eq!(
-            truncate_string("this is a very long string", 10),
-            "this is..."
-        );
-        assert_eq!(truncate_string("exactly10c", 10), "exactly10c");
-    }
 }
