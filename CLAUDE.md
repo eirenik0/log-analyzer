@@ -198,3 +198,108 @@ cargo test test_name -- --nocapture
 - Tests use the tempfile crate for testing file output
 - JSON comparison is semantic, not just a string comparison
 - The code handles complex log structures, including nested JSON objects and arrays
+
+## Change Tracking with Knope
+
+This project uses [Knope](https://knope.tech) for automated changelog generation and release management. Knope tracks changes via conventional commits and changeset files.
+
+### Conventional Commits
+
+Use conventional commit messages for automatic changelog generation:
+
+```bash
+# Feature (minor version bump)
+git commit -m "feat: add new parsing capability"
+
+# Bug fix (patch version bump)
+git commit -m "fix: correct off-by-one error"
+
+# Breaking change (major version bump)
+git commit -m "feat!: redesign API interface"
+
+# With scope
+git commit -m "feat(parser): improve JSON detection"
+```
+
+### Changeset Files
+
+For more detailed change documentation, create changeset files:
+
+```bash
+# Create a new changeset interactively
+knope document-change
+```
+
+This creates a markdown file in `.changeset/` directory that will be included in the next release.
+
+### Local Knope Commands
+
+```bash
+# Install Knope
+cargo install knope
+
+# Preview what the next release would look like
+knope prepare-release --dry-run
+
+# Get current version
+knope get-version
+```
+
+## Release Process
+
+Releases are automated via GitHub Actions using Knope. To create a new release:
+
+1. **Make changes** using conventional commits (feat:, fix:, etc.)
+2. **Trigger release** from GitHub Actions → Release → Run workflow
+3. **GitHub Actions will**:
+   - Run `knope prepare-release` to update CHANGELOG.md and bump version
+   - Run tests on all platforms
+   - Build binaries for Linux (x86_64, aarch64, musl), macOS (x86_64, arm64), Windows
+   - Run `knope release` to create a GitHub Release with changelog
+   - Upload all binaries and checksums
+
+### Dry Run
+
+Test the release process without creating a release:
+- Go to GitHub Actions → Release → Run workflow
+- Check "Run without creating release (for testing)"
+
+### Requirements
+
+The release workflow requires a `PAT` secret (Personal Access Token) with write permissions to push version bumps back to the repository.
+
+### Supported Platforms
+
+| Platform | Target | Archive |
+|----------|--------|---------|
+| Linux x86_64 | x86_64-unknown-linux-gnu | tar.gz |
+| Linux x86_64 (musl) | x86_64-unknown-linux-musl | tar.gz |
+| Linux ARM64 | aarch64-unknown-linux-gnu | tar.gz |
+| macOS Intel | x86_64-apple-darwin | tar.gz |
+| macOS Apple Silicon | aarch64-apple-darwin | tar.gz |
+| Windows x86_64 | x86_64-pc-windows-msvc | zip |
+
+## Project Structure
+
+```
+.
+├── src/                    # Rust source code
+│   ├── cli.rs              # CLI argument parsing
+│   ├── parser.rs           # Log file parsing
+│   ├── comparator/         # Comparison logic
+│   ├── llm_processor.rs    # LLM output generation
+│   └── perf_analyzer/      # Performance analysis
+├── .changeset/             # Changeset files for releases
+├── .claude/
+│   └── skills/
+│       └── analyze-logs/   # Claude Code skill
+├── .github/
+│   └── workflows/
+│       ├── ci.yml          # CI (tests, lint, fmt)
+│       └── release.yml     # Release automation (Knope)
+├── scripts/
+│   ├── install.sh          # Binary installation
+│   └── install-skill.sh    # Skill installation
+├── CHANGELOG.md            # Auto-generated changelog
+└── knope.toml              # Knope configuration
+```

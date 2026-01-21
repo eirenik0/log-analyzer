@@ -5,6 +5,18 @@ CRATES := . src
 
 .PHONY: lint fmt clean all test
 
+
+################################################################################
+# Reusable Functions
+################################################################################
+
+# Check if a required tool is installed
+# Usage: $(call require-tool,tool-name,install-hint)
+define require-tool
+@which $(1) >/dev/null 2>&1 || (echo "Error: $(1) not installed. $(2)" && exit 1)
+endef
+
+
 # Default target
 all: lint fmt
 
@@ -44,3 +56,27 @@ test:
 check-rust-version:
 	@echo "Checking Rust version..."
 	@rustc --version
+
+################################################################################
+# Changelog Management Targets (Knope)
+################################################################################
+
+check-knope: ## Verify Knope is installed
+	$(call require-tool,knope,Install with: cargo install knope)
+
+changelog.add: check-knope ## Create a new changelog fragment interactively
+	knope document-change
+
+changelog.preview: check-knope ## Preview the next release changelog
+	knope preview-release
+
+changelog.release: check-knope ## Prepare and create a new release [version=X.Y.Z]
+ifndef version
+	$(error version is required. Usage: make changelog.release version=0.9.0)
+endif
+	knope release
+
+changelog.list: ## List all pending changelog fragments
+	@echo "Pending changelog fragments:"
+	@find .changeset -name '*.md' -not -name 'README.md' -exec basename {} \; | sort
+

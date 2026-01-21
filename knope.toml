@@ -1,0 +1,40 @@
+[package]
+versioned_files = ["Cargo.toml"]
+changelog = "CHANGELOG.md"
+
+[github]
+owner = "eirenik0"
+repo = "log-analyzer"
+
+# Workflow to prepare a release (update changelog, bump version)
+[[workflows]]
+name = "prepare-release"
+help_text = "Prepare a release by updating the changelog and bumping the version"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+# Workflow to create a GitHub release
+[[workflows]]
+name = "release"
+help_text = "Create a GitHub release from the latest prepared version"
+
+[[workflows.steps]]
+type = "Release"
+
+# Workflow to document a change using changesets
+[[workflows]]
+name = "document-change"
+help_text = "Create a changeset file to document a change"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+# Workflow to get the current version
+[[workflows]]
+name = "get-version"
+help_text = "Get the current version of the project"
+
+[[workflows.steps]]
+type = "Command"
+command = "echo $version"
