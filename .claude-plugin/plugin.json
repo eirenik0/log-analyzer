@@ -1,0 +1,9 @@
+{
+  "name": "log-analyzer",
+  "description": "Analyze and compare JSON logs from Applitools testing framework. Find differences, analyze performance, and debug test failures.",
+  "version": "0.1.1",
+  "author": {
+    "name": "eirenik0",
+    "url": "https://github.com/eirenik0/log-analyzer"
+  }
+}

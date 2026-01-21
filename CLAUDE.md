@@ -8,15 +8,32 @@ Log-analyzer is a Rust command-line tool designed to analyze and compare JSON lo
 
 ## Claude Code Skill
 
-This project includes a Claude Code skill for interactive log analysis. Use it in Claude Code with:
+This project includes a Claude Code skill for interactive log analysis.
+
+### Installation
+
+**Option 1: Plugin Installation (Recommended for use in other projects)**
+
+Install the skill globally using the plugin system:
+
+```bash
+/plugin marketplace add https://github.com/eirenik0/log-analyzer
+/plugin install log-analyzer
+```
+
+**Option 2: Project-Level (Automatic when cloning this repo)**
+
+The skill is automatically available when working in this repository. It's defined in `.claude/skills/analyze-logs/`.
+
+### Usage
+
+Use the skill in Claude Code with:
 
 ```
 /analyze-logs diff file1.log file2.log     # Compare two logs
 /analyze-logs perf test.log                 # Performance analysis
 /analyze-logs info test.log --samples       # Log structure overview
 ```
-
-The skill is defined in `.claude/skills/analyze-logs/`.
 
 ## Commands
 

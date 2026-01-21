@@ -142,6 +142,17 @@ See `.env.example` for all available options.
 
 ## Claude Code Integration
 
+### Installation
+
+Install the Claude Code skill to use interactive log analysis in any project:
+
+```bash
+/plugin marketplace add https://github.com/eirenik0/log-analyzer
+/plugin install log-analyzer
+```
+
+### Usage
+
 Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for interactive analysis:
 
 ```bash

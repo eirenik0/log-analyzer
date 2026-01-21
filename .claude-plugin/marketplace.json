@@ -1,0 +1,26 @@
+{
+  "name": "log-analyzer-marketplace",
+  "owner": {
+    "name": "eirenik0"
+  },
+  "metadata": {
+    "description": "Tools for analyzing and comparing Applitools test logs"
+  },
+  "plugins": [
+    {
+      "name": "log-analyzer",
+      "description": "Analyze and compare JSON logs from Applitools testing framework. Find differences, analyze performance, and debug test failures.",
+      "version": "0.1.1",
+      "author": {
+        "name": "eirenik0"
+      },
+      "source": {
+        "source": "github",
+        "repo": "eirenik0/log-analyzer"
+      },
+      "category": "development",
+      "homepage": "https://github.com/eirenik0/log-analyzer",
+      "repository": "https://github.com/eirenik0/log-analyzer"
+    }
+  ]
+}
