@@ -6,7 +6,7 @@ set -e
 
 REPO="eirenik0/log-analyzer"
 BINARY_NAME="log-analyzer"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/bin}"
 
 # Detect OS and architecture
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -48,8 +48,13 @@ case "$OS" in
         EXT="tar.gz"
         ;;
     mingw*|msys*|cygwin*)
-        TARGET="x86_64-pc-windows-msvc"
-        EXT="zip"
+        echo "Native Windows detected. Please use WSL (Windows Subsystem for Linux) instead."
+        echo ""
+        echo "To install WSL, run in PowerShell as Administrator:"
+        echo "  wsl --install"
+        echo ""
+        echo "Then run this script from within WSL."
+        exit 1
         ;;
     *)
         echo "Unsupported OS: $OS"
@@ -88,20 +93,57 @@ elif [ "$EXT" = "zip" ]; then
     unzip -q "archive.$EXT"
 fi
 
+# Create install directory if it doesn't exist
+if [ ! -d "$INSTALL_DIR" ]; then
+    echo "Creating directory $INSTALL_DIR..."
+    mkdir -p "$INSTALL_DIR"
+fi
+
 # Install
 echo ""
 echo "Installing to $INSTALL_DIR..."
-if [ -w "$INSTALL_DIR" ]; then
-    mv "$BINARY_NAME" "$INSTALL_DIR/"
-else
-    echo "Need sudo to install to $INSTALL_DIR"
-    sudo mv "$BINARY_NAME" "$INSTALL_DIR/"
-fi
-
+mv "$BINARY_NAME" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
 echo ""
 echo "Installation complete!"
+
+# Check if INSTALL_DIR is in PATH
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+    echo ""
+    echo "WARNING: $INSTALL_DIR is not in your PATH."
+    echo ""
+    echo "Add it to your shell configuration:"
+    echo ""
+
+    # Detect shell and suggest appropriate config file
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+        zsh)
+            echo "  echo 'export PATH=\"\$HOME/bin:\$PATH\"' >> ~/.zshrc"
+            echo "  source ~/.zshrc"
+            ;;
+        bash)
+            if [ -f "$HOME/.bash_profile" ]; then
+                echo "  echo 'export PATH=\"\$HOME/bin:\$PATH\"' >> ~/.bash_profile"
+                echo "  source ~/.bash_profile"
+            else
+                echo "  echo 'export PATH=\"\$HOME/bin:\$PATH\"' >> ~/.bashrc"
+                echo "  source ~/.bashrc"
+            fi
+            ;;
+        fish)
+            echo "  fish_add_path $INSTALL_DIR"
+            ;;
+        *)
+            echo "  export PATH=\"\$HOME/bin:\$PATH\""
+            echo ""
+            echo "Add this line to your shell's configuration file."
+            ;;
+    esac
+    echo ""
+fi
+
 echo ""
 echo "Verify installation:"
 echo "  $BINARY_NAME --version"

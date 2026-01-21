@@ -51,7 +51,7 @@ if [ "$INSTALL_GLOBAL" = true ]; then
     INSTALL_DIR="$HOME/.claude/skills/$SKILL_NAME"
     echo "Installing globally to: $INSTALL_DIR"
 else
-    INSTALL_DIR="$(pwd)/.claude/skills/$SKILL_NAME"
+    INSTALL_DIR="$REPO_DIR/.claude/skills/$SKILL_NAME"
     echo "Installing to project: $INSTALL_DIR"
 fi
 

@@ -1,334 +1,158 @@
 # Log Analyzer
 
-A command-line tool for analyzing and comparing JSON logs from the Applitools testing framework.
+A CLI tool for analyzing and comparing JSON logs from the Applitools testing framework.
 
-## Overview
+## Installation
 
-This tool helps you extract, filter, and compare structured log data from Applitools log files. It's especially useful for:
-
-- Finding differences between test runs
-- Debugging test failures
-- Analyzing log patterns
-
-## Usage
-
-### Basic Commands
-
-**Compare two log files:**
 ```bash
-log-analyzer compare path/to/first.log path/to/second.log
+# Auto-detect platform and install latest release
+curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/install.sh | bash
+
+# Or build from source
+cargo install --path .
 ```
 
-**Get information about a log file:**
+## Quick Start
+
 ```bash
-log-analyzer info path/to/logfile.log
+# Compare two log files
+log-analyzer compare file1.log file2.log
+
+# Show only differences
+log-analyzer diff file1.log file2.log
+
+# Get log file overview
+log-analyzer info file.log
+
+# Analyze performance bottlenecks
+log-analyzer perf file.log
+
+# Generate LLM-friendly output
+log-analyzer llm file.log
 ```
 
-### Command Aliases and Shortcuts
-
-For convenience, the following command aliases and shortcuts are available:
+## Commands
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `compare` | `cmp` | Compare logs with all options |
-| `diff` | | Compare logs showing only differences (shortcut for `compare --diff-only`) |
-| `process` | `llm` | Generate LLM-friendly JSON output from a single log file |
-| `llm-diff` | | Generate LLM-friendly JSON diff output (shortcut for `compare --diff-only -F json -c`) |
-| `info` | `i`, `inspect` | Display log file information |
-| `perf` | | Analyze operation timing and identify performance bottlenecks |
+| `compare` | `cmp` | Compare two log files |
+| `diff` | | Compare showing only differences |
+| `info` | `i`, `inspect` | Display log file statistics |
+| `perf` | | Analyze operation timing |
+| `process` | `llm` | Generate LLM-friendly JSON output |
+| `llm-diff` | | Generate LLM-friendly diff output |
 
-### Global Options
+## Global Options
 
-The following options can be used with any command:
+| Option | Env Variable | Description |
+|--------|--------------|-------------|
+| `-F, --format <text\|json>` | `LOG_ANALYZER_FORMAT` | Output format |
+| `-c, --compact` | `LOG_ANALYZER_COMPACT` | Compact output mode |
+| `-o, --output <path>` | `LOG_ANALYZER_OUTPUT_FILE` | Output file path |
+| `--color <auto\|always\|never>` | `LOG_ANALYZER_COLOR` | Color output control |
+| `-v, --verbose` | `LOG_ANALYZER_VERBOSE` | Increase verbosity |
+| `-q, --quiet` | `LOG_ANALYZER_QUIET` | Show only errors |
+
+## Filtering Options
+
+Available for `compare`, `diff`, `llm`, `llm-diff`, and `perf` commands:
+
+| Option | Env Variable | Description |
+|--------|--------------|-------------|
+| `-C, --component <name>` | `LOG_ANALYZER_COMPONENT` | Filter by component |
+| `--exclude-component <name>` | `LOG_ANALYZER_EXCLUDE_COMPONENT` | Exclude component |
+| `-l, --level <level>` | `LOG_ANALYZER_LEVEL` | Filter by log level |
+| `--exclude-level <level>` | `LOG_ANALYZER_EXCLUDE_LEVEL` | Exclude log level |
+| `-t, --contains <text>` | `LOG_ANALYZER_CONTAINS` | Filter by text content |
+| `--exclude-text <text>` | `LOG_ANALYZER_EXCLUDE_TEXT` | Exclude by text |
+| `-d, --direction <Incoming\|Outgoing>` | `LOG_ANALYZER_DIRECTION` | Filter by direction |
+| `-s, --sort-by <field>` | `LOG_ANALYZER_SORT_BY` | Sort results |
+
+## Command-Specific Options
+
+### compare / diff
 
 | Option | Description |
 |--------|-------------|
-| `-F, --format <format>` | Output format: `text` (default) or `json` |
-| `-c, --compact` | Use compact mode for output (shorter keys, optimized structure) |
-| `-o, --output <path>` | Path to output file for the results |
-| `--color <mode>` | Control color output: `auto` (default), `always`, or `never` |
-| `-v, --verbose` | Increase output verbosity (can be used multiple times) |
-| `-q, --quiet` | Suppress all output except errors |
+| `-D, --diff-only` | Show only differences (always on for `diff`) |
+| `-f, --full` | Show full JSON objects |
 
-### Compare Options
+Sort options: `time`, `component`, `level`, `type`, `diffcount`
 
-The `compare` command supports several options to fine-tune your analysis:
+### info
 
 | Option | Description |
 |--------|-------------|
-| `-C, --component <name>` | Filter logs by component (e.g., "core-universal", "socket") |
-| `--exclude-component <name>` | Exclude logs with specific component |
-| `-l, --level <level>` | Filter logs by log level (e.g., "INFO", "ERROR") |
-| `--exclude-level <level>` | Exclude logs with specific level (e.g., "DEBUG") |
-| `-t, --contains <text>` | Filter logs containing specific text |
-| `--exclude-text <text>` | Exclude logs containing specific text |
-| `-d, --direction <direction>` | Filter logs by communication direction (Incoming/Outgoing) |
-| `-D, --diff-only` | Show only differences, skip matching objects |
-| `-f, --full` | Show full JSON objects, not just the differences |
-| `-s, --sort-by <field>` | Sort results by: `time` (default), `component`, `level`, `type`, or `diffcount` |
+| `-s, --samples` | Show sample messages per component |
+| `-j, --json-schema` | Display JSON schema information |
+| `-p, --payloads` | Show payload statistics |
+| `-t, --timeline` | Show timeline analysis |
 
-### Examples
+### perf
 
-**Compare logs from two test runs showing only differences:**
+| Option | Description |
+|--------|-------------|
+| `--threshold-ms <ms>` | Slow operation threshold (default: 1000) |
+| `--top-n <number>` | Number of slowest operations (default: 20) |
+| `--orphans-only` | Show only unfinished operations |
+| `--op-type <Request\|Event\|Command>` | Filter by operation type |
+
+Sort options: `duration`, `count`, `name`
+
+### llm / llm-diff
+
+| Option | Description |
+|--------|-------------|
+| `--limit <number>` | Max entries (default: 100, 0 = unlimited) |
+| `--no-sanitize` | Disable sensitive field hiding |
+
+## Examples
+
 ```bash
-log-analyzer compare universal-1.log universal-2.log -D
+# Compare logs filtering by component and level
+log-analyzer compare file1.log file2.log -C core-universal -l ERROR
+
+# Save JSON diff to file
+log-analyzer -F json -o diff.json diff file1.log file2.log
+
+# Show operations slower than 500ms
+log-analyzer perf file.log --threshold-ms 500
+
+# Comprehensive log analysis
+log-analyzer info file.log --samples --timeline --payloads
+
+# LLM-friendly diff with custom limit
+log-analyzer llm-diff file1.log file2.log --limit 50
 ```
 
-**Compare logs filtering by component and level:**
-```bash
-log-analyzer compare universal-1.log universal-2.log -C core-universal -l ERROR
-```
+## Environment Configuration
 
-**Save comparison results to a file:**
-```bash
-log-analyzer -o diff.log compare universal-1.log universal-2.log
-```
+Set defaults via environment variables or `.env` file:
 
-**Filter logs by direction and output as JSON:**
 ```bash
-log-analyzer -F json compare universal-1.log universal-2.log -d Outgoing
-```
-
-**Use compact mode with JSON output:**
-```bash
-log-analyzer -F json -c compare universal-1.log universal-2.log
-```
-
-**Sort results by component and exclude DEBUG level logs:**
-```bash
-log-analyzer compare universal-1.log universal-2.log -s component --exclude-level DEBUG
-```
-
-**Use environment variables for common settings:**
-```bash
-# Set in .env file or export in shell
 export LOG_ANALYZER_FORMAT=json
 export LOG_ANALYZER_EXCLUDE_LEVEL=DEBUG
-log-analyzer compare universal-1.log universal-2.log
+export LOG_ANALYZER_COMPACT=true
 ```
 
-**Use diff command with increased verbosity:**
+See `.env.example` for all available options.
+
+## Claude Code Integration
+
+Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for interactive analysis:
+
 ```bash
-log-analyzer diff universal-1.log universal-2.log -v -s diffcount
-```
-
-**The diff command is a shortcut for compare with --diff-only:**
-```bash
-# These commands are equivalent:
-log-analyzer diff universal-1.log universal-2.log
-log-analyzer compare universal-1.log universal-2.log -D
-```
-
-**Use the llm command to process a single log file for LLM consumption:**
-```bash
-# Generate compact JSON output from a single log file:
-log-analyzer llm universal-1.log > processed.json
-
-# Limit output to 50 entries:
-log-analyzer llm universal-1.log --limit 50
-```
-
-**Use the llm-diff command for machine-readable diff output:**
-```bash
-# Generate compact JSON diff for LLM consumption:
-log-analyzer llm-diff universal-1.log universal-2.log > diff.json
-
-# Equivalent to:
-log-analyzer compare universal-1.log universal-2.log -D -F json -c > diff.json
-```
-
-**Analyze performance and identify slow operations:**
-```bash
-# Show top 20 slowest operations:
-log-analyzer perf universal-1.log
-
-# Show operations slower than 500ms:
-log-analyzer perf universal-1.log --threshold-ms 500
-
-# Show only orphan operations (started but never finished):
-log-analyzer perf universal-1.log --orphans-only
-
-# Filter by operation type:
-log-analyzer perf universal-1.log --op-type Request
+/analyze-logs diff file1.log file2.log          # Compare and explain differences
+/analyze-logs perf test.log --threshold-ms 500  # Find performance bottlenecks
+/analyze-logs info test.log --samples           # Log structure overview
+/analyze-logs llm test.log                      # Generate LLM-friendly output
 ```
 
 ## Features
 
-- **Structured log parsing**: Automatically extracts and parses JSON payloads
-- **Intelligent comparison**: Semantically compares JSON objects, regardless of property order
-- **Advanced filtering**: Include/exclude logs by component, level, content, or direction
-- **Log categorization**: Automatically categorizes logs into events, commands, and requests
-- **Performance analysis**: Identify slow operations, orphan operations, and timing bottlenecks
-- **LLM-friendly output**: Sanitized, compact JSON output optimized for LLM consumption
-- **Multiple output formats**: Choose between human-readable text or JSON for programmatic processing
-- **Detailed output**: Clear, readable comparison output with highlighting for differences
-- **Flexible output options**: Save results to a file, use compact mode for more concise output
-- **Optimized CLI**: Well-organized command structure with aliases and global options
-- **Environment configuration**: Set defaults via environment variables or `.env` file
-- **Output customization**: Control colors, verbosity, and sorting for better analysis
-
-## CLI Enhancements
-
-This tool includes several advanced CLI features to improve usability:
-
-### Command Shortcuts and Aliases
-
-- **Command aliases**: Use shorthand commands like `cmp` for `compare` and `i` for `info`
-- **Specialized commands**: Built-in shortcut commands that combine commonly-used options:
-  - `diff` command: Automatically shows only differences (equivalent to `compare --diff-only`)
-  - `llm` command: Process a single log file with sanitized, compact JSON output
-  - `llm-diff` command: Optimized for LLM consumption (equivalent to `compare --diff-only -F json -c`)
-  - `perf` command: Analyze operation timing and identify performance bottlenecks
-
-### Advanced Filtering
-
-- **Include filters**: Filter logs by component, level, or text content
-- **Exclude filters**: Skip logs with specified component, level, or text
-- **Directional filtering**: Filter by communication direction (incoming or outgoing)
-- **Combined filtering**: Mix and match filters for precise log selection
-
-### Output Control
-
-- **Format selection**: Choose between human-readable text or JSON output
-- **Compact mode**: More concise output with shortened keys for space efficiency
-- **Color control**: Configure when colors are used (`auto`, `always`, or `never`)
-- **Verbosity levels**: Control detail level from quiet (errors only) to verbose (all details)
-- **Custom sorting**: Sort results by time, component, level, type, or difference count
-
-### Environment Configuration
-
-- **Environment variables**: Configure options via environment variables (prefixed with `LOG_ANALYZER_`)
-- **.env support**: Store common configurations in a `.env` file for persistence
-- **Example configuration**: See `.env.example` for available environment options
-
-## Complete Command Reference
-
-### Global Options
-
-| Option | Environment Variable | Description |
-|--------|---------------------|-------------|
-| `-F, --format <text\|json>` | `LOG_ANALYZER_FORMAT` | Output format (text or JSON) |
-| `-c, --compact` | `LOG_ANALYZER_COMPACT` | Use compact mode for output |
-| `-o, --output <path>` | `LOG_ANALYZER_OUTPUT_FILE` | Path to output file for results |
-| `--color <auto\|always\|never>` | `LOG_ANALYZER_COLOR` | Control color output |
-| `-v, --verbose` | `LOG_ANALYZER_VERBOSE` | Increase verbosity (can be used multiple times) |
-| `-q, --quiet` | `LOG_ANALYZER_QUIET` | Be quiet, show only errors |
-
-### Commands
-
-#### `compare` (aliases: `cmp`)
-Compare two log files with all options
-
-```bash
-log-analyzer compare [OPTIONS] <FILE1> <FILE2>
-```
-
-| Option | Environment Variable | Description |
-|--------|---------------------|-------------|
-| `-C, --component <name>` | `LOG_ANALYZER_COMPONENT` | Filter logs by component |
-| `--exclude-component <name>` | `LOG_ANALYZER_EXCLUDE_COMPONENT` | Exclude logs with specific component |
-| `-l, --level <level>` | `LOG_ANALYZER_LEVEL` | Filter logs by level |
-| `--exclude-level <level>` | `LOG_ANALYZER_EXCLUDE_LEVEL` | Exclude logs with specific level |
-| `-t, --contains <text>` | `LOG_ANALYZER_CONTAINS` | Filter logs containing specific text |
-| `--exclude-text <text>` | `LOG_ANALYZER_EXCLUDE_TEXT` | Exclude logs containing specific text |
-| `-d, --direction <Incoming\|Outgoing>` | `LOG_ANALYZER_DIRECTION` | Filter logs by direction |
-| `-D, --diff-only` | | Show only differences, skip matching objects |
-| `-f, --full` | | Show full JSON objects, not just differences |
-| `-s, --sort-by <field>` | `LOG_ANALYZER_SORT_BY` | Sort by: time, component, level, type, diffcount |
-
-#### `diff`
-Compare logs showing only differences (shortcut for `compare --diff-only`)
-
-```bash
-log-analyzer diff [OPTIONS] <FILE1> <FILE2>
-```
-
-Supports all options as `compare` except `--diff-only` which is always enabled.
-
-#### `process` (aliases: `llm`)
-Generate LLM-friendly compact JSON output from a single log file with sanitized content
-
-```bash
-log-analyzer llm [OPTIONS] <FILE>
-```
-
-| Option | Description |
-|--------|-------------|
-| `-C, --component <name>` | Filter logs by component |
-| `--exclude-component <name>` | Exclude logs with specific component |
-| `-l, --level <level>` | Filter logs by level |
-| `--exclude-level <level>` | Exclude logs with specific level |
-| `-t, --contains <text>` | Filter logs containing specific text |
-| `--exclude-text <text>` | Exclude logs containing specific text |
-| `-d, --direction <Incoming\|Outgoing>` | Filter logs by direction |
-| `-s, --sort-by <field>` | Sort by: time, component, level, type |
-| `--limit <number>` | Maximum number of log entries (default: 100, 0 = unlimited) |
-| `--no-sanitize` | Disable hiding of sensitive fields (sanitization enabled by default) |
-
-#### `llm-diff`
-Generate LLM-friendly compact JSON output of differences (shortcut for `compare --diff-only -F json -c`)
-
-```bash
-log-analyzer llm-diff [OPTIONS] <FILE1> <FILE2>
-```
-
-Supports filtering options from `compare` but always uses JSON format, compact mode, and shows only differences.
-Also supports `--no-sanitize` to disable hiding of sensitive fields.
-
-#### `perf`
-Analyze operation timing and identify performance bottlenecks
-
-```bash
-log-analyzer perf [OPTIONS] <FILE>
-```
-
-| Option | Description |
-|--------|-------------|
-| `-C, --component <name>` | Filter logs by component |
-| `--exclude-component <name>` | Exclude logs with specific component |
-| `-l, --level <level>` | Filter logs by level |
-| `--exclude-level <level>` | Exclude logs with specific level |
-| `-t, --contains <text>` | Filter logs containing specific text |
-| `--exclude-text <text>` | Exclude logs containing specific text |
-| `-d, --direction <Incoming\|Outgoing>` | Filter logs by direction |
-| `--threshold-ms <ms>` | Duration threshold for highlighting slow operations (default: 1000) |
-| `--top-n <number>` | Number of slowest operations to display (default: 20) |
-| `--orphans-only` | Show only orphan operations (started but never finished) |
-| `--op-type <Request\|Event\|Command>` | Filter by operation type |
-| `-s, --sort-by <field>` | Sort by: duration (default), count, name |
-
-#### `info` (aliases: `i`, `inspect`)
-List all components, event types, log levels, and detailed statistics in a log file
-
-```bash
-log-analyzer info [OPTIONS] <FILE>
-```
-
-| Option | Description |
-|--------|-------------|
-| `-s, --samples` | Show sample log messages for each component |
-| `-j, --json-schema` | Display detailed JSON schema information for event payloads |
-| `-C, --component <n>` | Filter logs by component |
-| `-l, --level <level>` | Filter logs by log level |
-| `-p, --payloads` | Show payload statistics for each event/command/request type |
-| `-t, --timeline` | Show detailed timeline analysis with event distribution |
-
-The enhanced `info` command provides deep insights into log structure and content:
-
-```bash
-# Show sample log messages for each component
-log-analyzer info --samples universal-1.log
-
-# Display detailed timeline analysis with event distribution
-log-analyzer info --timeline universal-1.log
-
-# Show JSON schema information and payload statistics
-log-analyzer info --json-schema --payloads universal-1.log
-
-# Filter to analyze only specific component
-log-analyzer info --component core-ufg --timeline universal-1.log
-
-# Comprehensive analysis with all options
-log-analyzer info --samples --json-schema --payloads --timeline universal-1.log
-```
-
+- **Structured parsing** - Extracts and parses JSON payloads automatically
+- **Semantic comparison** - Compares JSON objects regardless of property order
+- **Advanced filtering** - Include/exclude by component, level, content, or direction
+- **Performance analysis** - Identify slow and orphan operations
+- **LLM-friendly output** - Sanitized, compact JSON for AI consumption
+- **Flexible output** - Text or JSON format with color and verbosity control

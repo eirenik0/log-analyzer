@@ -4,24 +4,38 @@ Complete documentation of all log-analyzer commands and options.
 
 ## Installation
 
-### From Release Binary
+### Using Installation Script (Recommended)
 
-Download the appropriate binary for your platform from GitHub Releases:
+The easiest way to install log-analyzer is using the installation script, which auto-detects your platform and downloads the appropriate binary:
+
+```bash
+./scripts/install.sh
+```
+
+This will:
+- Detect your OS and architecture automatically
+- Download the latest release binary
+- Install to `~/bin/log-analyzer` by default
+- Provide instructions for adding to PATH if needed
+
+### Manual Download from Release Binary
+
+Download the appropriate binary for your platform from [GitHub Releases](https://github.com/eirenik0/log-analyzer/releases):
 
 ```bash
 # macOS (Apple Silicon)
-curl -LO https://github.com/anthropics/log-analyzer/releases/latest/download/log-analyzer-VERSION-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/eirenik0/log-analyzer/releases/latest/download/log-analyzer-VERSION-aarch64-apple-darwin.tar.gz
 tar xzf log-analyzer-*.tar.gz
 sudo mv log-analyzer /usr/local/bin/
 
 # macOS (Intel)
-curl -LO https://github.com/anthropics/log-analyzer/releases/latest/download/log-analyzer-VERSION-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/eirenik0/log-analyzer/releases/latest/download/log-analyzer-VERSION-x86_64-apple-darwin.tar.gz
 
 # Linux (x86_64)
-curl -LO https://github.com/anthropics/log-analyzer/releases/latest/download/log-analyzer-VERSION-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/eirenik0/log-analyzer/releases/latest/download/log-analyzer-VERSION-x86_64-unknown-linux-gnu.tar.gz
 
 # Linux (musl/Alpine)
-curl -LO https://github.com/anthropics/log-analyzer/releases/latest/download/log-analyzer-VERSION-x86_64-unknown-linux-musl.tar.gz
+curl -LO https://github.com/eirenik0/log-analyzer/releases/latest/download/log-analyzer-VERSION-x86_64-unknown-linux-musl.tar.gz
 ```
 
 ### From Source

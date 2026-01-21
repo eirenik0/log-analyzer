@@ -245,14 +245,18 @@ git commit -m "feat(parser): improve JSON detection"
 
 ### Changeset Files
 
-For more detailed change documentation, create changeset files:
+For detailed change documentation, use the interactive command:
 
 ```bash
-# Create a new changeset interactively
 knope document-change
 ```
 
-This creates a markdown file in `.changeset/` directory that will be included in the next release.
+This prompts for version bump type (`patch`/`minor`/`major`) and change description, then creates a properly formatted file in `.changeset/`.
+
+**Format notes** (if editing manually):
+- Frontmatter: `default: patch` (or `minor`/`major`)
+- Body: Plain text or simple bullet list (no headers like `### Fixed`)
+- Body content is appended directly to CHANGELOG.md
 
 ### Local Knope Commands
 

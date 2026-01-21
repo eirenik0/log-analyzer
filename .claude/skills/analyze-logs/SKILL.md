@@ -25,12 +25,26 @@ See [reference.md](reference.md) for complete command documentation.
 
 ## Quick Start
 
-First, ensure the tool is built:
+### Installation
+
+Install the latest release binary (recommended):
+```bash
+./scripts/install.sh
+```
+
+Or build from source:
 ```bash
 cargo build --release
 ```
 
-Then run analysis:
+### Running Commands
+
+If installed via `scripts/install.sh`:
+```bash
+log-analyzer <command> [options]
+```
+
+If built from source:
 ```bash
 ./target/release/log-analyzer <command> [options]
 ```
@@ -44,23 +58,39 @@ cargo run -- <command> [options]
 
 When the user invokes this skill:
 
-1. **Parse the request** to determine:
+1. **Check if log-analyzer is available**:
+   ```bash
+   # Check if binary is installed
+   command -v log-analyzer || which log-analyzer || [ -f ./target/release/log-analyzer ]
+   ```
+
+   If not available, inform the user:
+   ```
+   The log-analyzer tool is not installed. Install it with:
+     ./scripts/install.sh
+
+   Or build from source:
+     cargo build --release
+   ```
+
+2. **Parse the request** to determine:
    - Which command is needed (diff, compare, info, perf, llm)
    - Which log files to analyze
    - Any filtering options (component, level, text)
 
-2. **Find log files** if not specified:
+3. **Find log files** if not specified:
    ```bash
    # Look for .log files in the project
    find . -name "*.log" -type f 2>/dev/null | head -10
    ```
 
-3. **Build the command** with appropriate options:
+4. **Build the command** with appropriate options:
+   - Use `log-analyzer` if installed, otherwise `./target/release/log-analyzer` or `cargo run --`
    - For debugging failures: use `diff` with `--diff-only`
    - For performance issues: use `perf` with appropriate threshold
    - For understanding logs: use `info` with `--samples --payloads`
 
-4. **Execute and interpret**:
+5. **Execute and interpret**:
    - Run the log-analyzer command
    - Summarize key findings in plain language
    - Highlight actionable items (errors, slow operations, differences)
@@ -71,43 +101,43 @@ When the user invokes this skill:
 ### Debug Test Failure
 ```bash
 # Quick diff to see what changed
-./target/release/log-analyzer diff passing.log failing.log
+log-analyzer diff passing.log failing.log
 
 # Focus on errors only
-./target/release/log-analyzer diff passing.log failing.log -l ERROR
+log-analyzer diff passing.log failing.log -l ERROR
 
 # Focus on specific component
-./target/release/log-analyzer diff passing.log failing.log -C core-universal
+log-analyzer diff passing.log failing.log -C core-universal
 ```
 
 ### Performance Investigation
 ```bash
 # Find operations taking > 2 seconds
-./target/release/log-analyzer perf test.log --threshold-ms 2000
+log-analyzer perf test.log --threshold-ms 2000
 
 # Find orphan operations (started but never finished)
-./target/release/log-analyzer perf test.log --orphans-only
+log-analyzer perf test.log --orphans-only
 
 # Focus on requests only
-./target/release/log-analyzer perf test.log --op-type Request --top-n 30
+log-analyzer perf test.log --op-type Request --top-n 30
 ```
 
 ### Log Exploration
 ```bash
 # Full overview with samples
-./target/release/log-analyzer info test.log --samples --payloads --timeline
+log-analyzer info test.log --samples --payloads --timeline
 
 # JSON output for further processing
-./target/release/log-analyzer info test.log -F json
+log-analyzer info test.log -F json
 ```
 
 ### Prepare for LLM Analysis
 ```bash
 # Sanitized, compact output
-./target/release/log-analyzer llm test.log --limit 100 -o context.json
+log-analyzer llm test.log --limit 100 -o context.json
 
 # Diff for LLM
-./target/release/log-analyzer llm-diff file1.log file2.log -o diff.json
+log-analyzer llm-diff file1.log file2.log -o diff.json
 ```
 
 ## Filtering Options
