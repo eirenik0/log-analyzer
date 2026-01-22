@@ -3,6 +3,7 @@ use crate::comparator::ComparisonResults;
 use crate::comparator::format_cmp::OutputFormatter;
 use crate::comparator::format_cmp::format_comparison_results;
 use colored::Colorize;
+use comfy_table::Table;
 use std::io;
 
 // Helper function to determine if we should print based on verbosity level
@@ -73,6 +74,11 @@ impl OutputFormatter for ConsoleFormatter {
 
     fn write_info(&mut self, text: &str) -> io::Result<()> {
         println!("{}", text.bright_white().bold());
+        Ok(())
+    }
+
+    fn write_table(&mut self, table: &Table) -> io::Result<()> {
+        println!("{table}");
         Ok(())
     }
 }

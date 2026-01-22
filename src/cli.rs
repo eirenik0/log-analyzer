@@ -67,6 +67,16 @@ pub struct Cli {
     #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text, global = true, group = "output_options", env = "FORMAT")]
     pub format: OutputFormat,
 
+    /// JSON output (LLM-friendly, implies --compact). Shorthand for -F json -c
+    #[arg(
+        long,
+        global = true,
+        group = "output_options",
+        conflicts_with = "format",
+        env = "JSON"
+    )]
+    pub json: bool,
+
     /// Use compact mode for output (shorter keys, optimized structure)
     #[arg(
         short = 'c',
@@ -76,6 +86,10 @@ pub struct Cli {
         env = "COMPACT"
     )]
     pub compact: bool,
+
+    /// Filter expression (e.g., "component:core level:ERROR !text:timeout")
+    #[arg(long, global = true, env = "FILTER")]
+    pub filter: Option<String>,
 
     /// Path to output file for results
     #[arg(short, long, global = true, env = "OUTPUT_FILE")]
@@ -418,6 +432,22 @@ pub enum Commands {
         #[arg(short = 's', long, value_enum, default_value_t = PerfSortOrder::Duration)]
         sort_by: PerfSortOrder,
     },
+}
+
+impl Cli {
+    /// Get the effective output format (handles -j shorthand)
+    pub fn effective_format(&self) -> OutputFormat {
+        if self.json {
+            OutputFormat::Json
+        } else {
+            self.format
+        }
+    }
+
+    /// Get the effective compact mode (handles -j shorthand)
+    pub fn effective_compact(&self) -> bool {
+        self.json || self.compact
+    }
 }
 
 pub fn cli_parse() -> Cli {

@@ -2,6 +2,7 @@ use crate::ComparisonOptions;
 use crate::comparator::ComparisonResults;
 use crate::comparator::format_cmp::OutputFormatter;
 use crate::comparator::format_cmp::format_comparison_results;
+use comfy_table::Table;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
@@ -63,6 +64,10 @@ impl OutputFormatter for FileFormatter {
 
     fn write_info(&mut self, text: &str) -> io::Result<()> {
         writeln!(self.file, "[INFO] {}", text)
+    }
+
+    fn write_table(&mut self, table: &Table) -> io::Result<()> {
+        writeln!(self.file, "{table}")
     }
 }
 

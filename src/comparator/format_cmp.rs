@@ -1,4 +1,5 @@
 use crate::comparator::{ComparisonOptions, ComparisonResults, JsonDifference, LogComparison};
+use comfy_table::{Attribute, Cell, ContentArrangement, Table};
 use std::collections::HashMap;
 
 /// Output formatter trait that abstracts over console and file output
@@ -10,11 +11,28 @@ pub trait OutputFormatter {
     fn write_source_file2(&mut self, text: &str) -> std::io::Result<()>;
     fn write_highlight(&mut self, text: &str) -> std::io::Result<()>;
     fn write_label(&mut self, text: &str) -> std::io::Result<()>;
-    // New methods for improved formatting
+    // Semantic formatting methods
     fn write_success(&mut self, text: &str) -> std::io::Result<()>;
     fn write_warning(&mut self, text: &str) -> std::io::Result<()>;
     fn write_error(&mut self, text: &str) -> std::io::Result<()>;
     fn write_info(&mut self, text: &str) -> std::io::Result<()>;
+    // Table support
+    fn write_table(&mut self, table: &Table) -> std::io::Result<()>;
+}
+
+/// Creates a styled table with consistent formatting
+pub fn create_styled_table(headers: &[&str]) -> Table {
+    let mut table = Table::new();
+    table
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_width(120)
+        .set_header(
+            headers
+                .iter()
+                .map(|h| Cell::new(*h).add_attribute(Attribute::Bold))
+                .collect::<Vec<_>>(),
+        );
+    table
 }
 
 /// Formats comparison results using the provided formatter
@@ -117,7 +135,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
     let mut has_differences = false;
     for comparisons in grouped_comparisons.values() {
         for comparison in comparisons.iter() {
-            if !comparison.json_differences.is_empty() || comparison.text_difference.is_some() {
+            if !comparison.json_differences.is_empty() || comparison.text1.is_some() {
                 has_differences = true;
                 break;
             }
@@ -139,7 +157,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
             // Skip this key if there are no differences and diff_only is set
             if options.diff_only {
                 let has_key_differences = comparisons.iter().any(|comparison| {
-                    !comparison.json_differences.is_empty() || comparison.text_difference.is_some()
+                    !comparison.json_differences.is_empty() || comparison.text1.is_some()
                 });
                 if !has_key_differences {
                     continue;
@@ -184,17 +202,19 @@ pub fn format_comparison_results<F: OutputFormatter>(
                 // Skip if there are no differences and diff_only is set
                 if options.diff_only
                     && comparison.json_differences.is_empty()
-                    && comparison.text_difference.is_none()
+                    && comparison.text1.is_none()
                 {
                     continue;
                 }
 
                 formatter.write_line(&format!(
-                    "\n{}/{}. FILE1 #{} ↔ FILE2 #{}",
+                    "\n{}/{}. FILE1 #{} (line {}) ↔ FILE2 #{} (line {})",
                     idx + 1,
                     comparisons.len(),
                     comparison.log1_index,
-                    comparison.log2_index
+                    comparison.log1_line_number,
+                    comparison.log2_index,
+                    comparison.log2_line_number
                 ))?;
 
                 if options.show_full_json {
@@ -203,9 +223,14 @@ pub fn format_comparison_results<F: OutputFormatter>(
                     format_json_differences(formatter, comparison)?;
                 }
 
-                if let Some(text_diff) = &comparison.text_difference {
+                if comparison.text1.is_some() || comparison.text2.is_some() {
                     formatter.write_label("  TEXT DIFFERENCES:")?;
-                    formatter.write_line(text_diff)?;
+                    if let Some(text1) = &comparison.text1 {
+                        formatter.write_source_file1(&format!("    File 1: {}", text1))?;
+                    }
+                    if let Some(text2) = &comparison.text2 {
+                        formatter.write_source_file2(&format!("    File 2: {}", text2))?;
+                    }
                 }
 
                 // Add separator between comparisons
@@ -298,8 +323,20 @@ pub fn format_json_differences<F: OutputFormatter>(
                 value2_str.clone()
             };
 
+            // Determine change type indicator
+            let change_indicator = match diff.change_type {
+                crate::comparator::ChangeType::Added => "+",
+                crate::comparator::ChangeType::Removed => "-",
+                crate::comparator::ChangeType::Modified => "~",
+            };
+
             // Improved formatting for differences
-            formatter.write_line(&format!("    [D:{}] {} :", diff_idx + 1, path_display))?;
+            formatter.write_line(&format!(
+                "    [D:{}] [{}] {} :",
+                diff_idx + 1,
+                change_indicator,
+                path_display
+            ))?;
             formatter.write_source_file1(&format!(
                 "      {}{}",
                 value1_display,
