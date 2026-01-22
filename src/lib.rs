@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod comparator;
+pub mod filter;
 pub mod llm_processor;
 pub mod parser;
 pub mod perf_analyzer;
@@ -86,8 +87,8 @@ fn handle_compare(params: CompareParams) -> Result<(), Box<dyn std::error::Error
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
-    let format = cli.format;
-    let compact = cli.compact;
+    let format = cli.effective_format();
+    let compact = cli.effective_compact();
     let output = &cli.output;
     let color_mode = cli.color;
     let verbose = cli.verbose;
