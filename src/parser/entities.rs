@@ -90,6 +90,8 @@ pub struct LogEntry {
     pub raw_logline: String,
     /// Specific variant of the log entry
     pub kind: LogEntryKind,
+    /// Source line number in the original file (1-indexed)
+    pub source_line_number: usize,
 }
 
 impl LogEntry {
@@ -164,6 +166,7 @@ pub struct LogEntryBase {
     pub level: String,
     pub message: String,
     pub raw_logline: String,
+    pub source_line_number: usize,
 }
 
 pub struct EventLogParams {
@@ -202,6 +205,7 @@ pub fn create_event_log(params: EventLogParams) -> LogEntry {
             direction: params.direction,
             payload: params.payload,
         },
+        source_line_number: params.base.source_line_number,
     }
 }
 
@@ -217,6 +221,7 @@ pub fn create_command_log(params: CommandLogParams) -> LogEntry {
             command: params.command,
             settings: params.settings,
         },
+        source_line_number: params.base.source_line_number,
     }
 }
 
@@ -235,6 +240,7 @@ pub fn create_request_log(params: RequestLogParams) -> LogEntry {
             direction: params.direction,
             payload: params.payload,
         },
+        source_line_number: params.base.source_line_number,
     }
 }
 
@@ -246,6 +252,7 @@ pub fn create_generic_log(
     message: String,
     raw_logline: String,
     payload: Option<Value>,
+    source_line_number: usize,
 ) -> LogEntry {
     LogEntry {
         component,
@@ -255,5 +262,6 @@ pub fn create_generic_log(
         message,
         raw_logline,
         kind: LogEntryKind::Generic { payload },
+        source_line_number,
     }
 }

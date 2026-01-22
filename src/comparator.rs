@@ -11,7 +11,7 @@ pub use console_cmp::display_comparison_results;
 pub use console_summary::display_log_summary;
 pub use entities::*;
 pub use file_cmp::write_comparison_results;
-pub use format_cmp::*;
+pub use format_cmp::{OutputFormatter, create_styled_table, format_comparison_results, format_json_differences, format_full_json_comparison};
 pub use helpers::*;
 pub use json_cmp::generate_json_output;
 
@@ -112,11 +112,12 @@ pub fn compare_logs(
 
                     // Only process if there are differences or if we're not in diff_only mode
                     if !json_diffs.is_empty() || !options.diff_only {
-                        let text_diff = if !json_diffs.is_empty() && log1.message != log2.message {
-                            Some(compute_text_diff(&log1.message, &log2.message))
-                        } else {
-                            None
-                        };
+                        let (text1, text2) =
+                            if !json_diffs.is_empty() && log1.message != log2.message {
+                                (Some(log1.message.clone()), Some(log2.message.clone()))
+                            } else {
+                                (None, None)
+                            };
 
                         shared_comparisons.push(LogComparison {
                             key: key.clone(),
@@ -124,13 +125,20 @@ pub fn compare_logs(
                             log2_index: idx2,
                             json_differences: json_diffs
                                 .into_iter()
-                                .map(|(path, val1, val2)| JsonDifference {
-                                    path,
-                                    value1: val1,
-                                    value2: val2,
+                                .map(|(path, val1, val2)| {
+                                    let change_type = determine_change_type(&val1, &val2);
+                                    JsonDifference {
+                                        path,
+                                        value1: val1,
+                                        value2: val2,
+                                        change_type,
+                                    }
                                 })
                                 .collect(),
-                            text_difference: text_diff,
+                            text1,
+                            text2,
+                            log1_line_number: log1.source_line_number,
+                            log2_line_number: log2.source_line_number,
                         });
                     }
                 }
@@ -289,5 +297,14 @@ fn compare_object_arrays(
             let current_path = format!("{}[{}]", path, i);
             compare_json_recursive(&arr1[i], &arr2[j], current_path, differences);
         }
+    }
+}
+
+/// Determines the type of change based on the two values
+fn determine_change_type(val1: &Value, val2: &Value) -> ChangeType {
+    match (val1.is_null(), val2.is_null()) {
+        (true, false) => ChangeType::Added,
+        (false, true) => ChangeType::Removed,
+        _ => ChangeType::Modified,
     }
 }

@@ -163,7 +163,7 @@ impl JsonFormatter {
             // Filter out comparisons without differences if diff_only is set
             if options.diff_only
                 && comparison.json_differences.is_empty()
-                && comparison.text_difference.is_none()
+                && comparison.text1.is_none()
             {
                 continue;
             }
@@ -227,7 +227,10 @@ impl JsonFormatter {
                 json!({
                     "log1_index": comparison.log1_index,
                     "log2_index": comparison.log2_index,
-                    "text_difference": comparison.text_difference,
+                    "text1": comparison.text1,
+                    "text2": comparison.text2,
+                    "log1_line": comparison.log1_line_number,
+                    "log2_line": comparison.log2_line_number,
                     "diff_count": comparison.json_differences.len()
                 })
             })
@@ -361,7 +364,7 @@ impl JsonFormatter {
             // Filter out comparisons without differences if diff_only is set
             if options.diff_only
                 && comparison.json_differences.is_empty()
-                && comparison.text_difference.is_none()
+                && comparison.text1.is_none()
             {
                 continue;
             }
@@ -414,7 +417,10 @@ impl JsonFormatter {
                     "log1_index": comparison.log1_index,
                     "log2_index": comparison.log2_index,
                     "json_differences": diffs,
-                    "text_difference": comparison.text_difference,
+                    "text1": comparison.text1,
+                    "text2": comparison.text2,
+                    "log1_line": comparison.log1_line_number,
+                    "log2_line": comparison.log2_line_number,
                     "diff_count": comparison.json_differences.len()
                 })
             })
@@ -431,10 +437,16 @@ impl JsonFormatter {
         let diffs: Vec<Value> = differences
             .iter()
             .map(|diff| {
+                let change_type_str = match diff.change_type {
+                    crate::comparator::ChangeType::Added => "added",
+                    crate::comparator::ChangeType::Removed => "removed",
+                    crate::comparator::ChangeType::Modified => "modified",
+                };
                 json!({
                     "path": diff.path,
                     "value1": diff.value1,
-                    "value2": diff.value2
+                    "value2": diff.value2,
+                    "change_type": change_type_str
                 })
             })
             .collect();
@@ -506,7 +518,7 @@ impl JsonFormatter {
             // Filter out comparisons without differences if diff_only is set
             if options.diff_only
                 && comparison.json_differences.is_empty()
-                && comparison.text_difference.is_none()
+                && comparison.text1.is_none()
             {
                 continue;
             }
@@ -564,7 +576,10 @@ impl JsonFormatter {
                 json!({
                     "l1": comparison.log1_index, // log1_index
                     "l2": comparison.log2_index, // log2_index
-                    "td": comparison.text_difference, // text_difference
+                    "t1": comparison.text1,  // text1
+                    "t2": comparison.text2,  // text2
+                    "ln1": comparison.log1_line_number, // log1_line_number
+                    "ln2": comparison.log2_line_number, // log2_line_number
                     "dc": comparison.json_differences.len() // diff_count
                 })
             })

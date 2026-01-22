@@ -33,15 +33,18 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
     let mut logs = Vec::new();
 
     let mut current_log: Option<String> = None;
+    let mut current_line_number: usize = 0;
+    let mut line_number: usize = 0;
 
     for line in reader.lines() {
+        line_number += 1;
         let line = line?;
 
         // Check if this is a new log entry (contains the separator " | ")
         if line.contains(" | ") {
             // Save the previous log entry if it exists
             if let Some(log_text) = current_log.take() {
-                match parse_log_entry(&log_text) {
+                match parse_log_entry(&log_text, current_line_number) {
                     Ok(entry) => logs.push(entry),
                     Err(ParseError::InvalidLogFormat(_)) => {
                         // Skip invalid logs but don't stop processing
@@ -53,6 +56,7 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
 
             // Start a new log entry
             current_log = Some(line);
+            current_line_number = line_number;
         } else if let Some(ref mut log_text) = current_log {
             // Continue the current log entry
             log_text.push('\n');
@@ -62,7 +66,7 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
 
     // Add the last log entry
     if let Some(log_text) = current_log
-        && let Ok(entry) = parse_log_entry(&log_text)
+        && let Ok(entry) = parse_log_entry(&log_text, current_line_number)
     {
         logs.push(entry);
     }
@@ -71,7 +75,7 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
 }
 
 /// Parses a single log entry string into a LogEntry struct
-pub fn parse_log_entry(log_text: &str) -> Result<LogEntry, ParseError> {
+pub fn parse_log_entry(log_text: &str, source_line_number: usize) -> Result<LogEntry, ParseError> {
     // Split the log by the first " | " delimiter
     let mut parts = log_text.splitn(2, " | ");
 
@@ -101,6 +105,7 @@ pub fn parse_log_entry(log_text: &str) -> Result<LogEntry, ParseError> {
         message.to_string(),
         log_text.to_string(),
         message,
+        source_line_number,
     )
 }
 
@@ -148,6 +153,7 @@ fn determine_log_entry_kind(
     mut message_text: String,
     raw_logline: String,
     message: &str,
+    source_line_number: usize,
 ) -> Result<LogEntry, ParseError> {
     // Check for event logs
     if message.contains("Emit event of type") {
@@ -171,6 +177,7 @@ fn determine_log_entry_kind(
                     level,
                     message: message_text,
                     raw_logline,
+                    source_line_number,
                 },
                 event_type,
                 direction: EventDirection::Emit,
@@ -198,6 +205,7 @@ fn determine_log_entry_kind(
                     level,
                     message: message_text,
                     raw_logline,
+                    source_line_number,
                 },
                 event_type,
                 direction: EventDirection::Receive,
@@ -242,6 +250,7 @@ fn determine_log_entry_kind(
                         level,
                         message: message_text,
                         raw_logline,
+                        source_line_number,
                     },
                     command,
                     settings,
@@ -276,6 +285,7 @@ fn determine_log_entry_kind(
                     level,
                     message: message_text,
                     raw_logline,
+                    source_line_number,
                 },
                 request: req_name,
                 request_id,
@@ -314,6 +324,7 @@ fn determine_log_entry_kind(
         message_text,
         raw_logline,
         payload,
+        source_line_number,
     ))
 }
 

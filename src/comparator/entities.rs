@@ -22,12 +22,24 @@ impl From<serde_json::Error> for ComparisonError {
     }
 }
 
+/// Represents the type of change detected in a JSON comparison
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeType {
+    /// Key/value added in log2 (null → value)
+    Added,
+    /// Key/value removed in log2 (value → null)
+    Removed,
+    /// Value changed between log1 and log2
+    Modified,
+}
+
 /// Represents the difference between two JSON values
 #[derive(Debug, Clone)]
 pub struct JsonDifference {
     pub path: String,
     pub value1: Value,
     pub value2: Value,
+    pub change_type: ChangeType,
 }
 
 /// Represents a comparison between two log entries
@@ -37,7 +49,10 @@ pub struct LogComparison {
     pub log1_index: usize,
     pub log2_index: usize,
     pub json_differences: Vec<JsonDifference>,
-    pub text_difference: Option<String>,
+    pub text1: Option<String>,
+    pub text2: Option<String>,
+    pub log1_line_number: usize,
+    pub log2_line_number: usize,
 }
 
 /// Represents filtering criteria for logs
