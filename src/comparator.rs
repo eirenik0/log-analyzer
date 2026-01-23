@@ -11,7 +11,10 @@ pub use console_cmp::display_comparison_results;
 pub use console_summary::display_log_summary;
 pub use entities::*;
 pub use file_cmp::write_comparison_results;
-pub use format_cmp::{OutputFormatter, create_styled_table, format_comparison_results, format_json_differences, format_full_json_comparison};
+pub use format_cmp::{
+    OutputFormatter, create_styled_table, format_comparison_results, format_full_json_comparison,
+    format_json_differences,
+};
 pub use helpers::*;
 pub use json_cmp::generate_json_output;
 

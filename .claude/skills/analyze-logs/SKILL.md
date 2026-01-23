@@ -104,10 +104,13 @@ When the user invokes this skill:
 log-analyzer diff passing.log failing.log
 
 # Focus on errors only
-log-analyzer diff passing.log failing.log -l ERROR
+log-analyzer diff passing.log failing.log -f "l:ERROR"
 
 # Focus on specific component
-log-analyzer diff passing.log failing.log -C core-universal
+log-analyzer diff passing.log failing.log -f "c:core-universal"
+
+# Combined filters
+log-analyzer diff passing.log failing.log -f "c:core l:ERROR !t:timeout"
 ```
 
 ### Performance Investigation
@@ -128,7 +131,7 @@ log-analyzer perf test.log --op-type Request --top-n 30
 log-analyzer info test.log --samples --payloads --timeline
 
 # JSON output for further processing
-log-analyzer info test.log -F json
+log-analyzer info test.log -j
 ```
 
 ### Prepare for LLM Analysis
@@ -140,25 +143,35 @@ log-analyzer llm test.log --limit 100 -o context.json
 log-analyzer llm-diff file1.log file2.log -o diff.json
 ```
 
-## Filtering Options
+## Filter Expression Syntax
 
-All commands support these filters:
+Use `-f, --filter` with unified expression syntax:
 
-**Include filters:**
-- `-C, --component <name>` - Filter by component (socket, core-universal, etc.)
-- `-l, --level <level>` - Filter by log level (ERROR, WARN, INFO, DEBUG)
-- `-t, --contains <text>` - Filter by text content
-- `-d, --direction <Incoming|Outgoing>` - Filter by direction
+```bash
+-f "type:value [!type:value] ..."
+```
 
-**Exclude filters:**
-- `--exclude-component <name>`
-- `--exclude-level <level>`
-- `--exclude-text <text>`
+**Filter types (with aliases):**
+| Type | Aliases | Description |
+|------|---------|-------------|
+| `component` | `comp`, `c` | Filter by component name |
+| `level` | `lvl`, `l` | Filter by log level |
+| `text` | `t` | Filter by text in message |
+| `direction` | `dir`, `d` | Filter by direction |
+
+**Prefix with `!` to exclude.** Examples:
+```bash
+-f "c:core-universal"           # Only core-universal component
+-f "l:ERROR"                    # Only ERROR level logs
+-f "c:core !l:DEBUG"            # Core component, exclude DEBUG
+-f "t:timeout d:incoming"       # Contains 'timeout', incoming only
+```
 
 ## Output Formats
 
 - `-F text` - Human-readable colored output (default)
 - `-F json` - Structured JSON output
+- `-j, --json` - JSON output shorthand (implies `-F json -c`)
 - `-c, --compact` - Shortened keys for compact output
 - `-o, --output <path>` - Save to file
 

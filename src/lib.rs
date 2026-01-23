@@ -6,83 +6,23 @@ pub mod parser;
 pub mod perf_analyzer;
 
 use crate::comparator::{LogFilter, display_log_summary};
-pub use cli::{ColorMode, Commands, Direction, OutputFormat, SortOrder, cli_parse};
+use crate::filter::{FilterExpression, print_filter_warnings, to_log_filter};
+pub use cli::{ColorMode, Commands, OutputFormat, SortOrder, cli_parse};
 pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
 pub use parser::{LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_file};
-use std::path::{Path, PathBuf};
 
-struct CompareParams<'a> {
-    file1: &'a Path,
-    file2: &'a Path,
-    component: &'a Option<String>,
-    exclude_component: &'a Option<String>,
-    level: &'a Option<String>,
-    exclude_level: &'a Option<String>,
-    contains: &'a Option<String>,
-    exclude_text: &'a Option<String>,
-    direction: &'a Option<Direction>,
-    diff_only: bool,
-    full: bool,
-    format: OutputFormat,
-    compact: bool,
-    sort_by: SortOrder,
-    verbose: u8,
-    quiet: bool,
-    output: &'a Option<PathBuf>,
-}
-
-fn handle_compare(params: CompareParams) -> Result<(), Box<dyn std::error::Error>> {
-    // Parse log files with proper error handling - using {:?} for ParseError
-    let logs1 = parse_log_file(params.file1).map_err(|e| {
-        format!(
-            "Failed to parse log file '{}': {:?}",
-            params.file1.display(),
-            e
-        )
-    })?;
-
-    let logs2 = parse_log_file(params.file2).map_err(|e| {
-        format!(
-            "Failed to parse log file '{}': {:?}",
-            params.file2.display(),
-            e
-        )
-    })?;
-
-    // Create filter with proper handling of Option<&str>
-    let filter = LogFilter::new()
-        .with_component(params.component.as_deref())
-        .exclude_component(params.exclude_component.as_deref())
-        .with_level(params.level.as_deref())
-        .exclude_level(params.exclude_level.as_deref())
-        .contains_text(params.contains.as_deref())
-        .excludes_text(params.exclude_text.as_deref())
-        .with_direction(params.direction);
-
-    // Create options
-    let options = ComparisonOptions::new()
-        .diff_only(params.diff_only)
-        .show_full_json(params.full)
-        .compact_mode(params.compact)
-        .readable_mode(true)
-        .sort_by(params.sort_by)
-        .verbosity(params.verbose)
-        .quiet_mode(params.quiet)
-        .output_to_file(params.output.as_deref().map(|o| o.to_str().unwrap()));
-
-    // Compare logs with proper error handling for ComparisonError
-    let results = compare_logs(&logs1, &logs2, &filter, &options)
-        .map_err(|e| format!("Comparison failed: {:?}", e))?;
-
-    // Display results in the selected format
-    match params.format {
-        OutputFormat::Text => display_comparison_results(&results, &options),
-        OutputFormat::Json => println!("{}", generate_json_output(&results, &options)),
+/// Build a LogFilter from the --filter expression
+fn build_filter(filter_expr: &Option<String>) -> Result<LogFilter, Box<dyn std::error::Error>> {
+    if let Some(expr_str) = filter_expr {
+        let expr = FilterExpression::parse(expr_str)
+            .map_err(|e| format!("Invalid filter expression: {}", e))?;
+        print_filter_warnings(&expr);
+        Ok(to_log_filter(&expr))
+    } else {
+        Ok(LogFilter::new())
     }
-
-    Ok(())
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -120,87 +60,87 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(out_path) = output {
             eprintln!("Output will be written to: {}", out_path.display());
         }
+        if let Some(ref filter_expr) = cli.filter {
+            eprintln!("Filter: {}", filter_expr);
+        }
     }
+
+    // Build the filter from the global --filter expression
+    let filter = build_filter(&cli.filter)?;
 
     match &cli.command {
         Commands::Compare {
             file1,
             file2,
-            component,
-            exclude_component,
-            level,
-            exclude_level,
-            contains,
-            exclude_text,
-            direction,
             diff_only,
             full,
             sort_by,
         } => {
-            handle_compare(CompareParams {
-                file1,
-                file2,
-                component,
-                exclude_component,
-                level,
-                exclude_level,
-                contains,
-                exclude_text,
-                direction,
-                diff_only: *diff_only,
-                full: *full,
-                format,
-                compact,
-                sort_by: *sort_by,
-                verbose,
-                quiet,
-                output,
-            })?;
+            // Parse log files with proper error handling
+            let logs1 = parse_log_file(file1)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
+
+            let logs2 = parse_log_file(file2)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
+
+            // Create options
+            let options = ComparisonOptions::new()
+                .diff_only(*diff_only)
+                .show_full_json(*full)
+                .compact_mode(compact)
+                .readable_mode(true)
+                .sort_by(*sort_by)
+                .verbosity(verbose)
+                .quiet_mode(quiet)
+                .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
+
+            // Compare logs with proper error handling
+            let results = compare_logs(&logs1, &logs2, &filter, &options)
+                .map_err(|e| format!("Comparison failed: {:?}", e))?;
+
+            // Display results in the selected format
+            match format {
+                OutputFormat::Text => display_comparison_results(&results, &options),
+                OutputFormat::Json => println!("{}", generate_json_output(&results, &options)),
+            }
         }
         Commands::Diff {
             file1,
             file2,
-            component,
-            exclude_component,
-            level,
-            exclude_level,
-            contains,
-            exclude_text,
-            direction,
             full,
             sort_by,
         } => {
-            // For Diff command, always use diff_only=true
-            handle_compare(CompareParams {
-                file1,
-                file2,
-                component,
-                exclude_component,
-                level,
-                exclude_level,
-                contains,
-                exclude_text,
-                direction,
-                diff_only: true, // diff_only fixed to true
-                full: *full,
-                format,
-                compact,
-                sort_by: *sort_by,
-                verbose,
-                quiet,
-                output,
-            })?;
+            // Parse log files with proper error handling
+            let logs1 = parse_log_file(file1)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
+
+            let logs2 = parse_log_file(file2)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
+
+            // Create options with diff_only=true
+            let options = ComparisonOptions::new()
+                .diff_only(true)
+                .show_full_json(*full)
+                .compact_mode(compact)
+                .readable_mode(true)
+                .sort_by(*sort_by)
+                .verbosity(verbose)
+                .quiet_mode(quiet)
+                .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
+
+            // Compare logs with proper error handling
+            let results = compare_logs(&logs1, &logs2, &filter, &options)
+                .map_err(|e| format!("Comparison failed: {:?}", e))?;
+
+            // Display results in the selected format
+            match format {
+                OutputFormat::Text => display_comparison_results(&results, &options),
+                OutputFormat::Json => println!("{}", generate_json_output(&results, &options)),
+            }
         }
         Commands::LlmDiff {
             file1,
             file2,
-            component,
-            exclude_component,
-            level,
-            exclude_level,
-            contains,
-            exclude_text,
-            direction,
             sort_by,
             no_sanitize,
         } => {
@@ -217,21 +157,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 crate::llm_processor::sanitize_logs(&mut logs2);
             }
 
-            // Create filter with proper handling of Option<&str>
-            let filter = LogFilter::new()
-                .with_component(component.as_deref())
-                .exclude_component(exclude_component.as_deref())
-                .with_level(level.as_deref())
-                .exclude_level(exclude_level.as_deref())
-                .contains_text(contains.as_deref())
-                .excludes_text(exclude_text.as_deref())
-                .with_direction(direction);
-
             // Create options for LlmDiff with fixed parameters
             let options = ComparisonOptions::new()
-                .diff_only(true) // diff_only fixed to true
-                .show_full_json(false) // full fixed to false
-                .compact_mode(true) // compact fixed to true
+                .diff_only(true)
+                .show_full_json(false)
+                .compact_mode(true)
                 .readable_mode(true)
                 .sort_by(*sort_by)
                 .verbosity(verbose)
@@ -249,8 +179,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             file,
             samples,
             json_schema,
-            component,
-            level,
             payloads,
             timeline,
         } => {
@@ -258,23 +186,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let logs = parse_log_file(file)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
-            // Create filter based on provided options
-            let filter = if component.is_some() || level.is_some() {
-                Some(
-                    LogFilter::new()
-                        .with_component(component.as_deref())
-                        .with_level(level.as_deref()),
-                )
-            } else {
-                None
-            };
-
-            // Filter logs if needed
-            let filtered_logs = if let Some(ref filter) = filter {
+            // Filter logs if filter is provided
+            let filtered_logs: Vec<_> = if cli.filter.is_some() {
                 logs.iter()
                     .filter(|log| filter.matches(log))
                     .cloned()
-                    .collect::<Vec<_>>()
+                    .collect()
             } else {
                 logs
             };
@@ -283,22 +200,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             display_log_summary(&filtered_logs, *samples, *json_schema, *payloads, *timeline);
 
             // Show filtering information if applied
-            if let Some(ref _filter) = filter {
+            if let Some(ref filter_expr) = cli.filter {
                 if !filtered_logs.is_empty() {
                     println!(
-                        "\nShowing {} log entries after applying filters.",
-                        filtered_logs.len()
+                        "\nShowing {} log entries after applying filter: {}",
+                        filtered_logs.len(),
+                        filter_expr
                     );
-
-                    if component.is_some() {
-                        println!("Component filter: {}", component.as_ref().unwrap());
-                    }
-
-                    if level.is_some() {
-                        println!("Level filter: {}", level.as_ref().unwrap());
-                    }
                 } else {
-                    println!("\nNo log entries match the specified filters.");
+                    println!("\nNo log entries match the filter: {}", filter_expr);
                 }
             }
 
@@ -306,13 +216,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Process {
             file,
-            component,
-            exclude_component,
-            level,
-            exclude_level,
-            contains,
-            exclude_text,
-            direction,
             sort_by: _,
             limit,
             no_sanitize,
@@ -320,16 +223,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Parse log file with proper error handling
             let logs = parse_log_file(file)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
-
-            // Create filter based on provided options
-            let filter = LogFilter::new()
-                .with_component(component.as_deref())
-                .exclude_component(exclude_component.as_deref())
-                .with_level(level.as_deref())
-                .exclude_level(exclude_level.as_deref())
-                .contains_text(contains.as_deref())
-                .excludes_text(exclude_text.as_deref())
-                .with_direction(direction);
 
             // Filter logs
             let filtered_logs: Vec<_> = logs
@@ -350,13 +243,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Perf {
             file,
-            component,
-            exclude_component,
-            level,
-            exclude_level,
-            contains,
-            exclude_text,
-            direction,
             threshold_ms,
             top_n,
             orphans_only,
@@ -366,16 +252,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Parse log file with proper error handling
             let logs = parse_log_file(file)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
-
-            // Create filter based on provided options
-            let filter = LogFilter::new()
-                .with_component(component.as_deref())
-                .exclude_component(exclude_component.as_deref())
-                .with_level(level.as_deref())
-                .exclude_level(exclude_level.as_deref())
-                .contains_text(contains.as_deref())
-                .excludes_text(exclude_text.as_deref())
-                .with_direction(direction);
 
             // Convert op_type filter to string
             let op_type_filter = op_type.map(|t| match t {

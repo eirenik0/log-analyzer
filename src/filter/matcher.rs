@@ -66,12 +66,11 @@ fn parse_direction(s: &str) -> Option<Direction> {
 /// This helps users identify typos or unsupported values in their filters.
 pub fn print_filter_warnings(expr: &FilterExpression) {
     // Check level values
-    let known_levels = ["TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "FATAL"];
+    let known_levels = [
+        "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "FATAL",
+    ];
     for level in expr.include_filters(&FilterType::Level) {
-        if !known_levels
-            .iter()
-            .any(|k| k.eq_ignore_ascii_case(level))
-        {
+        if !known_levels.iter().any(|k| k.eq_ignore_ascii_case(level)) {
             eprintln!(
                 "Warning: Unknown log level '{}'. Common levels are: {:?}",
                 level, known_levels
@@ -79,10 +78,7 @@ pub fn print_filter_warnings(expr: &FilterExpression) {
         }
     }
     for level in expr.exclude_filters(&FilterType::Level) {
-        if !known_levels
-            .iter()
-            .any(|k| k.eq_ignore_ascii_case(level))
-        {
+        if !known_levels.iter().any(|k| k.eq_ignore_ascii_case(level)) {
             eprintln!(
                 "Warning: Unknown log level '{}'. Common levels are: {:?}",
                 level, known_levels

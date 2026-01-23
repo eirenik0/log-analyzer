@@ -90,25 +90,51 @@ cargo run -- perf <file> [options]
 These options can be used with any command:
 - `-F, --format <text|json>` - Output format (default: text)
 - `-c, --compact` - Use compact mode for output (shorter keys, optimized structure)
+- `-f, --filter <expr>` - Filter expression (see Filter Syntax below)
 - `-o, --output <path>` - Path to output file for results
 - `--color <auto|always|never>` - Control color output (default: auto)
 - `-v, --verbose` - Increase verbosity level (can be used multiple times)
 - `-q, --quiet` - Be quiet, show only errors
+
+### Filter Expression Syntax
+
+The `-f, --filter` option accepts a unified filter expression:
+
+```
+--filter "type:value [!type:value] ..."
+```
+
+**Filter types (with aliases):**
+- `component`, `comp`, `c` - Filter by component name
+- `level`, `lvl`, `l` - Filter by log level (INFO, ERROR, etc.)
+- `text`, `t` - Filter by text in message
+- `direction`, `dir`, `d` - Filter by direction (incoming/outgoing)
+
+**Prefix with `!` to exclude.** Examples:
+```bash
+# Only core-universal component
+--filter "c:core-universal"
+
+# Only ERROR level logs
+--filter "l:ERROR"
+
+# Core component, exclude DEBUG level
+--filter "c:core !l:DEBUG"
+
+# Contains 'timeout', incoming direction only
+--filter "t:timeout d:incoming"
+
+# Multiple filters combined (AND logic)
+--filter "c:core-requests l:INFO !t:health"
+```
 
 ### Compare Command (alias: `cmp`)
 
 Compare two log files and show differences between JSON objects.
 
 Options:
-- `-C, --component <name>` - Filter logs by component name
-- `--exclude-component <name>` - Exclude logs by component name
-- `-l, --level <level>` - Filter logs by log level (INFO, ERROR, etc.)
-- `--exclude-level <level>` - Exclude logs by log level
-- `-t, --contains <text>` - Filter logs containing specific text
-- `--exclude-text <text>` - Exclude logs containing specific text
-- `-d, --direction <Incoming|Outgoing>` - Filter logs by communication direction
 - `-D, --diff-only` - Show only differences between logs
-- `-f, --full` - Show full JSON objects, not just differences
+- `--full` - Show full JSON objects, not just differences
 - `-s, --sort-by <field>` - Sort output by field (time, component, level, type, diff-count)
 
 ### Diff Command
@@ -120,8 +146,6 @@ Shortcut for `compare --diff-only`. Same options as Compare command (except `--d
 List all components, event types, log levels, and detailed statistics in a log file.
 
 Options:
-- `-C, --component <name>` - Filter logs by component name
-- `-l, --level <level>` - Filter logs by log level
 - `-s, --samples` - Show sample log messages for each component
 - `-j, --json-schema` - Display detailed JSON schema information for event payloads
 - `-p, --payloads` - Show payload statistics for each event/command/request type
@@ -132,13 +156,6 @@ Options:
 Generate LLM-friendly compact JSON output of a single log file with sanitized content.
 
 Options:
-- `-C, --component <name>` - Filter logs by component name
-- `--exclude-component <name>` - Exclude logs by component name
-- `-l, --level <level>` - Filter logs by log level
-- `--exclude-level <level>` - Exclude logs by log level
-- `-t, --contains <text>` - Filter logs containing specific text
-- `--exclude-text <text>` - Exclude logs containing specific text
-- `-d, --direction <Incoming|Outgoing>` - Filter logs by communication direction
 - `-s, --sort-by <field>` - Sort output by field (time, component, level, type)
 - `--limit <number>` - Maximum number of log entries to include (default: 100, 0 = unlimited)
 - `--no-sanitize` - Disable hiding of sensitive fields from JSON payloads (sanitization is enabled by default)
@@ -147,20 +164,15 @@ Options:
 
 Generate LLM-friendly compact JSON output of differences (shortcut for `compare --diff-only -F json -c`).
 
-Options: Same filtering options as LLM command, plus `--no-sanitize`.
+Options:
+- `-s, --sort-by <field>` - Sort output by field
+- `--no-sanitize` - Disable sanitization of sensitive fields
 
 ### Perf Command
 
 Analyze operation timing and identify performance bottlenecks.
 
 Options:
-- `-C, --component <name>` - Filter logs by component name
-- `--exclude-component <name>` - Exclude logs by component name
-- `-l, --level <level>` - Filter logs by log level
-- `--exclude-level <level>` - Exclude logs by log level
-- `-t, --contains <text>` - Filter logs containing specific text
-- `--exclude-text <text>` - Exclude logs containing specific text
-- `-d, --direction <Incoming|Outgoing>` - Filter logs by communication direction
 - `--threshold-ms <ms>` - Duration threshold in milliseconds for highlighting slow operations (default: 1000)
 - `--top-n <number>` - Number of slowest operations to display (default: 20)
 - `--orphans-only` - Show only orphan operations (started but never finished)
@@ -192,22 +204,27 @@ cargo test test_name -- --nocapture
 2. **Comparator (`src/comparator.rs`)** - Compares logs and identifies differences
    - Compares JSON payloads while respecting object structure
    - Finds differences regardless of object property order
-   - Generates human-readable difference reports
+   - Generates human-readable difference reports with styled tables
 
-3. **CLI (`src/cli.rs`)** - Command-line interface using Clap
+3. **Filter (`src/filter/`)** - Unified filter expression parsing
+   - Parses filter expressions like `"c:core l:ERROR !t:timeout"`
+   - Supports include/exclude semantics with `!` prefix
+   - Converts expressions to LogFilter for log matching
+
+4. **CLI (`src/cli.rs`)** - Command-line interface using Clap
    - Defines the CLI commands and arguments
    - Handles parameter parsing and validation
 
-4. **LLM Processor (`src/llm_processor.rs`)** - Generates LLM-friendly output
+5. **LLM Processor (`src/llm_processor.rs`)** - Generates LLM-friendly output
    - Sanitizes sensitive data from log payloads
    - Produces compact JSON output optimized for LLM consumption
 
-5. **Performance Analyzer (`src/perf_analyzer/`)** - Analyzes operation timing
+6. **Performance Analyzer (`src/perf_analyzer/`)** - Analyzes operation timing
    - Tracks operation durations (requests, events, commands)
    - Identifies orphan operations (started but never finished)
    - Calculates performance statistics and identifies bottlenecks
 
-6. **Library (`src/lib.rs`)** - Core library exposing public API
+7. **Library (`src/lib.rs`)** - Core library exposing public API
    - Orchestrates command execution
    - Provides filtering and output formatting
 

@@ -1,4 +1,5 @@
 use super::error::FilterParseError;
+use std::str::FromStr;
 
 /// Types of filters that can be applied
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,9 +14,10 @@ pub enum FilterType {
     Direction,
 }
 
-impl FilterType {
-    /// Parse a filter type from its string representation
-    pub fn from_str(s: &str) -> Result<Self, FilterParseError> {
+impl FromStr for FilterType {
+    type Err = FilterParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "component" | "comp" | "c" => Ok(FilterType::Component),
             "level" | "lvl" | "l" => Ok(FilterType::Level),
@@ -24,7 +26,9 @@ impl FilterType {
             _ => Err(FilterParseError::UnknownFilterType(s.to_string())),
         }
     }
+}
 
+impl FilterType {
     /// Get the canonical name of this filter type
     pub fn canonical_name(&self) -> &'static str {
         match self {
@@ -50,8 +54,8 @@ pub struct FilterTerm {
 impl FilterTerm {
     /// Parse a single filter term from a string
     pub fn parse(s: &str) -> Result<Self, FilterParseError> {
-        let (exclude, rest) = if s.starts_with('!') {
-            (true, &s[1..])
+        let (exclude, rest) = if let Some(stripped) = s.strip_prefix('!') {
+            (true, stripped)
         } else {
             (false, s)
         };
@@ -64,7 +68,7 @@ impl FilterTerm {
             )));
         }
 
-        let filter_type = FilterType::from_str(parts[0])?;
+        let filter_type: FilterType = parts[0].parse()?;
         let value = parts[1].trim().to_string();
 
         if value.is_empty() {

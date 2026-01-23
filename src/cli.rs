@@ -62,18 +62,33 @@ pub enum PerfSortOrder {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(name = "log-analyzer")]
+#[command(after_help = "FILTER EXPRESSION SYNTAX:
+  --filter \"type:value [!type:value] ...\"
+
+  Filter types (with aliases):
+    component, comp, c    Filter by component name
+    level, lvl, l         Filter by log level (INFO, ERROR, etc.)
+    text, t               Filter by text in message
+    direction, dir, d     Filter by direction (incoming/outgoing)
+
+  Prefix with ! to exclude. Examples:
+    --filter \"c:core-universal\"           Only core-universal component
+    --filter \"l:ERROR\"                    Only ERROR level logs
+    --filter \"c:core !l:DEBUG\"            Core component, exclude DEBUG
+    --filter \"t:timeout d:incoming\"       Contains 'timeout', incoming only")]
 pub struct Cli {
     /// Output format (text or json)
-    #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text, global = true, group = "output_options", env = "FORMAT")]
+    #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text, global = true, group = "output_options", env = "LOG_ANALYZER_FORMAT")]
     pub format: OutputFormat,
 
     /// JSON output (LLM-friendly, implies --compact). Shorthand for -F json -c
     #[arg(
+        short = 'j',
         long,
         global = true,
         group = "output_options",
         conflicts_with = "format",
-        env = "JSON"
+        env = "LOG_ANALYZER_JSON"
     )]
     pub json: bool,
 
@@ -83,28 +98,34 @@ pub struct Cli {
         long,
         global = true,
         group = "output_options",
-        env = "COMPACT"
+        env = "LOG_ANALYZER_COMPACT"
     )]
     pub compact: bool,
 
-    /// Filter expression (e.g., "component:core level:ERROR !text:timeout")
-    #[arg(long, global = true, env = "FILTER")]
+    /// Filter expression (e.g., "c:core l:ERROR !t:timeout")
+    #[arg(short = 'f', long, global = true, env = "LOG_ANALYZER_FILTER")]
     pub filter: Option<String>,
 
     /// Path to output file for results
-    #[arg(short, long, global = true, env = "OUTPUT_FILE")]
+    #[arg(short, long, global = true, env = "LOG_ANALYZER_OUTPUT")]
     pub output: Option<PathBuf>,
 
     /// Control color output (auto, always, never)
-    #[arg(long, value_enum, default_value_t = ColorMode::Auto, global = true, env = "COLOR")]
+    #[arg(long, value_enum, default_value_t = ColorMode::Auto, global = true, env = "LOG_ANALYZER_COLOR")]
     pub color: ColorMode,
 
     /// Increase verbosity level (can be used multiple times)
-    #[arg(short, long, action = clap::ArgAction::Count, global = true, env = "VERBOSE")]
+    #[arg(short, long, action = clap::ArgAction::Count, global = true, env = "LOG_ANALYZER_VERBOSE")]
     pub verbose: u8,
 
     /// Be quiet, show only errors
-    #[arg(short, long, global = true, env = "QUIET", conflicts_with = "verbose")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        env = "LOG_ANALYZER_QUIET",
+        conflicts_with = "verbose"
+    )]
     pub quiet: bool,
 
     #[command(subcommand)]
@@ -124,52 +145,16 @@ pub enum Commands {
         #[arg(required = true)]
         file2: PathBuf,
 
-        /// Filter logs by component (e.g. "core-universal", "socket")
-        #[arg(short = 'C', long, group = "include_filters", env = "COMPONENT")]
-        component: Option<String>,
-
-        /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(
-            long = "exclude-component",
-            group = "exclude_filters",
-            env = "EXCLUDE_COMPONENT"
-        )]
-        exclude_component: Option<String>,
-
-        /// Filter logs by log level (e.g. "INFO", "ERROR")
-        #[arg(short = 'l', long, group = "include_filters", env = "LEVEL")]
-        level: Option<String>,
-
-        /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(
-            long = "exclude-level",
-            group = "exclude_filters",
-            env = "EXCLUDE_LEVEL"
-        )]
-        exclude_level: Option<String>,
-
-        /// Filter logs by containing a specific text
-        #[arg(short = 't', long, group = "include_filters", env = "CONTAINS")]
-        contains: Option<String>,
-
-        /// Exclude logs containing a specific text
-        #[arg(long = "exclude-text", group = "exclude_filters", env = "EXCLUDE_TEXT")]
-        exclude_text: Option<String>,
-
-        /// Filter logs by communication direction (Incoming or Outgoing)
-        #[arg(short = 'd', long, group = "include_filters", env = "DIRECTION")]
-        direction: Option<Direction>,
-
         /// Show only differences, skip matching objects
-        #[arg(short = 'D', long, group = "display_options")]
+        #[arg(short = 'D', long)]
         diff_only: bool,
 
         /// Show full JSON objects, not just the differences
-        #[arg(short, long, group = "display_options")]
+        #[arg(long)]
         full: bool,
 
         /// Sort output by given field
-        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
+        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, env = "LOG_ANALYZER_SORT_BY")]
         sort_by: SortOrder,
     },
 
@@ -183,50 +168,15 @@ pub enum Commands {
         #[arg(required = true)]
         file2: PathBuf,
 
-        /// Filter logs by component (e.g. "core-universal", "socket")
-        #[arg(short = 'C', long, group = "include_filters", env = "COMPONENT")]
-        component: Option<String>,
-
-        /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(
-            long = "exclude-component",
-            group = "exclude_filters",
-            env = "EXCLUDE_COMPONENT"
-        )]
-        exclude_component: Option<String>,
-
-        /// Filter logs by log level (e.g. "INFO", "ERROR")
-        #[arg(short = 'l', long, group = "include_filters", env = "LEVEL")]
-        level: Option<String>,
-
-        /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(
-            long = "exclude-level",
-            group = "exclude_filters",
-            env = "EXCLUDE_LEVEL"
-        )]
-        exclude_level: Option<String>,
-
-        /// Filter logs by containing a specific text
-        #[arg(short = 't', long, group = "include_filters", env = "CONTAINS")]
-        contains: Option<String>,
-
-        /// Exclude logs containing a specific text
-        #[arg(long = "exclude-text", group = "exclude_filters", env = "EXCLUDE_TEXT")]
-        exclude_text: Option<String>,
-
-        /// Filter logs by communication direction (Incoming or Outgoing)
-        #[arg(short = 'd', long, group = "include_filters", env = "DIRECTION")]
-        direction: Option<Direction>,
-
         /// Show full JSON objects, not just the differences
-        #[arg(short, long, group = "display_options")]
+        #[arg(long)]
         full: bool,
 
         /// Sort output by given field
-        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
+        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, env = "LOG_ANALYZER_SORT_BY")]
         sort_by: SortOrder,
     },
+
     /// List all components, event types, log levels, and detailed statistics in a log file
     #[command(alias = "i", alias = "inspect")]
     Info {
@@ -239,16 +189,8 @@ pub enum Commands {
         samples: bool,
 
         /// Display detailed JSON schema information for event payloads
-        #[arg(short, long)]
+        #[arg(long)]
         json_schema: bool,
-
-        /// Filter logs by component (e.g. "core-universal", "socket")
-        #[arg(short = 'C', long, env = "COMPONENT")]
-        component: Option<String>,
-
-        /// Filter logs by log level (e.g. "INFO", "ERROR")
-        #[arg(short = 'l', long, env = "LEVEL")]
-        level: Option<String>,
 
         /// Show payload statistics for each event/command/request type
         #[arg(short = 'p', long)]
@@ -269,44 +211,8 @@ pub enum Commands {
         #[arg(required = true)]
         file2: PathBuf,
 
-        /// Filter logs by component (e.g. "core-universal", "socket")
-        #[arg(short = 'C', long, group = "include_filters", env = "COMPONENT")]
-        component: Option<String>,
-
-        /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(
-            long = "exclude-component",
-            group = "exclude_filters",
-            env = "EXCLUDE_COMPONENT"
-        )]
-        exclude_component: Option<String>,
-
-        /// Filter logs by log level (e.g. "INFO", "ERROR")
-        #[arg(short = 'l', long, group = "include_filters", env = "LEVEL")]
-        level: Option<String>,
-
-        /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(
-            long = "exclude-level",
-            group = "exclude_filters",
-            env = "EXCLUDE_LEVEL"
-        )]
-        exclude_level: Option<String>,
-
-        /// Filter logs by containing a specific text
-        #[arg(short = 't', long, group = "include_filters", env = "CONTAINS")]
-        contains: Option<String>,
-
-        /// Exclude logs containing a specific text
-        #[arg(long = "exclude-text", group = "exclude_filters", env = "EXCLUDE_TEXT")]
-        exclude_text: Option<String>,
-
-        /// Filter logs by communication direction (Incoming or Outgoing)
-        #[arg(short = 'd', long, group = "include_filters", env = "DIRECTION")]
-        direction: Option<Direction>,
-
         /// Sort output by given field
-        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
+        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, env = "LOG_ANALYZER_SORT_BY")]
         sort_by: SortOrder,
 
         /// Disable hiding of sensitive fields from JSON payloads (sanitization is enabled by default)
@@ -321,44 +227,8 @@ pub enum Commands {
         #[arg(required = true)]
         file: PathBuf,
 
-        /// Filter logs by component (e.g. "core-universal", "socket")
-        #[arg(short = 'C', long, group = "include_filters", env = "COMPONENT")]
-        component: Option<String>,
-
-        /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(
-            long = "exclude-component",
-            group = "exclude_filters",
-            env = "EXCLUDE_COMPONENT"
-        )]
-        exclude_component: Option<String>,
-
-        /// Filter logs by log level (e.g. "INFO", "ERROR")
-        #[arg(short = 'l', long, group = "include_filters", env = "LEVEL")]
-        level: Option<String>,
-
-        /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(
-            long = "exclude-level",
-            group = "exclude_filters",
-            env = "EXCLUDE_LEVEL"
-        )]
-        exclude_level: Option<String>,
-
-        /// Filter logs by containing a specific text
-        #[arg(short = 't', long, group = "include_filters", env = "CONTAINS")]
-        contains: Option<String>,
-
-        /// Exclude logs containing a specific text
-        #[arg(long = "exclude-text", group = "exclude_filters", env = "EXCLUDE_TEXT")]
-        exclude_text: Option<String>,
-
-        /// Filter logs by communication direction (Incoming or Outgoing)
-        #[arg(short = 'd', long, group = "include_filters", env = "DIRECTION")]
-        direction: Option<Direction>,
-
         /// Sort output by given field
-        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, group = "sorting", env = "SORT_BY")]
+        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, env = "LOG_ANALYZER_SORT_BY")]
         sort_by: SortOrder,
 
         /// Maximum number of log entries to include (0 = unlimited)
@@ -375,42 +245,6 @@ pub enum Commands {
         /// Log file to analyze
         #[arg(required = true)]
         file: PathBuf,
-
-        /// Filter logs by component (e.g. "core-universal", "socket")
-        #[arg(short = 'C', long, group = "include_filters", env = "COMPONENT")]
-        component: Option<String>,
-
-        /// Exclude logs by component (e.g. "legacy", "debug")
-        #[arg(
-            long = "exclude-component",
-            group = "exclude_filters",
-            env = "EXCLUDE_COMPONENT"
-        )]
-        exclude_component: Option<String>,
-
-        /// Filter logs by log level (e.g. "INFO", "ERROR")
-        #[arg(short = 'l', long, group = "include_filters", env = "LEVEL")]
-        level: Option<String>,
-
-        /// Exclude logs by log level (e.g. "DEBUG", "TRACE")
-        #[arg(
-            long = "exclude-level",
-            group = "exclude_filters",
-            env = "EXCLUDE_LEVEL"
-        )]
-        exclude_level: Option<String>,
-
-        /// Filter logs by containing a specific text
-        #[arg(short = 't', long, group = "include_filters", env = "CONTAINS")]
-        contains: Option<String>,
-
-        /// Exclude logs containing a specific text
-        #[arg(long = "exclude-text", group = "exclude_filters", env = "EXCLUDE_TEXT")]
-        exclude_text: Option<String>,
-
-        /// Filter logs by communication direction (Incoming or Outgoing)
-        #[arg(short = 'd', long, group = "include_filters", env = "DIRECTION")]
-        direction: Option<Direction>,
 
         /// Duration threshold in milliseconds for highlighting slow operations
         #[arg(long, default_value = "1000")]

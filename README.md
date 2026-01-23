@@ -49,27 +49,47 @@ log-analyzer llm file.log
 
 | Option | Env Variable | Description |
 |--------|--------------|-------------|
-| `-F, --format <text\|json>` | `LOG_ANALYZER_FORMAT` | Output format |
-| `-c, --compact` | `LOG_ANALYZER_COMPACT` | Compact output mode |
-| `-o, --output <path>` | `LOG_ANALYZER_OUTPUT_FILE` | Output file path |
-| `--color <auto\|always\|never>` | `LOG_ANALYZER_COLOR` | Color output control |
-| `-v, --verbose` | `LOG_ANALYZER_VERBOSE` | Increase verbosity |
-| `-q, --quiet` | `LOG_ANALYZER_QUIET` | Show only errors |
+| `-F, --format <text\|json>` | `FORMAT` | Output format |
+| `-j, --json` | `JSON` | JSON output (shorthand for `-F json -c`) |
+| `-c, --compact` | `COMPACT` | Compact output mode |
+| `-f, --filter <expr>` | `FILTER` | Filter expression (see below) |
+| `-o, --output <path>` | | Output file path |
+| `--color <auto\|always\|never>` | | Color output control |
+| `-v, --verbose` | | Increase verbosity |
+| `-q, --quiet` | | Show only errors |
 
-## Filtering Options
+## Filter Expression Syntax
 
-Available for `compare`, `diff`, `llm`, `llm-diff`, and `perf` commands:
+Use `-f, --filter` with a unified expression syntax:
 
-| Option | Env Variable | Description |
-|--------|--------------|-------------|
-| `-C, --component <name>` | `LOG_ANALYZER_COMPONENT` | Filter by component |
-| `--exclude-component <name>` | `LOG_ANALYZER_EXCLUDE_COMPONENT` | Exclude component |
-| `-l, --level <level>` | `LOG_ANALYZER_LEVEL` | Filter by log level |
-| `--exclude-level <level>` | `LOG_ANALYZER_EXCLUDE_LEVEL` | Exclude log level |
-| `-t, --contains <text>` | `LOG_ANALYZER_CONTAINS` | Filter by text content |
-| `--exclude-text <text>` | `LOG_ANALYZER_EXCLUDE_TEXT` | Exclude by text |
-| `-d, --direction <Incoming\|Outgoing>` | `LOG_ANALYZER_DIRECTION` | Filter by direction |
-| `-s, --sort-by <field>` | `LOG_ANALYZER_SORT_BY` | Sort results |
+```bash
+--filter "type:value [!type:value] ..."
+```
+
+**Filter types (with aliases):**
+
+| Type | Aliases | Description |
+|------|---------|-------------|
+| `component` | `comp`, `c` | Filter by component name |
+| `level` | `lvl`, `l` | Filter by log level (INFO, ERROR, etc.) |
+| `text` | `t` | Filter by text in message |
+| `direction` | `dir`, `d` | Filter by direction (incoming/outgoing) |
+
+**Prefix with `!` to exclude.** Multiple filters use AND logic.
+
+```bash
+# Only core-universal component
+-f "c:core-universal"
+
+# Only ERROR level logs
+-f "l:ERROR"
+
+# Core component, exclude DEBUG level
+-f "c:core !l:DEBUG"
+
+# Contains 'timeout', incoming direction only
+-f "t:timeout d:incoming"
+```
 
 ## Command-Specific Options
 
@@ -78,16 +98,15 @@ Available for `compare`, `diff`, `llm`, `llm-diff`, and `perf` commands:
 | Option | Description |
 |--------|-------------|
 | `-D, --diff-only` | Show only differences (always on for `diff`) |
-| `-f, --full` | Show full JSON objects |
-
-Sort options: `time`, `component`, `level`, `type`, `diffcount`
+| `--full` | Show full JSON objects |
+| `-s, --sort-by` | Sort by: `time`, `component`, `level`, `type`, `diff-count` |
 
 ### info
 
 | Option | Description |
 |--------|-------------|
 | `-s, --samples` | Show sample messages per component |
-| `-j, --json-schema` | Display JSON schema information |
+| `--json-schema` | Display JSON schema information |
 | `-p, --payloads` | Show payload statistics |
 | `-t, --timeline` | Show timeline analysis |
 
@@ -113,10 +132,13 @@ Sort options: `duration`, `count`, `name`
 
 ```bash
 # Compare logs filtering by component and level
-log-analyzer compare file1.log file2.log -C core-universal -l ERROR
+log-analyzer diff file1.log file2.log -f "c:core-universal l:ERROR"
+
+# Exclude DEBUG logs from comparison
+log-analyzer diff file1.log file2.log -f "!l:DEBUG"
 
 # Save JSON diff to file
-log-analyzer -F json -o diff.json diff file1.log file2.log
+log-analyzer -j -o diff.json diff file1.log file2.log
 
 # Show operations slower than 500ms
 log-analyzer perf file.log --threshold-ms 500
@@ -130,15 +152,13 @@ log-analyzer llm-diff file1.log file2.log --limit 50
 
 ## Environment Configuration
 
-Set defaults via environment variables or `.env` file:
+Set defaults via environment variables (prefix `LOG_ANALYZER_`):
 
 ```bash
 export LOG_ANALYZER_FORMAT=json
-export LOG_ANALYZER_EXCLUDE_LEVEL=DEBUG
+export LOG_ANALYZER_FILTER="!l:DEBUG"
 export LOG_ANALYZER_COMPACT=true
 ```
-
-See `.env.example` for all available options.
 
 ## Claude Code Integration
 

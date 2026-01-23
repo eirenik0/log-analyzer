@@ -145,6 +145,7 @@ fn extract_log_parts(rest: &str) -> Option<(&str, &str, &str)> {
 }
 
 /// Determines the type of log entry based on the message content
+#[allow(clippy::too_many_arguments)]
 fn determine_log_entry_kind(
     component: String,
     component_id: String,

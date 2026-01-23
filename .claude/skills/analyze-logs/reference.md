@@ -53,11 +53,38 @@ These work with any command:
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
 | `-F, --format` | `text`, `json` | `text` | Output format |
+| `-j, --json` | flag | off | JSON output (shorthand for `-F json -c`) |
 | `-c, --compact` | flag | off | Use compact mode (shorter keys) |
+| `-f, --filter` | expression | none | Filter expression (see below) |
 | `-o, --output` | path | stdout | Save results to file |
 | `--color` | `auto`, `always`, `never` | `auto` | Control color output |
 | `-v, --verbose` | count | 0 | Increase verbosity (repeatable) |
 | `-q, --quiet` | flag | off | Show only errors |
+
+## Filter Expression Syntax
+
+Use `-f, --filter` with unified expression syntax:
+
+```bash
+-f "type:value [!type:value] ..."
+```
+
+**Filter types (with aliases):**
+| Type | Aliases | Description |
+|------|---------|-------------|
+| `component` | `comp`, `c` | Filter by component name |
+| `level` | `lvl`, `l` | Filter by log level (INFO, ERROR, etc.) |
+| `text` | `t` | Filter by text in message |
+| `direction` | `dir`, `d` | Filter by direction (incoming/outgoing) |
+
+**Prefix with `!` to exclude.** Multiple filters use AND logic.
+
+```bash
+-f "c:core-universal"           # Only core-universal component
+-f "l:ERROR"                    # Only ERROR level logs
+-f "c:core !l:DEBUG"            # Core component, exclude DEBUG
+-f "t:timeout d:incoming"       # Contains 'timeout', incoming only
+```
 
 ## Commands
 
@@ -72,15 +99,8 @@ log-analyzer compare <file1> <file2> [options]
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `-C, --component <name>` | Filter by component name |
-| `--exclude-component <name>` | Exclude by component name |
-| `-l, --level <level>` | Filter by log level (INFO, ERROR, WARN, DEBUG, TRACE) |
-| `--exclude-level <level>` | Exclude by log level |
-| `-t, --contains <text>` | Filter logs containing text |
-| `--exclude-text <text>` | Exclude logs containing text |
-| `-d, --direction <dir>` | Filter by direction (Incoming, Outgoing) |
 | `-D, --diff-only` | Show only differences |
-| `-f, --full` | Show full JSON objects |
+| `--full` | Show full JSON objects |
 | `-s, --sort-by <field>` | Sort by: time, component, level, type, diff-count |
 
 **Examples:**
@@ -92,10 +112,10 @@ log-analyzer compare test1.log test2.log
 log-analyzer compare test1.log test2.log --diff-only
 
 # Filter to errors in core component
-log-analyzer compare test1.log test2.log -C core-universal -l ERROR
+log-analyzer compare test1.log test2.log -f "c:core-universal l:ERROR"
 
 # JSON output sorted by difference count
-log-analyzer compare test1.log test2.log -D -F json -s diff-count
+log-analyzer compare test1.log test2.log -D -j -s diff-count
 ```
 
 ### diff
@@ -119,10 +139,8 @@ log-analyzer info <file> [options]
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `-C, --component <name>` | Filter by component |
-| `-l, --level <level>` | Filter by log level |
 | `-s, --samples` | Show sample log messages |
-| `-j, --json-schema` | Display JSON schema information |
+| `--json-schema` | Display JSON schema information |
 | `-p, --payloads` | Show payload statistics |
 | `-t, --timeline` | Show timeline analysis |
 
@@ -132,7 +150,7 @@ log-analyzer info <file> [options]
 log-analyzer info test.log --samples --payloads --timeline
 
 # JSON schema for a specific component
-log-analyzer info test.log -C socket --json-schema
+log-analyzer info test.log -f "c:socket" --json-schema
 
 # Quick overview
 log-analyzer info test.log
@@ -149,13 +167,6 @@ log-analyzer llm <file> [options]
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `-C, --component <name>` | Filter by component |
-| `--exclude-component <name>` | Exclude by component |
-| `-l, --level <level>` | Filter by log level |
-| `--exclude-level <level>` | Exclude by log level |
-| `-t, --contains <text>` | Filter by text |
-| `--exclude-text <text>` | Exclude by text |
-| `-d, --direction <dir>` | Filter by direction |
 | `-s, --sort-by <field>` | Sort by: time, component, level, type |
 | `--limit <n>` | Max entries (default: 100, 0 = unlimited) |
 | `--no-sanitize` | Disable sensitive field redaction |
@@ -193,7 +204,7 @@ log-analyzer llm test.log --limit 100 -o context.json
 log-analyzer llm test.log --no-sanitize
 
 # Errors only
-log-analyzer llm test.log -l ERROR --limit 50
+log-analyzer llm test.log -f "l:ERROR" --limit 50
 ```
 
 ### llm-diff
@@ -217,13 +228,6 @@ log-analyzer perf <file> [options]
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `-C, --component <name>` | Filter by component |
-| `--exclude-component <name>` | Exclude by component |
-| `-l, --level <level>` | Filter by log level |
-| `--exclude-level <level>` | Exclude by log level |
-| `-t, --contains <text>` | Filter by text |
-| `--exclude-text <text>` | Exclude by text |
-| `-d, --direction <dir>` | Filter by direction |
 | `--threshold-ms <ms>` | Duration threshold (default: 1000ms) |
 | `--top-n <n>` | Number of slowest ops (default: 20) |
 | `--orphans-only` | Show only orphan operations |
@@ -252,18 +256,16 @@ log-analyzer perf test.log -s count
 
 ## Environment Variables
 
-Configuration via environment variables (prefix: `LOG_ANALYZER_`):
+All variables use `LOG_ANALYZER_` prefix:
 
 | Variable | Description |
 |----------|-------------|
-| `LOG_ANALYZER_FORMAT` | Default output format |
+| `LOG_ANALYZER_FORMAT` | Default output format (`text` or `json`) |
+| `LOG_ANALYZER_JSON` | Enable JSON output mode |
 | `LOG_ANALYZER_COMPACT` | Enable compact mode |
-| `LOG_ANALYZER_OUTPUT_FILE` | Default output file |
-| `LOG_ANALYZER_COLOR` | Color mode |
-| `LOG_ANALYZER_VERBOSE` | Verbosity level (0-3) |
-| `LOG_ANALYZER_QUIET` | Quiet mode |
-| `LOG_ANALYZER_COMPONENT` | Default component filter |
-| `LOG_ANALYZER_LEVEL` | Default level filter |
+| `LOG_ANALYZER_FILTER` | Default filter expression |
+| `LOG_ANALYZER_OUTPUT` | Default output file |
+| `LOG_ANALYZER_SORT_BY` | Default sort order |
 
 ## Log Format
 

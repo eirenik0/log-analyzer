@@ -1,7 +1,9 @@
+use crate::comparator::create_styled_table;
 use crate::{LogEntry, LogEntryKind};
 use chrono::{DateTime, Local};
 use colored::ColoredString;
 use colored::{Color, Colorize};
+use comfy_table::Cell;
 use std::collections::HashMap;
 
 /// Displays all statistics about the logs with improved formatting and organization
@@ -160,9 +162,9 @@ pub fn display_log_summary(
         total_entries.to_string().green().bold()
     );
 
-    // Helper function to print sorted counts with percentages
+    // Helper function to print sorted counts with percentages using styled tables
     let print_sorted_counts =
-        |title: &str, counts: HashMap<&str, usize>, color_fn: fn(&str) -> ColoredString| {
+        |title: &str, counts: HashMap<&str, usize>, _color_fn: fn(&str) -> ColoredString| {
             // Skip if empty
             if counts.is_empty() {
                 return;
@@ -175,26 +177,7 @@ pub fn display_log_summary(
             println!("\n{}", title.bold());
             println!("{}", "-".repeat(80).bright_black());
 
-            // Calculate the longest item name for better alignment
-            let max_name_len = items.iter().map(|(name, _)| name.len()).max().unwrap_or(10);
-            let count_width = total_entries.to_string().len();
-
-            // Print header row
-            println!(
-                "  {:<width$} │ {:<count_width$} │ {:<8} │ Distribution",
-                "Name",
-                "Count",
-                "Percent",
-                width = max_name_len,
-                count_width = count_width,
-            );
-            println!(
-                "  {}-│-{}-│-{}-│-{}",
-                "-".repeat(max_name_len),
-                "-".repeat(count_width),
-                "-".repeat(8),
-                "-".repeat(20)
-            );
+            let mut table = create_styled_table(&["Name", "Count", "Percent", "Distribution"]);
 
             // Print each item with percentage and bar chart
             for (name, count) in items {
@@ -202,16 +185,15 @@ pub fn display_log_summary(
                 let bar_length = (percentage.round() as usize).min(50);
                 let bar = "█".repeat(bar_length);
 
-                println!(
-                    "  {:<width$} │ {:<count_width$} │ {:>6.2}% │ {}",
-                    color_fn(name),
-                    count.to_string().bright_white(),
-                    percentage,
-                    bar.color(get_gradient_color(percentage)),
-                    width = max_name_len,
-                    count_width = count_width,
-                );
+                table.add_row(vec![
+                    Cell::new(name),
+                    Cell::new(count),
+                    Cell::new(format!("{:>6.2}%", percentage)),
+                    Cell::new(bar),
+                ]);
             }
+
+            println!("{table}");
         };
 
     // Display components with counts and percentages
@@ -311,6 +293,8 @@ pub fn display_log_summary(
 
             println!("\n  {}:", title.bright_white().bold());
 
+            let mut table = create_styled_table(&["Name", "Count", "Avg (bytes)", "Min", "Max"]);
+
             // Convert to vec and sort by average size
             let mut items: Vec<(&str, &Vec<usize>)> =
                 stats_map.iter().map(|(k, v)| (*k, v)).collect();
@@ -324,15 +308,16 @@ pub fn display_log_summary(
                 let (min, max, _sum, avg) = calculate_stats(sizes);
                 let count = sizes.len();
 
-                println!(
-                    "    {}: {} occurrences, avg size: {:.2} bytes (min: {}, max: {})",
-                    name.yellow(),
-                    count.to_string().bright_white(),
-                    avg,
-                    min.to_string().bright_blue(),
-                    max.to_string().bright_red()
-                );
+                table.add_row(vec![
+                    Cell::new(name),
+                    Cell::new(count),
+                    Cell::new(format!("{:.2}", avg)),
+                    Cell::new(min),
+                    Cell::new(max),
+                ]);
             }
+
+            println!("{table}");
         };
 
         display_payload_stats("EVENT PAYLOADS", &event_payload_sizes);

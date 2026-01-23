@@ -1,5 +1,7 @@
 use super::entities::{PerfAnalysisResults, TimedOperation};
 use crate::cli::PerfSortOrder;
+use crate::comparator::create_styled_table;
+use comfy_table::Cell;
 
 /// Display performance analysis results in text format
 pub fn display_perf_results(
@@ -43,8 +45,8 @@ pub fn display_perf_results(
         println!("║           OPERATION STATISTICS                             ║");
         println!("╚════════════════════════════════════════════════════════════╝");
         println!();
-        println!(
-            "{:<12} {:<30} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}",
+
+        let mut table = create_styled_table(&[
             "Type",
             "Operation",
             "Count",
@@ -53,9 +55,8 @@ pub fn display_perf_results(
             "Max(ms)",
             "P50(ms)",
             "P95(ms)",
-            "P99(ms)"
-        );
-        println!("{}", "─".repeat(138));
+            "P99(ms)",
+        ]);
 
         let mut stats = results.stats.clone();
         match sort_by {
@@ -71,19 +72,20 @@ pub fn display_perf_results(
         }
 
         for stat in stats.iter().take(top_n) {
-            println!(
-                "{:<12} {:<30} {:>8} {:>10.2} {:>10} {:>10} {:>10} {:>10} {:>10}",
-                stat.op_type,
-                truncate_string(&stat.name, 30),
-                stat.count,
-                stat.avg_duration_ms,
-                stat.min_duration_ms,
-                stat.max_duration_ms,
-                stat.p50_duration_ms,
-                stat.p95_duration_ms,
-                stat.p99_duration_ms,
-            );
+            table.add_row(vec![
+                Cell::new(&stat.op_type),
+                Cell::new(truncate_string(&stat.name, 30)),
+                Cell::new(stat.count),
+                Cell::new(format!("{:.2}", stat.avg_duration_ms)),
+                Cell::new(stat.min_duration_ms),
+                Cell::new(stat.max_duration_ms),
+                Cell::new(stat.p50_duration_ms),
+                Cell::new(stat.p95_duration_ms),
+                Cell::new(stat.p99_duration_ms),
+            ]);
         }
+
+        println!("{table}");
         println!();
     }
 

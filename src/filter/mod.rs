@@ -35,5 +35,5 @@ pub mod matcher;
 pub mod parser;
 
 pub use error::FilterParseError;
-pub use matcher::to_log_filter;
+pub use matcher::{print_filter_warnings, to_log_filter};
 pub use parser::{FilterExpression, FilterTerm, FilterType};

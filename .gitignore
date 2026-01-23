@@ -102,3 +102,9 @@ fabric.properties
 
 
 **/.claude/settings.local.json
+
+# Log files for testing
+logs/
+
+# Junie memory
+.junie/

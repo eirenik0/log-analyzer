@@ -244,6 +244,7 @@ pub fn create_request_log(params: RequestLogParams) -> LogEntry {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_generic_log(
     component: String,
     component_id: String,
