@@ -1,8 +1,10 @@
 use chrono::{DateTime, Local};
+use regex::Regex;
 use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::sync::LazyLock;
 
 mod entities;
 
@@ -11,6 +13,11 @@ pub use entities::{
     RequestDirection, RequestLogParams, create_command_log, create_event_log, create_generic_log,
     create_request_log,
 };
+
+static LOG_ENTRY_START: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[\w-]+(?:\s+\([^)]*\))?\s+\|\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+        .expect("valid log entry start regex")
+});
 
 /// Parse error types
 #[derive(Debug)]
@@ -40,8 +47,8 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
         line_number += 1;
         let line = line?;
 
-        // Check if this is a new log entry (contains the separator " | ")
-        if line.contains(" | ") {
+        // Detect real entry headers to avoid splitting multiline payload data that contains " | ".
+        if LOG_ENTRY_START.is_match(&line) {
             // Save the previous log entry if it exists
             if let Some(log_text) = current_log.take() {
                 match parse_log_entry(&log_text, current_line_number) {
@@ -92,10 +99,18 @@ pub fn parse_log_entry(log_text: &str, source_line_number: usize) -> Result<LogE
         .ok_or_else(|| ParseError::InvalidLogFormat("Missing log message section".to_string()))?;
 
     // Extract timestamp, level, and message
-    let (timestamp, level, message) = extract_log_parts(rest)
+    let (timestamp_str, level, message) = extract_log_parts(rest)
         .ok_or_else(|| ParseError::InvalidLogFormat("Invalid log format".to_string()))?;
 
-    let timestamp = timestamp.parse::<DateTime<Local>>().unwrap();
+    let timestamp = DateTime::parse_from_rfc3339(timestamp_str)
+        .map(|dt| dt.with_timezone(&Local))
+        .or_else(|_| timestamp_str.parse::<DateTime<Local>>())
+        .map_err(|err| {
+            ParseError::InvalidLogFormat(format!(
+                "Invalid timestamp '{}': {}",
+                timestamp_str, err
+            ))
+        })?;
     // Process message to determine the log entry kind
     determine_log_entry_kind(
         component.to_string(),

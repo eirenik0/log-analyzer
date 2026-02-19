@@ -108,42 +108,46 @@ impl LogFilter {
     }
 
     pub fn matches(&self, log: &LogEntry) -> bool {
+        fn contains_ci(haystack: &str, needle: &str) -> bool {
+            haystack.to_lowercase().contains(&needle.to_lowercase())
+        }
+
         // Include filters (log must match these if specified)
         let component_match = self
             .component
             .as_ref()
-            .map(|filter| log.component.contains(filter))
+            .map(|filter| contains_ci(&log.component, filter))
             .unwrap_or(true);
 
         let level_match = self
             .level
             .as_ref()
-            .map(|filter| log.level.contains(filter))
+            .map(|filter| contains_ci(&log.level, filter))
             .unwrap_or(true);
 
         let contains_match = self
             .message_contains
             .as_ref()
-            .map(|filter| log.message.contains(filter))
+            .map(|filter| contains_ci(&log.message, filter))
             .unwrap_or(true);
 
         // Exclude filters (log must NOT match these if specified)
         let exclude_component_match = self
             .exclude_component
             .as_ref()
-            .map(|filter| !log.component.contains(filter))
+            .map(|filter| !contains_ci(&log.component, filter))
             .unwrap_or(true);
 
         let exclude_level_match = self
             .exclude_level
             .as_ref()
-            .map(|filter| !log.level.contains(filter))
+            .map(|filter| !contains_ci(&log.level, filter))
             .unwrap_or(true);
 
         let excludes_match = self
             .message_excludes
             .as_ref()
-            .map(|filter| !log.message.contains(filter))
+            .map(|filter| !contains_ci(&log.message, filter))
             .unwrap_or(true);
 
         let direction_match = self
