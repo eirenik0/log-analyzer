@@ -55,10 +55,8 @@ impl JsonFormatter {
 
         self.output["s"] = summary;
 
-        // Add unique logs if not diff_only mode
-        if !options.diff_only {
-            self.add_unique_logs_compact(&results.unique_to_log1, &results.unique_to_log2);
-        }
+        // Keep unique/unpaired entries in JSON output even for diff mode.
+        self.add_unique_logs_compact(&results.unique_to_log1, &results.unique_to_log2);
 
         // Add shared comparisons
         self.add_comparisons_compact(&results.shared_comparisons, options);
@@ -100,59 +98,56 @@ impl JsonFormatter {
 
         readable_output["summary"] = summary;
 
-        // Add unique logs if not diff_only mode
-        if !options.diff_only {
-            let unique1: Vec<Value> = results
-                .unique_to_log1
-                .iter()
-                .enumerate()
-                .map(|(idx, key)| {
-                    let parts: Vec<&str> = key.split('|').collect();
-                    if parts.len() >= 3 {
-                        json!({
-                            "index": idx,
-                            "component": parts[0],
-                            "level": parts[1],
-                            "kind": parts[2].trim(),
-                            "details": if parts.len() > 3 { parts[3].trim() } else { "" },
-                            "raw_key": key
-                        })
-                    } else {
-                        json!({
-                            "index": idx,
-                            "raw_key": key
-                        })
-                    }
-                })
-                .collect();
+        let unique1: Vec<Value> = results
+            .unique_to_log1
+            .iter()
+            .enumerate()
+            .map(|(idx, key)| {
+                let parts: Vec<&str> = key.split('|').collect();
+                if parts.len() >= 3 {
+                    json!({
+                        "index": idx,
+                        "component": parts[0],
+                        "level": parts[1],
+                        "kind": parts[2].trim(),
+                        "details": if parts.len() > 3 { parts[3].trim() } else { "" },
+                        "raw_key": key
+                    })
+                } else {
+                    json!({
+                        "index": idx,
+                        "raw_key": key
+                    })
+                }
+            })
+            .collect();
 
-            let unique2: Vec<Value> = results
-                .unique_to_log2
-                .iter()
-                .enumerate()
-                .map(|(idx, key)| {
-                    let parts: Vec<&str> = key.split('|').collect();
-                    if parts.len() >= 3 {
-                        json!({
-                            "index": idx,
-                            "component": parts[0],
-                            "level": parts[1],
-                            "kind": parts[2].trim(),
-                            "details": if parts.len() > 3 { parts[3].trim() } else { "" },
-                            "raw_key": key
-                        })
-                    } else {
-                        json!({
-                            "index": idx,
-                            "raw_key": key
-                        })
-                    }
-                })
-                .collect();
+        let unique2: Vec<Value> = results
+            .unique_to_log2
+            .iter()
+            .enumerate()
+            .map(|(idx, key)| {
+                let parts: Vec<&str> = key.split('|').collect();
+                if parts.len() >= 3 {
+                    json!({
+                        "index": idx,
+                        "component": parts[0],
+                        "level": parts[1],
+                        "kind": parts[2].trim(),
+                        "details": if parts.len() > 3 { parts[3].trim() } else { "" },
+                        "raw_key": key
+                    })
+                } else {
+                    json!({
+                        "index": idx,
+                        "raw_key": key
+                    })
+                }
+            })
+            .collect();
 
-            readable_output["unique_to_log1"] = Value::Array(unique1);
-            readable_output["unique_to_log2"] = Value::Array(unique2);
-        }
+        readable_output["unique_to_log1"] = Value::Array(unique1);
+        readable_output["unique_to_log2"] = Value::Array(unique2);
 
         // Group comparisons by key
         let mut comparisons_array = Vec::new();
@@ -299,59 +294,56 @@ impl JsonFormatter {
 
         standard_output["summary"] = summary;
 
-        // Add unique logs if not diff_only mode
-        if !options.diff_only {
-            let unique1: Vec<Value> = results
-                .unique_to_log1
-                .iter()
-                .enumerate()
-                .map(|(idx, key)| {
-                    let parts: Vec<&str> = key.split('|').collect();
-                    if parts.len() >= 3 {
-                        json!({
-                            "index": idx,
-                            "component": parts[0],
-                            "level": parts[1],
-                            "kind": parts[2].trim(),
-                            "details": if parts.len() > 3 { parts[3].trim() } else { "" },
-                            "raw_key": key
-                        })
-                    } else {
-                        json!({
-                            "index": idx,
-                            "raw_key": key
-                        })
-                    }
-                })
-                .collect();
+        let unique1: Vec<Value> = results
+            .unique_to_log1
+            .iter()
+            .enumerate()
+            .map(|(idx, key)| {
+                let parts: Vec<&str> = key.split('|').collect();
+                if parts.len() >= 3 {
+                    json!({
+                        "index": idx,
+                        "component": parts[0],
+                        "level": parts[1],
+                        "kind": parts[2].trim(),
+                        "details": if parts.len() > 3 { parts[3].trim() } else { "" },
+                        "raw_key": key
+                    })
+                } else {
+                    json!({
+                        "index": idx,
+                        "raw_key": key
+                    })
+                }
+            })
+            .collect();
 
-            let unique2: Vec<Value> = results
-                .unique_to_log2
-                .iter()
-                .enumerate()
-                .map(|(idx, key)| {
-                    let parts: Vec<&str> = key.split('|').collect();
-                    if parts.len() >= 3 {
-                        json!({
-                            "index": idx,
-                            "component": parts[0],
-                            "level": parts[1],
-                            "kind": parts[2].trim(),
-                            "details": if parts.len() > 3 { parts[3].trim() } else { "" },
-                            "raw_key": key
-                        })
-                    } else {
-                        json!({
-                            "index": idx,
-                            "raw_key": key
-                        })
-                    }
-                })
-                .collect();
+        let unique2: Vec<Value> = results
+            .unique_to_log2
+            .iter()
+            .enumerate()
+            .map(|(idx, key)| {
+                let parts: Vec<&str> = key.split('|').collect();
+                if parts.len() >= 3 {
+                    json!({
+                        "index": idx,
+                        "component": parts[0],
+                        "level": parts[1],
+                        "kind": parts[2].trim(),
+                        "details": if parts.len() > 3 { parts[3].trim() } else { "" },
+                        "raw_key": key
+                    })
+                } else {
+                    json!({
+                        "index": idx,
+                        "raw_key": key
+                    })
+                }
+            })
+            .collect();
 
-            standard_output["unique_to_log1"] = Value::Array(unique1);
-            standard_output["unique_to_log2"] = Value::Array(unique2);
-        }
+        standard_output["unique_to_log1"] = Value::Array(unique1);
+        standard_output["unique_to_log2"] = Value::Array(unique2);
 
         // Add shared comparisons
         let mut comparisons_array = Vec::new();

@@ -275,8 +275,13 @@ fn determine_log_entry_kind(
                 let mut cleaned_message = message.to_string();
 
                 for indicator in &parser_rules.command_payload_markers {
+                    if indicator.is_empty() {
+                        continue;
+                    }
+
                     if let Some(start_idx) = message.find(indicator.as_str()) {
-                        let settings_str = &message[start_idx + indicator.len() - 1..];
+                        let settings_start = start_idx + indicator.len() - 1;
+                        let settings_str = &message[settings_start..];
                         settings = extract_json(settings_str, &parser_rules.json_indicators);
 
                         // Update cleaned message

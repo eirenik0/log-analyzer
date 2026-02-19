@@ -244,3 +244,99 @@ fn test_compare_shows_unpaired_annotation_in_unique_output() {
         stdout
     );
 }
+
+#[test]
+fn test_diff_json_includes_unpaired_entries_in_unique_sections() {
+    let dir = tempdir().expect("temp dir");
+    let file1 = dir.path().join("a.log");
+    let file2 = dir.path().join("b.log");
+
+    let a_content = concat!(
+        "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"x\":1}\n",
+        "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id2] will be sent with body {\"x\":2}\n",
+        "svc | 2026-01-01T00:00:02.000Z [INFO ] Request \"foo\" [0--id3] will be sent with body {\"x\":3}\n",
+    );
+    let b_content = concat!(
+        "svc | 2026-01-01T00:00:03.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"x\":10}\n",
+        "svc | 2026-01-01T00:00:04.000Z [INFO ] Request \"foo\" [0--id2] will be sent with body {\"x\":20}\n",
+    );
+    write_file(&file1, a_content);
+    write_file(&file2, b_content);
+
+    let output = Command::new(bin())
+        .args([
+            "-F",
+            "json",
+            "diff",
+            file1.to_str().expect("utf8 path"),
+            file2.to_str().expect("utf8 path"),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be JSON");
+
+    let unique_count = parsed["summary"]["unique_to_log1_count"]
+        .as_u64()
+        .expect("summary.unique_to_log1_count should be numeric");
+    assert_eq!(unique_count, 1);
+
+    let unique_entries = parsed["unique_to_log1"]
+        .as_array()
+        .expect("unique_to_log1 should be an array");
+    assert_eq!(
+        unique_entries.len(),
+        1,
+        "diff output should include unpaired entries in unique_to_log1, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_diff_text_includes_unpaired_entries_in_unique_sections() {
+    let dir = tempdir().expect("temp dir");
+    let file1 = dir.path().join("a.log");
+    let file2 = dir.path().join("b.log");
+
+    let a_content = concat!(
+        "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"x\":1}\n",
+        "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id2] will be sent with body {\"x\":2}\n",
+        "svc | 2026-01-01T00:00:02.000Z [INFO ] Request \"foo\" [0--id3] will be sent with body {\"x\":3}\n",
+    );
+    let b_content = concat!(
+        "svc | 2026-01-01T00:00:03.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"x\":10}\n",
+        "svc | 2026-01-01T00:00:04.000Z [INFO ] Request \"foo\" [0--id2] will be sent with body {\"x\":20}\n",
+    );
+    write_file(&file1, a_content);
+    write_file(&file2, b_content);
+
+    let output = Command::new(bin())
+        .args([
+            "-v",
+            "diff",
+            file1.to_str().expect("utf8 path"),
+            file2.to_str().expect("utf8 path"),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("unpaired occurrence"),
+        "expected diff text output to include unpaired unique entries, got:\n{}",
+        stdout
+    );
+}

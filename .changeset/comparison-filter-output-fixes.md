@@ -10,3 +10,6 @@ Fix comparison, filter, and output behavior regressions:
 - Ensure `-o/--output` writes correct output for compare/diff/llm-diff/process and perf (text and JSON).
 - Update filter semantics so different filter types are AND-ed while multiple values of the same type are OR-ed.
 - Improve unique entry display so request details and unpaired annotations remain visible.
+- Ensure `diff` mode also includes unpaired unique entries in both text and JSON outputs.
+- Prevent parser panic when profile config contains empty `command_payload_markers`.
+- Add regression tests for diff unique-output behavior and config-driven parser marker handling.

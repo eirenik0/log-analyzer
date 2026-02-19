@@ -74,7 +74,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
     }
 
     // Display unique keys with better formatting - only in normal/verbose mode
-    if !options.diff_only && crate::comparator::console_cmp::should_print(options, 1) {
+    if crate::comparator::console_cmp::should_print(options, 1) {
         if !results.unique_to_log1.is_empty() {
             formatter.write_divider("=", 80)?;
             formatter.write_header("LOGS UNIQUE TO FILE 1")?;

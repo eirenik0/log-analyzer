@@ -120,6 +120,24 @@ fn test_perf_markers_can_be_overridden_by_config() {
 }
 
 #[test]
+fn test_empty_command_payload_marker_does_not_panic() {
+    let mut config = AnalyzerConfig::default();
+    config.parser.command_payload_markers = vec!["".to_string(), "with settings".to_string()];
+
+    let line =
+        r#"svc | 2025-04-03T21:35:06.157Z [INFO ] Command "sync" is called with settings {"id":1}"#;
+    let entry = parse_log_entry_with_config(line, 1, &config).expect("parse should succeed");
+
+    match entry.kind {
+        LogEntryKind::Command { command, settings } => {
+            assert_eq!(command, "sync");
+            assert_eq!(settings, Some(serde_json::json!({ "id": 1 })));
+        }
+        _ => panic!("expected command log"),
+    }
+}
+
+#[test]
 fn test_profile_insights_can_be_configured_without_external_profile_file() {
     let mut config = AnalyzerConfig::default();
     config.profile.known_components = vec!["core".to_string()];
