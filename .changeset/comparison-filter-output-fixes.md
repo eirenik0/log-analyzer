@@ -2,14 +2,12 @@
 default: patch
 ---
 
-Fix comparison, filter, and output behavior regressions:
+Fix regressions in compare/diff filtering and output:
 
-- Pair repeated shared keys one-to-one and surface unmatched occurrences as unique entries instead of dropping them.
-- Fix `--sort-by time/component/level/type` behavior to use structured key parts and actual timestamps.
-- Make `--full` comparison output print full payload JSON.
-- Ensure `-o/--output` writes correct output for compare/diff/llm-diff/process and perf (text and JSON).
-- Update filter semantics so different filter types are AND-ed while multiple values of the same type are OR-ed.
-- Improve unique entry display so request details and unpaired annotations remain visible.
-- Ensure `diff` mode also includes unpaired unique entries in both text and JSON outputs.
-- Prevent parser panic when profile config contains empty `command_payload_markers`.
-- Add regression tests for diff unique-output behavior and config-driven parser marker handling.
+- Repeated shared keys are now paired one-to-one; unmatched occurrences are kept as unique entries.
+- `--sort-by time/component/level/type` now sorts correctly.
+- `--full` now prints full payload JSON in comparison output.
+- `-o, --output` now writes the correct output for `compare`, `diff`, `llm-diff`, `process`, and `perf` (text and JSON).
+- Filter logic is now consistent: different filter types are AND-ed, multiple values of the same type are OR-ed.
+- `diff` output now includes unpaired unique entries in both text and JSON modes.
+- Parser no longer panics when profile config has empty `command_payload_markers`.

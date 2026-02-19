@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Log-analyzer is a Rust command-line tool designed to analyze and compare JSON logs from the Applitools testing framework. It can parse complex log files, extract JSON payloads, and identify differences between log files.
+Log-analyzer is a Rust command-line tool for analyzing and comparing JSON logs. The parser/comparator core is generic, while domain-specific parsing/perf rules can be injected via TOML profiles.
 
 ## Claude Code Skill
 
@@ -95,9 +95,11 @@ cargo run -- generate-config <file> --template service-api --profile-name my-pro
 
 These options can be used with any command:
 - `-F, --format <text|json>` - Output format (default: text)
+- `-j, --json` - JSON output shorthand for `-F json -c`
 - `-c, --compact` - Use compact mode for output (shorter keys, optimized structure)
 - `-f, --filter <expr>` - Filter expression (see Filter Syntax below)
 - `-o, --output <path>` - Path to output file for results
+- `--config <path>` - Analyzer profile config path (TOML)
 - `--color <auto|always|never>` - Control color output (default: auto)
 - `-v, --verbose` - Increase verbosity level (can be used multiple times)
 - `-q, --quiet` - Be quiet, show only errors
@@ -146,6 +148,8 @@ Options:
 - `--full` - Show full JSON objects, not just differences
 - `-s, --sort-by <field>` - Sort output by field (time, component, level, type, diff-count)
 
+Comparison output now also surfaces source line numbers for each paired entry, marks JSON changes as added/removed/modified, and preserves unpaired repeated entries in unique sections.
+
 ### Diff Command
 
 Shortcut for `compare --diff-only`. Same options as Compare command (except `--diff-only`).
@@ -156,7 +160,7 @@ List all components, event types, log levels, and detailed statistics in a log f
 
 Options:
 - `-s, --samples` - Show sample log messages for each component
-- `-j, --json-schema` - Display detailed JSON schema information for event payloads
+- `--json-schema` - Display detailed JSON schema information for event payloads
 - `-p, --payloads` - Show payload statistics for each event/command/request type
 - `-t, --timeline` - Show detailed timeline analysis with event distribution
 
@@ -188,6 +192,14 @@ Options:
 - `--op-type <Request|Event|Command>` - Filter by operation type
 - `-s, --sort-by <field>` - Sort results by field (duration, count, name)
 
+### Generate-Config Command (alias: `gen-config`)
+
+Analyze a log file and generate a TOML profile.
+
+Options:
+- `--profile-name <name>` - Name for the generated profile (defaults to input filename stem)
+- `--template <path-or-name>` - Base template path or built-in name (`base`, `custom-start`, `service-api`, `event-pipeline`)
+
 ### Testing
 
 ```bash
@@ -209,35 +221,42 @@ cargo test test_name -- --nocapture
    - Extracts components, timestamps, log levels, and messages
    - Identifies and parses JSON payloads from log messages
    - Categorizes logs into different types (events, commands, requests)
+   - Tracks source line numbers for each parsed entry
 
-2. **Comparator (`src/comparator.rs`)** - Compares logs and identifies differences
+2. **Config (`src/config.rs`)** - Loads analyzer profiles and built-in templates
+   - Loads `--config` TOML from disk
+   - Provides embedded defaults/templates when no external file is used
+   - Produces profile insights (unknown components/commands/requests, session prefixes)
+
+3. **Comparator (`src/comparator.rs`)** - Compares logs and identifies differences
    - Compares JSON payloads while respecting object structure
    - Finds differences regardless of object property order
+   - Classifies changes as Added/Removed/Modified
    - Generates human-readable difference reports with styled tables
 
-3. **Filter (`src/filter/`)** - Unified filter expression parsing
+4. **Filter (`src/filter/`)** - Unified filter expression parsing
    - Parses filter expressions like `"c:core l:ERROR !t:timeout"`
    - Supports include/exclude semantics with `!` prefix
    - Converts expressions to LogFilter for log matching
 
-4. **CLI (`src/cli.rs`)** - Command-line interface using Clap
+5. **CLI (`src/cli.rs`)** - Command-line interface using Clap
    - Defines the CLI commands and arguments
    - Handles parameter parsing and validation
 
-5. **LLM Processor (`src/llm_processor.rs`)** - Generates LLM-friendly output
+6. **LLM Processor (`src/llm_processor.rs`)** - Generates LLM-friendly output
    - Sanitizes sensitive data from log payloads
    - Produces compact JSON output optimized for LLM consumption
 
-6. **Performance Analyzer (`src/perf_analyzer/`)** - Analyzes operation timing
+7. **Performance Analyzer (`src/perf_analyzer/`)** - Analyzes operation timing
    - Tracks operation durations (requests, events, commands)
    - Identifies orphan operations (started but never finished)
    - Calculates performance statistics and identifies bottlenecks
 
-7. **Library (`src/lib.rs`)** - Core library exposing public API
+8. **Library (`src/lib.rs`)** - Core library exposing public API
    - Orchestrates command execution
    - Provides filtering and output formatting
 
-8. **Config Generator (`src/config_generator.rs`)** - Builds profile TOML data from parsed logs
+9. **Config Generator (`src/config_generator.rs`)** - Builds profile TOML data from parsed logs
    - Collects known components, commands, and requests
    - Detects high-frequency session prefixes from component IDs
    - Preserves parser/perf rules from a base config
@@ -247,6 +266,8 @@ cargo test test_name -- --nocapture
 - `LogEntry` - Represents a single log entry with all metadata
 - `LogEntryKind` - Enum for different types of logs (Generic, Event, Command, Request)
 - `ComparisonResults` - Contains comparison results between two log files
+- `AnalyzerConfig` - Runtime parser/perf/profile rules loaded from TOML or built-ins
+- `FilterExpression` - Parsed unified filter AST for include/exclude matching
 - `LogFilter` - Used to filter logs by component, level, text, or direction
 - `PerfStats` - Contains performance analysis results (durations, orphans, slow operations)
 
@@ -254,8 +275,9 @@ cargo test test_name -- --nocapture
 
 1. User runs the application with a command
 2. CLI arguments are parsed using `cli::cli_parse()`
-3. Log files are parsed with `parser::parse_log_file()`
-4. Command-specific processing:
+3. Analyzer profile config is loaded with `config::load_config()`
+4. Log files are parsed with `parser::parse_log_file_with_config()`
+5. Command-specific processing:
    - **compare/diff**: Filters are applied, logs are compared with `comparator::compare_logs()`
    - **info**: Statistics and metadata are extracted and displayed
    - **llm/process**: Logs are sanitized and output as compact JSON
@@ -265,7 +287,7 @@ cargo test test_name -- --nocapture
 ## Development Notes
 
 - The codebase uses Rust 2024 edition
-- Dependencies include clap (for CLI), serde (for JSON), and chrono (for timestamps)
+- Dependencies include clap (CLI), serde (JSON), chrono (timestamps), comfy-table (tables), and thiserror (error types)
 - Tests use the tempfile crate for testing file output
 - JSON comparison is semantic, not just a string comparison
 - The code handles complex log structures, including nested JSON objects and arrays

@@ -4,16 +4,16 @@
 
 ### Features
 
-- add filter for connection direction
-- add advanced filtering, sorting, and CLI enhancements
-- enhance `info` command with detailed analysis options
-- add individual llm log preparation
-- sanitize by default
-- improve request parsing for name, ID, and direction detection
-- add performance analysis command to CLI
-- add installation scripts and Claude Code skill for log analysis
-- improve install script for user-friendliness and compatibility
-- add plugin support for Claude Code and update documentation
+- Add filter for connection direction
+- Add advanced filtering, sorting, and CLI enhancements
+- Enhance `info` command with detailed analysis options
+- Add individual llm log preparation
+- Sanitize by default
+- Improve request parsing for name, ID, and direction detection
+- Add performance analysis command to CLI
+- Add installation scripts and Claude Code skill for log analysis
+- Improve install script for user-friendliness and compatibility
+- Add plugin support for Claude Code and update documentation
 
 #### Add Claude Code plugin support for cross-project skill installation:
 
@@ -38,14 +38,14 @@
 
 ### Features
 
-- add filter for connection direction
-- add advanced filtering, sorting, and CLI enhancements
-- enhance `info` command with detailed analysis options
-- add individual llm log preparation
-- sanitize by default
-- improve request parsing for name, ID, and direction detection
-- add performance analysis command to CLI
-- add installation scripts and Claude Code skill for log analysis
+- Add filter for connection direction
+- Add advanced filtering, sorting, and CLI enhancements
+- Enhance `info` command with detailed analysis options
+- Add individual llm log preparation
+- Sanitize by default
+- Improve request parsing for name, ID, and direction detection
+- Add performance analysis command to CLI
+- Add installation scripts and Claude Code skill for log analysis
 
 ## 0.1.0
 

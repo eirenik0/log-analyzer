@@ -34,6 +34,9 @@ log-analyzer perf file.log
 
 # Generate LLM-friendly output
 log-analyzer llm file.log
+
+# Generate a starter profile from real logs
+log-analyzer generate-config file.log --template custom-start --profile-name my-team
 ```
 
 ## Commands
@@ -46,6 +49,7 @@ log-analyzer llm file.log
 | `perf` | | Analyze operation timing |
 | `process` | `llm` | Generate LLM-friendly JSON output |
 | `llm-diff` | | Generate LLM-friendly diff output |
+| `generate-config` | `gen-config` | Generate a profile TOML from logs |
 
 ## Global Options
 
@@ -129,8 +133,18 @@ Sort options: `duration`, `count`, `name`
 
 | Option | Description |
 |--------|-------------|
-| `--limit <number>` | Max entries (default: 100, 0 = unlimited) |
+| `-s, --sort-by` | Sort by: `time`, `component`, `level`, `type` |
 | `--no-sanitize` | Disable sensitive field hiding |
+
+`llm` (`process`) also supports:
+- `--limit <number>` - Max entries (default: 100, `0` = unlimited)
+
+### generate-config
+
+| Option | Description |
+|--------|-------------|
+| `--profile-name <name>` | Name for the generated profile (defaults to file stem) |
+| `--template <path-or-name>` | Base template path or built-in: `base`, `custom-start`, `service-api`, `event-pipeline` |
 
 ## Examples
 
@@ -150,8 +164,11 @@ log-analyzer perf file.log --threshold-ms 500
 # Comprehensive log analysis
 log-analyzer info file.log --samples --timeline --payloads
 
-# LLM-friendly diff with custom limit
-log-analyzer llm-diff file1.log file2.log --limit 50
+# LLM-friendly output with a custom limit
+log-analyzer llm file.log --limit 50
+
+# LLM-friendly diff sorted by highest-severity levels first
+log-analyzer llm-diff file1.log file2.log --sort-by level
 ```
 
 ## Environment Configuration
@@ -233,7 +250,9 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 
 - **Structured parsing** - Extracts and parses JSON payloads automatically
 - **Semantic comparison** - Compares JSON objects regardless of property order
+- **Diff context improvements** - Tracks source line numbers and marks changes as added/removed/modified
 - **Advanced filtering** - Include/exclude by component, level, content, or direction
 - **Performance analysis** - Identify slow and orphan operations
 - **LLM-friendly output** - Sanitized, compact JSON for AI consumption
+- **Profile-driven customization** - Override parser/perf markers via TOML config or generated templates
 - **Flexible output** - Text or JSON format with color and verbosity control

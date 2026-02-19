@@ -67,8 +67,8 @@ check-knope: ## Verify Knope is installed
 changelog.add: check-knope ## Create a new changelog fragment interactively
 	knope document-change
 
-changelog.preview: check-knope ## Preview the next release changelog
-	knope preview-release
+changelog.prepare: check-knope ## Preview the next release changelog
+	knope prepare-release
 
 changelog.release: check-knope ## Prepare and create a new release [version=X.Y.Z]
 ifndef version
