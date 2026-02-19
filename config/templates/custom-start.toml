@@ -1,0 +1,53 @@
+# Template: custom-start
+#
+# 1) Copy this file to config/profiles/<your-team>.toml
+# 2) Replace marker strings with your log message patterns
+# 3) Add known components/commands/requests for profile insights
+
+profile_name = "custom-start"
+
+[parser]
+# Event patterns (examples: Emit event of type "X" with payload {...})
+event_emit_markers = ["Emit event of type"]
+event_receive_markers = ["Received event of type"]
+event_payload_separator = "with payload"
+
+# Command pattern (example: Command "sync" is called with settings {...})
+command_prefix = "Command \""
+command_start_marker = "\" is called"
+command_payload_markers = ["with settings"]
+
+# Request pattern (example: Request "fetchUser" will be sent ... with body {...})
+request_prefix = "Request \""
+request_send_markers = ["will be sent"]
+request_receive_markers = ["finished successfully", "respond with"]
+request_payload_markers = ["with body"]
+request_endpoint_marker = "address \"["
+
+# JSON extraction hints
+json_indicators = [
+  "with settings {",
+  "with body [",
+  "with body {",
+  "with body",
+  "with body "
+]
+
+[perf]
+# Command pairing markers for perf analysis
+command_start_markers = ["is called"]
+command_completion_markers = ["finished", "returned", "completed"]
+
+# Key(s) used to correlate request/response-like event pairs
+event_correlation_keys = ["key"]
+
+[profile]
+# Optional: known entities (used by `info` profile insights)
+known_components = ["api", "worker"]
+known_commands = ["sync", "publish"]
+known_requests = ["fetchUser", "createOrder"]
+
+[profile.session_prefixes]
+# Optional: prefixes to extract session IDs from component_id path segments
+primary = "trace-"
+secondary = "span-"

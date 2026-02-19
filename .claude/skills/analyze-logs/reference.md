@@ -57,9 +57,34 @@ These work with any command:
 | `-c, --compact` | flag | off | Use compact mode (shorter keys) |
 | `-f, --filter` | expression | none | Filter expression (see below) |
 | `-o, --output` | path | stdout | Save results to file |
+| `--config` | path | none | Load parser/perf/profile rules from TOML |
 | `--color` | `auto`, `always`, `never` | `auto` | Control color output |
 | `-v, --verbose` | count | 0 | Increase verbosity (repeatable) |
 | `-q, --quiet` | flag | off | Show only errors |
+
+## Profile Templates
+
+Start from a template and customize your log format:
+
+```bash
+# Local repo templates
+cp config/templates/custom-start.toml config/profiles/my-team.toml
+
+# Skill-installed templates (global install)
+cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
+```
+
+Available templates:
+- `custom-start.toml` - generic starter with placeholders
+- `service-api.toml` - service/API oriented wording
+- `event-pipeline.toml` - event-driven pipeline wording
+
+Use a profile with any command:
+
+```bash
+log-analyzer --config config/profiles/my-team.toml info ./logs/test.log
+log-analyzer --config config/profiles/my-team.toml diff ./logs/a.log ./logs/b.log
+```
 
 ## Filter Expression Syntax
 

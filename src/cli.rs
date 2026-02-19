@@ -110,6 +110,10 @@ pub struct Cli {
     #[arg(short, long, global = true, env = "LOG_ANALYZER_OUTPUT")]
     pub output: Option<PathBuf>,
 
+    /// Path to analyzer profile config (TOML)
+    #[arg(long, global = true, env = "LOG_ANALYZER_CONFIG")]
+    pub config: Option<PathBuf>,
+
     /// Control color output (auto, always, never)
     #[arg(long, value_enum, default_value_t = ColorMode::Auto, global = true, env = "LOG_ANALYZER_COLOR")]
     pub color: ColorMode,

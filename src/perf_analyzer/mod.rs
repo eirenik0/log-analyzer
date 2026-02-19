@@ -5,6 +5,7 @@ pub use display::{display_perf_results, format_perf_results_json, truncate_strin
 pub use entities::{OperationStats, OrphanOperation, PerfAnalysisResults, TimedOperation};
 
 use crate::comparator::LogFilter;
+use crate::config::{AnalyzerConfig, PerfRules, contains_any_marker, default_config};
 use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
 use std::collections::HashMap;
 
@@ -38,11 +39,16 @@ pub fn extract_request_id(message: &str) -> Option<String> {
 
 /// Extracts event key from event payload
 pub fn extract_event_key(payload: &serde_json::Value) -> Option<String> {
-    // Try to get the "key" field from the event payload
-    payload
-        .get("key")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    extract_event_key_with_rules(payload, &default_config().perf)
+}
+
+fn extract_event_key_with_rules(payload: &serde_json::Value, rules: &PerfRules) -> Option<String> {
+    rules.event_correlation_keys.iter().find_map(|key| {
+        payload
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    })
 }
 
 /// Extracts command correlation key from log entry
@@ -56,13 +62,11 @@ fn extract_command_key(entry: &LogEntry) -> Option<String> {
 
 /// Checks if the logs contain any Command completion patterns
 /// If not, Command tracking should be skipped since they would all appear as orphans
-fn has_command_completion_patterns(logs: &[LogEntry]) -> bool {
+fn has_command_completion_patterns(logs: &[LogEntry], rules: &PerfRules) -> bool {
     logs.iter().any(|entry| {
         if let LogEntryKind::Command { .. } = &entry.kind {
             // Check for "finished" pattern which indicates command completion
-            entry.message.contains("finished")
-                || entry.message.contains("returned")
-                || entry.message.contains("completed")
+            contains_any_marker(&entry.message, &rules.command_completion_markers)
         } else {
             false
         }
@@ -75,6 +79,16 @@ pub fn analyze_performance(
     filter: &LogFilter,
     op_type_filter: Option<&str>,
 ) -> PerfAnalysisResults {
+    analyze_performance_with_config(logs, filter, op_type_filter, default_config())
+}
+
+/// Analyzes logs for performance bottlenecks using explicit analyzer config.
+pub fn analyze_performance_with_config(
+    logs: &[LogEntry],
+    filter: &LogFilter,
+    op_type_filter: Option<&str>,
+    config: &AnalyzerConfig,
+) -> PerfAnalysisResults {
     let mut results = PerfAnalysisResults::new();
 
     // Track pending operations by correlation key
@@ -83,7 +97,7 @@ pub fn analyze_performance(
     let mut pending_commands: HashMap<String, &LogEntry> = HashMap::new();
 
     // Check if we should track commands (only if completion patterns exist)
-    let track_commands = has_command_completion_patterns(logs);
+    let track_commands = has_command_completion_patterns(logs, &config.perf);
 
     // Filter logs first
     let filtered_logs: Vec<&LogEntry> = logs.iter().filter(|log| filter.matches(log)).collect();
@@ -169,7 +183,9 @@ pub fn analyze_performance(
                 }
 
                 // Try to get correlation key from payload
-                let correlation_key = payload.as_ref().and_then(extract_event_key);
+                let correlation_key = payload
+                    .as_ref()
+                    .and_then(|p| extract_event_key_with_rules(p, &config.perf));
 
                 match direction {
                     EventDirection::Receive => {
@@ -216,10 +232,10 @@ pub fn analyze_performance(
                 }
 
                 // Check if this is a start or finish
-                let is_start = entry.message.contains("is called");
-                let is_finish = entry.message.contains("finished")
-                    || entry.message.contains("returned")
-                    || entry.message.contains("completed");
+                let is_start =
+                    contains_any_marker(&entry.message, &config.perf.command_start_markers);
+                let is_finish =
+                    contains_any_marker(&entry.message, &config.perf.command_completion_markers);
 
                 if let Some(key) = extract_command_key(entry) {
                     if is_start {

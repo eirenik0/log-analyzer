@@ -1,0 +1,50 @@
+# Template: service-api
+#
+# Good for service logs with operation/request wording.
+# Example lines expected by this profile:
+# - gateway | ... [INFO ] Published event "OrderCreated" payload {...}
+# - orders  | ... [INFO ] Request "createOrder" sent with body {...}
+# - orders  | ... [INFO ] Request "createOrder" completed with body {...}
+# - worker  | ... [INFO ] Operation "reconcile" started with settings {...}
+
+profile_name = "service-api"
+
+[parser]
+event_emit_markers = ["Published event"]
+event_receive_markers = ["Consumed event", "Received event"]
+event_payload_separator = "payload"
+
+command_prefix = "Operation \""
+command_start_marker = "\" started"
+command_payload_markers = ["with settings", "settings"]
+
+request_prefix = "Request \""
+request_send_markers = ["sent", "queued", "requested"]
+request_receive_markers = ["completed", "responded", "failed"]
+request_payload_markers = ["with body", "payload"]
+request_endpoint_marker = "to \"["
+
+json_indicators = [
+  "with settings {",
+  "settings {",
+  "with body [",
+  "with body {",
+  "payload [",
+  "payload {",
+  "payload",
+  "with body"
+]
+
+[perf]
+command_start_markers = ["started", "begin"]
+command_completion_markers = ["completed", "finished", "failed"]
+event_correlation_keys = ["key", "traceId", "requestId"]
+
+[profile]
+known_components = ["gateway", "orders", "billing", "worker"]
+known_commands = ["reconcile", "syncCache", "publish"]
+known_requests = ["createOrder", "getOrder", "authorizePayment"]
+
+[profile.session_prefixes]
+primary = "trace-"
+secondary = "request-"

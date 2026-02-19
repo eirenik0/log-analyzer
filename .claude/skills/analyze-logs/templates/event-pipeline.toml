@@ -1,0 +1,50 @@
+# Template: event-pipeline
+#
+# Good for event-driven systems where queue/topic activity is primary.
+# Example lines expected by this profile:
+# - bus | ... [INFO ] Published "InvoiceCreated" payload {...}
+# - bus | ... [INFO ] Consumed "InvoiceCreated" payload {...}
+# - worker | ... [INFO ] Stage "enrich" begin with settings {...}
+# - worker | ... [INFO ] Stage "enrich" done with settings {...}
+
+profile_name = "event-pipeline"
+
+[parser]
+event_emit_markers = ["Published", "Emitted"]
+event_receive_markers = ["Consumed", "Received"]
+event_payload_separator = "payload"
+
+command_prefix = "Stage \""
+command_start_marker = "\" begin"
+command_payload_markers = ["with settings", "config"]
+
+request_prefix = "Call \""
+request_send_markers = ["started", "dispatched"]
+request_receive_markers = ["done", "completed", "failed"]
+request_payload_markers = ["payload", "with body"]
+request_endpoint_marker = "target \"["
+
+json_indicators = [
+  "with settings {",
+  "config {",
+  "payload [",
+  "payload {",
+  "payload",
+  "with body [",
+  "with body {",
+  "with body"
+]
+
+[perf]
+command_start_markers = ["begin", "started"]
+command_completion_markers = ["done", "completed", "failed"]
+event_correlation_keys = ["key", "eventId", "traceId", "jobId"]
+
+[profile]
+known_components = ["bus", "worker", "scheduler", "dead-letter"]
+known_commands = ["enrich", "validate", "persist", "retry"]
+known_requests = ["fetchTemplate", "loadConfig", "ack"]
+
+[profile.session_prefixes]
+primary = "job-"
+secondary = "trace-"

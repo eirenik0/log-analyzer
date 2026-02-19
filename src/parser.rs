@@ -6,6 +6,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::LazyLock;
 
+use crate::config::{AnalyzerConfig, ParserRules, contains_any_marker, default_config};
+
 mod entities;
 
 pub use entities::{
@@ -35,6 +37,14 @@ impl From<std::io::Error> for ParseError {
 
 /// Parses a log file into a vector of LogEntry structs
 pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseError> {
+    parse_log_file_with_config(path, default_config())
+}
+
+/// Parses a log file into a vector of LogEntry structs using explicit analyzer config
+pub fn parse_log_file_with_config(
+    path: impl AsRef<Path>,
+    config: &AnalyzerConfig,
+) -> Result<Vec<LogEntry>, ParseError> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let mut logs = Vec::new();
@@ -51,7 +61,7 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
         if LOG_ENTRY_START.is_match(&line) {
             // Save the previous log entry if it exists
             if let Some(log_text) = current_log.take() {
-                match parse_log_entry(&log_text, current_line_number) {
+                match parse_log_entry_with_config(&log_text, current_line_number, config) {
                     Ok(entry) => logs.push(entry),
                     Err(ParseError::InvalidLogFormat(_)) => {
                         // Skip invalid logs but don't stop processing
@@ -73,7 +83,7 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
 
     // Add the last log entry
     if let Some(log_text) = current_log
-        && let Ok(entry) = parse_log_entry(&log_text, current_line_number)
+        && let Ok(entry) = parse_log_entry_with_config(&log_text, current_line_number, config)
     {
         logs.push(entry);
     }
@@ -83,6 +93,15 @@ pub fn parse_log_file(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, ParseErro
 
 /// Parses a single log entry string into a LogEntry struct
 pub fn parse_log_entry(log_text: &str, source_line_number: usize) -> Result<LogEntry, ParseError> {
+    parse_log_entry_with_config(log_text, source_line_number, default_config())
+}
+
+/// Parses a single log entry string into a LogEntry struct using explicit analyzer config
+pub fn parse_log_entry_with_config(
+    log_text: &str,
+    source_line_number: usize,
+    config: &AnalyzerConfig,
+) -> Result<LogEntry, ParseError> {
     // Split the log by the first " | " delimiter
     let mut parts = log_text.splitn(2, " | ");
 
@@ -106,10 +125,7 @@ pub fn parse_log_entry(log_text: &str, source_line_number: usize) -> Result<LogE
         .map(|dt| dt.with_timezone(&Local))
         .or_else(|_| timestamp_str.parse::<DateTime<Local>>())
         .map_err(|err| {
-            ParseError::InvalidLogFormat(format!(
-                "Invalid timestamp '{}': {}",
-                timestamp_str, err
-            ))
+            ParseError::InvalidLogFormat(format!("Invalid timestamp '{}': {}", timestamp_str, err))
         })?;
     // Process message to determine the log entry kind
     determine_log_entry_kind(
@@ -121,6 +137,7 @@ pub fn parse_log_entry(log_text: &str, source_line_number: usize) -> Result<LogE
         log_text.to_string(),
         message,
         source_line_number,
+        &config.parser,
     )
 }
 
@@ -170,20 +187,26 @@ fn determine_log_entry_kind(
     raw_logline: String,
     message: &str,
     source_line_number: usize,
+    parser_rules: &ParserRules,
 ) -> Result<LogEntry, ParseError> {
     // Check for event logs
-    if message.contains("Emit event of type") {
-        let event_parts: Vec<&str> = message.split("with payload").collect();
+    if contains_any_marker(message, &parser_rules.event_emit_markers) {
+        let event_parts: Vec<&str> = message
+            .splitn(2, &parser_rules.event_payload_separator)
+            .collect();
         if event_parts.len() >= 2 {
             let event_type = extract_event_type(event_parts[0]).ok_or_else(|| {
                 ParseError::InvalidLogFormat("Could not extract event type".to_string())
             })?;
 
             let payload_str = event_parts[1].trim();
-            let payload = extract_json(payload_str);
+            let payload = extract_json(payload_str, &parser_rules.json_indicators);
 
             // Update cleaned message
-            message_text = format!("{} with payload [JSON removed]", event_parts[0]);
+            message_text = format!(
+                "{} {} [JSON removed]",
+                event_parts[0], parser_rules.event_payload_separator
+            );
 
             return Ok(create_event_log(EventLogParams {
                 base: LogEntryBase {
@@ -200,18 +223,23 @@ fn determine_log_entry_kind(
                 payload,
             }));
         }
-    } else if message.contains("Received event of type") {
-        let event_parts: Vec<&str> = message.split("with payload").collect();
+    } else if contains_any_marker(message, &parser_rules.event_receive_markers) {
+        let event_parts: Vec<&str> = message
+            .splitn(2, &parser_rules.event_payload_separator)
+            .collect();
         if event_parts.len() >= 2 {
             let event_type = extract_event_type(event_parts[0]).ok_or_else(|| {
                 ParseError::InvalidLogFormat("Could not extract event type".to_string())
             })?;
 
             let payload_str = event_parts[1].trim();
-            let payload = extract_json(payload_str);
+            let payload = extract_json(payload_str, &parser_rules.json_indicators);
 
             // Update cleaned message
-            message_text = format!("{} with payload [JSON removed]", event_parts[0]);
+            message_text = format!(
+                "{} {} [JSON removed]",
+                event_parts[0], parser_rules.event_payload_separator
+            );
 
             return Ok(create_event_log(EventLogParams {
                 base: LogEntryBase {
@@ -230,10 +258,12 @@ fn determine_log_entry_kind(
         }
     }
     // Check for command logs
-    else if message.contains(r#"Command ""#) && message.contains(r#"" is called"#) {
+    else if message.contains(&parser_rules.command_prefix)
+        && message.contains(&parser_rules.command_start_marker)
+    {
         // Extract command name
-        let cmd_prefix = r#"Command ""#;
-        let cmd_suffix = r#"" is called"#;
+        let cmd_prefix = parser_rules.command_prefix.as_str();
+        let cmd_suffix = parser_rules.command_start_marker.as_str();
 
         if let Some(start_idx) = message.find(cmd_prefix) {
             let cmd_name_start = start_idx + cmd_prefix.len();
@@ -244,10 +274,10 @@ fn determine_log_entry_kind(
                 let mut settings = None;
                 let mut cleaned_message = message.to_string();
 
-                for indicator in &["with settings"] {
-                    if let Some(start_idx) = message.find(indicator) {
+                for indicator in &parser_rules.command_payload_markers {
+                    if let Some(start_idx) = message.find(indicator.as_str()) {
                         let settings_str = &message[start_idx + indicator.len() - 1..];
-                        settings = extract_json(settings_str);
+                        settings = extract_json(settings_str, &parser_rules.json_indicators);
 
                         // Update cleaned message
                         cleaned_message = message[..start_idx].to_string();
@@ -275,15 +305,19 @@ fn determine_log_entry_kind(
         }
     }
     // Check for request logs
-    else if message.contains(r#"Request ""#) {
+    else if message.contains(&parser_rules.request_prefix) {
         let (request_name, request_id, endpoint, direction, payload) =
-            extract_request_info(message);
+            extract_request_info(message, parser_rules);
 
         if let Some(req_name) = request_name {
             // Clean request-related JSON
             let mut cleaned_message = message.to_string();
-            for indicator in &["with settings", "with body"] {
-                if let Some(start_idx) = message.find(indicator) {
+            for indicator in parser_rules
+                .command_payload_markers
+                .iter()
+                .chain(parser_rules.request_payload_markers.iter())
+            {
+                if let Some(start_idx) = message.find(indicator.as_str()) {
                     cleaned_message = message[..start_idx].to_string();
                     cleaned_message.push_str(indicator);
                     cleaned_message.push_str(" [JSON removed]");
@@ -314,7 +348,7 @@ fn determine_log_entry_kind(
 
     // Generic log entry (anything else)
     // Try to extract any JSON content from the message
-    let payload = extract_json(message);
+    let payload = extract_json(message, &parser_rules.json_indicators);
 
     // If we found JSON, clean the message
     if payload.is_some() {
@@ -347,6 +381,7 @@ fn determine_log_entry_kind(
 /// Extracts request name, ID, endpoint and payload from messages containing request information
 fn extract_request_info(
     message: &str,
+    parser_rules: &ParserRules,
 ) -> (
     Option<String>,
     Option<String>,
@@ -362,7 +397,7 @@ fn extract_request_info(
 
     // Extract request name and ID
     // Pattern: Request "name" [id] ... OR Request "name" called/finished...
-    let req_prefix = r#"Request ""#;
+    let req_prefix = parser_rules.request_prefix.as_str();
     if let Some(start_idx) = message.find(req_prefix) {
         let req_name_start = start_idx + req_prefix.len();
         if let Some(end_idx) = message[req_name_start..].find('"') {
@@ -387,8 +422,8 @@ fn extract_request_info(
     }
 
     // Extract endpoint
-    if let Some(addr_start) = message.find("address \"[") {
-        let addr_content_start = addr_start + 9; // Skip "address \"["
+    if let Some(addr_start) = message.find(&parser_rules.request_endpoint_marker) {
+        let addr_content_start = addr_start + parser_rules.request_endpoint_marker.len();
         if let Some(addr_end) = message[addr_content_start..].find(']') {
             endpoint = Some(message[addr_content_start..addr_content_start + addr_end].to_string());
         }
@@ -398,21 +433,17 @@ fn extract_request_info(
     // "will be sent" = outgoing request (Send)
     // "that was sent ... respond with" or "is going to retried" = incoming response (Receive)
     // "finished successfully" = request completed (Receive)
-    if message.contains("will be sent") && !message.contains("that was sent") {
-        direction = RequestDirection::Send;
-    } else if message.contains("finished successfully")
-        || message.contains("respond with")
-        || message.contains("that was sent")
-        || message.contains("is going to retried")
-    {
+    if contains_any_marker(message, &parser_rules.request_receive_markers) {
         direction = RequestDirection::Receive;
+    } else if contains_any_marker(message, &parser_rules.request_send_markers) {
+        direction = RequestDirection::Send;
     }
 
     // Extract payload
-    for indicator in &["with body"] {
-        if let Some(start_idx) = message.find(indicator) {
+    for indicator in &parser_rules.request_payload_markers {
+        if let Some(start_idx) = message.find(indicator.as_str()) {
             let body_content = &message[start_idx + indicator.len()..];
-            payload = extract_json(body_content);
+            payload = extract_json(body_content, &parser_rules.json_indicators);
             break;
         }
     }
@@ -447,23 +478,17 @@ fn extract_event_type(event_part: &str) -> Option<String> {
 }
 
 /// Extracts JSON content from a log message
-fn extract_json(input: &str) -> Option<Value> {
-    // Common JSON indicators to look for
-    const JSON_INDICATORS: [&str; 5] = [
-        "with settings {",
-        "with body [",
-        "with body {",
-        "with body",
-        "with body ",
-    ];
-
+fn extract_json(input: &str, json_indicators: &[String]) -> Option<Value> {
     // First try to extract JSON from known patterns
-    for indicator in &JSON_INDICATORS {
-        if let Some(marker_pos) = input.find(indicator) {
+    for indicator in json_indicators {
+        if indicator.is_empty() {
+            continue;
+        }
+        if let Some(marker_pos) = input.find(indicator.as_str()) {
             let start_pos = marker_pos + indicator.len();
 
             // Find the start of the actual JSON content
-            let json_start = if *indicator == "with body" || *indicator == "with body " {
+            let json_start = if indicator == "with body" || indicator == "with body " {
                 // Find the first occurrence of an opening brace or bracket
                 let mut idx = None;
                 for (i, c) in input[start_pos..].char_indices() {

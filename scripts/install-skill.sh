@@ -67,6 +67,11 @@ echo "  /analyze-logs diff file1.log file2.log"
 echo "  /analyze-logs perf test.log"
 echo "  /analyze-logs info test.log --samples"
 echo ""
+echo "Create a custom analyzer profile from template:"
+echo "  mkdir -p ./config/profiles"
+echo "  cp \"$INSTALL_DIR/templates/custom-start.toml\" ./config/profiles/my-team.toml"
+echo "  log-analyzer --config ./config/profiles/my-team.toml info ./logs/test.log"
+echo ""
 
 # Check if binary is installed
 if command -v log-analyzer &> /dev/null; then

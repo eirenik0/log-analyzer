@@ -1,6 +1,6 @@
 ---
 name: analyze-logs
-description: Analyze, compare, and debug Applitools test logs. Use when comparing log files, finding test failures, identifying performance bottlenecks, or preparing logs for analysis.
+description: Analyze, compare, and debug structured logs. Use when comparing log files, finding failures, identifying performance bottlenecks, or preparing logs for analysis.
 argument-hint: <command> [files...] [options]
 allowed-tools: Bash(cargo run:*), Bash(./target/release/log-analyzer:*), Bash(log-analyzer:*), Read, Glob, Grep
 context: fork
@@ -8,7 +8,24 @@ context: fork
 
 # Log Analyzer Skill
 
-Analyze JSON logs from Applitools testing framework using the log-analyzer CLI tool.
+Analyze structured logs using the `log-analyzer` CLI tool.
+
+When behavior needs to be case-specific, pass a profile config:
+
+```bash
+log-analyzer --config config/profiles/base.toml <command> ...
+log-analyzer --config config/profiles/custom.toml <command> ...
+```
+
+Create a custom profile from a template:
+
+```bash
+# If this repo is available
+cp config/templates/custom-start.toml config/profiles/my-team.toml
+
+# If only the skill is installed globally
+cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
+```
 
 ## Commands Overview
 

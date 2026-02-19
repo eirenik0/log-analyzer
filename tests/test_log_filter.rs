@@ -63,11 +63,7 @@ fn test_exclude_filters_are_case_insensitive() {
             .exclude_component(Some("SOCKET"))
             .matches(&log)
     );
-    assert!(
-        !LogFilter::new()
-            .exclude_level(Some("debug"))
-            .matches(&log)
-    );
+    assert!(!LogFilter::new().exclude_level(Some("debug")).matches(&log));
     assert!(
         !LogFilter::new()
             .excludes_text(Some("TIMEOUT"))

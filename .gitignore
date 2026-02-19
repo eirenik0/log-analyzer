@@ -108,3 +108,4 @@ logs/
 
 # Junie memory
 .junie/
+.DS_Store

@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod comparator;
+pub mod config;
 pub mod filter;
 pub mod llm_processor;
 pub mod parser;
@@ -11,7 +12,10 @@ pub use cli::{ColorMode, Commands, OutputFormat, SortOrder, cli_parse};
 pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
-pub use parser::{LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_file};
+pub use parser::{
+    LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_entry_with_config,
+    parse_log_file, parse_log_file_with_config,
+};
 
 /// Build a LogFilter from the --filter expression
 fn build_filter(filter_expr: &Option<String>) -> Result<LogFilter, Box<dyn std::error::Error>> {
@@ -25,8 +29,67 @@ fn build_filter(filter_expr: &Option<String>) -> Result<LogFilter, Box<dyn std::
     }
 }
 
+fn list_preview(values: &std::collections::BTreeSet<String>, max_items: usize) -> String {
+    let mut preview: Vec<String> = values.iter().take(max_items).cloned().collect();
+    if values.len() > max_items {
+        preview.push(format!("... +{} more", values.len() - max_items));
+    }
+    preview.join(", ")
+}
+
+fn print_profile_insights(logs: &[LogEntry], config: &crate::config::AnalyzerConfig) {
+    if !config.has_profile_hints() {
+        return;
+    }
+
+    let insights = crate::config::analyze_profile(logs, config);
+
+    if insights.unknown_components.is_empty()
+        && insights.unknown_commands.is_empty()
+        && insights.unknown_requests.is_empty()
+        && insights.primary_sessions.is_empty()
+        && insights.secondary_sessions.is_empty()
+    {
+        return;
+    }
+
+    println!("\nProfile insights ({})", config.profile_name);
+    if !insights.primary_sessions.is_empty() {
+        println!(
+            "  primary sessions: {}",
+            list_preview(&insights.primary_sessions, 8)
+        );
+    }
+    if !insights.secondary_sessions.is_empty() {
+        println!(
+            "  secondary sessions: {}",
+            list_preview(&insights.secondary_sessions, 8)
+        );
+    }
+    if !insights.unknown_components.is_empty() {
+        println!(
+            "  unknown components: {}",
+            list_preview(&insights.unknown_components, 8)
+        );
+    }
+    if !insights.unknown_commands.is_empty() {
+        println!(
+            "  unknown commands: {}",
+            list_preview(&insights.unknown_commands, 8)
+        );
+    }
+    if !insights.unknown_requests.is_empty() {
+        println!(
+            "  unknown requests: {}",
+            list_preview(&insights.unknown_requests, 8)
+        );
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
+    let analyzer_config = crate::config::load_config(cli.config.as_deref())
+        .map_err(|e| format!("Failed to load config: {}", e))?;
     let format = cli.effective_format();
     let compact = cli.effective_compact();
     let output = &cli.output;
@@ -63,6 +126,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(ref filter_expr) = cli.filter {
             eprintln!("Filter: {}", filter_expr);
         }
+        eprintln!("Config profile: {}", analyzer_config.profile_name);
+        if let Some(config_path) = &cli.config {
+            eprintln!("Config file: {}", config_path.display());
+        }
     }
 
     // Build the filter from the global --filter expression
@@ -77,10 +144,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = parse_log_file(file1)
+            let logs1 = parse_log_file_with_config(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let logs2 = parse_log_file(file2)
+            let logs2 = parse_log_file_with_config(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Create options
@@ -111,10 +178,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = parse_log_file(file1)
+            let logs1 = parse_log_file_with_config(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let logs2 = parse_log_file(file2)
+            let logs2 = parse_log_file_with_config(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Create options with diff_only=true
@@ -145,10 +212,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log files with proper error handling
-            let mut logs1 = parse_log_file(file1)
+            let mut logs1 = parse_log_file_with_config(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let mut logs2 = parse_log_file(file2)
+            let mut logs2 = parse_log_file_with_config(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Apply sanitization if enabled (default behavior unless --no-sanitize is used)
@@ -183,7 +250,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             timeline,
         } => {
             // Parse log file with proper error handling
-            let logs = parse_log_file(file)
+            let logs = parse_log_file_with_config(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
             // Filter logs if filter is provided
@@ -198,6 +265,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Display log summary with enhanced options
             display_log_summary(&filtered_logs, *samples, *json_schema, *payloads, *timeline);
+            print_profile_insights(&filtered_logs, &analyzer_config);
 
             // Show filtering information if applied
             if let Some(ref filter_expr) = cli.filter {
@@ -221,7 +289,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log file with proper error handling
-            let logs = parse_log_file(file)
+            let logs = parse_log_file_with_config(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
             // Filter logs
@@ -250,7 +318,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log file with proper error handling
-            let logs = parse_log_file(file)
+            let logs = parse_log_file_with_config(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
             // Convert op_type filter to string
@@ -261,7 +329,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             // Analyze performance
-            let results = crate::perf_analyzer::analyze_performance(&logs, &filter, op_type_filter);
+            let results = crate::perf_analyzer::analyze_performance_with_config(
+                &logs,
+                &filter,
+                op_type_filter,
+                &analyzer_config,
+            );
 
             // Display results based on format
             match format {

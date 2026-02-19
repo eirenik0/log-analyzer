@@ -3,7 +3,9 @@
 [![CI](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml)
 [![Release](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml)
 
-A CLI tool for analyzing and comparing JSON logs from the Applitools testing framework.
+A CLI tool for analyzing and comparing JSON logs.
+
+Core parser/comparison logic stays generic; domain-specific details can be supplied via profile config files.
 
 ## Installation
 
@@ -49,14 +51,15 @@ log-analyzer llm file.log
 
 | Option | Env Variable | Description |
 |--------|--------------|-------------|
-| `-F, --format <text\|json>` | `FORMAT` | Output format |
-| `-j, --json` | `JSON` | JSON output (shorthand for `-F json -c`) |
-| `-c, --compact` | `COMPACT` | Compact output mode |
-| `-f, --filter <expr>` | `FILTER` | Filter expression (see below) |
-| `-o, --output <path>` | | Output file path |
-| `--color <auto\|always\|never>` | | Color output control |
-| `-v, --verbose` | | Increase verbosity |
-| `-q, --quiet` | | Show only errors |
+| `-F, --format <text\|json>` | `LOG_ANALYZER_FORMAT` | Output format |
+| `-j, --json` | `LOG_ANALYZER_JSON` | JSON output (shorthand for `-F json -c`) |
+| `-c, --compact` | `LOG_ANALYZER_COMPACT` | Compact output mode |
+| `-f, --filter <expr>` | `LOG_ANALYZER_FILTER` | Filter expression (see below) |
+| `-o, --output <path>` | `LOG_ANALYZER_OUTPUT` | Output file path |
+| `--config <path>` | `LOG_ANALYZER_CONFIG` | Load parser/perf/profile rules from TOML |
+| `--color <auto\|always\|never>` | `LOG_ANALYZER_COLOR` | Color output control |
+| `-v, --verbose` | `LOG_ANALYZER_VERBOSE` | Increase verbosity |
+| `-q, --quiet` | `LOG_ANALYZER_QUIET` | Show only errors |
 
 ## Filter Expression Syntax
 
@@ -158,6 +161,38 @@ Set defaults via environment variables (prefix `LOG_ANALYZER_`):
 export LOG_ANALYZER_FORMAT=json
 export LOG_ANALYZER_FILTER="!l:DEBUG"
 export LOG_ANALYZER_COMPACT=true
+export LOG_ANALYZER_CONFIG="./config/profiles/base.toml"
+```
+
+## Profile Configuration
+
+Use profile TOML files to keep the binary generic and push case-specific knowledge into config.
+
+Included examples:
+
+- `config/profiles/base.toml` - minimal reusable defaults
+- `config/templates/custom-start.toml` - starter template for any project
+- `config/templates/service-api.toml` - service/API wording template
+- `config/templates/event-pipeline.toml` - event-driven wording template
+
+Examples:
+
+```bash
+# Generic base profile
+log-analyzer --config config/profiles/base.toml info logs/app.log
+```
+
+Create your own profile from templates:
+
+```bash
+# In this repository
+cp config/templates/custom-start.toml config/profiles/my-team.toml
+
+# If only the skill is installed globally
+cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
+
+# Then run with your custom profile
+log-analyzer --config config/profiles/my-team.toml info logs/app.log
 ```
 
 ## Claude Code Integration

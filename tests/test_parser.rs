@@ -27,7 +27,7 @@ fn test_parse_core_universal_initialization() {
   portResolutionMode: 'next',
   'idle-timeout': 900000,
   'mask-log': false,
-  '$0': '../core_universal/applitools/core_universal/bin/core'
+  '$0': '../core_universal/apts/core_universal/bin/core'
 }"#;
     let record =
         parse_log_entry(log_line, 1).expect("Failed to parse core-universal initialization log");
@@ -60,7 +60,7 @@ fn test_parse_core_universal_initialization() {
           "portResolutionMode": "next",
           "idle-timeout": 900000,
           "mask-log": false,
-          "$0": "../core_universal/applitools/core_universal/bin/core"
+          "$0": "../core_universal/apts/core_universal/bin/core"
         }
                 ))
     );
@@ -156,7 +156,7 @@ fn test_parse_dom_snapshot_log() {
 // Test for a core-requests log for the "openEyes" request.
 #[test]
 fn test_parse_open_eyes_request() {
-    let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.applitools.com/api/sessions/running" with body {"startInfo":{ ... }}"#;
+    let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.apts.com/api/sessions/running" with body {"startInfo":{ ... }}"#;
     let record = parse_log_entry(log_line, 1).expect("Failed to parse openEyes request log");
 
     // Assert that the log has been parsed with correct component and request information.
@@ -217,7 +217,7 @@ fn test_parse_start_renders() {
 // Test for a ufg-requests log for the "getActualEnvironments" event.
 #[test]
 fn test_parse_with_request() {
-    let log_line = r#"ufg-requests (manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-lrd/get-actual-environment-4bu/get-actual-environments-g55 & manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-g6p/get-actual-environment-fpc/get-actual-environments-g55) | 2025-04-03T21:08:12.795Z [INFO ] Request "getActualEnvironments" [0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb] will be sent to the address "[POST]https://ufg-wus.applitools.com/job-info" with body [{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":400,"height":800,"target":"viewport"}},{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":1000,"height":800,"target":"viewport"}}]"#;
+    let log_line = r#"ufg-requests (manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-lrd/get-actual-environment-4bu/get-actual-environments-g55 & manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-g6p/get-actual-environment-fpc/get-actual-environments-g55) | 2025-04-03T21:08:12.795Z [INFO ] Request "getActualEnvironments" [0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb] will be sent to the address "[POST]https://ufg-wus.apts.com/job-info" with body [{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":400,"height":800,"target":"viewport"}},{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":1000,"height":800,"target":"viewport"}}]"#;
     let record = parse_log_entry(log_line, 1).expect("Failed to parse getActualEnvironments log");
 
     // Check that the component is correct and the message mentions getActualEnvironments.
@@ -250,7 +250,7 @@ fn test_parse_with_request() {
 // Test for a ufg-requests log for the "getActualEnvironments" event.
 #[test]
 fn test_parse_with_request2() {
-    let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.applitools.com/api/sessions/running" with body {"startInfo":{"agentId":"eyes-universal/4.35.0/eyes.selenium.visualgrid.python/6.1.0","agentSessionId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","agentRunId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","appIdOrName":"Applitools Eyes SDK","scenarioIdOrName":"CheckWindowWithReloadLayoutBreakpoints","properties":[{"name":"browserVersion","value":"135.0.7049.52"}],"batchInfo":{"id":"6e8afcf5-bc7a-406a-9104-728d710183d5","name":"Py3.12|Sel4.15.2 Generated tests","startedAt":"2025-04-03T21:35:04Z"},"egSessionId":"f03c5a9b-dbad-4d04-8c65-d1abf3300f7a","environment":{"ufgJobType":"web","inferred":"useragent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/135.0.0.0 Safari/537.36","deviceInfo":"Desktop","displaySize":{"width":400,"height":800},"0.sg1fmhj9ufh":"got you!"},"branchName":"master","parentBranchName":"master","compareWithParentBranch":false,"ignoreBaseline":false,"latestCommitInfo":{"sha":"32dba3b1ba58911956b430911eeb7624e51cad66","timestamp":"2025-04-03T21:37:57+02:00"},"processId":"056b3f40-e104-4df2-b3df-5baefcbc35b9"}}"#;
+    let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.apts.com/api/sessions/running" with body {"startInfo":{"agentId":"eyes-universal/4.35.0/eyes.selenium.visualgrid.python/6.1.0","agentSessionId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","agentRunId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","appIdOrName":"Applitools Eyes SDK","scenarioIdOrName":"CheckWindowWithReloadLayoutBreakpoints","properties":[{"name":"browserVersion","value":"135.0.7049.52"}],"batchInfo":{"id":"6e8afcf5-bc7a-406a-9104-728d710183d5","name":"Py3.12|Sel4.15.2 Generated tests","startedAt":"2025-04-03T21:35:04Z"},"egSessionId":"f03c5a9b-dbad-4d04-8c65-d1abf3300f7a","environment":{"ufgJobType":"web","inferred":"useragent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/135.0.0.0 Safari/537.36","deviceInfo":"Desktop","displaySize":{"width":400,"height":800},"0.sg1fmhj9ufh":"got you!"},"branchName":"master","parentBranchName":"master","compareWithParentBranch":false,"ignoreBaseline":false,"latestCommitInfo":{"sha":"32dba3b1ba58911956b430911eeb7624e51cad66","timestamp":"2025-04-03T21:37:57+02:00"},"processId":"056b3f40-e104-4df2-b3df-5baefcbc35b9"}}"#;
     let record = parse_log_entry(log_line, 1).expect("Failed to parse openEyes log");
 
     // Check that the component is correct and the message mentions getActualEnvironments.
