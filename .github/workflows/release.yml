@@ -33,7 +33,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install Knope
-        uses: knope-dev/action@v2.0.0
+        uses: knope-dev/action@v2.1.2
 
       - name: Run Knope prepare-release
         id: knope
@@ -196,7 +196,7 @@ jobs:
           cat checksums-sha256.txt
 
       - name: Install Knope
-        uses: knope-dev/action@v2.0.0
+        uses: knope-dev/action@v2.1.2
 
       - name: Create GitHub Release
         run: knope release
