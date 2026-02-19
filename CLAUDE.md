@@ -124,8 +124,11 @@ The `-f, --filter` option accepts a unified filter expression:
 # Contains 'timeout', incoming direction only
 --filter "t:timeout d:incoming"
 
-# Multiple filters combined (AND logic)
+# Different filter types combine with AND;
+# multiple values of the same type combine with OR
 --filter "c:core-requests l:INFO !t:health"
+# equivalent OR-within-type example:
+--filter "c:core-requests c:socket l:ERROR"
 ```
 
 ### Compare Command (alias: `cmp`)

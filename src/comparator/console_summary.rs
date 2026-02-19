@@ -215,10 +215,10 @@ pub fn display_log_summary(
     print_sorted_counts("EVENT TYPES", event_type_counts.clone(), |s| s.yellow());
 
     // Display commands with counts
-    print_sorted_counts("COMMANDS", command_counts, |s| s.magenta());
+    print_sorted_counts("COMMANDS", command_counts.clone(), |s| s.magenta());
 
     // Display requests with counts
-    print_sorted_counts("REQUESTS", request_counts, |s| s.bright_green());
+    print_sorted_counts("REQUESTS", request_counts.clone(), |s| s.bright_green());
 
     // Display timeline summary if we have timestamps in the logs
     if let Some((earliest, latest)) = get_time_range(logs) {
@@ -335,7 +335,10 @@ pub fn display_log_summary(
         println!("{}", "-".repeat(80).bright_black());
 
         // Helper function to display schema for a specific type
-        let display_schema = |title: &str, schema_map: &HashMap<&str, HashMap<String, usize>>| {
+        let display_schema = |title: &str,
+                              schema_map: &HashMap<&str, HashMap<String, usize>>,
+                              occurrence_counts: &HashMap<&str, usize>,
+                              name_color: fn(&str) -> ColoredString| {
             if schema_map.is_empty() {
                 return;
             }
@@ -346,16 +349,16 @@ pub fn display_log_summary(
             let mut items: Vec<(&str, &HashMap<String, usize>)> =
                 schema_map.iter().map(|(k, v)| (*k, v)).collect();
             items.sort_by(|a, b| {
-                let count_a = event_type_counts.get(a.0).unwrap_or(&0);
-                let count_b = event_type_counts.get(b.0).unwrap_or(&0);
+                let count_a = occurrence_counts.get(a.0).unwrap_or(&0);
+                let count_b = occurrence_counts.get(b.0).unwrap_or(&0);
                 count_b.cmp(count_a) // Sort by frequency (most frequent first)
             });
 
             for (name, keys) in items {
                 println!(
                     "\n    {} ({} occurrences):",
-                    name.yellow().bold(),
-                    event_type_counts.get(name).unwrap_or(&0)
+                    name_color(name).bold(),
+                    occurrence_counts.get(name).unwrap_or(&0)
                 );
 
                 // Sort keys by occurrence count
@@ -370,7 +373,7 @@ pub fn display_log_summary(
                         (i + 1).to_string().bright_white(),
                         key,
                         count.to_string().bright_white(),
-                        event_type_counts.get(name).unwrap_or(&0)
+                        occurrence_counts.get(name).unwrap_or(&0)
                     );
                 }
 
@@ -384,9 +387,24 @@ pub fn display_log_summary(
             }
         };
 
-        display_schema("EVENT SCHEMAS", &event_payload_keys);
-        display_schema("COMMAND SCHEMAS", &command_payload_keys);
-        display_schema("REQUEST SCHEMAS", &request_payload_keys);
+        display_schema(
+            "EVENT SCHEMAS",
+            &event_payload_keys,
+            &event_type_counts,
+            |s| s.yellow(),
+        );
+        display_schema(
+            "COMMAND SCHEMAS",
+            &command_payload_keys,
+            &command_counts,
+            |s| s.magenta(),
+        );
+        display_schema(
+            "REQUEST SCHEMAS",
+            &request_payload_keys,
+            &request_counts,
+            |s| s.bright_green(),
+        );
     }
 }
 

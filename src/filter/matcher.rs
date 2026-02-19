@@ -10,43 +10,40 @@ pub fn to_log_filter(expr: &FilterExpression) -> LogFilter {
     let mut filter = LogFilter::new();
 
     // Process component filters
-    let include_components = expr.include_filters(&FilterType::Component);
-    if let Some(first) = include_components.first() {
-        filter = filter.with_component(Some(*first));
+    for component in expr.include_filters(&FilterType::Component) {
+        filter = filter.with_component(Some(component));
     }
 
-    let exclude_components = expr.exclude_filters(&FilterType::Component);
-    if let Some(first) = exclude_components.first() {
-        filter = filter.exclude_component(Some(*first));
+    for component in expr.exclude_filters(&FilterType::Component) {
+        filter = filter.exclude_component(Some(component));
     }
 
     // Process level filters
-    let include_levels = expr.include_filters(&FilterType::Level);
-    if let Some(first) = include_levels.first() {
-        filter = filter.with_level(Some(*first));
+    for level in expr.include_filters(&FilterType::Level) {
+        filter = filter.with_level(Some(level));
     }
 
-    let exclude_levels = expr.exclude_filters(&FilterType::Level);
-    if let Some(first) = exclude_levels.first() {
-        filter = filter.exclude_level(Some(*first));
+    for level in expr.exclude_filters(&FilterType::Level) {
+        filter = filter.exclude_level(Some(level));
     }
 
     // Process text filters
-    let include_text = expr.include_filters(&FilterType::Text);
-    if let Some(first) = include_text.first() {
-        filter = filter.contains_text(Some(*first));
+    for text in expr.include_filters(&FilterType::Text) {
+        filter = filter.contains_text(Some(text));
     }
 
-    let exclude_text = expr.exclude_filters(&FilterType::Text);
-    if let Some(first) = exclude_text.first() {
-        filter = filter.excludes_text(Some(*first));
+    for text in expr.exclude_filters(&FilterType::Text) {
+        filter = filter.excludes_text(Some(text));
     }
 
     // Process direction filters
-    let include_directions = expr.include_filters(&FilterType::Direction);
-    if let Some(first) = include_directions.first() {
-        let direction = parse_direction(first);
+    for direction in expr.include_filters(&FilterType::Direction) {
+        let direction = parse_direction(direction);
         filter = filter.with_direction(&direction);
+    }
+    for direction in expr.exclude_filters(&FilterType::Direction) {
+        let direction = parse_direction(direction);
+        filter = filter.exclude_direction(&direction);
     }
 
     filter

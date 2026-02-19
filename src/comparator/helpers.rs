@@ -23,7 +23,7 @@ pub fn group_logs_by_key<'a>(
 
 /// Generates a unique key for a log entry
 pub fn get_log_key(log: &LogEntry) -> String {
-    format!("{}|{}|{} ", log.component, log.level, log.log_key())
+    format!("{}|{}|{}", log.component, log.level, log.log_key())
 }
 
 /// Computes a colored text diff between two strings

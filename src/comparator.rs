@@ -20,7 +20,37 @@ pub use json_cmp::generate_json_output;
 
 use crate::parser::LogEntry;
 use serde_json::{Value, json};
-use std::path::Path;
+use std::collections::HashMap;
+
+fn split_key_parts(key: &str) -> (&str, &str, &str) {
+    let mut parts = key.split('|');
+    let component = parts.next().unwrap_or("");
+    let level = parts.next().unwrap_or("");
+    let kind = parts.next().unwrap_or("");
+    (component, level, kind)
+}
+
+fn earliest_timestamp_for_key<'a>(
+    key: &str,
+    grouped_logs1: &HashMap<String, Vec<&'a LogEntry>>,
+    grouped_logs2: &HashMap<String, Vec<&'a LogEntry>>,
+) -> Option<chrono::DateTime<chrono::Local>> {
+    let ts1 = grouped_logs1
+        .get(key)
+        .and_then(|entries| entries.first())
+        .map(|log| log.timestamp);
+    let ts2 = grouped_logs2
+        .get(key)
+        .and_then(|entries| entries.first())
+        .map(|log| log.timestamp);
+
+    match (ts1, ts2) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
 
 /// Compares two sets of logs with the provided filter and options
 pub fn compare_logs(
@@ -61,11 +91,15 @@ pub fn compare_logs(
 
     // Sort the keys based on the specified sort order
     match options.sort_order {
-        SortOrder::Time => keys.sort(), // Default sort by key (which typically contains timestamp)
+        SortOrder::Time => keys.sort_by(|a, b| {
+            let ts_a = earliest_timestamp_for_key(a, &grouped_logs1, &grouped_logs2);
+            let ts_b = earliest_timestamp_for_key(b, &grouped_logs1, &grouped_logs2);
+            ts_a.cmp(&ts_b).then_with(|| a.cmp(b))
+        }),
         SortOrder::Component => {
             keys.sort_by(|a, b| {
-                let component_a = a.split(':').next().unwrap_or("");
-                let component_b = b.split(':').next().unwrap_or("");
+                let (component_a, _, _) = split_key_parts(a);
+                let (component_b, _, _) = split_key_parts(b);
                 component_a.cmp(component_b)
             });
         }
@@ -84,16 +118,16 @@ pub fn compare_logs(
             };
 
             keys.sort_by(|a, b| {
-                let level_a = a.split(':').nth(1).unwrap_or("");
-                let level_b = b.split(':').nth(1).unwrap_or("");
+                let (_, level_a, _) = split_key_parts(a);
+                let (_, level_b, _) = split_key_parts(b);
                 level_priority(level_b).cmp(&level_priority(level_a)) // Higher priority first
             });
         }
         SortOrder::Type => {
             // Sort by message type (Event, Command, Request, etc.)
             keys.sort_by(|a, b| {
-                let type_a = a.split(':').nth(2).unwrap_or("");
-                let type_b = b.split(':').nth(2).unwrap_or("");
+                let (_, _, type_a) = split_key_parts(a);
+                let (_, _, type_b) = split_key_parts(b);
                 type_a.cmp(type_b)
             });
         }
@@ -107,44 +141,70 @@ pub fn compare_logs(
         let entries1 = grouped_logs1.get(&key).unwrap();
         let entries2 = grouped_logs2.get(&key).unwrap();
 
-        // Compare all entries of the same type
-        for (idx1, log1) in entries1.iter().enumerate() {
-            for (idx2, log2) in entries2.iter().enumerate() {
-                if let (Some(payload1), Some(payload2)) = (&log1.payload(), &log2.payload()) {
-                    let json_diffs = compare_json(payload1, payload2);
+        // Pair entries one-to-one by index to avoid N x M cross-product explosions.
+        let pair_count = entries1.len().min(entries2.len());
+        for idx in 0..pair_count {
+            let log1 = entries1[idx];
+            let log2 = entries2[idx];
 
-                    // Only process if there are differences or if we're not in diff_only mode
-                    if !json_diffs.is_empty() || !options.diff_only {
-                        let (text1, text2) =
-                            if !json_diffs.is_empty() && log1.message != log2.message {
-                                (Some(log1.message.clone()), Some(log2.message.clone()))
-                            } else {
-                                (None, None)
-                            };
+            if let (Some(payload1), Some(payload2)) = (log1.payload(), log2.payload()) {
+                let json_diffs = compare_json(payload1, payload2);
 
-                        shared_comparisons.push(LogComparison {
-                            key: key.clone(),
-                            log1_index: idx1,
-                            log2_index: idx2,
-                            json_differences: json_diffs
-                                .into_iter()
-                                .map(|(path, val1, val2)| {
-                                    let change_type = determine_change_type(&val1, &val2);
-                                    JsonDifference {
-                                        path,
-                                        value1: val1,
-                                        value2: val2,
-                                        change_type,
-                                    }
-                                })
-                                .collect(),
-                            text1,
-                            text2,
-                            log1_line_number: log1.source_line_number,
-                            log2_line_number: log2.source_line_number,
-                        });
-                    }
+                // Only process if there are differences or if we're not in diff_only mode
+                if !json_diffs.is_empty() || !options.diff_only {
+                    let (text1, text2) = if !json_diffs.is_empty() && log1.message != log2.message {
+                        (Some(log1.message.clone()), Some(log2.message.clone()))
+                    } else {
+                        (None, None)
+                    };
+
+                    shared_comparisons.push(LogComparison {
+                        key: key.clone(),
+                        log1_index: idx,
+                        log2_index: idx,
+                        json_differences: json_diffs
+                            .into_iter()
+                            .map(|(path, val1, val2)| {
+                                let change_type = determine_change_type(&val1, &val2);
+                                JsonDifference {
+                                    path,
+                                    value1: val1,
+                                    value2: val2,
+                                    change_type,
+                                }
+                            })
+                            .collect(),
+                        text1,
+                        text2,
+                        log1_line_number: log1.source_line_number,
+                        log2_line_number: log2.source_line_number,
+                        log1_payload: Some(payload1.to_owned()),
+                        log2_payload: Some(payload2.to_owned()),
+                    });
                 }
+            }
+        }
+
+        // Preserve unmatched occurrences so they are not silently dropped.
+        if entries1.len() > pair_count {
+            for (idx, log) in entries1.iter().enumerate().skip(pair_count) {
+                unique_to_log1.push(format!(
+                    "{} [unpaired occurrence {} at line {}]",
+                    key,
+                    idx + 1,
+                    log.source_line_number
+                ));
+            }
+        }
+
+        if entries2.len() > pair_count {
+            for (idx, log) in entries2.iter().enumerate().skip(pair_count) {
+                unique_to_log2.push(format!(
+                    "{} [unpaired occurrence {} at line {}]",
+                    key,
+                    idx + 1,
+                    log.source_line_number
+                ));
             }
         }
     }
@@ -160,11 +220,6 @@ pub fn compare_logs(
         unique_to_log2,
         shared_comparisons,
     };
-
-    // Write to output file if specified
-    if let Some(path) = &options.output_path {
-        write_comparison_results(&results, options, Path::new(path))?;
-    }
 
     Ok(results)
 }

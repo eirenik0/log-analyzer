@@ -114,9 +114,13 @@ impl FilterExpression {
 
         // Split by whitespace, but handle quoted strings
         for part in split_preserving_quotes(s) {
-            if part.contains(':') {
-                terms.push(FilterTerm::parse(part)?);
+            if !part.contains(':') {
+                return Err(FilterParseError::InvalidExpression(format!(
+                    "Expected 'type:value' format, got: {}",
+                    part
+                )));
             }
+            terms.push(FilterTerm::parse(part)?);
         }
 
         Ok(FilterExpression { terms })

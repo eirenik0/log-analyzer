@@ -86,6 +86,14 @@ fn print_profile_insights(logs: &[LogEntry], config: &crate::config::AnalyzerCon
     }
 }
 
+fn write_output_file(
+    path: &std::path::Path,
+    content: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::write(path, content)
+        .map_err(|e| format!("Failed to write output file '{}': {}", path.display(), e).into())
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
     let analyzer_config = crate::config::load_config(cli.config.as_deref())
@@ -158,8 +166,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .readable_mode(true)
                 .sort_by(*sort_by)
                 .verbosity(verbose)
-                .quiet_mode(quiet)
-                .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
+                .quiet_mode(quiet);
 
             // Compare logs with proper error handling
             let results = compare_logs(&logs1, &logs2, &filter, &options)
@@ -167,8 +174,22 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Display results in the selected format
             match format {
-                OutputFormat::Text => display_comparison_results(&results, &options),
-                OutputFormat::Json => println!("{}", generate_json_output(&results, &options)),
+                OutputFormat::Text => {
+                    display_comparison_results(&results, &options);
+                    if let Some(path) = output {
+                        crate::comparator::write_comparison_results(&results, &options, path)
+                            .map_err(|e| {
+                                format!("Failed to write output file '{}': {}", path.display(), e)
+                            })?;
+                    }
+                }
+                OutputFormat::Json => {
+                    let json_output = generate_json_output(&results, &options);
+                    println!("{}", json_output);
+                    if let Some(path) = output {
+                        write_output_file(path, &json_output)?;
+                    }
+                }
             }
         }
         Commands::Diff {
@@ -192,8 +213,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .readable_mode(true)
                 .sort_by(*sort_by)
                 .verbosity(verbose)
-                .quiet_mode(quiet)
-                .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
+                .quiet_mode(quiet);
 
             // Compare logs with proper error handling
             let results = compare_logs(&logs1, &logs2, &filter, &options)
@@ -201,8 +221,22 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Display results in the selected format
             match format {
-                OutputFormat::Text => display_comparison_results(&results, &options),
-                OutputFormat::Json => println!("{}", generate_json_output(&results, &options)),
+                OutputFormat::Text => {
+                    display_comparison_results(&results, &options);
+                    if let Some(path) = output {
+                        crate::comparator::write_comparison_results(&results, &options, path)
+                            .map_err(|e| {
+                                format!("Failed to write output file '{}': {}", path.display(), e)
+                            })?;
+                    }
+                }
+                OutputFormat::Json => {
+                    let json_output = generate_json_output(&results, &options);
+                    println!("{}", json_output);
+                    if let Some(path) = output {
+                        write_output_file(path, &json_output)?;
+                    }
+                }
             }
         }
         Commands::LlmDiff {
@@ -232,15 +266,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .readable_mode(true)
                 .sort_by(*sort_by)
                 .verbosity(verbose)
-                .quiet_mode(quiet)
-                .output_to_file(output.as_deref().map(|o| o.to_str().unwrap()));
+                .quiet_mode(quiet);
 
             // Compare logs with proper error handling
             let results = compare_logs(&logs1, &logs2, &filter, &options)
                 .map_err(|e| format!("Comparison failed: {:?}", e))?;
 
             // Output as JSON (fixed format for LlmDiff)
-            println!("{}", generate_json_output(&results, &options));
+            let json_output = generate_json_output(&results, &options);
+            println!("{}", json_output);
+            if let Some(path) = output {
+                write_output_file(path, &json_output)?;
+            }
         }
         Commands::Info {
             file,
@@ -305,7 +342,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Output as JSON
             match serde_json::to_string_pretty(&llm_output) {
-                Ok(json) => println!("{}", json),
+                Ok(json) => {
+                    println!("{}", json);
+                    if let Some(path) = output {
+                        write_output_file(path, &json)?;
+                    }
+                }
                 Err(e) => eprintln!("Error serializing output: {}", e),
             }
         }
@@ -339,17 +381,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Display results based on format
             match format {
                 OutputFormat::Text => {
-                    crate::perf_analyzer::display_perf_results(
+                    let text = crate::perf_analyzer::format_perf_results_text(
                         &results,
                         *threshold_ms,
                         *top_n,
                         *orphans_only,
                         *sort_by,
                     );
+                    print!("{text}");
+                    if let Some(path) = output {
+                        write_output_file(path, &text)?;
+                    }
                 }
                 OutputFormat::Json => {
                     let json = crate::perf_analyzer::format_perf_results_json(&results);
                     println!("{}", json);
+                    if let Some(path) = output {
+                        write_output_file(path, &json)?;
+                    }
                 }
             }
         }

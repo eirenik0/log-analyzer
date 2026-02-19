@@ -9,7 +9,7 @@
 //! ```text
 //! type:value           Include logs matching this filter
 //! !type:value          Exclude logs matching this filter
-//! multiple terms       Combine with AND logic
+//! multiple terms       Different types combine with AND; same type values combine with OR
 //! ```
 //!
 //! # Filter Types

@@ -184,6 +184,10 @@ Use `-f, --filter` with unified expression syntax:
 -f "t:timeout d:incoming"       # Contains 'timeout', incoming only
 ```
 
+Filter semantics:
+- Different filter types combine with AND
+- Multiple values of the same filter type combine with OR
+
 ## Output Formats
 
 - `-F text` - Human-readable colored output (default)

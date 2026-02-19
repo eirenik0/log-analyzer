@@ -102,7 +102,8 @@ Use `-f, --filter` with unified expression syntax:
 | `text` | `t` | Filter by text in message |
 | `direction` | `dir`, `d` | Filter by direction (incoming/outgoing) |
 
-**Prefix with `!` to exclude.** Multiple filters use AND logic.
+**Prefix with `!` to exclude.**
+Different filter types combine with AND, while multiple values of the same type combine with OR.
 
 ```bash
 -f "c:core-universal"           # Only core-universal component

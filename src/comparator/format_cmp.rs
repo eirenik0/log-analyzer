@@ -83,12 +83,19 @@ pub fn format_comparison_results<F: OutputFormatter>(
             for (index, key) in results.unique_to_log1.iter().enumerate() {
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
+                    let details = if parts.len() > 3 {
+                        parts[3..].join("|").trim().to_string()
+                    } else {
+                        String::new()
+                    };
                     formatter.write_source_file1(&format!(
-                        "[L{}] {}  {}  {}",
+                        "[L{}] {}  {}  {}{}{}",
                         index + 1,
                         parts[0],
                         parts[1],
-                        parts[2].trim()
+                        parts[2].trim(),
+                        if details.is_empty() { "" } else { ": " },
+                        details
                     ))?;
                 } else {
                     formatter.write_source_file1(&format!("[L{}] {}", index + 1, key))?;
@@ -104,12 +111,19 @@ pub fn format_comparison_results<F: OutputFormatter>(
             for (index, key) in results.unique_to_log2.iter().enumerate() {
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
+                    let details = if parts.len() > 3 {
+                        parts[3..].join("|").trim().to_string()
+                    } else {
+                        String::new()
+                    };
                     formatter.write_source_file2(&format!(
-                        "[L{}] {}  {}  {}",
+                        "[L{}] {}  {}  {}{}{}",
                         index + 1,
                         parts[0],
                         parts[1],
-                        parts[2].trim()
+                        parts[2].trim(),
+                        if details.is_empty() { "" } else { ": " },
+                        details
                     ))?;
                 } else {
                     formatter.write_source_file2(&format!("[L{}] {}", index + 1, key))?;
@@ -175,7 +189,11 @@ pub fn format_comparison_results<F: OutputFormatter>(
                 let component = parts[0];
                 let level = parts[1];
                 let kind = parts[2].trim();
-                let details = if parts.len() > 3 { parts[3].trim() } else { "" };
+                let details = if parts.len() > 3 {
+                    parts[3..].join("|").trim().to_string()
+                } else {
+                    String::new()
+                };
 
                 formatter.write_highlight(&format!(
                     "[K{}] {} {} {}{}{} ({} instances)",
@@ -183,7 +201,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
                     component,
                     level,
                     kind,
-                    if !details.is_empty() { ": " } else { "" },
+                    if details.is_empty() { "" } else { ": " },
                     details,
                     comparisons.len()
                 ))?;
@@ -359,11 +377,13 @@ pub fn format_full_json_comparison<F: OutputFormatter>(
     formatter: &mut F,
     comparison: &LogComparison,
 ) -> std::io::Result<()> {
-    if !comparison.json_differences.is_empty() {
+    if let (Some(log1_payload), Some(log2_payload)) =
+        (&comparison.log1_payload, &comparison.log2_payload)
+    {
         formatter.write_label("  FULL JSON COMPARISON:")?;
 
         formatter.write_source_file1("  LOG FILE 1:")?;
-        match serde_json::to_string_pretty(&comparison.json_differences[0].value1) {
+        match serde_json::to_string_pretty(log1_payload) {
             Ok(json) => {
                 // Indent each line for better readability
                 for line in json.lines() {
@@ -374,7 +394,7 @@ pub fn format_full_json_comparison<F: OutputFormatter>(
         };
 
         formatter.write_source_file2("\n  LOG FILE 2:")?;
-        match serde_json::to_string_pretty(&comparison.json_differences[0].value2) {
+        match serde_json::to_string_pretty(log2_payload) {
             Ok(json) => {
                 // Indent each line for better readability
                 for line in json.lines() {

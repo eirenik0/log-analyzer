@@ -78,7 +78,8 @@ Use `-f, --filter` with a unified expression syntax:
 | `text` | `t` | Filter by text in message |
 | `direction` | `dir`, `d` | Filter by direction (incoming/outgoing) |
 
-**Prefix with `!` to exclude.** Multiple filters use AND logic.
+**Prefix with `!` to exclude.**  
+Different filter types are combined with AND. Multiple values of the same type are OR-ed.
 
 ```bash
 # Only core-universal component

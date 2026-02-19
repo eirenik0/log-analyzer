@@ -71,6 +71,7 @@ pub enum PerfSortOrder {
     text, t               Filter by text in message
     direction, dir, d     Filter by direction (incoming/outgoing)
 
+  Different filter types are AND-ed. Multiple values of the same type are OR-ed.
   Prefix with ! to exclude. Examples:
     --filter \"c:core-universal\"           Only core-universal component
     --filter \"l:ERROR\"                    Only ERROR level logs

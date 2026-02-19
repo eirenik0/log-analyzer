@@ -53,18 +53,21 @@ pub struct LogComparison {
     pub text2: Option<String>,
     pub log1_line_number: usize,
     pub log2_line_number: usize,
+    pub log1_payload: Option<Value>,
+    pub log2_payload: Option<Value>,
 }
 
 /// Represents filtering criteria for logs
 #[derive(Default, Clone)]
 pub struct LogFilter {
-    component: Option<String>,
-    exclude_component: Option<String>,
-    level: Option<String>,
-    exclude_level: Option<String>,
-    message_contains: Option<String>,
-    message_excludes: Option<String>,
-    direction: Option<Direction>,
+    include_components: Vec<String>,
+    exclude_components: Vec<String>,
+    include_levels: Vec<String>,
+    exclude_levels: Vec<String>,
+    include_text: Vec<String>,
+    exclude_text: Vec<String>,
+    include_directions: Vec<Direction>,
+    exclude_directions: Vec<Direction>,
 }
 
 impl LogFilter {
@@ -73,37 +76,58 @@ impl LogFilter {
     }
 
     pub fn with_component(mut self, component: Option<impl Into<String>>) -> Self {
-        self.component = component.map(|c| c.into());
+        if let Some(component) = component {
+            self.include_components.push(component.into());
+        }
         self
     }
 
     pub fn exclude_component(mut self, component: Option<impl Into<String>>) -> Self {
-        self.exclude_component = component.map(|c| c.into());
+        if let Some(component) = component {
+            self.exclude_components.push(component.into());
+        }
         self
     }
 
     pub fn with_level(mut self, level: Option<impl Into<String>>) -> Self {
-        self.level = level.map(|l| l.into());
+        if let Some(level) = level {
+            self.include_levels.push(level.into());
+        }
         self
     }
 
     pub fn exclude_level(mut self, level: Option<impl Into<String>>) -> Self {
-        self.exclude_level = level.map(|l| l.into());
+        if let Some(level) = level {
+            self.exclude_levels.push(level.into());
+        }
         self
     }
 
     pub fn contains_text(mut self, text: Option<impl Into<String>>) -> Self {
-        self.message_contains = text.map(|t| t.into());
+        if let Some(text) = text {
+            self.include_text.push(text.into());
+        }
         self
     }
 
     pub fn excludes_text(mut self, text: Option<impl Into<String>>) -> Self {
-        self.message_excludes = text.map(|t| t.into());
+        if let Some(text) = text {
+            self.exclude_text.push(text.into());
+        }
         self
     }
 
     pub fn with_direction(mut self, direction: &Option<Direction>) -> Self {
-        self.direction = direction.clone();
+        if let Some(direction) = direction.clone() {
+            self.include_directions.push(direction);
+        }
+        self
+    }
+
+    pub fn exclude_direction(mut self, direction: &Option<Direction>) -> Self {
+        if let Some(direction) = direction.clone() {
+            self.exclude_directions.push(direction);
+        }
         self
     }
 
@@ -112,70 +136,57 @@ impl LogFilter {
             haystack.to_lowercase().contains(&needle.to_lowercase())
         }
 
-        // Include filters (log must match these if specified)
-        let component_match = self
-            .component
-            .as_ref()
-            .map(|filter| contains_ci(&log.component, filter))
-            .unwrap_or(true);
+        let component_match = self.include_components.is_empty()
+            || self
+                .include_components
+                .iter()
+                .any(|filter| contains_ci(&log.component, filter));
+        let level_match = self.include_levels.is_empty()
+            || self
+                .include_levels
+                .iter()
+                .any(|filter| contains_ci(&log.level, filter));
+        let contains_match = self.include_text.is_empty()
+            || self
+                .include_text
+                .iter()
+                .any(|filter| contains_ci(&log.message, filter));
 
-        let level_match = self
-            .level
-            .as_ref()
-            .map(|filter| contains_ci(&log.level, filter))
-            .unwrap_or(true);
-
-        let contains_match = self
-            .message_contains
-            .as_ref()
-            .map(|filter| contains_ci(&log.message, filter))
-            .unwrap_or(true);
-
-        // Exclude filters (log must NOT match these if specified)
+        // Exclude filters (log must NOT match any of these)
         let exclude_component_match = self
-            .exclude_component
-            .as_ref()
-            .map(|filter| !contains_ci(&log.component, filter))
-            .unwrap_or(true);
-
+            .exclude_components
+            .iter()
+            .all(|filter| !contains_ci(&log.component, filter));
         let exclude_level_match = self
-            .exclude_level
-            .as_ref()
-            .map(|filter| !contains_ci(&log.level, filter))
-            .unwrap_or(true);
-
+            .exclude_levels
+            .iter()
+            .all(|filter| !contains_ci(&log.level, filter));
         let excludes_match = self
-            .message_excludes
-            .as_ref()
-            .map(|filter| !contains_ci(&log.message, filter))
-            .unwrap_or(true);
+            .exclude_text
+            .iter()
+            .all(|filter| !contains_ci(&log.message, filter));
 
-        let direction_match = self
-            .direction
-            .as_ref()
-            .map(|filter| match &log.kind {
-                LogEntryKind::Event { direction, .. } => {
-                    // Convert event direction to Direction for comparison
-                    let event_as_direction: Direction = direction.clone().into();
-                    // Compare with the filter (which is already a Direction)
-                    &event_as_direction == filter
-                }
-                LogEntryKind::Request { direction, .. } => {
-                    // Convert request direction to Direction for comparison
-                    let request_as_direction: Direction = direction.clone().into();
-                    // Compare with the filter (which is already a Direction)
-                    &request_as_direction == filter
-                }
-                LogEntryKind::Command { .. } => {
-                    // For commands, check if the filter direction is outgoing
-                    matches!(filter, Direction::Outgoing)
-                }
-                LogEntryKind::Generic { .. } => false,
-            })
-            .unwrap_or(true);
+        let log_direction = match &log.kind {
+            LogEntryKind::Event { direction, .. } => Some(Direction::from(direction.clone())),
+            LogEntryKind::Request { direction, .. } => Some(Direction::from(direction.clone())),
+            // Commands are operationally outgoing
+            LogEntryKind::Command { .. } => Some(Direction::Outgoing),
+            LogEntryKind::Generic { .. } => None,
+        };
+
+        let include_direction_match = self.include_directions.is_empty()
+            || self
+                .include_directions
+                .iter()
+                .any(|filter| log_direction.as_ref() == Some(filter));
+        let exclude_direction_match = self
+            .exclude_directions
+            .iter()
+            .all(|filter| log_direction.as_ref() != Some(filter));
 
         component_match
-            && direction_match
+            && include_direction_match
+            && exclude_direction_match
             && level_match
             && contains_match
             && exclude_component_match
@@ -191,7 +202,6 @@ use crate::cli::SortOrder;
 pub struct ComparisonOptions {
     pub diff_only: bool,
     pub show_full_json: bool,
-    pub output_path: Option<String>,
     pub compact_mode: bool,
     pub readable_mode: bool,
     pub sort_order: SortOrder,
@@ -211,11 +221,6 @@ impl ComparisonOptions {
 
     pub fn show_full_json(mut self, value: bool) -> Self {
         self.show_full_json = value;
-        self
-    }
-
-    pub fn output_to_file(mut self, path: Option<impl Into<String>>) -> Self {
-        self.output_path = path.map(|p| p.into());
         self
     }
 

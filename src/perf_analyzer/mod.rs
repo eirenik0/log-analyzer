@@ -1,7 +1,9 @@
 mod display;
 mod entities;
 
-pub use display::{display_perf_results, format_perf_results_json, truncate_string};
+pub use display::{
+    display_perf_results, format_perf_results_json, format_perf_results_text, truncate_string,
+};
 pub use entities::{OperationStats, OrphanOperation, PerfAnalysisResults, TimedOperation};
 
 use crate::comparator::LogFilter;
