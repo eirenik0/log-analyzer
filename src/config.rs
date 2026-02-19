@@ -6,6 +6,13 @@ use std::path::Path;
 use std::sync::LazyLock;
 use thiserror::Error;
 
+const EMBEDDED_PROFILE_BASE: &str = include_str!("../config/profiles/base.toml");
+const EMBEDDED_TEMPLATE_CUSTOM_START: &str = include_str!("../config/templates/custom-start.toml");
+const EMBEDDED_TEMPLATE_SERVICE_API: &str = include_str!("../config/templates/service-api.toml");
+const EMBEDDED_TEMPLATE_EVENT_PIPELINE: &str =
+    include_str!("../config/templates/event-pipeline.toml");
+const BUILTIN_TEMPLATE_NAMES: &[&str] = &["base", "custom-start", "service-api", "event-pipeline"];
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Failed to read config file '{path}': {source}")]
@@ -168,15 +175,66 @@ pub fn load_config_from_path(path: &Path) -> Result<AnalyzerConfig, ConfigError>
         source,
     })?;
 
-    toml::from_str::<AnalyzerConfig>(&raw).map_err(|source| ConfigError::Parse {
-        path: path_display,
+    parse_config_toml(&raw, &path_display)
+}
+
+pub fn default_config() -> &'static AnalyzerConfig {
+    static DEFAULT_CONFIG: LazyLock<AnalyzerConfig> = LazyLock::new(|| {
+        parse_config_toml(EMBEDDED_PROFILE_BASE, "embedded:config/profiles/base.toml")
+            .unwrap_or_else(|err| panic!("Invalid embedded base config: {err}"))
+    });
+    &DEFAULT_CONFIG
+}
+
+pub fn builtin_template_names() -> &'static [&'static str] {
+    BUILTIN_TEMPLATE_NAMES
+}
+
+pub fn load_builtin_template(name: &str) -> Option<AnalyzerConfig> {
+    let template_key = normalized_template_key(name)?;
+    let (source_path, raw) = match template_key.as_str() {
+        "base" => ("embedded:config/profiles/base.toml", EMBEDDED_PROFILE_BASE),
+        "custom-start" => (
+            "embedded:config/templates/custom-start.toml",
+            EMBEDDED_TEMPLATE_CUSTOM_START,
+        ),
+        "service-api" => (
+            "embedded:config/templates/service-api.toml",
+            EMBEDDED_TEMPLATE_SERVICE_API,
+        ),
+        "event-pipeline" => (
+            "embedded:config/templates/event-pipeline.toml",
+            EMBEDDED_TEMPLATE_EVENT_PIPELINE,
+        ),
+        _ => return None,
+    };
+
+    parse_config_toml(raw, source_path).ok()
+}
+
+fn parse_config_toml(raw: &str, path_display: &str) -> Result<AnalyzerConfig, ConfigError> {
+    toml::from_str::<AnalyzerConfig>(raw).map_err(|source| ConfigError::Parse {
+        path: path_display.to_string(),
         source,
     })
 }
 
-pub fn default_config() -> &'static AnalyzerConfig {
-    static DEFAULT_CONFIG: LazyLock<AnalyzerConfig> = LazyLock::new(AnalyzerConfig::default);
-    &DEFAULT_CONFIG
+fn normalized_template_key(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let file_name = Path::new(trimmed)
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or(trimmed);
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|v| v.to_str())
+        .unwrap_or(file_name);
+
+    Some(stem.to_ascii_lowercase())
 }
 
 pub fn analyze_profile(logs: &[LogEntry], cfg: &AnalyzerConfig) -> ProfileInsights {

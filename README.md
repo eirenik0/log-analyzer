@@ -176,6 +176,14 @@ Included examples:
 - `config/templates/service-api.toml` - service/API wording template
 - `config/templates/event-pipeline.toml` - event-driven wording template
 
+These profiles/templates are also embedded in the binary and can be referenced by name in
+`generate-config --template`:
+
+- `base`
+- `custom-start`
+- `service-api`
+- `event-pipeline`
+
 Examples:
 
 ```bash
@@ -194,6 +202,9 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 
 # Then run with your custom profile
 log-analyzer --config config/profiles/my-team.toml info logs/app.log
+
+# Or generate a profile using an embedded built-in template
+log-analyzer generate-config logs/app.log --template service-api --profile-name my-team
 ```
 
 ## Claude Code Integration

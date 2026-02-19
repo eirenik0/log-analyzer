@@ -74,10 +74,17 @@ cp config/templates/custom-start.toml config/profiles/my-team.toml
 cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
 ```
 
-Available templates:
-- `custom-start.toml` - generic starter with placeholders
-- `service-api.toml` - service/API oriented wording
-- `event-pipeline.toml` - event-driven pipeline wording
+Available files:
+- `config/profiles/base.toml` - default parser/perf/profile baseline
+- `config/templates/custom-start.toml` - generic starter with placeholders
+- `config/templates/service-api.toml` - service/API oriented wording
+- `config/templates/event-pipeline.toml` - event-driven pipeline wording
+
+Built-in template names (for `generate-config --template`):
+- `base`
+- `custom-start`
+- `service-api`
+- `event-pipeline`
 
 Use a profile with any command:
 
@@ -278,6 +285,38 @@ log-analyzer perf test.log --op-type Request --top-n 50
 
 # Sort by occurrence count
 log-analyzer perf test.log -s count
+```
+
+### generate-config (alias: gen-config)
+
+Analyze a log file and generate a TOML config profile.
+
+```bash
+log-analyzer generate-config <file> [options]
+```
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--profile-name <name>` | Name to set in `profile_name` (defaults to input filename stem) |
+| `--template <path\|name>` | Base profile to inherit parser/perf rules from (`base`, `custom-start`, `service-api`, `event-pipeline`) |
+
+Output is always TOML. Use global `-o, --output` to write generated profile files.
+
+**Examples:**
+```bash
+# Print generated profile TOML to stdout
+log-analyzer generate-config ./logs/test.log --profile-name test-run
+
+# Save generated profile for skill reuse
+log-analyzer generate-config ./logs/test.log --profile-name eyes-cypress \
+  -o .claude/skills/analyze-logs/profiles/eyes-cypress.toml
+
+# Generate using parser/perf rules from a built-in template
+log-analyzer generate-config ./logs/test.log \
+  --template service-api \
+  --profile-name service-api \
+  -o .claude/skills/analyze-logs/profiles/service-api.toml
 ```
 
 ## Environment Variables

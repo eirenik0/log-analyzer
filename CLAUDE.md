@@ -83,6 +83,12 @@ cargo run -- llm-diff <file1> <file2> [options]
 
 # Analyze operation timing and identify performance bottlenecks
 cargo run -- perf <file> [options]
+
+# Generate a profile TOML by analyzing a log file
+cargo run -- generate-config <file> [options]
+
+# Use an embedded template by name (no local file path needed)
+cargo run -- generate-config <file> --template service-api --profile-name my-profile
 ```
 
 ### Global Options
@@ -231,6 +237,11 @@ cargo test test_name -- --nocapture
    - Orchestrates command execution
    - Provides filtering and output formatting
 
+8. **Config Generator (`src/config_generator.rs`)** - Builds profile TOML data from parsed logs
+   - Collects known components, commands, and requests
+   - Detects high-frequency session prefixes from component IDs
+   - Preserves parser/perf rules from a base config
+
 ### Key Data Types
 
 - `LogEntry` - Represents a single log entry with all metadata
@@ -249,6 +260,7 @@ cargo test test_name -- --nocapture
    - **info**: Statistics and metadata are extracted and displayed
    - **llm/process**: Logs are sanitized and output as compact JSON
    - **perf**: Operation timings are analyzed and bottlenecks identified
+   - **generate-config**: Profile hints are generated from parsed logs and output as TOML
 
 ## Development Notes
 

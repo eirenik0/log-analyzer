@@ -27,6 +27,12 @@ cp config/templates/custom-start.toml config/profiles/my-team.toml
 cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
 ```
 
+Built-in templates are also available directly in the binary:
+
+```bash
+log-analyzer generate-config test.log --template service-api --profile-name my-team
+```
+
 ## Commands Overview
 
 | Command | Purpose | Example |
@@ -37,6 +43,7 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 | `perf` | Find performance bottlenecks | `/analyze-logs perf test.log --threshold-ms 500` |
 | `llm` | Generate LLM-friendly output | `/analyze-logs llm test.log` |
 | `llm-diff` | LLM-friendly diff output | `/analyze-logs llm-diff file1.log file2.log` |
+| `generate-config` | Generate a profile TOML from logs | `/analyze-logs generate-config test.log --profile-name my-team` |
 
 See [reference.md](reference.md) for complete command documentation.
 
@@ -91,7 +98,7 @@ When the user invokes this skill:
    ```
 
 2. **Parse the request** to determine:
-   - Which command is needed (diff, compare, info, perf, llm)
+   - Which command is needed (diff, compare, info, perf, llm, generate-config)
    - Which log files to analyze
    - Any filtering options (component, level, text)
 
@@ -106,6 +113,8 @@ When the user invokes this skill:
    - For debugging failures: use `diff` with `--diff-only`
    - For performance issues: use `perf` with appropriate threshold
    - For understanding logs: use `info` with `--samples --payloads`
+   - For profile generation: use `generate-config`; default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
+   - `--template` can be either a file path or built-in name: `base`, `custom-start`, `service-api`, `event-pipeline`
 
 5. **Execute and interpret**:
    - Run the log-analyzer command
@@ -158,6 +167,19 @@ log-analyzer llm test.log --limit 100 -o context.json
 
 # Diff for LLM
 log-analyzer llm-diff file1.log file2.log -o diff.json
+```
+
+### Generate Config Profile
+```bash
+# Generate from a log file and save to skill-local profiles directory
+log-analyzer generate-config test.log --profile-name eyes-cypress \
+  -o .claude/skills/analyze-logs/profiles/eyes-cypress.toml
+
+# Inherit parser/perf rules from a template while generating profile hints
+log-analyzer generate-config test.log \
+  --template service-api \
+  --profile-name service-api \
+  -o .claude/skills/analyze-logs/profiles/service-api.toml
 ```
 
 ## Filter Expression Syntax

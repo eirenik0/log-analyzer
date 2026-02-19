@@ -1,6 +1,9 @@
 use chrono::{DateTime, Local};
 use log_analyzer::comparator::LogFilter;
-use log_analyzer::config::{AnalyzerConfig, analyze_profile, load_config_from_path};
+use log_analyzer::config::{
+    AnalyzerConfig, analyze_profile, builtin_template_names, default_config, load_builtin_template,
+    load_config_from_path,
+};
 use log_analyzer::parser::{LogEntry, LogEntryKind, RequestDirection, parse_log_entry_with_config};
 use log_analyzer::perf_analyzer::analyze_performance_with_config;
 use std::path::Path;
@@ -175,6 +178,7 @@ fn test_all_profile_templates_are_valid_toml() {
         "config/templates/custom-start.toml",
         "config/templates/service-api.toml",
         "config/templates/event-pipeline.toml",
+        ".claude/skills/analyze-logs/templates/base.toml",
         ".claude/skills/analyze-logs/templates/custom-start.toml",
         ".claude/skills/analyze-logs/templates/service-api.toml",
         ".claude/skills/analyze-logs/templates/event-pipeline.toml",
@@ -184,4 +188,35 @@ fn test_all_profile_templates_are_valid_toml() {
         let config = load_config_from_path(Path::new(file));
         assert!(config.is_ok(), "failed to parse template: {}", file);
     }
+}
+
+#[test]
+fn test_default_config_comes_from_embedded_base_toml() {
+    let config = default_config();
+    assert_eq!(config.profile_name, "base");
+    assert_eq!(config.parser.event_payload_separator, "with payload");
+    assert_eq!(
+        config.perf.command_start_markers,
+        vec!["is called".to_string()]
+    );
+}
+
+#[test]
+fn test_builtin_templates_can_be_loaded_from_names_and_paths() {
+    let base = load_builtin_template("base").expect("base template should load");
+    assert_eq!(base.profile_name, "base");
+
+    let service =
+        load_builtin_template("service-api.toml").expect("service-api template should load");
+    assert_eq!(service.profile_name, "service-api");
+
+    let event_path = load_builtin_template("config/templates/event-pipeline.toml")
+        .expect("event-pipeline template should load from path-like input");
+    assert_eq!(event_path.profile_name, "event-pipeline");
+
+    assert!(load_builtin_template("unknown-template").is_none());
+    assert_eq!(
+        builtin_template_names(),
+        &["base", "custom-start", "service-api", "event-pipeline"]
+    );
 }

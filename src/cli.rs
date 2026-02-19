@@ -271,6 +271,22 @@ pub enum Commands {
         #[arg(short = 's', long, value_enum, default_value_t = PerfSortOrder::Duration)]
         sort_by: PerfSortOrder,
     },
+
+    /// Analyze a log file and generate a TOML config profile
+    #[command(alias = "gen-config")]
+    GenerateConfig {
+        /// Log file to analyze
+        #[arg(required = true)]
+        file: PathBuf,
+
+        /// Name for the generated profile
+        #[arg(long)]
+        profile_name: Option<String>,
+
+        /// Base template path or built-in name (base, custom-start, service-api, event-pipeline)
+        #[arg(long)]
+        template: Option<PathBuf>,
+    },
 }
 
 impl Cli {

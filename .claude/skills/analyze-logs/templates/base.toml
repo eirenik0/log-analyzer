@@ -1,0 +1,29 @@
+profile_name = "base"
+
+[parser]
+event_emit_markers = ["Emit event of type"]
+event_receive_markers = ["Received event of type"]
+event_payload_separator = "with payload"
+command_prefix = "Command \""
+command_start_marker = "\" is called"
+command_payload_markers = ["with settings"]
+request_prefix = "Request \""
+request_send_markers = ["will be sent"]
+request_receive_markers = ["finished successfully", "respond with", "that was sent", "is going to retried"]
+request_payload_markers = ["with body"]
+request_endpoint_marker = "address \"["
+json_indicators = ["with settings {", "with body [", "with body {", "with body", "with body "]
+
+[perf]
+command_start_markers = ["is called"]
+command_completion_markers = ["finished", "returned", "completed"]
+event_correlation_keys = ["key"]
+
+[profile]
+known_components = []
+known_commands = []
+known_requests = []
+
+[profile.session_prefixes]
+primary = ""
+secondary = ""
