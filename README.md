@@ -261,6 +261,7 @@ Use profile TOML files to keep the binary generic and push case-specific knowled
 Included examples:
 
 - `config/profiles/base.toml` - minimal reusable defaults
+- `config/profiles/eyes.toml` - Applitools Eyes profile (known commands/components + session lifecycle levels)
 - `config/templates/custom-start.toml` - starter template for any project
 - `config/templates/service-api.toml` - service/API wording template
 - `config/templates/event-pipeline.toml` - event-driven wording template
@@ -294,7 +295,41 @@ log-analyzer --config config/profiles/my-team.toml info logs/app.log
 
 # Or generate a profile using an embedded built-in template
 log-analyzer generate-config logs/app.log --template service-api --profile-name my-team
+
+# Generate from Eyes logs while preserving Eyes-specific lifecycle session levels
+log-analyzer generate-config logs/eyes.log --template config/profiles/eyes.toml --profile-name eyes-team
 ```
+
+Optional session hierarchy/lifecycle hints (used by `info` profile insights):
+
+```toml
+# Legacy format (still supported)
+[profile.session_prefixes]
+primary = "manager-"
+secondary = "eyes-"
+
+# New format (richer session insights)
+[[sessions.levels]]
+name = "runner"
+segment_prefix = "manager-"
+create_command = "makeManager"
+complete_commands = ["getResults", "closeBatch"]
+summary_fields = ["concurrency", "batch.id"]
+
+[[sessions.levels]]
+name = "test"
+segment_prefix = "eyes-"
+create_command = "openEyes"
+complete_commands = ["close", "abort"]
+
+[[sessions.levels]]
+name = "environment"
+segment_prefix = "environment-"
+```
+
+When `sessions.levels` is configured, `info` automatically summarizes session counts/completion health per level and can surface common create-time fields (for example `concurrency`).
+
+`generate-config` also detects session-like prefixes from `component_id` paths and embeds them as generic `[[sessions.levels]]` entries (`primary`, `secondary`, ...). Eyes-specific lifecycle commands/summary fields should come from `config/profiles/eyes.toml` (or another custom profile), not the generic base profile.
 
 ## Claude Code Integration
 
@@ -327,6 +362,7 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 - **Advanced filtering** - Include/exclude by component, level, content, or direction
 - **Operation lifecycle tracing** - Follow a single correlation ID or session path across files with per-step timing
 - **Multi-file session analysis** - Merge and analyze `info`/`perf` inputs across multiple log files
+- **Session lifecycle insights** - Profile-driven session tree/completion tracking in `info` (with legacy prefix compatibility)
 - **Performance analysis** - Identify slow and orphan operations
 - **LLM-friendly output** - Sanitized, compact JSON for AI consumption
 - **Profile-driven customization** - Override parser/perf markers via TOML config or generated templates

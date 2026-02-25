@@ -17,6 +17,8 @@ log-analyzer --config config/profiles/base.toml <command> ...
 log-analyzer --config config/profiles/custom.toml <command> ...
 ```
 
+Profiles can also define session hierarchy/lifecycle hints with `[[sessions.levels]]` (for example runner/test/environment prefixes plus create/complete commands). `info` will then report session completion health per level. Legacy `[profile.session_prefixes]` still works.
+
 Create a custom profile from a template:
 
 ```bash
@@ -32,6 +34,8 @@ Built-in templates are also available directly in the binary:
 ```bash
 log-analyzer generate-config test.log --template service-api --profile-name my-team
 ```
+
+`generate-config` auto-detects session-like `component_id` prefixes and writes generic `[[sessions.levels]]` entries. Use `config/profiles/eyes.toml` when you want Eyes-specific session lifecycle metadata (create/complete commands, summary fields).
 
 ## Commands Overview
 
@@ -119,7 +123,8 @@ When the user invokes this skill:
    - For performance issues: use `perf` with appropriate threshold (pass multiple files only when they belong to the same run/session for meaningful timing/orphan analysis)
    - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
    - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
-   - For profile generation: use `generate-config`; default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
+   - If a profile includes `[[sessions.levels]]`, mention the per-level session completion summary from `info` in your findings
+   - For profile generation: use `generate-config`; it will infer parser/profile hints and generic session levels from logs, and default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
    - `--template` can be either a file path or built-in name: `base`, `custom-start`, `service-api`, `event-pipeline`
 
 5. **Execute and interpret**:

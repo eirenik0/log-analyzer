@@ -185,14 +185,25 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
     assert!(insights.unknown_components.contains("custom-service"));
     assert!(insights.unknown_commands.contains("customOp"));
     assert!(insights.unknown_requests.contains("customReq"));
-    assert!(insights.primary_sessions.contains("trace-abc"));
-    assert!(insights.secondary_sessions.contains("span-xyz"));
+    assert!(
+        insights
+            .sessions
+            .primary_session_ids()
+            .contains("trace-abc")
+    );
+    assert!(
+        insights
+            .sessions
+            .secondary_session_ids()
+            .contains("span-xyz")
+    );
 }
 
 #[test]
 fn test_all_profile_templates_are_valid_toml() {
     let files = [
         "config/profiles/base.toml",
+        "config/profiles/eyes.toml",
         "config/templates/custom-start.toml",
         "config/templates/service-api.toml",
         "config/templates/event-pipeline.toml",

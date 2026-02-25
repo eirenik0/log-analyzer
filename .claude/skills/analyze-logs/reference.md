@@ -76,6 +76,7 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 
 Available files:
 - `config/profiles/base.toml` - default parser/perf/profile baseline
+- `config/profiles/eyes.toml` - Applitools Eyes profile with curated session lifecycle levels
 - `config/templates/custom-start.toml` - generic starter with placeholders
 - `config/templates/service-api.toml` - service/API oriented wording
 - `config/templates/event-pipeline.toml` - event-driven pipeline wording
@@ -92,6 +93,9 @@ Use a profile with any command:
 log-analyzer --config config/profiles/my-team.toml info ./logs/test.log
 log-analyzer --config config/profiles/my-team.toml diff ./logs/a.log ./logs/b.log
 ```
+
+Optional session lifecycle hints can be defined with `[[sessions.levels]]` in the profile (for example `runner`/`test` levels with `segment_prefix`, `create_command`, and `complete_commands`). The legacy `[profile.session_prefixes]` format is still supported and is treated as a simple two-level fallback.
+`generate-config` now auto-detects session-like prefixes from `component_id` paths and emits generic `[[sessions.levels]]` entries (`primary`, `secondary`, ...); use `config/profiles/eyes.toml` when you want Eyes-specific lifecycle metadata in the generated profile.
 
 ## Filter Expression Syntax
 
@@ -191,6 +195,8 @@ log-analyzer info ./logs/*.log -f "c:socket" --json-schema
 # Quick overview
 log-analyzer info test.log
 ```
+
+If the loaded profile defines `[[sessions.levels]]`, `info` also prints a per-level session completion summary (completed vs incomplete) and common configured create-time summary fields.
 
 ### search
 

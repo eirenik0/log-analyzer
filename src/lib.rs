@@ -47,6 +47,70 @@ fn list_preview(values: &std::collections::BTreeSet<String>, max_items: usize) -
     preview.join(", ")
 }
 
+fn pluralize_label(label: &str, count: usize) -> String {
+    if count == 1 || label.ends_with('s') {
+        label.to_string()
+    } else {
+        format!("{label}s")
+    }
+}
+
+fn json_value_inline(value: &serde_json::Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "<invalid-json>".to_string())
+}
+
+fn print_session_insights(insights: &config::SessionInsights) {
+    let visible_levels: Vec<_> = insights
+        .levels
+        .iter()
+        .filter(|level| !level.sessions.is_empty())
+        .collect();
+    if visible_levels.is_empty() {
+        return;
+    }
+
+    println!("  session insights:");
+    for level in visible_levels {
+        let total = level.sessions.len();
+        let completed = level.completed_count();
+        let incomplete = level.incomplete_count();
+        let status = if incomplete == 0 { "OK" } else { "WARN" };
+
+        println!(
+            "    {} ({} sessions): {} completed, {} incomplete [{}]",
+            level.config.name, total, completed, incomplete, status
+        );
+
+        for field in &level.config.summary_fields {
+            if field.is_empty() {
+                continue;
+            }
+
+            let values: std::collections::BTreeSet<String> = level
+                .sessions
+                .values()
+                .filter_map(|session| session.summary_fields.get(field))
+                .map(json_value_inline)
+                .collect();
+
+            if values.len() == 1
+                && level
+                    .sessions
+                    .values()
+                    .all(|s| s.summary_fields.contains_key(field))
+            {
+                let value = values.iter().next().expect("one value");
+                println!(
+                    "      {{{}: {}}} across all {}",
+                    field,
+                    value,
+                    pluralize_label(&level.config.name, total)
+                );
+            }
+        }
+    }
+}
+
 fn print_profile_insights(logs: &[LogEntry], config: &config::AnalyzerConfig) {
     if !config.has_profile_hints() {
         return;
@@ -57,25 +121,13 @@ fn print_profile_insights(logs: &[LogEntry], config: &config::AnalyzerConfig) {
     if insights.unknown_components.is_empty()
         && insights.unknown_commands.is_empty()
         && insights.unknown_requests.is_empty()
-        && insights.primary_sessions.is_empty()
-        && insights.secondary_sessions.is_empty()
+        && insights.sessions.is_empty()
     {
         return;
     }
 
     println!("\nProfile insights ({})", config.profile_name);
-    if !insights.primary_sessions.is_empty() {
-        println!(
-            "  primary sessions: {}",
-            list_preview(&insights.primary_sessions, 8)
-        );
-    }
-    if !insights.secondary_sessions.is_empty() {
-        println!(
-            "  secondary sessions: {}",
-            list_preview(&insights.secondary_sessions, 8)
-        );
-    }
+    print_session_insights(&insights.sessions);
     if !insights.unknown_components.is_empty() {
         println!(
             "  unknown components: {}",

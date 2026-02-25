@@ -1,5 +1,5 @@
 use chrono::{DateTime, Local};
-use log_analyzer::config::AnalyzerConfig;
+use log_analyzer::config::{AnalyzerConfig, SessionLevelConfig, SessionsRules};
 use log_analyzer::config_generator::{GenerateConfigOptions, generate_config};
 use log_analyzer::parser::{LogEntry, LogEntryKind, RequestDirection};
 
@@ -151,6 +151,13 @@ fn test_detects_session_prefixes() {
 
     assert_eq!(generated.profile.session_prefixes.primary, "manager-");
     assert_eq!(generated.profile.session_prefixes.secondary, "eyes-");
+    assert_eq!(generated.sessions.levels.len(), 2);
+    assert_eq!(generated.sessions.levels[0].name, "primary");
+    assert_eq!(generated.sessions.levels[0].segment_prefix, "manager-");
+    assert!(generated.sessions.levels[0].create_command.is_none());
+    assert!(generated.sessions.levels[0].complete_commands.is_empty());
+    assert_eq!(generated.sessions.levels[1].name, "secondary");
+    assert_eq!(generated.sessions.levels[1].segment_prefix, "eyes-");
 }
 
 #[test]
@@ -174,6 +181,7 @@ fn test_empty_component_ids_yield_empty_prefixes() {
 
     assert!(generated.profile.session_prefixes.primary.is_empty());
     assert!(generated.profile.session_prefixes.secondary.is_empty());
+    assert!(generated.sessions.levels.is_empty());
 }
 
 #[test]
@@ -274,5 +282,73 @@ fn test_serialization_roundtrip() {
     assert_eq!(
         deserialized.profile.session_prefixes.secondary,
         generated.profile.session_prefixes.secondary
+    );
+    assert_eq!(
+        deserialized.sessions.levels.len(),
+        generated.sessions.levels.len()
+    );
+    for (actual, expected) in deserialized
+        .sessions
+        .levels
+        .iter()
+        .zip(generated.sessions.levels.iter())
+    {
+        assert_eq!(actual.name, expected.name);
+        assert_eq!(actual.segment_prefix, expected.segment_prefix);
+        assert_eq!(actual.create_command, expected.create_command);
+        assert_eq!(actual.complete_commands, expected.complete_commands);
+        assert_eq!(actual.summary_fields, expected.summary_fields);
+    }
+}
+
+#[test]
+fn test_preserves_template_defined_session_levels() {
+    let logs = vec![make_entry(
+        "core",
+        "manager-ufg-1/eyes-ufg-1/check-1",
+        LogEntryKind::Generic { payload: None },
+    )];
+
+    let mut base = AnalyzerConfig::default();
+    base.sessions = SessionsRules {
+        levels: vec![
+            SessionLevelConfig {
+                name: "runner".to_string(),
+                segment_prefix: "manager-".to_string(),
+                create_command: Some("makeManager".to_string()),
+                complete_commands: vec!["getResults".to_string(), "closeBatch".to_string()],
+                summary_fields: vec!["concurrency".to_string()],
+            },
+            SessionLevelConfig {
+                name: "test".to_string(),
+                segment_prefix: "eyes-".to_string(),
+                create_command: Some("openEyes".to_string()),
+                complete_commands: vec!["close".to_string(), "abort".to_string()],
+                summary_fields: vec![],
+            },
+        ],
+    };
+
+    let generated = generate_config(
+        &logs,
+        &base,
+        &GenerateConfigOptions {
+            profile_name: "generated".to_string(),
+        },
+    );
+
+    assert_eq!(generated.sessions.levels.len(), 2);
+    assert_eq!(generated.sessions.levels[0].name, "runner");
+    assert_eq!(
+        generated.sessions.levels[0].create_command.as_deref(),
+        Some("makeManager")
+    );
+    assert_eq!(
+        generated.sessions.levels[0].complete_commands,
+        vec!["getResults".to_string(), "closeBatch".to_string()]
+    );
+    assert_eq!(
+        generated.sessions.levels[0].summary_fields,
+        vec!["concurrency"]
     );
 }
