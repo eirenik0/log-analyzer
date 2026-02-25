@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.2.0 (2026-02-25)
+
+### Breaking Changes
+
+#### Remove legacy `[profile.session_prefixes]` configuration in favor of `[[sessions.levels]]` only.
+
+- `AnalyzerConfig` session insights now read only from `sessions.levels`.
+- `generate-config` no longer writes `profile.session_prefixes` and uses `level-1`, `level-2`, ... for inferred generic level names.
+- Built-in templates, README examples, and Claude skill templates/docs now use `[[sessions.levels]]` exclusively.
+
+### Features
+
+- add multi-file support for `info` and `perf` commands
+- add `trace` command to track operation/session lifecycle across log files
+- add `search` command for structured log inspection with filtering, context, and grouped counting
+- add `extract` command for aggregating JSON field values from matching log entries
+- add session lifecycle insights in profiles and `info` command outputs
+- allow `generate-config` to process multiple log files and merge entries for profile inference
+- add `errors` command for clustering log patterns and session analysis
+
+#### Add an `errors` command for single-command failure diagnosis across one or more log files.
+
+- Clusters ERROR entries (and optionally WARN entries via `--warn`) by normalized message pattern.
+- Shows per-cluster severity, counts, emitting components, first/last timestamps, and a sample message.
+- Optionally cross-references affected `component_id` sessions via `--sessions`, including `completed` vs `orphaned` outcomes using perf-style orphan detection heuristics.
+- Adds impact-oriented cluster sorting (`--sort-by impact`) plus blocking-span estimates in the summary.
+
+#### Add an `extract` command for aggregating payload field values from matching log entries.
+
+- `log-analyzer extract <file> --field <name>` extracts a JSON payload/settings field and groups by value occurrences.
+- Works with the existing global `-f/--filter` expression syntax to scope extraction to specific messages/components.
+- Supports JSON output via global `-F json` / `-j` and dot-path field access (for example `settings.retryTimeout`).
+
+#### Add multi-file input support to `generate-config`.
+
+- `log-analyzer generate-config` now accepts one or more log files and merges them before inferring profile hints.
+- This improves profile generation for split/rotated logs from the same run by combining observed components, commands, requests, and session prefixes.
+- Generated output now includes a multi-source header when multiple files are provided.
+
+#### Add multi-file input support for `info` and `perf` commands.
+
+- `log-analyzer info` now accepts one or more log files and aggregates analysis across all inputs.
+- `log-analyzer perf` now accepts one or more log files and analyzes them as a single timeline.
+- Parsed entries from all provided files are concatenated and sorted by timestamp before analysis, which improves cross-file operation pairing (including orphan detection).
+
+#### Add a `search` command for structured grep-style log inspection.
+
+- `log-analyzer search <file>` prints matching log entries using the existing `-f/--filter` expression syntax.
+- Supports entry-based context windows via `--context <n>` and optional parsed payload display with `--payloads`.
+- Supports grouped counting mode via `--count-by <matches|component|level|type|payload>` (including payload-based occurrence grouping).
+
+#### Add profile-driven hierarchical session insights for `info` using a new optional `[[sessions.levels]]` config format.
+
+- Supports named session levels with `segment_prefix`, `create_command`, `complete_commands`, and `summary_fields`.
+- Upgrades profile analysis to build per-session lifecycle state (created/completed), parent-child links, operation counts, and create-time summary field extraction in a single pass.
+- `info` now renders per-level session completion health summaries (completed vs incomplete) and stable configured summary field values when available.
+- `generate-config` now emits detected session prefixes as generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...) while preserving template-defined session levels.
+
+#### Add a `trace` command for following a single operation/session lifecycle across log files.
+
+- `log-analyzer trace` accepts one or more log files and merges/sorts entries by timestamp.
+- Supports `--id <substring>` to trace by correlation/request ID fragments and `--session <substring>` to trace by `component_id` hierarchy.
+- Text output shows chronological entries with per-step timing deltas; JSON output is also available via global `-F json` / `-j`.
+
 ## 0.1.3 (2026-02-19)
 
 ### Features
