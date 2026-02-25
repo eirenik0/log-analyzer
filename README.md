@@ -51,6 +51,32 @@ log-analyzer llm file.log
 log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
 ```
 
+## Configuration is Essential
+
+> **Every analysis command depends on a well-tuned profile config.** Without one, the tool falls back to generic heuristics that will miss domain-specific commands, requests, session hierarchies, and lifecycle boundaries. The difference between a useful diagnosis and a misleading one is almost always the config.
+
+**Why this matters:**
+
+- **Session completion tracking** (`info` profile insights, `errors --sessions`) requires `[[sessions.levels]]` to know which `component_id` prefixes map to runners, tests, checks, and environments - and which commands create or complete them. Without this, incomplete/orphaned sessions go undetected.
+- **Performance pairing** (`perf`) uses `command_start_markers` and `command_completion_markers` from `[perf]` to match operation starts with their completions. Wrong markers = wrong latencies and false orphans.
+- **Payload extraction** (`extract`, `search --payloads`) relies on `json_indicators` and `command_payload_markers` from `[parser]` to locate and parse embedded JSON. If these don't match your log format, payloads are invisible.
+- **Request lifecycle tracing** (`trace`, `perf --orphans-only`) depends on `request_send_markers`, `request_receive_markers`, and `request_endpoint_marker` to pair outgoing requests with their responses.
+
+**How to get started:**
+
+```bash
+# 1. Generate a starter config from your actual logs (best first step)
+log-analyzer generate-config "logs/*.log" --template custom-start --profile-name my-team
+
+# 2. Review and refine the generated TOML - add session levels, fix markers
+#    The generator infers what it can, but domain knowledge is yours to add
+
+# 3. Always pass --config when running analysis
+log-analyzer --config my-team.toml errors "logs/*.log" --sessions
+```
+
+See [Profile Configuration](#profile-configuration) for the full reference and examples. Investing 10 minutes in a good config pays back on every analysis run.
+
 ## Commands
 
 | Command | Aliases | Description |

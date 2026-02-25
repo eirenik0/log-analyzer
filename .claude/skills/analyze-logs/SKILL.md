@@ -118,6 +118,8 @@ When the user invokes this skill:
 
 4. **Build the command** with appropriate options:
    - Use `log-analyzer` if installed, otherwise `./target/release/log-analyzer` or `cargo run --`
+   - If a path contains spaces, quote the directory/path but keep the wildcard outside quotes (for example `"/path with spaces"/*.log`, not `"/path with spaces/*.log"`)
+   - Do not pass expanded globs to single-file commands (`search`, `extract`, `llm`/`process`); choose one file or switch to a multi-file command
    - For debugging failures, run `errors` first (or one of the first commands) to get a structured error inventory before deeper investigation
    - After the initial `errors` pass, build the causal chain with targeted follow-up queries: manager creation patterns (`search`), concurrency config extraction (`extract --field concurrency` or `search --count-by payload`), and SDK path tracing (`trace --id` / `--session`)
    - Use `diff` with `--diff-only` when comparing expected vs failing logs after the initial `errors` pass
