@@ -44,8 +44,8 @@ log-analyzer trace logs/*.log --id f227f11e
 # Generate LLM-friendly output
 log-analyzer llm file.log
 
-# Generate a starter profile from real logs
-log-analyzer generate-config file.log --template custom-start --profile-name my-team
+# Generate a starter profile from one or more related logs
+log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
 ```
 
 ## Commands
@@ -192,9 +192,11 @@ This is intended for tracing a single run/session across split logs. Mixing unre
 
 ### generate-config
 
+Generate a profile from one or more related log files (for example, split/rotated logs from the same run/session).
+
 | Option | Description |
 |--------|-------------|
-| `--profile-name <name>` | Name for the generated profile (defaults to file stem) |
+| `--profile-name <name>` | Name for the generated profile (defaults to file stem for a single input, otherwise `generated-profile`) |
 | `--template <path-or-name>` | Base template path or built-in: `base`, `custom-start`, `service-api`, `event-pipeline` |
 
 ## Examples
@@ -241,6 +243,9 @@ log-analyzer llm file.log --limit 50
 
 # LLM-friendly diff sorted by highest-severity levels first
 log-analyzer llm-diff file1.log file2.log --sort-by level
+
+# Generate a profile from related split logs (merged before inference)
+log-analyzer generate-config logs/run-*.log --template custom-start --profile-name my-team
 ```
 
 ## Environment Configuration
@@ -296,9 +301,14 @@ log-analyzer --config config/profiles/my-team.toml info logs/app.log
 # Or generate a profile using an embedded built-in template
 log-analyzer generate-config logs/app.log --template service-api --profile-name my-team
 
+# Generate a profile from multiple related log chunks (merged before inference)
+log-analyzer generate-config logs/run-1.log logs/run-2.log --template custom-start --profile-name my-team
+
 # Generate from Eyes logs while preserving Eyes-specific lifecycle session levels
 log-analyzer generate-config logs/eyes.log --template config/profiles/eyes.toml --profile-name eyes-team
 ```
+
+Only combine related logs from the same run/session when using `generate-config`; mixing unrelated runs can pollute inferred commands/requests/session prefixes.
 
 Optional session hierarchy/lifecycle hints (used by `info` profile insights):
 

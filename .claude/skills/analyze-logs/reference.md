@@ -388,16 +388,18 @@ log-analyzer -j trace ./logs/*.log --id f227f11e -o trace.json
 
 ### generate-config (alias: gen-config)
 
-Analyze a log file and generate a TOML config profile.
+Analyze one or more related log files and generate a TOML config profile.
 
 ```bash
-log-analyzer generate-config <file> [options]
+log-analyzer generate-config <file> [file...] [options]
 ```
+
+When multiple files are provided, entries are merged before profile inference. Only combine related logs from the same run/session.
 
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `--profile-name <name>` | Name to set in `profile_name` (defaults to input filename stem) |
+| `--profile-name <name>` | Name to set in `profile_name` (defaults to input filename stem for one file, otherwise `generated-profile`) |
 | `--template <path\|name>` | Base profile to inherit parser/perf rules from (`base`, `custom-start`, `service-api`, `event-pipeline`) |
 
 Output is always TOML. Use global `-o, --output` to write generated profile files.
@@ -407,12 +409,15 @@ Output is always TOML. Use global `-o, --output` to write generated profile file
 # Print generated profile TOML to stdout
 log-analyzer generate-config ./logs/test.log --profile-name test-run
 
+# Merge split logs before inferring profile hints
+log-analyzer generate-config ./logs/run-1.log ./logs/run-2.log --profile-name run-profile
+
 # Save generated profile for skill reuse
-log-analyzer generate-config ./logs/test.log --profile-name cypress \
+log-analyzer generate-config ./logs/*.log --profile-name cypress \
   -o .claude/skills/analyze-logs/profiles/cypress.toml
 
 # Generate using parser/perf rules from a built-in template
-log-analyzer generate-config ./logs/test.log \
+log-analyzer generate-config ./logs/*.log \
   --template service-api \
   --profile-name service-api \
   -o .claude/skills/analyze-logs/profiles/service-api.toml

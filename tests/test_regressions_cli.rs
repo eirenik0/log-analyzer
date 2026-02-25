@@ -541,6 +541,62 @@ fn test_trace_by_session_filters_using_component_id_hierarchy() {
 }
 
 #[test]
+fn test_generate_config_merges_multiple_logs_for_inference() {
+    let dir = tempdir().expect("temp dir");
+    let file1 = dir.path().join("part1.log");
+    let file2 = dir.path().join("part2.log");
+
+    write_file(
+        &file1,
+        concat!(
+            "core (manager-ufg-1/eyes-ufg-1) | 2026-01-01T00:00:00.000Z [INFO ] Command \"openEyes\" is called with settings {\"test\":1}\n",
+            "core (manager-ufg-1/eyes-ufg-1) | 2026-01-01T00:00:00.100Z [INFO ] Generic message\n",
+        ),
+    );
+    write_file(
+        &file2,
+        "network (manager-ufg-2/eyes-ufg-2) | 2026-01-01T00:00:01.000Z [INFO ] Request \"render\" [0--id1] will be sent with body {\"x\":1}\n",
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "generate-config",
+            file1.to_str().expect("utf8 path"),
+            file2.to_str().expect("utf8 path"),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("# Sources (2):"),
+        "expected multi-source header, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("openEyes"),
+        "expected command inferred from first file, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("render"),
+        "expected request inferred from second file, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("manager-") && stdout.contains("eyes-"),
+        "expected session prefixes inferred across files, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
 fn test_search_prints_matching_entries_and_payloads() {
     let dir = tempdir().expect("temp dir");
     let file = dir.path().join("search.log");

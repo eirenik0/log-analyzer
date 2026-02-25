@@ -331,12 +331,12 @@ pub enum Commands {
         session: Option<String>,
     },
 
-    /// Analyze a log file and generate a TOML config profile
+    /// Analyze one or more log files and generate a TOML config profile
     #[command(alias = "gen-config")]
     GenerateConfig {
-        /// Log file to analyze
-        #[arg(required = true)]
-        file: PathBuf,
+        /// One or more log files to analyze (supports shell-expanded globs)
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
 
         /// Name for the generated profile
         #[arg(long)]

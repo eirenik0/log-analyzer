@@ -32,10 +32,10 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 Built-in templates are also available directly in the binary:
 
 ```bash
-log-analyzer generate-config test.log --template service-api --profile-name my-team
+log-analyzer generate-config ./logs/*.log --template service-api --profile-name my-team
 ```
 
-`generate-config` auto-detects session-like `component_id` prefixes and writes generic `[[sessions.levels]]` entries. Use `config/profiles/eyes.toml` when you want Eyes-specific session lifecycle metadata (create/complete commands, summary fields).
+`generate-config` auto-detects session-like `component_id` prefixes and writes generic `[[sessions.levels]]` entries. It accepts one or more related logs (merged before inference). Use `config/profiles/eyes.toml` when you want Eyes-specific session lifecycle metadata (create/complete commands, summary fields).
 
 ## Commands Overview
 
@@ -50,7 +50,7 @@ log-analyzer generate-config test.log --template service-api --profile-name my-t
 | `trace` | Trace one operation/session lifecycle across one or more logs | `/analyze-logs trace ./logs/*.log --id f227f11e` |
 | `llm` | Generate LLM-friendly output | `/analyze-logs llm test.log` |
 | `llm-diff` | LLM-friendly diff output | `/analyze-logs llm-diff file1.log file2.log` |
-| `generate-config` | Generate a profile TOML from logs | `/analyze-logs generate-config test.log --profile-name my-team` |
+| `generate-config` | Generate a profile TOML from one or more related logs | `/analyze-logs generate-config ./logs/*.log --profile-name my-team` |
 
 See [reference.md](reference.md) for complete command documentation.
 
@@ -124,7 +124,7 @@ When the user invokes this skill:
    - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
    - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
    - If a profile includes `[[sessions.levels]]`, mention the per-level session completion summary from `info` in your findings
-   - For profile generation: use `generate-config`; it will infer parser/profile hints and generic session levels from logs, and default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
+  - For profile generation: use `generate-config`; it will infer parser/profile hints and generic session levels from one or more related logs (merged before inference), and default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
    - `--template` can be either a file path or built-in name: `base`, `custom-start`, `service-api`, `event-pipeline`
 
 5. **Execute and interpret**:
@@ -206,16 +206,18 @@ log-analyzer llm-diff file1.log file2.log -o diff.json
 
 ### Generate Config Profile
 ```bash
-# Generate from a log file and save to skill-local profiles directory
-log-analyzer generate-config test.log --profile-name cypress \
+# Generate from related split logs and save to skill-local profiles directory
+log-analyzer generate-config ./logs/*.log --profile-name cypress \
   -o .claude/skills/analyze-logs/profiles/cypress.toml
 
 # Inherit parser/perf rules from a template while generating profile hints
-log-analyzer generate-config test.log \
+log-analyzer generate-config ./logs/*.log \
   --template service-api \
   --profile-name service-api \
   -o .claude/skills/analyze-logs/profiles/service-api.toml
 ```
+
+Only combine related logs from the same run/session to avoid polluting inferred profile hints.
 
 ## Filter Expression Syntax
 
