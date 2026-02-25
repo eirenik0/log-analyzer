@@ -14,13 +14,13 @@ If the diff is large, narrow down:
 
 ```bash
 # Focus on errors
-log-analyzer diff passing.log failing.log -l ERROR
+log-analyzer diff passing.log failing.log -f "l:ERROR"
 
 # Focus on specific component
-log-analyzer diff passing.log failing.log -C core-universal
+log-analyzer diff passing.log failing.log -f "c:core-universal"
 
 # Exclude noisy debug logs
-log-analyzer diff passing.log failing.log --exclude-level DEBUG
+log-analyzer diff passing.log failing.log -f "!l:DEBUG"
 ```
 
 ## Step 3: Analyze Results
@@ -36,7 +36,7 @@ Look for:
 For specific differences:
 ```bash
 # Get full JSON objects for comparison
-log-analyzer diff passing.log failing.log -f -t "specificEventName"
+log-analyzer diff passing.log failing.log --full -f "t:specificEventName"
 
 # JSON output for further processing
 log-analyzer diff passing.log failing.log -F json -c > diff.json

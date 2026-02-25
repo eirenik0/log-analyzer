@@ -72,20 +72,32 @@ cargo run -- compare <file1> <file2> [options]
 # Show only differences between log files (shortcut for compare --diff-only)
 cargo run -- diff <file1> <file2> [options]
 
-# Display information about a log file
-cargo run -- info <file> [options]
+# Display information about one or more related log files
+cargo run -- info <file> [file...] [options]
 
-# Generate LLM-friendly compact JSON output from a single log file
-cargo run -- llm <file> [options]
+# Structured grep-style search in one log file
+cargo run -- search <file> [options]
+
+# Diagnose clustered errors/warnings across one or more related logs
+cargo run -- errors <file> [file...] [options]
+
+# Extract and aggregate a payload/settings field from matching entries
+cargo run -- extract <file> --field <path> [options]
+
+# Generate LLM-friendly compact JSON output from a single log file (canonical: process; alias: llm)
+cargo run -- process <file> [options]
 
 # Generate LLM-friendly compact JSON output of differences
 cargo run -- llm-diff <file1> <file2> [options]
 
-# Analyze operation timing and identify performance bottlenecks
-cargo run -- perf <file> [options]
+# Analyze operation timing and identify performance bottlenecks across one or more related logs
+cargo run -- perf <file> [file...] [options]
 
-# Generate a profile TOML by analyzing a log file
-cargo run -- generate-config <file> [options]
+# Trace a single operation/session across one or more related logs
+cargo run -- trace <file> [file...] (--id <substring> | --session <substring>) [options]
+
+# Generate a profile TOML by analyzing one or more related log files
+cargo run -- generate-config <file> [file...] [options]
 
 # Use an embedded template by name (no local file path needed)
 cargo run -- generate-config <file> --template service-api --profile-name my-profile
@@ -164,12 +176,46 @@ Options:
 - `-p, --payloads` - Show payload statistics for each event/command/request type
 - `-t, --timeline` - Show detailed timeline analysis with event distribution
 
-### LLM Command (alias for `process`)
+### Search Command
+
+Search a log file and print matching entries (structured grep replacement).
+
+Options:
+- `--context <number>` - Show N matching context entries before/after each match (default: 0)
+- `--payloads` - Show parsed payload/settings JSON for each displayed entry
+- `--count-by <matches|component|level|type|payload>` - Count matches grouped by a structured field instead of printing entries
+
+### Errors Command
+
+Diagnose clustered errors/warnings and affected sessions across one or more logs.
+
+Options:
+- `--top-n <number>` - Number of clusters to show (default: 10, `0` = all)
+- `--warn` - Include WARN entries (default: ERROR only)
+- `--sessions` - Show affected sessions for each cluster (cross-reference by `component_id`)
+- `-s, --sort-by <count|time|impact>` - Sort clusters by field (default: `count`)
+
+### Extract Command
+
+Extract and aggregate a JSON payload/settings field from matching log entries.
+
+Options:
+- `--field <path>` - Field name/path to extract from payload JSON (supports dot paths like `settings.retryTimeout`)
+
+### Trace Command
+
+Trace a single operation lifecycle by correlation/request ID or session path across one or more log files.
+
+Options:
+- `--id <substring>` - Correlation/request ID substring to trace (matches raw log lines)
+- `--session <substring>` - `component_id`/session path substring to trace (matches hierarchy)
+
+### Process Command (alias: `llm`)
 
 Generate LLM-friendly compact JSON output of a single log file with sanitized content.
 
 Options:
-- `-s, --sort-by <field>` - Sort output by field (time, component, level, type)
+- `-s, --sort-by <field>` - Sort output by field (time, component, level, type, diff-count)
 - `--limit <number>` - Maximum number of log entries to include (default: 100, 0 = unlimited)
 - `--no-sanitize` - Disable hiding of sensitive fields from JSON payloads (sanitization is enabled by default)
 
@@ -178,7 +224,7 @@ Options:
 Generate LLM-friendly compact JSON output of differences (shortcut for `compare --diff-only -F json -c`).
 
 Options:
-- `-s, --sort-by <field>` - Sort output by field
+- `-s, --sort-by <field>` - Sort output by field (time, component, level, type, diff-count)
 - `--no-sanitize` - Disable sanitization of sensitive fields
 
 ### Perf Command
@@ -189,15 +235,15 @@ Options:
 - `--threshold-ms <ms>` - Duration threshold in milliseconds for highlighting slow operations (default: 1000)
 - `--top-n <number>` - Number of slowest operations to display (default: 20)
 - `--orphans-only` - Show only orphan operations (started but never finished)
-- `--op-type <Request|Event|Command>` - Filter by operation type
+- `--op-type <request|event|command>` - Filter by operation type
 - `-s, --sort-by <field>` - Sort results by field (duration, count, name)
 
 ### Generate-Config Command (alias: `gen-config`)
 
-Analyze a log file and generate a TOML profile.
+Analyze one or more log files and generate a TOML profile.
 
 Options:
-- `--profile-name <name>` - Name for the generated profile (defaults to input filename stem)
+- `--profile-name <name>` - Name for the generated profile (defaults to input filename stem for one file, otherwise `generated-profile`)
 - `--template <path-or-name>` - Base template path or built-in name (`base`, `custom-start`, `service-api`, `event-pipeline`)
 
 ### Testing

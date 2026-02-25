@@ -207,7 +207,6 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
 fn test_all_profile_templates_are_valid_toml() {
     let files = [
         "config/profiles/base.toml",
-        "config/profiles/eyes.toml",
         "config/templates/custom-start.toml",
         "config/templates/service-api.toml",
         "config/templates/event-pipeline.toml",

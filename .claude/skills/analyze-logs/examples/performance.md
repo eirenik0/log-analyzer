@@ -29,13 +29,13 @@ log-analyzer perf ./logs/*.log --threshold-ms 5000 --top-n 50
 
 ```bash
 # Analyze only HTTP requests
-log-analyzer perf ./logs/*.log --op-type Request
+log-analyzer perf ./logs/*.log --op-type request
 
 # Analyze only events
-log-analyzer perf ./logs/*.log --op-type Event
+log-analyzer perf ./logs/*.log --op-type event
 
 # Analyze only commands
-log-analyzer perf ./logs/*.log --op-type Command
+log-analyzer perf ./logs/*.log --op-type command
 ```
 
 ## Step 4: Find Potential Hangs

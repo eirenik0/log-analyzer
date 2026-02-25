@@ -35,7 +35,7 @@ Built-in templates are also available directly in the binary:
 log-analyzer generate-config ./logs/*.log --template service-api --profile-name my-team
 ```
 
-`generate-config` auto-detects session-like `component_id` prefixes and writes generic `[[sessions.levels]]` entries. It accepts one or more related logs (merged before inference). Use `config/profiles/eyes.toml` when you want Eyes-specific session lifecycle metadata (create/complete commands, summary fields).
+`generate-config` auto-detects session-like `component_id` prefixes and writes generic `[[sessions.levels]]` entries. It accepts one or more related logs (merged before inference).
 
 ## Commands Overview
 
@@ -106,7 +106,7 @@ When the user invokes this skill:
    ```
 
 2. **Parse the request** to determine:
-   - Which command is needed (diff, compare, info, search, errors, extract, perf, trace, llm, generate-config)
+   - Which command is needed (diff, compare, info, search, errors, extract, perf, trace, process/llm, llm-diff, generate-config)
    - Which log file(s) to analyze (one file or multiple files/globs)
    - Any filtering options (component, level, text)
 
@@ -175,7 +175,7 @@ log-analyzer perf ./logs/*.log --threshold-ms 2000
 log-analyzer perf ./logs/*.log --orphans-only
 
 # Focus on requests only
-log-analyzer perf ./logs/*.log --op-type Request --top-n 30
+log-analyzer perf ./logs/*.log --op-type request --top-n 30
 ```
 
 Only combine files from the same session/run. Mixing unrelated logs can make latency stats and orphan results meaningless.

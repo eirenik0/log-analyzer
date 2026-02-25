@@ -181,7 +181,7 @@ Use this only for related logs from the same run/session. Combining unrelated lo
 | `--threshold-ms <ms>` | Slow operation threshold (default: 1000) |
 | `--top-n <number>` | Number of slowest operations (default: 20) |
 | `--orphans-only` | Show only unfinished operations |
-| `--op-type <Request\|Event\|Command>` | Filter by operation type |
+| `--op-type <request\|event\|command>` | Filter by operation type |
 
 Sort options: `duration`, `count`, `name`
 
@@ -202,7 +202,7 @@ This is intended for tracing a single run/session across split logs. Mixing unre
 
 | Option | Description |
 |--------|-------------|
-| `-s, --sort-by` | Sort by: `time`, `component`, `level`, `type` |
+| `-s, --sort-by` | Sort by: `time`, `component`, `level`, `type`, `diff-count` |
 | `--no-sanitize` | Disable sensitive field hiding |
 
 `llm` (`process`) also supports:
@@ -287,7 +287,6 @@ Use profile TOML files to keep the binary generic and push case-specific knowled
 Included examples:
 
 - `config/profiles/base.toml` - minimal reusable defaults
-- `config/profiles/eyes.toml` - Applitools Eyes profile (known commands/components + session lifecycle levels)
 - `config/templates/custom-start.toml` - starter template for any project
 - `config/templates/service-api.toml` - service/API wording template
 - `config/templates/event-pipeline.toml` - event-driven wording template
@@ -324,9 +323,6 @@ log-analyzer generate-config logs/app.log --template service-api --profile-name 
 
 # Generate a profile from multiple related log chunks (merged before inference)
 log-analyzer generate-config logs/run-1.log logs/run-2.log --template custom-start --profile-name my-team
-
-# Generate from Eyes logs while preserving Eyes-specific lifecycle session levels
-log-analyzer generate-config logs/eyes.log --template config/profiles/eyes.toml --profile-name eyes-team
 ```
 
 Only combine related logs from the same run/session when using `generate-config`; mixing unrelated runs can pollute inferred commands/requests/session levels.
@@ -354,7 +350,7 @@ segment_prefix = "environment-"
 
 When `sessions.levels` is configured, `info` automatically summarizes session counts/completion health per level and can surface common create-time fields (for example `concurrency`).
 
-`generate-config` also detects session-like prefixes from `component_id` paths and embeds them as generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...). Eyes-specific lifecycle commands/summary fields should come from `config/profiles/eyes.toml` (or another custom profile), not the generic base profile.
+`generate-config` also detects session-like prefixes from `component_id` paths and embeds them as generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...).
 
 ## Claude Code Integration
 

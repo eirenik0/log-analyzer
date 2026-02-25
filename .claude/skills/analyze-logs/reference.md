@@ -76,7 +76,6 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 
 Available files:
 - `config/profiles/base.toml` - default parser/perf/profile baseline
-- `config/profiles/eyes.toml` - Applitools Eyes profile with curated session lifecycle levels
 - `config/templates/custom-start.toml` - generic starter with placeholders
 - `config/templates/service-api.toml` - service/API oriented wording
 - `config/templates/event-pipeline.toml` - event-driven pipeline wording
@@ -95,7 +94,7 @@ log-analyzer --config config/profiles/my-team.toml diff ./logs/a.log ./logs/b.lo
 ```
 
 Optional session lifecycle hints can be defined with `[[sessions.levels]]` in the profile (for example `runner`/`test` levels with `segment_prefix`, `create_command`, and `complete_commands`).
-`generate-config` now auto-detects session-like prefixes from `component_id` paths and emits generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...); use `config/profiles/eyes.toml` when you want Eyes-specific lifecycle metadata in the generated profile.
+`generate-config` now auto-detects session-like prefixes from `component_id` paths and emits generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...);
 
 ## Filter Expression Syntax
 
@@ -287,18 +286,18 @@ log-analyzer extract test.log -f "t:retryTimeout" --field retryTimeout
 log-analyzer extract test.log -f "c:core" --field settings.retries.0.timeout
 ```
 
-### llm (alias: process)
+### process (alias: llm)
 
 Generate LLM-friendly compact JSON output.
 
 ```bash
-log-analyzer llm <file> [options]
+log-analyzer process <file> [options]
 ```
 
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `-s, --sort-by <field>` | Sort by: time, component, level, type |
+| `-s, --sort-by <field>` | Sort by: time, component, level, type, diff-count |
 | `--limit <n>` | Max entries (default: 100, 0 = unlimited) |
 | `--no-sanitize` | Disable sensitive field redaction |
 
@@ -346,7 +345,7 @@ Generate LLM-friendly diff output. Equivalent to `compare --diff-only -F json -c
 log-analyzer llm-diff <file1> <file2> [options]
 ```
 
-Same options as `llm` command.
+Same options as `process` (or `llm`) command.
 
 ### perf
 
@@ -365,7 +364,7 @@ Only combine related files from the same run/session. Mixing unrelated logs can 
 | `--threshold-ms <ms>` | Duration threshold (default: 1000ms) |
 | `--top-n <n>` | Number of slowest ops (default: 20) |
 | `--orphans-only` | Show only orphan operations |
-| `--op-type <type>` | Filter: Request, Event, Command |
+| `--op-type <type>` | Filter: `request`, `event`, `command` |
 | `-s, --sort-by <field>` | Sort by: duration, count, name |
 
 **Output includes:**
@@ -382,7 +381,7 @@ log-analyzer perf ./logs/*.log --threshold-ms 2000
 log-analyzer perf ./logs/*.log --orphans-only
 
 # Request analysis only
-log-analyzer perf ./logs/*.log --op-type Request --top-n 50
+log-analyzer perf ./logs/*.log --op-type request --top-n 50
 
 # Sort by occurrence count
 log-analyzer perf ./logs/*.log -s count
