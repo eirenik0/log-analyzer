@@ -6,9 +6,10 @@ pub mod filter;
 pub mod llm_processor;
 pub mod parser;
 pub mod perf_analyzer;
+pub mod search;
 pub mod trace;
 
-pub use cli::{ColorMode, Commands, OutputFormat, SortOrder, cli_parse};
+pub use cli::{ColorMode, Commands, OutputFormat, SearchCountBy, SortOrder, cli_parse};
 pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
@@ -17,6 +18,10 @@ use filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use parser::{
     LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_entry_with_config,
     parse_log_file, parse_log_file_with_config,
+};
+use search::{
+    collect_match_indices, format_search_count_json, format_search_count_text, format_search_json,
+    format_search_text,
 };
 use trace::{TraceSelector, collect_trace_entries, format_trace_json, format_trace_text};
 
@@ -365,6 +370,41 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Err(e) => eprintln!("Error serializing output: {}", e),
+            }
+        }
+        Commands::Search {
+            file,
+            context,
+            payloads,
+            count_by,
+        } => {
+            let logs = parse_log_file_with_config(file, &analyzer_config)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+            let match_indices = collect_match_indices(&logs, &filter);
+
+            let rendered = if let Some(count_by) = count_by {
+                match format {
+                    OutputFormat::Text => {
+                        format_search_count_text(&logs, &match_indices, *count_by)
+                    }
+                    OutputFormat::Json => {
+                        format_search_count_json(file, &logs, &match_indices, *count_by)
+                    }
+                }
+            } else {
+                match format {
+                    OutputFormat::Text => {
+                        format_search_text(&logs, &match_indices, *context, *payloads)
+                    }
+                    OutputFormat::Json => {
+                        format_search_json(file, &logs, &match_indices, *context, *payloads)
+                    }
+                }
+            };
+
+            print!("{rendered}");
+            if let Some(path) = output {
+                write_output_file(path, &rendered)?;
             }
         }
         Commands::Perf {

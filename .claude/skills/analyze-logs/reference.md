@@ -192,6 +192,35 @@ log-analyzer info ./logs/*.log -f "c:socket" --json-schema
 log-analyzer info test.log
 ```
 
+### search
+
+Structured grep-style search for matching log entries in a single file, using the same `-f/--filter` expression syntax as other commands.
+
+```bash
+log-analyzer search <file> [options]
+```
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--context <n>` | Show `n` entries before/after each match |
+| `--payloads` | Show parsed payload/settings JSON for displayed entries |
+| `--count-by <field>` | Count/group matches by: matches, component, level, type, payload |
+
+`--count-by` switches output from entry listing to grouped counts.
+
+**Examples:**
+```bash
+# Structured search with log-aware filtering
+log-analyzer search test.log -f "t:makeManager c:core" --payloads
+
+# Show matching entries with 2 entries of context
+log-analyzer search test.log -f "t:retryTimeout" --context 2
+
+# Count/group matches by parsed payload JSON
+log-analyzer search test.log -f "t:concurrency" --count-by payload
+```
+
 ### llm (alias: process)
 
 Generate LLM-friendly compact JSON output.

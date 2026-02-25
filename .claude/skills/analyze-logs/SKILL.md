@@ -40,6 +40,7 @@ log-analyzer generate-config test.log --template service-api --profile-name my-t
 | `diff` | Show differences between two log files | `/analyze-logs diff file1.log file2.log` |
 | `compare` | Full comparison with all matches | `/analyze-logs compare file1.log file2.log` |
 | `info` | Analyze structure across one or more logs | `/analyze-logs info ./logs/*.log --samples` |
+| `search` | Structured grep-style search for matching entries | `/analyze-logs search test.log -f "t:timeout" --context 2` |
 | `perf` | Find performance bottlenecks across one or more logs | `/analyze-logs perf ./logs/*.log --threshold-ms 500` |
 | `trace` | Trace one operation/session lifecycle across one or more logs | `/analyze-logs trace ./logs/*.log --id f227f11e` |
 | `llm` | Generate LLM-friendly output | `/analyze-logs llm test.log` |
@@ -99,7 +100,7 @@ When the user invokes this skill:
    ```
 
 2. **Parse the request** to determine:
-   - Which command is needed (diff, compare, info, perf, trace, llm, generate-config)
+   - Which command is needed (diff, compare, info, search, perf, trace, llm, generate-config)
    - Which log file(s) to analyze (one file or multiple files/globs)
    - Any filtering options (component, level, text)
 
@@ -112,6 +113,7 @@ When the user invokes this skill:
 4. **Build the command** with appropriate options:
    - Use `log-analyzer` if installed, otherwise `./target/release/log-analyzer` or `cargo run --`
    - For debugging failures: use `diff` with `--diff-only`
+   - For grep-like inspection with structured filters: use `search` (optionally `--context`, `--payloads`, or `--count-by payload`)
    - For performance issues: use `perf` with appropriate threshold (pass multiple files only when they belong to the same run/session for meaningful timing/orphan analysis)
    - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
    - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
@@ -170,6 +172,12 @@ Only combine related files from the same run/session so the trace timeline stays
 ```bash
 # Full overview with samples across multiple files
 log-analyzer info ./logs/*.log --samples --payloads --timeline
+
+# Structured grep replacement with context
+log-analyzer search test.log -f "t:retryTimeout" --context 2
+
+# Count/group matching entries by parsed payload
+log-analyzer search test.log -f "t:concurrency" --count-by payload
 
 # JSON output for further processing
 log-analyzer info ./logs/*.log -j

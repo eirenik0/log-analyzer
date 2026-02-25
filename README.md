@@ -29,6 +29,9 @@ log-analyzer diff file1.log file2.log
 # Get log overview (single file or multiple files)
 log-analyzer info logs/*.log
 
+# Structured grep-style search with log-aware filtering
+log-analyzer search file.log -f "t:retryTimeout" --context 2
+
 # Analyze performance bottlenecks across one or more files
 log-analyzer perf logs/*.log
 
@@ -49,6 +52,7 @@ log-analyzer generate-config file.log --template custom-start --profile-name my-
 | `compare` | `cmp` | Compare two log files |
 | `diff` | | Compare showing only differences |
 | `info` | `i`, `inspect` | Display statistics for one or more log files |
+| `search` | | Structured grep-style search for matching log entries |
 | `perf` | | Analyze operation timing across one or more log files |
 | `trace` | | Trace one operation/session across one or more log files |
 | `process` | `llm` | Generate LLM-friendly JSON output |
@@ -125,6 +129,18 @@ Use this only for related logs (for example, split files from the same run/sessi
 | `-p, --payloads` | Show payload statistics |
 | `-t, --timeline` | Show timeline analysis |
 
+### search
+
+Searches one log file and prints matching entries using the same structured filter expression used by other commands.
+
+| Option | Description |
+|--------|-------------|
+| `--context <n>` | Show `n` entries before/after each match |
+| `--payloads` | Show parsed payload/settings JSON for displayed entries |
+| `--count-by <field>` | Count/group matches by: `matches`, `component`, `level`, `type`, `payload` |
+
+`--count-by` switches the command into count mode (grouped counts instead of entry output).
+
 ### perf
 
 Accepts one or more log files. Entries are merged and sorted by timestamp before analysis, which enables cross-file pairing (for example, orphan resolution when an operation starts in one file and completes in another).
@@ -192,6 +208,15 @@ log-analyzer trace logs/*.log --session manager-ufg-3nl
 
 # Comprehensive analysis across multiple files from the same run/session
 log-analyzer info logs/*.log --samples --timeline --payloads
+
+# Structured search with payload display
+log-analyzer search file.log -f "t:makeManager c:core" --payloads
+
+# Search with context (entry-based, not raw text lines)
+log-analyzer search file.log -f "t:retryTimeout" --context 2
+
+# Group counts by parsed payload JSON
+log-analyzer search file.log -f "t:concurrency" --count-by payload
 
 # LLM-friendly output with a custom limit
 log-analyzer llm file.log --limit 50

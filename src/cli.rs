@@ -58,6 +58,20 @@ pub enum PerfSortOrder {
     Name,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SearchCountBy {
+    /// Total number of matching entries (grep -c style)
+    Matches,
+    /// Group by component name
+    Component,
+    /// Group by log level
+    Level,
+    /// Group by structured log type (event/request/command/generic + subtype)
+    Type,
+    /// Group by parsed JSON payload/settings (or <none>)
+    Payload,
+}
+
 /// A tool to analyze and compare two log files containing JSON objects
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -204,6 +218,25 @@ pub enum Commands {
         /// Show detailed timeline analysis with event distribution
         #[arg(short = 't', long)]
         timeline: bool,
+    },
+
+    /// Search a log file and print matching entries (structured grep replacement)
+    Search {
+        /// Log file to search
+        #[arg(required = true)]
+        file: PathBuf,
+
+        /// Show N matching context entries before/after each match
+        #[arg(long, default_value_t = 0)]
+        context: usize,
+
+        /// Show parsed payload/settings JSON for each displayed entry
+        #[arg(long)]
+        payloads: bool,
+
+        /// Count matches grouped by a structured field instead of printing entries
+        #[arg(long, value_enum)]
+        count_by: Option<SearchCountBy>,
     },
 
     /// Generate LLM-friendly compact JSON output of differences (shortcut for compare --diff-only -F json -c)

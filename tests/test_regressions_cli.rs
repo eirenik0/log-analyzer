@@ -539,3 +539,151 @@ fn test_trace_by_session_filters_using_component_id_hierarchy() {
         stdout
     );
 }
+
+#[test]
+fn test_search_prints_matching_entries_and_payloads() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("search.log");
+
+    write_file(
+        &file,
+        concat!(
+            "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"retryTimeout\" [0--id1] will be sent with body {\"timeout\":1000}\n",
+            "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"other\" [0--id2] will be sent with body {\"x\":1}\n",
+            "core (manager-1) | 2026-01-01T00:00:02.000Z [WARN ] Request \"retryTimeout\" [0--id3] will be sent with body {\"timeout\":2000}\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "search",
+            file.to_str().expect("utf8 path"),
+            "-f",
+            "t:retryTimeout",
+            "--payloads",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("SEARCH matched 2 entries"),
+        "expected match count header, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("payload: {\"timeout\":1000}")
+            && stdout.contains("payload: {\"timeout\":2000}"),
+        "expected parsed payloads in output, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("Request \"other\""),
+        "expected non-matching entry to be excluded, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_search_context_shows_neighbor_entries_only() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("context.log");
+
+    write_file(
+        &file,
+        concat!(
+            "svc | 2026-01-01T00:00:00.000Z [INFO ] alpha\n",
+            "svc | 2026-01-01T00:00:01.000Z [INFO ] beta\n",
+            "svc | 2026-01-01T00:00:02.000Z [INFO ] needle match\n",
+            "svc | 2026-01-01T00:00:03.000Z [INFO ] delta\n",
+            "svc | 2026-01-01T00:00:04.000Z [INFO ] epsilon\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "search",
+            file.to_str().expect("utf8 path"),
+            "-f",
+            "t:needle",
+            "--context",
+            "1",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("beta") && stdout.contains("needle match") && stdout.contains("delta"),
+        "expected matching entry with one entry of context, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("alpha") && !stdout.contains("epsilon"),
+        "expected outer entries to be excluded when context=1, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_search_count_by_payload_groups_duplicate_payloads() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("count.log");
+
+    write_file(
+        &file,
+        concat!(
+            "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"concurrency\" [0--id1] will be sent with body {\"limit\":2}\n",
+            "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"concurrency\" [0--id2] will be sent with body {\"limit\":2}\n",
+            "svc | 2026-01-01T00:00:02.000Z [INFO ] Request \"concurrency\" [0--id3] will be sent with body {\"limit\":3}\n",
+            "svc | 2026-01-01T00:00:03.000Z [INFO ] Request \"other\" [0--id4] will be sent with body {\"limit\":999}\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "search",
+            file.to_str().expect("utf8 path"),
+            "-f",
+            "t:concurrency",
+            "--count-by",
+            "payload",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("SEARCH count by payload (3 entries)"),
+        "expected payload count header, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("     2  {\"limit\":2}") && stdout.contains("     1  {\"limit\":3}"),
+        "expected grouped payload counts, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("{\"limit\":999}"),
+        "expected non-matching payload to be excluded, got:\n{}",
+        stdout
+    );
+}
