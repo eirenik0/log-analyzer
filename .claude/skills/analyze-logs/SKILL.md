@@ -41,6 +41,7 @@ log-analyzer generate-config test.log --template service-api --profile-name my-t
 | `compare` | Full comparison with all matches | `/analyze-logs compare file1.log file2.log` |
 | `info` | Analyze structure across one or more logs | `/analyze-logs info ./logs/*.log --samples` |
 | `perf` | Find performance bottlenecks across one or more logs | `/analyze-logs perf ./logs/*.log --threshold-ms 500` |
+| `trace` | Trace one operation/session lifecycle across one or more logs | `/analyze-logs trace ./logs/*.log --id f227f11e` |
 | `llm` | Generate LLM-friendly output | `/analyze-logs llm test.log` |
 | `llm-diff` | LLM-friendly diff output | `/analyze-logs llm-diff file1.log file2.log` |
 | `generate-config` | Generate a profile TOML from logs | `/analyze-logs generate-config test.log --profile-name my-team` |
@@ -98,7 +99,7 @@ When the user invokes this skill:
    ```
 
 2. **Parse the request** to determine:
-   - Which command is needed (diff, compare, info, perf, llm, generate-config)
+   - Which command is needed (diff, compare, info, perf, trace, llm, generate-config)
    - Which log file(s) to analyze (one file or multiple files/globs)
    - Any filtering options (component, level, text)
 
@@ -112,6 +113,7 @@ When the user invokes this skill:
    - Use `log-analyzer` if installed, otherwise `./target/release/log-analyzer` or `cargo run --`
    - For debugging failures: use `diff` with `--diff-only`
    - For performance issues: use `perf` with appropriate threshold (pass multiple files only when they belong to the same run/session for meaningful timing/orphan analysis)
+   - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
    - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
    - For profile generation: use `generate-config`; default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
    - `--template` can be either a file path or built-in name: `base`, `custom-start`, `service-api`, `event-pipeline`
@@ -152,6 +154,17 @@ log-analyzer perf ./logs/*.log --op-type Request --top-n 30
 ```
 
 Only combine files from the same session/run. Mixing unrelated logs can make latency stats and orphan results meaningless.
+
+### Trace One Operation / Session
+```bash
+# Trace by correlation/request ID fragment across split logs
+log-analyzer trace ./logs/*.log --id f227f11e
+
+# Trace by component_id hierarchy/session path
+log-analyzer trace ./logs/*.log --session manager-ufg-3nl
+```
+
+Only combine related files from the same run/session so the trace timeline stays meaningful.
 
 ### Log Exploration
 ```bash

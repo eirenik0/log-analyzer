@@ -6,17 +6,19 @@ pub mod filter;
 pub mod llm_processor;
 pub mod parser;
 pub mod perf_analyzer;
+pub mod trace;
 
-use crate::comparator::{LogFilter, display_log_summary};
-use crate::filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use cli::{ColorMode, Commands, OutputFormat, SortOrder, cli_parse};
 pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
+use comparator::{LogFilter, display_log_summary};
+use filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use parser::{
     LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_entry_with_config,
     parse_log_file, parse_log_file_with_config,
 };
+use trace::{TraceSelector, collect_trace_entries, format_trace_json, format_trace_text};
 
 /// Build a LogFilter from the --filter expression
 fn build_filter(filter_expr: &Option<String>) -> Result<LogFilter, Box<dyn std::error::Error>> {
@@ -38,12 +40,12 @@ fn list_preview(values: &std::collections::BTreeSet<String>, max_items: usize) -
     preview.join(", ")
 }
 
-fn print_profile_insights(logs: &[LogEntry], config: &crate::config::AnalyzerConfig) {
+fn print_profile_insights(logs: &[LogEntry], config: &config::AnalyzerConfig) {
     if !config.has_profile_hints() {
         return;
     }
 
-    let insights = crate::config::analyze_profile(logs, config);
+    let insights = config::analyze_profile(logs, config);
 
     if insights.unknown_components.is_empty()
         && insights.unknown_commands.is_empty()
@@ -97,7 +99,7 @@ fn write_output_file(
 
 fn parse_and_merge_log_files_with_config(
     files: &[std::path::PathBuf],
-    analyzer_config: &crate::config::AnalyzerConfig,
+    analyzer_config: &config::AnalyzerConfig,
 ) -> Result<Vec<LogEntry>, Box<dyn std::error::Error>> {
     let mut logs = Vec::new();
 
@@ -113,7 +115,7 @@ fn parse_and_merge_log_files_with_config(
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
-    let analyzer_config = crate::config::load_config(cli.config.as_deref())
+    let analyzer_config = config::load_config(cli.config.as_deref())
         .map_err(|e| format!("Failed to load config: {}", e))?;
     let format = cli.effective_format();
     let compact = cli.effective_compact();
@@ -194,10 +196,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 OutputFormat::Text => {
                     display_comparison_results(&results, &options);
                     if let Some(path) = output {
-                        crate::comparator::write_comparison_results(&results, &options, path)
-                            .map_err(|e| {
-                                format!("Failed to write output file '{}': {}", path.display(), e)
-                            })?;
+                        comparator::write_comparison_results(&results, &options, path).map_err(
+                            |e| format!("Failed to write output file '{}': {}", path.display(), e),
+                        )?;
                     }
                 }
                 OutputFormat::Json => {
@@ -241,10 +242,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 OutputFormat::Text => {
                     display_comparison_results(&results, &options);
                     if let Some(path) = output {
-                        crate::comparator::write_comparison_results(&results, &options, path)
-                            .map_err(|e| {
-                                format!("Failed to write output file '{}': {}", path.display(), e)
-                            })?;
+                        comparator::write_comparison_results(&results, &options, path).map_err(
+                            |e| format!("Failed to write output file '{}': {}", path.display(), e),
+                        )?;
                     }
                 }
                 OutputFormat::Json => {
@@ -271,8 +271,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Apply sanitization if enabled (default behavior unless --no-sanitize is used)
             if !no_sanitize {
-                crate::llm_processor::sanitize_logs(&mut logs1);
-                crate::llm_processor::sanitize_logs(&mut logs2);
+                llm_processor::sanitize_logs(&mut logs1);
+                llm_processor::sanitize_logs(&mut logs2);
             }
 
             // Create options for LlmDiff with fixed parameters
@@ -354,7 +354,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Process logs for LLM consumption (sanitize by default, unless --no-sanitize is used)
             let llm_output =
-                crate::llm_processor::process_logs_for_llm(&filtered_logs, *limit, !no_sanitize);
+                llm_processor::process_logs_for_llm(&filtered_logs, *limit, !no_sanitize);
 
             // Output as JSON
             match serde_json::to_string_pretty(&llm_output) {
@@ -380,13 +380,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Convert op_type filter to string
             let op_type_filter = op_type.map(|t| match t {
-                crate::cli::OperationType::Request => "Request",
-                crate::cli::OperationType::Event => "Event",
-                crate::cli::OperationType::Command => "Command",
+                cli::OperationType::Request => "Request",
+                cli::OperationType::Event => "Event",
+                cli::OperationType::Command => "Command",
             });
 
             // Analyze performance
-            let results = crate::perf_analyzer::analyze_performance_with_config(
+            let results = perf_analyzer::analyze_performance_with_config(
                 &logs,
                 &filter,
                 op_type_filter,
@@ -396,7 +396,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Display results based on format
             match format {
                 OutputFormat::Text => {
-                    let text = crate::perf_analyzer::format_perf_results_text(
+                    let text = perf_analyzer::format_perf_results_text(
                         &results,
                         *threshold_ms,
                         *top_n,
@@ -409,7 +409,37 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 OutputFormat::Json => {
-                    let json = crate::perf_analyzer::format_perf_results_json(&results);
+                    let json = perf_analyzer::format_perf_results_json(&results);
+                    println!("{}", json);
+                    if let Some(path) = output {
+                        write_output_file(path, &json)?;
+                    }
+                }
+            }
+        }
+        Commands::Trace { files, id, session } => {
+            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
+
+            let selector = if let Some(id) = id {
+                TraceSelector::Id(id.clone())
+            } else if let Some(session) = session {
+                TraceSelector::Session(session.clone())
+            } else {
+                return Err("Trace requires either --id or --session".into());
+            };
+
+            let entries = collect_trace_entries(&logs, &filter, &selector);
+
+            match format {
+                OutputFormat::Text => {
+                    let text = format_trace_text(&entries, &selector);
+                    print!("{text}");
+                    if let Some(path) = output {
+                        write_output_file(path, &text)?;
+                    }
+                }
+                OutputFormat::Json => {
+                    let json = format_trace_json(&entries, &selector);
                     println!("{}", json);
                     if let Some(path) = output {
                         write_output_file(path, &json)?;
@@ -424,7 +454,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let base_config = if let Some(template_path) = template {
                 if template_path.exists() {
-                    crate::config::load_config_from_path(template_path).map_err(|e| {
+                    config::load_config_from_path(template_path).map_err(|e| {
                         format!(
                             "Failed to load template config '{}': {}",
                             template_path.display(),
@@ -433,11 +463,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     })?
                 } else {
                     let template_name = template_path.to_string_lossy();
-                    crate::config::load_builtin_template(&template_name).ok_or_else(|| {
+                    config::load_builtin_template(&template_name).ok_or_else(|| {
                         format!(
                             "Template '{}' not found as file path or built-in template. Built-ins: {}",
                             template_path.display(),
-                            crate::config::builtin_template_names().join(", ")
+                            config::builtin_template_names().join(", ")
                         )
                     })?
                 }
@@ -456,10 +486,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     .to_string()
             });
 
-            let generated = crate::config_generator::generate_config(
+            let generated = config_generator::generate_config(
                 &logs,
                 &base_config,
-                &crate::config_generator::GenerateConfigOptions { profile_name },
+                &config_generator::GenerateConfigOptions { profile_name },
             );
 
             let body = toml::to_string_pretty(&generated)

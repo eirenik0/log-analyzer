@@ -272,6 +272,21 @@ pub enum Commands {
         sort_by: PerfSortOrder,
     },
 
+    /// Trace a single operation lifecycle by correlation/request ID or session path
+    Trace {
+        /// One or more log files to search (supports shell-expanded globs)
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
+
+        /// Correlation/request ID substring to trace (matches raw log lines)
+        #[arg(long, conflicts_with = "session", required_unless_present = "session")]
+        id: Option<String>,
+
+        /// component_id/session path substring to trace (matches hierarchy)
+        #[arg(long, conflicts_with = "id", required_unless_present = "id")]
+        session: Option<String>,
+    },
+
     /// Analyze a log file and generate a TOML config profile
     #[command(alias = "gen-config")]
     GenerateConfig {

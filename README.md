@@ -32,6 +32,9 @@ log-analyzer info logs/*.log
 # Analyze performance bottlenecks across one or more files
 log-analyzer perf logs/*.log
 
+# Trace one operation lifecycle by correlation/request ID or session path
+log-analyzer trace logs/*.log --id f227f11e
+
 # Generate LLM-friendly output
 log-analyzer llm file.log
 
@@ -47,6 +50,7 @@ log-analyzer generate-config file.log --template custom-start --profile-name my-
 | `diff` | | Compare showing only differences |
 | `info` | `i`, `inspect` | Display statistics for one or more log files |
 | `perf` | | Analyze operation timing across one or more log files |
+| `trace` | | Trace one operation/session across one or more log files |
 | `process` | `llm` | Generate LLM-friendly JSON output |
 | `llm-diff` | | Generate LLM-friendly diff output |
 | `generate-config` | `gen-config` | Generate a profile TOML from logs |
@@ -135,6 +139,19 @@ Use this only for related logs from the same run/session. Combining unrelated lo
 
 Sort options: `duration`, `count`, `name`
 
+### trace
+
+Accepts one or more log files. Entries are merged and sorted by timestamp, then filtered by one selector:
+- `--id <substring>` matches correlation/request IDs by substring in the raw log line (useful for truncated IDs from grep output)
+- `--session <substring>` matches the `component_id` hierarchy/path (for example `manager-ufg-3nl`)
+
+This is intended for tracing a single run/session across split logs. Mixing unrelated files may produce noisy traces.
+
+| Option | Description |
+|--------|-------------|
+| `--id <substring>` | Trace by correlation/request ID substring |
+| `--session <substring>` | Trace by `component_id` / session path substring |
+
 ### llm / llm-diff
 
 | Option | Description |
@@ -166,6 +183,12 @@ log-analyzer -j -o diff.json diff file1.log file2.log
 
 # Show operations slower than 500ms across a session split into files (not unrelated runs)
 log-analyzer perf logs/*.log --threshold-ms 500
+
+# Trace one operation across split files using a request/correlation ID fragment
+log-analyzer trace logs/*.log --id f227f11e
+
+# Trace a whole session subtree by component_id path prefix/substring
+log-analyzer trace logs/*.log --session manager-ufg-3nl
 
 # Comprehensive analysis across multiple files from the same run/session
 log-analyzer info logs/*.log --samples --timeline --payloads
@@ -248,6 +271,7 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 ```bash
 /analyze-logs diff file1.log file2.log          # Compare and explain differences
 /analyze-logs perf logs/*.log --threshold-ms 500  # Find bottlenecks across files
+/analyze-logs trace logs/*.log --id f227f11e      # Follow one operation lifecycle
 /analyze-logs info logs/*.log --samples           # Cross-file log structure overview
 /analyze-logs llm test.log                      # Generate LLM-friendly output
 ```
@@ -258,6 +282,7 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 - **Semantic comparison** - Compares JSON objects regardless of property order
 - **Diff context improvements** - Tracks source line numbers and marks changes as added/removed/modified
 - **Advanced filtering** - Include/exclude by component, level, content, or direction
+- **Operation lifecycle tracing** - Follow a single correlation ID or session path across files with per-step timing
 - **Multi-file session analysis** - Merge and analyze `info`/`perf` inputs across multiple log files
 - **Performance analysis** - Identify slow and orphan operations
 - **LLM-friendly output** - Sanitized, compact JSON for AI consumption

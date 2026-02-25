@@ -420,3 +420,122 @@ fn test_diff_text_includes_unpaired_entries_in_unique_sections() {
         stdout
     );
 }
+
+#[test]
+fn test_trace_by_id_sorts_matches_across_files_and_shows_step_timing() {
+    let dir = tempdir().expect("temp dir");
+    let file_late = dir.path().join("late.log");
+    let file_early = dir.path().join("early.log");
+
+    write_file(
+        &file_late,
+        concat!(
+            "svc (manager-ufg-3nl/eyes-ufg-zn8/open-abc) | 2026-01-01T00:00:01.000Z [INFO ] Correlation f227f11e checkpoint reached\n",
+            "svc (manager-ufg-3nl/eyes-ufg-zn8/open-abc) | 2026-01-01T00:00:02.000Z [INFO ] Request \"openEyes\" [0--f227f11e-aaaa] finished successfully with body {\"ok\":true}\n",
+        ),
+    );
+    write_file(
+        &file_early,
+        concat!(
+            "svc (manager-ufg-3nl/eyes-ufg-zn8/open-abc) | 2026-01-01T00:00:00.500Z [INFO ] Request \"openEyes\" [0--f227f11e-aaaa] will be sent with body {\"ok\":false}\n",
+            "svc (manager-ufg-999/eyes-ufg-zzz/open-def) | 2026-01-01T00:00:03.000Z [INFO ] Request \"openEyes\" [0--other-id] finished successfully with body {\"ok\":true}\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "trace",
+            file_late.to_str().expect("utf8 path"),
+            file_early.to_str().expect("utf8 path"),
+            "--id",
+            "f227f11e",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("TRACE (id) contains \"f227f11e\""),
+        "expected trace header, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Matched 3 entries"),
+        "expected 3 matched entries, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("+   500ms") && stdout.contains("+  1000ms"),
+        "expected step timing deltas in output, got:\n{}",
+        stdout
+    );
+
+    let idx_0500 = stdout
+        .find("2026-01-01T00:00:00.500")
+        .expect("missing first timestamp");
+    let idx_1000 = stdout
+        .find("2026-01-01T00:00:01.000")
+        .expect("missing second timestamp");
+    let idx_2000 = stdout
+        .find("2026-01-01T00:00:02.000")
+        .expect("missing third timestamp");
+    assert!(
+        idx_0500 < idx_1000 && idx_1000 < idx_2000,
+        "expected chronological ordering across files, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("other-id"),
+        "expected non-matching entries to be excluded, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_trace_by_session_filters_using_component_id_hierarchy() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("session.log");
+
+    write_file(
+        &file,
+        concat!(
+            "core (manager-ufg-3nl/eyes-ufg-zn8) | 2026-01-01T00:00:00.000Z [INFO ] Started session flow\n",
+            "driver (manager-ufg-3nl/eyes-ufg-zn8/close-zy9) | 2026-01-01T00:00:00.200Z [INFO ] Closing target\n",
+            "core (manager-ufg-999/eyes-ufg-abc) | 2026-01-01T00:00:00.300Z [INFO ] Other session noise\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "trace",
+            file.to_str().expect("utf8 path"),
+            "--session",
+            "manager-ufg-3nl",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Started session flow") && stdout.contains("Closing target"),
+        "expected matching session hierarchy entries, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("Other session noise"),
+        "expected non-matching session entries to be excluded, got:\n{}",
+        stdout
+    );
+}

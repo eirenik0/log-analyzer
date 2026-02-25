@@ -293,6 +293,37 @@ log-analyzer perf ./logs/*.log --op-type Request --top-n 50
 log-analyzer perf ./logs/*.log -s count
 ```
 
+### trace
+
+Trace a single operation lifecycle by correlation/request ID or by `component_id` session path across one or more log files.
+
+```bash
+log-analyzer trace <file> [file...] (--id <substring> | --session <substring>) [options]
+```
+
+When multiple files are provided, entries are merged and sorted by timestamp before tracing.
+Only combine related files from the same run/session, otherwise the timeline may include unrelated noise.
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--id <substring>` | Match correlation/request ID substring in raw log lines |
+| `--session <substring>` | Match `component_id` hierarchy/session path substring |
+
+Uses the global output options (`-F`, `-j`, `-o`) and prints per-step timing deltas in text mode.
+
+**Examples:**
+```bash
+# Trace by correlation/request ID fragment
+log-analyzer trace ./logs/*.log --id f227f11e
+
+# Trace by session path / component_id hierarchy
+log-analyzer trace ./logs/*.log --session manager-ufg-3nl
+
+# JSON trace output
+log-analyzer -j trace ./logs/*.log --id f227f11e -o trace.json
+```
+
 ### generate-config (alias: gen-config)
 
 Analyze a log file and generate a TOML config profile.
