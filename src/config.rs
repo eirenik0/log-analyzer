@@ -64,30 +64,7 @@ impl AnalyzerConfig {
     }
 
     pub fn effective_session_levels(&self) -> Vec<SessionLevelConfig> {
-        if !self.sessions.levels.is_empty() {
-            return self.sessions.levels.clone();
-        }
-
-        let mut levels = Vec::new();
-        if !self.profile.session_prefixes.primary.is_empty() {
-            levels.push(SessionLevelConfig {
-                name: "primary".to_string(),
-                segment_prefix: self.profile.session_prefixes.primary.clone(),
-                create_command: None,
-                complete_commands: Vec::new(),
-                summary_fields: Vec::new(),
-            });
-        }
-        if !self.profile.session_prefixes.secondary.is_empty() {
-            levels.push(SessionLevelConfig {
-                name: "secondary".to_string(),
-                segment_prefix: self.profile.session_prefixes.secondary.clone(),
-                create_command: None,
-                complete_commands: Vec::new(),
-                summary_fields: Vec::new(),
-            });
-        }
-        levels
+        self.sessions.levels.clone()
     }
 }
 
@@ -166,7 +143,6 @@ pub struct ProfileRules {
     pub known_components: Vec<String>,
     pub known_commands: Vec<String>,
     pub known_requests: Vec<String>,
-    pub session_prefixes: SessionPrefixes,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -179,13 +155,6 @@ impl SessionsRules {
     fn is_empty(&self) -> bool {
         self.levels.is_empty()
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SessionPrefixes {
-    pub primary: String,
-    pub secondary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,16 +199,9 @@ impl SessionInsights {
         self.levels.iter().all(|level| level.sessions.is_empty())
     }
 
-    pub fn primary_session_ids(&self) -> BTreeSet<String> {
+    pub fn level_session_ids(&self, level_index: usize) -> BTreeSet<String> {
         self.levels
-            .first()
-            .map(|l| l.sessions.keys().cloned().collect())
-            .unwrap_or_default()
-    }
-
-    pub fn secondary_session_ids(&self) -> BTreeSet<String> {
-        self.levels
-            .get(1)
+            .get(level_index)
             .map(|l| l.sessions.keys().cloned().collect())
             .unwrap_or_default()
     }
@@ -688,23 +650,34 @@ mod tests {
     }
 
     #[test]
-    fn effective_session_levels_falls_back_to_legacy_prefixes() {
+    fn effective_session_levels_returns_configured_levels() {
         let cfg = AnalyzerConfig {
-            profile: ProfileRules {
-                session_prefixes: SessionPrefixes {
-                    primary: "manager-".to_string(),
-                    secondary: "eyes-".to_string(),
-                },
-                ..ProfileRules::default()
+            sessions: SessionsRules {
+                levels: vec![
+                    SessionLevelConfig {
+                        name: "level-1".to_string(),
+                        segment_prefix: "manager-".to_string(),
+                        create_command: None,
+                        complete_commands: Vec::new(),
+                        summary_fields: Vec::new(),
+                    },
+                    SessionLevelConfig {
+                        name: "level-2".to_string(),
+                        segment_prefix: "eyes-".to_string(),
+                        create_command: None,
+                        complete_commands: Vec::new(),
+                        summary_fields: Vec::new(),
+                    },
+                ],
             },
             ..AnalyzerConfig::default()
         };
 
         let levels = cfg.effective_session_levels();
         assert_eq!(levels.len(), 2);
-        assert_eq!(levels[0].name, "primary");
+        assert_eq!(levels[0].name, "level-1");
         assert_eq!(levels[0].segment_prefix, "manager-");
-        assert_eq!(levels[1].name, "secondary");
+        assert_eq!(levels[1].name, "level-2");
         assert_eq!(levels[1].segment_prefix, "eyes-");
     }
 
@@ -815,7 +788,7 @@ summary_fields = ["concurrency", "batch.id"]
         assert_eq!(test.completed_via.as_deref(), Some("close"));
         assert_eq!(test.operation_counts.get("openEyes"), Some(&1));
         assert_eq!(test.operation_counts.get("check-ufg"), Some(&1));
-        assert_eq!(insights.sessions.primary_session_ids().len(), 1);
-        assert_eq!(insights.sessions.secondary_session_ids().len(), 1);
+        assert_eq!(insights.sessions.level_session_ids(0).len(), 1);
+        assert_eq!(insights.sessions.level_session_ids(1).len(), 1);
     }
 }

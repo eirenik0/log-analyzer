@@ -1,8 +1,8 @@
 use chrono::{DateTime, Local};
 use log_analyzer::comparator::LogFilter;
 use log_analyzer::config::{
-    AnalyzerConfig, analyze_profile, builtin_template_names, default_config, load_builtin_template,
-    load_config_from_path,
+    AnalyzerConfig, SessionLevelConfig, analyze_profile, builtin_template_names, default_config,
+    load_builtin_template, load_config_from_path,
 };
 use log_analyzer::parser::{LogEntry, LogEntryKind, RequestDirection, parse_log_entry_with_config};
 use log_analyzer::perf_analyzer::analyze_performance_with_config;
@@ -143,8 +143,22 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
     config.profile.known_components = vec!["core".to_string()];
     config.profile.known_commands = vec!["sync".to_string()];
     config.profile.known_requests = vec!["fetchUser".to_string()];
-    config.profile.session_prefixes.primary = "trace-".to_string();
-    config.profile.session_prefixes.secondary = "span-".to_string();
+    config.sessions.levels = vec![
+        SessionLevelConfig {
+            name: "level-1".to_string(),
+            segment_prefix: "trace-".to_string(),
+            create_command: None,
+            complete_commands: Vec::new(),
+            summary_fields: Vec::new(),
+        },
+        SessionLevelConfig {
+            name: "level-2".to_string(),
+            segment_prefix: "span-".to_string(),
+            create_command: None,
+            complete_commands: Vec::new(),
+            summary_fields: Vec::new(),
+        },
+    ];
 
     let command_entry = LogEntry {
         component: "custom-service".to_string(),
@@ -185,18 +199,8 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
     assert!(insights.unknown_components.contains("custom-service"));
     assert!(insights.unknown_commands.contains("customOp"));
     assert!(insights.unknown_requests.contains("customReq"));
-    assert!(
-        insights
-            .sessions
-            .primary_session_ids()
-            .contains("trace-abc")
-    );
-    assert!(
-        insights
-            .sessions
-            .secondary_session_ids()
-            .contains("span-xyz")
-    );
+    assert!(insights.sessions.level_session_ids(0).contains("trace-abc"));
+    assert!(insights.sessions.level_session_ids(1).contains("span-xyz"));
 }
 
 #[test]

@@ -122,7 +122,7 @@ fn test_collects_commands_and_requests() {
 }
 
 #[test]
-fn test_detects_session_prefixes() {
+fn test_detects_session_levels() {
     let logs = vec![
         make_entry(
             "core",
@@ -149,19 +149,17 @@ fn test_detects_session_prefixes() {
         },
     );
 
-    assert_eq!(generated.profile.session_prefixes.primary, "manager-");
-    assert_eq!(generated.profile.session_prefixes.secondary, "eyes-");
     assert_eq!(generated.sessions.levels.len(), 2);
-    assert_eq!(generated.sessions.levels[0].name, "primary");
+    assert_eq!(generated.sessions.levels[0].name, "level-1");
     assert_eq!(generated.sessions.levels[0].segment_prefix, "manager-");
     assert!(generated.sessions.levels[0].create_command.is_none());
     assert!(generated.sessions.levels[0].complete_commands.is_empty());
-    assert_eq!(generated.sessions.levels[1].name, "secondary");
+    assert_eq!(generated.sessions.levels[1].name, "level-2");
     assert_eq!(generated.sessions.levels[1].segment_prefix, "eyes-");
 }
 
 #[test]
-fn test_empty_component_ids_yield_empty_prefixes() {
+fn test_empty_component_ids_yield_empty_session_levels() {
     let logs = vec![
         make_entry("core", "", LogEntryKind::Generic { payload: None }),
         make_entry(
@@ -179,8 +177,6 @@ fn test_empty_component_ids_yield_empty_prefixes() {
         },
     );
 
-    assert!(generated.profile.session_prefixes.primary.is_empty());
-    assert!(generated.profile.session_prefixes.secondary.is_empty());
     assert!(generated.sessions.levels.is_empty());
 }
 
@@ -274,14 +270,6 @@ fn test_serialization_roundtrip() {
     assert_eq!(
         deserialized.profile.known_requests,
         generated.profile.known_requests
-    );
-    assert_eq!(
-        deserialized.profile.session_prefixes.primary,
-        generated.profile.session_prefixes.primary
-    );
-    assert_eq!(
-        deserialized.profile.session_prefixes.secondary,
-        generated.profile.session_prefixes.secondary
     );
     assert_eq!(
         deserialized.sessions.levels.len(),

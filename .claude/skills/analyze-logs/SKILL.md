@@ -17,7 +17,7 @@ log-analyzer --config config/profiles/base.toml <command> ...
 log-analyzer --config config/profiles/custom.toml <command> ...
 ```
 
-Profiles can also define session hierarchy/lifecycle hints with `[[sessions.levels]]` (for example runner/test/environment prefixes plus create/complete commands). `info` will then report session completion health per level. Legacy `[profile.session_prefixes]` still works.
+Profiles can also define session hierarchy/lifecycle hints with `[[sessions.levels]]` (for example runner/test/environment prefixes plus create/complete commands). `info` will then report session completion health per level.
 
 Create a custom profile from a template:
 

@@ -94,8 +94,8 @@ log-analyzer --config config/profiles/my-team.toml info ./logs/test.log
 log-analyzer --config config/profiles/my-team.toml diff ./logs/a.log ./logs/b.log
 ```
 
-Optional session lifecycle hints can be defined with `[[sessions.levels]]` in the profile (for example `runner`/`test` levels with `segment_prefix`, `create_command`, and `complete_commands`). The legacy `[profile.session_prefixes]` format is still supported and is treated as a simple two-level fallback.
-`generate-config` now auto-detects session-like prefixes from `component_id` paths and emits generic `[[sessions.levels]]` entries (`primary`, `secondary`, ...); use `config/profiles/eyes.toml` when you want Eyes-specific lifecycle metadata in the generated profile.
+Optional session lifecycle hints can be defined with `[[sessions.levels]]` in the profile (for example `runner`/`test` levels with `segment_prefix`, `create_command`, and `complete_commands`).
+`generate-config` now auto-detects session-like prefixes from `component_id` paths and emits generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...); use `config/profiles/eyes.toml` when you want Eyes-specific lifecycle metadata in the generated profile.
 
 ## Filter Expression Syntax
 

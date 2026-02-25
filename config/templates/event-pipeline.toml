@@ -45,6 +45,10 @@ known_components = ["bus", "worker", "scheduler", "dead-letter"]
 known_commands = ["enrich", "validate", "persist", "retry"]
 known_requests = ["fetchTemplate", "loadConfig", "ack"]
 
-[profile.session_prefixes]
-primary = "job-"
-secondary = "trace-"
+[[sessions.levels]]
+name = "level-1"
+segment_prefix = "job-"
+
+[[sessions.levels]]
+name = "level-2"
+segment_prefix = "trace-"

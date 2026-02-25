@@ -47,7 +47,11 @@ known_components = ["api", "worker"]
 known_commands = ["sync", "publish"]
 known_requests = ["fetchUser", "createOrder"]
 
-[profile.session_prefixes]
-# Optional: prefixes to extract session IDs from component_id path segments
-primary = "trace-"
-secondary = "span-"
+[[sessions.levels]]
+# Optional: generic session hierarchy inferred from component_id path segments
+name = "level-1"
+segment_prefix = "trace-"
+
+[[sessions.levels]]
+name = "level-2"
+segment_prefix = "span-"

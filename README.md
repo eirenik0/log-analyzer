@@ -308,17 +308,11 @@ log-analyzer generate-config logs/run-1.log logs/run-2.log --template custom-sta
 log-analyzer generate-config logs/eyes.log --template config/profiles/eyes.toml --profile-name eyes-team
 ```
 
-Only combine related logs from the same run/session when using `generate-config`; mixing unrelated runs can pollute inferred commands/requests/session prefixes.
+Only combine related logs from the same run/session when using `generate-config`; mixing unrelated runs can pollute inferred commands/requests/session levels.
 
 Optional session hierarchy/lifecycle hints (used by `info` profile insights):
 
 ```toml
-# Legacy format (still supported)
-[profile.session_prefixes]
-primary = "manager-"
-secondary = "eyes-"
-
-# New format (richer session insights)
 [[sessions.levels]]
 name = "runner"
 segment_prefix = "manager-"
@@ -339,7 +333,7 @@ segment_prefix = "environment-"
 
 When `sessions.levels` is configured, `info` automatically summarizes session counts/completion health per level and can surface common create-time fields (for example `concurrency`).
 
-`generate-config` also detects session-like prefixes from `component_id` paths and embeds them as generic `[[sessions.levels]]` entries (`primary`, `secondary`, ...). Eyes-specific lifecycle commands/summary fields should come from `config/profiles/eyes.toml` (or another custom profile), not the generic base profile.
+`generate-config` also detects session-like prefixes from `component_id` paths and embeds them as generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...). Eyes-specific lifecycle commands/summary fields should come from `config/profiles/eyes.toml` (or another custom profile), not the generic base profile.
 
 ## Claude Code Integration
 

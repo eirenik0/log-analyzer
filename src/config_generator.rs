@@ -78,10 +78,6 @@ pub fn generate_config(
         .map(|(prefix, _)| prefix.clone())
         .collect();
 
-    config.profile.session_prefixes.primary =
-        detected_prefixes.first().cloned().unwrap_or_default();
-    config.profile.session_prefixes.secondary =
-        detected_prefixes.get(1).cloned().unwrap_or_default();
     if config.sessions.levels.is_empty() {
         config.sessions.levels = detected_prefixes
             .into_iter()
@@ -100,11 +96,7 @@ pub fn generate_config(
 }
 
 fn generated_session_level_name(index: usize) -> String {
-    match index {
-        0 => "primary".to_string(),
-        1 => "secondary".to_string(),
-        _ => format!("level-{}", index + 1),
-    }
+    format!("level-{}", index + 1)
 }
 
 fn session_prefix(segment: &str) -> Option<String> {

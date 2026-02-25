@@ -45,6 +45,10 @@ known_components = ["gateway", "orders", "billing", "worker"]
 known_commands = ["reconcile", "syncCache", "publish"]
 known_requests = ["createOrder", "getOrder", "authorizePayment"]
 
-[profile.session_prefixes]
-primary = "trace-"
-secondary = "request-"
+[[sessions.levels]]
+name = "level-1"
+segment_prefix = "trace-"
+
+[[sessions.levels]]
+name = "level-2"
+segment_prefix = "request-"
