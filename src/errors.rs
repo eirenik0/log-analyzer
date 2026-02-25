@@ -1,8 +1,8 @@
 use crate::cli::ErrorsSortBy;
 use crate::comparator::LogFilter;
-use crate::config::{AnalyzerConfig, contains_any_marker};
-use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
-use crate::perf_analyzer::extract_request_id;
+use crate::config::AnalyzerConfig;
+use crate::parser::LogEntry;
+use crate::perf_analyzer::{OrphanOperation, analyze_performance_with_config};
 use chrono::{DateTime, Local, SecondsFormat, Utc};
 use regex::Regex;
 use serde::Serialize;
@@ -142,7 +142,8 @@ pub fn analyze_errors_with_config(
     options: &ErrorsOptions,
 ) -> ErrorAnalysisReport {
     let filtered_logs: Vec<&LogEntry> = logs.iter().filter(|entry| filter.matches(entry)).collect();
-    let session_states = build_session_lifecycle_states(&filtered_logs, config);
+    let perf_results = analyze_performance_with_config(logs, filter, None, config);
+    let session_states = build_session_lifecycle_states(&filtered_logs, &perf_results.orphans);
     let level_filter = build_error_level_filter(options.include_warn);
 
     let mut clusters: HashMap<(String, String), ClusterAccum> = HashMap::new();
@@ -488,16 +489,9 @@ fn finalize_cluster(
 
 fn build_session_lifecycle_states(
     logs: &[&LogEntry],
-    config: &AnalyzerConfig,
+    orphans: &[OrphanOperation],
 ) -> HashMap<String, SessionLifecycleState> {
     let mut states: HashMap<String, SessionLifecycleState> = HashMap::new();
-    let mut pending_requests: HashMap<String, &LogEntry> = HashMap::new();
-    let mut pending_events: HashMap<String, &LogEntry> = HashMap::new();
-    let mut pending_commands: HashMap<String, &LogEntry> = HashMap::new();
-    let track_commands = logs.iter().any(|entry| {
-        matches!(entry.kind, LogEntryKind::Command { .. })
-            && contains_any_marker(&entry.message, &config.perf.command_completion_markers)
-    });
 
     for entry in logs.iter().copied() {
         if !entry.component_id.is_empty() {
@@ -513,105 +507,18 @@ fn build_session_lifecycle_states(
                     orphaned: false,
                 });
         }
-
-        match &entry.kind {
-            LogEntryKind::Request {
-                request_id,
-                direction,
-                ..
-            } => {
-                let key = request_id
-                    .clone()
-                    .or_else(|| extract_request_id(&entry.message));
-                match direction {
-                    RequestDirection::Send => {
-                        if let Some(key) = key {
-                            pending_requests.insert(key, entry);
-                        }
-                    }
-                    RequestDirection::Receive => {
-                        if let Some(key) = key {
-                            pending_requests.remove(&key);
-                        }
-                    }
-                }
-            }
-            LogEntryKind::Event {
-                direction, payload, ..
-            } => {
-                let key = payload.as_ref().and_then(|payload| {
-                    extract_event_key_with_rules(payload, &config.perf.event_correlation_keys)
-                });
-                match direction {
-                    EventDirection::Receive => {
-                        if let Some(key) = key {
-                            pending_events.insert(key, entry);
-                        }
-                    }
-                    EventDirection::Emit => {
-                        if let Some(key) = key {
-                            pending_events.remove(&key);
-                        }
-                    }
-                }
-            }
-            LogEntryKind::Command { command, .. } => {
-                if !track_commands {
-                    continue;
-                }
-
-                let key = if entry.component_id.is_empty() {
-                    None
-                } else {
-                    Some(format!("{command}:{}", entry.component_id))
-                };
-                let is_start =
-                    contains_any_marker(&entry.message, &config.perf.command_start_markers);
-                let is_finish =
-                    contains_any_marker(&entry.message, &config.perf.command_completion_markers);
-
-                if let Some(key) = key {
-                    if is_start {
-                        pending_commands.insert(key, entry);
-                    } else if is_finish {
-                        pending_commands.remove(&key);
-                    }
-                }
-            }
-            LogEntryKind::Generic { .. } => {}
-        }
     }
 
-    for entry in pending_requests
-        .into_values()
-        .chain(pending_events.into_values())
-        .chain(pending_commands.into_values())
-    {
-        if entry.component_id.is_empty() {
+    for orphan in orphans {
+        let Some(component_id) = orphan.component_id.as_ref() else {
             continue;
-        }
+        };
         states
-            .entry(entry.component_id.clone())
-            .and_modify(|state| state.orphaned = true)
-            .or_insert(SessionLifecycleState {
-                last_seen: entry.timestamp,
-                orphaned: true,
-            });
+            .entry(component_id.clone())
+            .and_modify(|state| state.orphaned = true);
     }
 
     states
-}
-
-fn extract_event_key_with_rules(
-    payload: &serde_json::Value,
-    event_correlation_keys: &[String],
-) -> Option<String> {
-    event_correlation_keys.iter().find_map(|key| {
-        payload
-            .get(key)
-            .and_then(|value| value.as_str())
-            .map(ToString::to_string)
-    })
 }
 
 fn build_error_level_filter(include_warn: bool) -> LogFilter {

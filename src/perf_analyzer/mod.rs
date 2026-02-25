@@ -278,6 +278,7 @@ pub fn analyze_performance_with_config(
                 correlation_id: Some(key),
                 start_time: entry.timestamp,
                 component: entry.component.clone(),
+                component_id: (!entry.component_id.is_empty()).then(|| entry.component_id.clone()),
                 context: entry.message.clone(),
             });
         }
@@ -291,6 +292,7 @@ pub fn analyze_performance_with_config(
                 correlation_id: Some(key),
                 start_time: entry.timestamp,
                 component: entry.component.clone(),
+                component_id: (!entry.component_id.is_empty()).then(|| entry.component_id.clone()),
                 context: entry.message.clone(),
             });
         }
@@ -304,6 +306,7 @@ pub fn analyze_performance_with_config(
                 correlation_id: Some(key),
                 start_time: entry.timestamp,
                 component: entry.component.clone(),
+                component_id: (!entry.component_id.is_empty()).then(|| entry.component_id.clone()),
                 context: entry.message.clone(),
             });
         }

@@ -39,6 +39,8 @@ pub struct OrphanOperation {
     pub start_time: DateTime<Local>,
     /// Component that started the operation
     pub component: String,
+    /// Session/component path (`component_id`) when present on the source log entry
+    pub component_id: Option<String>,
     /// Additional context about the operation
     pub context: String,
 }
