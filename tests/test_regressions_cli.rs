@@ -790,3 +790,110 @@ fn test_extract_aggregates_payload_field_values() {
         stdout
     );
 }
+
+#[test]
+fn test_errors_defaults_to_error_only_and_normalizes_cluster_pattern() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("errors.log");
+
+    write_file(
+        &file,
+        concat!(
+            "core (manager-1/eyes-1/check-1) | 2026-01-01T00:00:00.000Z [INFO ] Request \"check\" [0--rid-1] will be sent with body {\"x\":1}\n",
+            "core (manager-1/eyes-1/check-1) | 2026-01-01T00:00:01.000Z [ERROR] Render with id \"5bfcc412-1fd6-4f8d-a6d5-246f90f3e7ab\" failed due to an error - internal failure\n",
+            "core (manager-1/eyes-1/check-1) | 2026-01-01T00:00:02.000Z [INFO ] Request \"check\" [0--rid-1] finished successfully with body {\"statusCode\":200}\n",
+            "core (manager-2/eyes-2/check-2) | 2026-01-01T00:00:03.000Z [WARN ] Warning - Invalid keys in check settings (will be ignored)\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args(["errors", file.to_str().expect("utf8 path")])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("ERRORS: 1 entries (1 patterns) across 1 file"),
+        "expected error-only header, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Render with id \"...\" failed due to an error - internal failure"),
+        "expected normalized error cluster pattern, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("Warning - Invalid keys in check settings"),
+        "expected WARN entries to be excluded by default, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_errors_warn_and_sessions_show_completed_and_orphaned_sessions() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("errors_sessions.log");
+
+    write_file(
+        &file,
+        concat!(
+            "core (manager-1/eyes-1/check-1) | 2026-01-01T00:00:00.000Z [INFO ] Request \"check\" [0--req-complete] will be sent with body {\"x\":1}\n",
+            "core (manager-1/eyes-1/check-1) | 2026-01-01T00:00:01.000Z [ERROR] Render with id \"5bfcc412-1fd6-4f8d-a6d5-246f90f3e7ab\" failed due to an error - internal failure\n",
+            "core (manager-1/eyes-1/check-1) | 2026-01-01T00:00:02.000Z [INFO ] Request \"check\" [0--req-complete] finished successfully with body {\"statusCode\":200}\n",
+            "core (manager-2/eyes-2/check-2) | 2026-01-01T00:00:03.000Z [INFO ] Request \"check\" [0--req-orphan] will be sent with body {\"x\":1}\n",
+            "core (manager-2/eyes-2/check-2) | 2026-01-01T00:00:04.000Z [ERROR] Render with id \"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\" failed due to an error - internal failure\n",
+            "core (manager-2/eyes-2/check-2) | 2026-01-01T00:00:05.000Z [WARN ] Warning - Invalid keys in check settings (will be ignored)\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "errors",
+            file.to_str().expect("utf8 path"),
+            "--warn",
+            "--sessions",
+            "--top-n",
+            "0",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("ERRORS/WARNS: 3 entries (2 patterns) across 1 file"),
+        "expected combined error/warn header, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Warning - Invalid keys in check settings (will be ignored)"),
+        "expected WARN cluster with --warn, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("manager-1/eyes-1/check-1") && stdout.contains("completed"),
+        "expected completed session status, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("manager-2/eyes-2/check-2") && stdout.contains("orphaned"),
+        "expected orphaned session status, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Longest blocking error:"),
+        "expected impact summary blocking line, got:\n{}",
+        stdout
+    );
+}

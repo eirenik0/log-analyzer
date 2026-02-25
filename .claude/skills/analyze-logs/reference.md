@@ -227,6 +227,39 @@ log-analyzer search test.log -f "t:retryTimeout" --context 2
 log-analyzer search test.log -f "t:concurrency" --count-by payload
 ```
 
+### errors
+
+Diagnose recurring failures across one or more related logs by clustering normalized ERROR messages (and optionally WARNs), listing affected `component_id` sessions, and estimating impact using orphan-operation detection.
+
+```bash
+log-analyzer errors <file> [file...] [options]
+```
+
+When multiple files are provided, entries are merged and analyzed together.
+Only combine related files from the same run/session, otherwise cluster counts and session outcomes may be misleading.
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--top-n <n>` | Number of clusters to show (default: 10, `0` = all) |
+| `--warn` | Include WARN entries (default: ERROR only) |
+| `--sessions` | Show affected sessions per cluster |
+| `-s, --sort-by <field>` | Sort by: `count` (default), `time`, `impact` |
+
+**Examples:**
+```bash
+# Quick "what went wrong?" summary across split logs
+log-analyzer errors ./logs/*.log
+
+# Include warnings and show impacted sessions with outcome labels
+log-analyzer errors ./logs/*.log --warn --sessions
+
+# Prioritize clusters affecting the most sessions
+log-analyzer errors ./logs/*.log --warn --sort-by impact --top-n 20
+```
+
+For bug triage, use `errors` as an early first pass, then follow with targeted `search`/`extract`/`trace` queries (for example manager creation patterns, concurrency config values, and SDK request/session traces) to build the full causal chain.
+
 ### extract
 
 Extract and aggregate a specific field from parsed payload/settings JSON in matching entries.

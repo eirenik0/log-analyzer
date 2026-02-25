@@ -35,6 +35,9 @@ log-analyzer search file.log -f "t:retryTimeout" --context 2
 # Extract a payload field and aggregate occurrences
 log-analyzer extract file.log -f "t:makeManager" --field concurrency
 
+# Diagnose clustered errors and affected sessions across related logs
+log-analyzer errors logs/*.log --warn --sessions
+
 # Analyze performance bottlenecks across one or more files
 log-analyzer perf logs/*.log
 
@@ -56,6 +59,7 @@ log-analyzer generate-config logs/*.log --template custom-start --profile-name m
 | `diff` | | Compare showing only differences |
 | `info` | `i`, `inspect` | Display statistics for one or more log files |
 | `search` | | Structured grep-style search for matching log entries |
+| `errors` | | Cluster ERROR/WARN patterns and summarize affected sessions |
 | `extract` | | Extract and aggregate a JSON payload/settings field from matching entries |
 | `perf` | | Analyze operation timing across one or more log files |
 | `trace` | | Trace one operation/session across one or more log files |
@@ -145,6 +149,20 @@ Searches one log file and prints matching entries using the same structured filt
 
 `--count-by` switches the command into count mode (grouped counts instead of entry output).
 
+### errors
+
+Diagnoses ERROR entries (and optionally WARN entries) across one or more related log files by clustering normalized message patterns and estimating session impact from `component_id` + orphan detection heuristics.
+
+Accepts one or more log files. Entries are merged and sorted by timestamp before analysis.
+Use this only for related logs from the same run/session. Combining unrelated logs can make affected-session counts and orphan outcomes misleading.
+
+| Option | Description |
+|--------|-------------|
+| `--top-n <number>` | Number of clusters to show (default: 10, `0` = all) |
+| `--warn` | Include WARN entries (default: ERROR only) |
+| `--sessions` | Show affected sessions per cluster (cross-references `component_id`) |
+| `-s, --sort-by <field>` | Sort by: `count` (default), `time`, `impact` |
+
 ### extract
 
 Extracts a named field from parsed payload/settings JSON for matching log entries and aggregates counts by value.
@@ -231,6 +249,9 @@ log-analyzer search file.log -f "t:retryTimeout" --context 2
 
 # Group counts by parsed payload JSON
 log-analyzer search file.log -f "t:concurrency" --count-by payload
+
+# Cluster recurring failures and include per-session outcomes
+log-analyzer errors logs/*.log --warn --sessions --sort-by impact
 
 # Extract a specific payload field and aggregate values
 log-analyzer extract file.log -f "t:makeManager" --field concurrency

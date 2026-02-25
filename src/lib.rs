@@ -2,6 +2,7 @@ pub mod cli;
 pub mod comparator;
 pub mod config;
 pub mod config_generator;
+pub mod errors;
 pub mod extract;
 pub mod filter;
 pub mod llm_processor;
@@ -10,11 +11,14 @@ pub mod perf_analyzer;
 pub mod search;
 pub mod trace;
 
-pub use cli::{ColorMode, Commands, OutputFormat, SearchCountBy, SortOrder, cli_parse};
+pub use cli::{
+    ColorMode, Commands, ErrorsSortBy, OutputFormat, SearchCountBy, SortOrder, cli_parse,
+};
 pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
 use comparator::{LogFilter, display_log_summary};
+use errors::{ErrorsOptions, analyze_errors_with_config, format_errors_json, format_errors_text};
 use extract::{format_extract_json, format_extract_text};
 use filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use parser::{
@@ -454,6 +458,34 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         format_search_json(file, &logs, &match_indices, *context, *payloads)
                     }
                 }
+            };
+
+            print!("{rendered}");
+            if let Some(path) = output {
+                write_output_file(path, &rendered)?;
+            }
+        }
+        Commands::Errors {
+            files,
+            top_n,
+            warn,
+            sessions,
+            sort_by,
+        } => {
+            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
+            let error_options = ErrorsOptions {
+                top_n: *top_n,
+                include_warn: *warn,
+                show_sessions: *sessions,
+                sort_by: *sort_by,
+                file_count: files.len(),
+            };
+
+            let report =
+                analyze_errors_with_config(&logs, &filter, &analyzer_config, &error_options);
+            let rendered = match format {
+                OutputFormat::Text => format_errors_text(&report, &error_options),
+                OutputFormat::Json => format_errors_json(&report, &error_options),
             };
 
             print!("{rendered}");

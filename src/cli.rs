@@ -58,6 +58,17 @@ pub enum PerfSortOrder {
     Name,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum ErrorsSortBy {
+    /// Sort by cluster count (highest first, default)
+    #[default]
+    Count,
+    /// Sort by most recent occurrence time
+    Time,
+    /// Sort by estimated impact (affected sessions / blocking duration)
+    Impact,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum SearchCountBy {
     /// Total number of matching entries (grep -c style)
@@ -237,6 +248,29 @@ pub enum Commands {
         /// Count matches grouped by a structured field instead of printing entries
         #[arg(long, value_enum)]
         count_by: Option<SearchCountBy>,
+    },
+
+    /// Diagnose clustered errors/warnings and affected sessions across one or more logs
+    Errors {
+        /// One or more log files to analyze (supports shell-expanded globs)
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
+
+        /// Number of clusters to show (0 = all)
+        #[arg(long, default_value = "10")]
+        top_n: usize,
+
+        /// Include WARN entries (default is ERROR only)
+        #[arg(long)]
+        warn: bool,
+
+        /// Show affected sessions for each cluster (cross-reference by component_id)
+        #[arg(long)]
+        sessions: bool,
+
+        /// Sort clusters by field
+        #[arg(short = 's', long, value_enum, default_value_t = ErrorsSortBy::Count)]
+        sort_by: ErrorsSortBy,
     },
 
     /// Extract and aggregate a JSON payload/settings field from matching log entries

@@ -45,6 +45,7 @@ log-analyzer generate-config ./logs/*.log --template service-api --profile-name 
 | `compare` | Full comparison with all matches | `/analyze-logs compare file1.log file2.log` |
 | `info` | Analyze structure across one or more logs | `/analyze-logs info ./logs/*.log --samples` |
 | `search` | Structured grep-style search for matching entries | `/analyze-logs search test.log -f "t:timeout" --context 2` |
+| `errors` | Cluster recurring ERROR/WARN patterns and session impact | `/analyze-logs errors ./logs/*.log --warn --sessions` |
 | `extract` | Extract and aggregate a payload field from matching entries | `/analyze-logs extract test.log -f "t:makeManager" --field concurrency` |
 | `perf` | Find performance bottlenecks across one or more logs | `/analyze-logs perf ./logs/*.log --threshold-ms 500` |
 | `trace` | Trace one operation/session lifecycle across one or more logs | `/analyze-logs trace ./logs/*.log --id f227f11e` |
@@ -105,7 +106,7 @@ When the user invokes this skill:
    ```
 
 2. **Parse the request** to determine:
-   - Which command is needed (diff, compare, info, search, extract, perf, trace, llm, generate-config)
+   - Which command is needed (diff, compare, info, search, errors, extract, perf, trace, llm, generate-config)
    - Which log file(s) to analyze (one file or multiple files/globs)
    - Any filtering options (component, level, text)
 
@@ -117,8 +118,11 @@ When the user invokes this skill:
 
 4. **Build the command** with appropriate options:
    - Use `log-analyzer` if installed, otherwise `./target/release/log-analyzer` or `cargo run --`
-   - For debugging failures: use `diff` with `--diff-only`
+   - For debugging failures, run `errors` first (or one of the first commands) to get a structured error inventory before deeper investigation
+   - After the initial `errors` pass, build the causal chain with targeted follow-up queries: manager creation patterns (`search`), concurrency config extraction (`extract --field concurrency` or `search --count-by payload`), and SDK path tracing (`trace --id` / `--session`)
+   - Use `diff` with `--diff-only` when comparing expected vs failing logs after the initial `errors` pass
    - For grep-like inspection with structured filters: use `search` (optionally `--context`, `--payloads`, or `--count-by payload`)
+   - For "what went wrong?" diagnosis: use `errors` (optionally `--warn`, `--sessions`, `--sort-by impact`, `--top-n 0` for all clusters)
    - For aggregating one payload/settings field across matches: use `extract --field <path>` (for example `--field retryTimeout`)
    - For performance issues: use `perf` with appropriate threshold (pass multiple files only when they belong to the same run/session for meaningful timing/orphan analysis)
    - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
@@ -137,6 +141,18 @@ When the user invokes this skill:
 
 ### Debug Test Failure
 ```bash
+# First pass: structured error inventory ("what went wrong?")
+log-analyzer errors failing.log --warn --sessions
+
+# Follow-up: inspect manager creation / setup patterns
+log-analyzer search failing.log -f "t:makeManager" --payloads
+
+# Follow-up: verify concurrency (or similar config) values across matches
+log-analyzer extract failing.log -f "t:makeManager" --field concurrency
+
+# Follow-up: trace one failing request/session to reconstruct SDK path
+log-analyzer trace failing.log --session manager-
+
 # Quick diff to see what changed
 log-analyzer diff passing.log failing.log
 
@@ -185,6 +201,9 @@ log-analyzer search test.log -f "t:retryTimeout" --context 2
 
 # Count/group matching entries by parsed payload
 log-analyzer search test.log -f "t:concurrency" --count-by payload
+
+# Cluster recurring failures and include per-session outcomes (completed vs orphaned)
+log-analyzer errors ./logs/*.log --warn --sessions --sort-by impact
 
 # Extract and aggregate a specific payload field
 log-analyzer extract test.log -f "t:makeManager" --field concurrency
