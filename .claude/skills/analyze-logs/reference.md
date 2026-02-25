@@ -221,6 +221,33 @@ log-analyzer search test.log -f "t:retryTimeout" --context 2
 log-analyzer search test.log -f "t:concurrency" --count-by payload
 ```
 
+### extract
+
+Extract and aggregate a specific field from parsed payload/settings JSON in matching entries.
+
+```bash
+log-analyzer extract <file> --field <path> [options]
+```
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--field <path>` | Field name/path to extract (supports dot paths like `settings.retryTimeout`) |
+
+Uses the same global `-f/--filter` expression syntax to scope which entries contribute to the aggregation.
+
+**Examples:**
+```bash
+# Extract concurrency values from makeManager calls
+log-analyzer extract test.log -f "t:makeManager" --field concurrency
+
+# Extract retryTimeout values
+log-analyzer extract test.log -f "t:retryTimeout" --field retryTimeout
+
+# Nested field path
+log-analyzer extract test.log -f "c:core" --field settings.retries.0.timeout
+```
+
 ### llm (alias: process)
 
 Generate LLM-friendly compact JSON output.
@@ -375,8 +402,8 @@ Output is always TOML. Use global `-o, --output` to write generated profile file
 log-analyzer generate-config ./logs/test.log --profile-name test-run
 
 # Save generated profile for skill reuse
-log-analyzer generate-config ./logs/test.log --profile-name eyes-cypress \
-  -o .claude/skills/analyze-logs/profiles/eyes-cypress.toml
+log-analyzer generate-config ./logs/test.log --profile-name cypress \
+  -o .claude/skills/analyze-logs/profiles/cypress.toml
 
 # Generate using parser/perf rules from a built-in template
 log-analyzer generate-config ./logs/test.log \

@@ -687,3 +687,50 @@ fn test_search_count_by_payload_groups_duplicate_payloads() {
         stdout
     );
 }
+
+#[test]
+fn test_extract_aggregates_payload_field_values() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("extract.log");
+
+    write_file(
+        &file,
+        concat!(
+            "core | 2026-01-01T00:00:00.000Z [INFO ] Request \"makeManager\" [0--id1] will be sent with body {\"concurrency\":100,\"env\":\"prod\"}\n",
+            "core | 2026-01-01T00:00:01.000Z [INFO ] Request \"makeManager\" [0--id2] will be sent with body {\"concurrency\":100,\"env\":\"prod\"}\n",
+            "core | 2026-01-01T00:00:02.000Z [INFO ] Request \"makeManager\" [0--id3] will be sent with body {\"concurrency\":50,\"env\":\"staging\"}\n",
+            "core | 2026-01-01T00:00:03.000Z [INFO ] Request \"otherCall\" [0--id4] will be sent with body {\"concurrency\":999}\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "extract",
+            file.to_str().expect("utf8 path"),
+            "-f",
+            "t:makeManager",
+            "--field",
+            "concurrency",
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("concurrency=100 (2 occurrences)")
+            && stdout.contains("concurrency=50 (1 occurrence)"),
+        "expected grouped extracted values, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("999"),
+        "expected non-matching entry to be excluded, got:\n{}",
+        stdout
+    );
+}

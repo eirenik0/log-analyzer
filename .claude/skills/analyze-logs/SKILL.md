@@ -41,6 +41,7 @@ log-analyzer generate-config test.log --template service-api --profile-name my-t
 | `compare` | Full comparison with all matches | `/analyze-logs compare file1.log file2.log` |
 | `info` | Analyze structure across one or more logs | `/analyze-logs info ./logs/*.log --samples` |
 | `search` | Structured grep-style search for matching entries | `/analyze-logs search test.log -f "t:timeout" --context 2` |
+| `extract` | Extract and aggregate a payload field from matching entries | `/analyze-logs extract test.log -f "t:makeManager" --field concurrency` |
 | `perf` | Find performance bottlenecks across one or more logs | `/analyze-logs perf ./logs/*.log --threshold-ms 500` |
 | `trace` | Trace one operation/session lifecycle across one or more logs | `/analyze-logs trace ./logs/*.log --id f227f11e` |
 | `llm` | Generate LLM-friendly output | `/analyze-logs llm test.log` |
@@ -100,7 +101,7 @@ When the user invokes this skill:
    ```
 
 2. **Parse the request** to determine:
-   - Which command is needed (diff, compare, info, search, perf, trace, llm, generate-config)
+   - Which command is needed (diff, compare, info, search, extract, perf, trace, llm, generate-config)
    - Which log file(s) to analyze (one file or multiple files/globs)
    - Any filtering options (component, level, text)
 
@@ -114,6 +115,7 @@ When the user invokes this skill:
    - Use `log-analyzer` if installed, otherwise `./target/release/log-analyzer` or `cargo run --`
    - For debugging failures: use `diff` with `--diff-only`
    - For grep-like inspection with structured filters: use `search` (optionally `--context`, `--payloads`, or `--count-by payload`)
+   - For aggregating one payload/settings field across matches: use `extract --field <path>` (for example `--field retryTimeout`)
    - For performance issues: use `perf` with appropriate threshold (pass multiple files only when they belong to the same run/session for meaningful timing/orphan analysis)
    - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
    - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
@@ -179,6 +181,9 @@ log-analyzer search test.log -f "t:retryTimeout" --context 2
 # Count/group matching entries by parsed payload
 log-analyzer search test.log -f "t:concurrency" --count-by payload
 
+# Extract and aggregate a specific payload field
+log-analyzer extract test.log -f "t:makeManager" --field concurrency
+
 # JSON output for further processing
 log-analyzer info ./logs/*.log -j
 ```
@@ -197,8 +202,8 @@ log-analyzer llm-diff file1.log file2.log -o diff.json
 ### Generate Config Profile
 ```bash
 # Generate from a log file and save to skill-local profiles directory
-log-analyzer generate-config test.log --profile-name eyes-cypress \
-  -o .claude/skills/analyze-logs/profiles/eyes-cypress.toml
+log-analyzer generate-config test.log --profile-name cypress \
+  -o .claude/skills/analyze-logs/profiles/cypress.toml
 
 # Inherit parser/perf rules from a template while generating profile hints
 log-analyzer generate-config test.log \

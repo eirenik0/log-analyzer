@@ -2,6 +2,7 @@ pub mod cli;
 pub mod comparator;
 pub mod config;
 pub mod config_generator;
+pub mod extract;
 pub mod filter;
 pub mod llm_processor;
 pub mod parser;
@@ -14,6 +15,7 @@ pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
 use comparator::{LogFilter, display_log_summary};
+use extract::{format_extract_json, format_extract_text};
 use filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use parser::{
     LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_entry_with_config,
@@ -400,6 +402,21 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         format_search_json(file, &logs, &match_indices, *context, *payloads)
                     }
                 }
+            };
+
+            print!("{rendered}");
+            if let Some(path) = output {
+                write_output_file(path, &rendered)?;
+            }
+        }
+        Commands::Extract { file, field } => {
+            let logs = parse_log_file_with_config(file, &analyzer_config)
+                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+            let match_indices = collect_match_indices(&logs, &filter);
+
+            let rendered = match format {
+                OutputFormat::Text => format_extract_text(&logs, &match_indices, field),
+                OutputFormat::Json => format_extract_json(file, &logs, &match_indices, field),
             };
 
             print!("{rendered}");

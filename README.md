@@ -32,6 +32,9 @@ log-analyzer info logs/*.log
 # Structured grep-style search with log-aware filtering
 log-analyzer search file.log -f "t:retryTimeout" --context 2
 
+# Extract a payload field and aggregate occurrences
+log-analyzer extract file.log -f "t:makeManager" --field concurrency
+
 # Analyze performance bottlenecks across one or more files
 log-analyzer perf logs/*.log
 
@@ -53,6 +56,7 @@ log-analyzer generate-config file.log --template custom-start --profile-name my-
 | `diff` | | Compare showing only differences |
 | `info` | `i`, `inspect` | Display statistics for one or more log files |
 | `search` | | Structured grep-style search for matching log entries |
+| `extract` | | Extract and aggregate a JSON payload/settings field from matching entries |
 | `perf` | | Analyze operation timing across one or more log files |
 | `trace` | | Trace one operation/session across one or more log files |
 | `process` | `llm` | Generate LLM-friendly JSON output |
@@ -141,6 +145,14 @@ Searches one log file and prints matching entries using the same structured filt
 
 `--count-by` switches the command into count mode (grouped counts instead of entry output).
 
+### extract
+
+Extracts a named field from parsed payload/settings JSON for matching log entries and aggregates counts by value.
+
+| Option | Description |
+|--------|-------------|
+| `--field <path>` | Field name/path to extract (supports dot paths like `settings.retryTimeout`) |
+
 ### perf
 
 Accepts one or more log files. Entries are merged and sorted by timestamp before analysis, which enables cross-file pairing (for example, orphan resolution when an operation starts in one file and completes in another).
@@ -217,6 +229,12 @@ log-analyzer search file.log -f "t:retryTimeout" --context 2
 
 # Group counts by parsed payload JSON
 log-analyzer search file.log -f "t:concurrency" --count-by payload
+
+# Extract a specific payload field and aggregate values
+log-analyzer extract file.log -f "t:makeManager" --field concurrency
+
+# Extract retry timeout values from matching payloads
+log-analyzer extract file.log -f "t:retryTimeout" --field retryTimeout
 
 # LLM-friendly output with a custom limit
 log-analyzer llm file.log --limit 50

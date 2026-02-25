@@ -239,6 +239,17 @@ pub enum Commands {
         count_by: Option<SearchCountBy>,
     },
 
+    /// Extract and aggregate a JSON payload/settings field from matching log entries
+    Extract {
+        /// Log file to analyze
+        #[arg(required = true)]
+        file: PathBuf,
+
+        /// Field name/path to extract from payload JSON (supports dot paths, e.g. "foo.bar")
+        #[arg(long, required = true)]
+        field: String,
+    },
+
     /// Generate LLM-friendly compact JSON output of differences (shortcut for compare --diff-only -F json -c)
     LlmDiff {
         /// First log file
