@@ -125,6 +125,45 @@ fn test_info_json_schema_uses_request_occurrence_counts() {
 }
 
 #[test]
+fn test_info_json_schema_aggregates_request_counts_across_multiple_files() {
+    let dir = tempdir().expect("temp dir");
+    let file1 = dir.path().join("part1.log");
+    let file2 = dir.path().join("part2.log");
+
+    write_file(
+        &file1,
+        "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"x\":1}\n",
+    );
+    write_file(
+        &file2,
+        "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id2] will be sent with body {\"x\":2}\n",
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "info",
+            "--json-schema",
+            file1.to_str().expect("utf8 path"),
+            file2.to_str().expect("utf8 path"),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("foo (2 occurrences):"),
+        "expected aggregated request count across files, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
 fn test_process_honors_output_file_flag() {
     let dir = tempdir().expect("temp dir");
     let file = dir.path().join("input.log");
@@ -195,6 +234,47 @@ fn test_perf_text_honors_output_file_flag() {
         file_content.contains("PERFORMANCE ANALYSIS SUMMARY"),
         "expected text perf report in output file, got:\n{}",
         file_content
+    );
+}
+
+#[test]
+fn test_perf_orphans_only_resolves_cross_file_pairs_after_timestamp_sort() {
+    let dir = tempdir().expect("temp dir");
+    let file_finish = dir.path().join("finish.log");
+    let file_start = dir.path().join("start.log");
+
+    // Intentionally provide files in reverse chronological order. Without global timestamp sort,
+    // the completion would be seen before the start and the request would remain orphaned.
+    write_file(
+        &file_finish,
+        "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id1] finished successfully with body {\"statusCode\":200}\n",
+    );
+    write_file(
+        &file_start,
+        "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"statusCode\":100}\n",
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "perf",
+            "--orphans-only",
+            file_finish.to_str().expect("utf8 path"),
+            file_start.to_str().expect("utf8 path"),
+        ])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No orphaned operations found!"),
+        "expected cross-file request to be paired after timestamp sort, got:\n{}",
+        stdout
     );
 }
 

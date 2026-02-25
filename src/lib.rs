@@ -95,6 +95,22 @@ fn write_output_file(
         .map_err(|e| format!("Failed to write output file '{}': {}", path.display(), e).into())
 }
 
+fn parse_and_merge_log_files_with_config(
+    files: &[std::path::PathBuf],
+    analyzer_config: &crate::config::AnalyzerConfig,
+) -> Result<Vec<LogEntry>, Box<dyn std::error::Error>> {
+    let mut logs = Vec::new();
+
+    for file in files {
+        let mut parsed = parse_log_file_with_config(file, analyzer_config)
+            .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+        logs.append(&mut parsed);
+    }
+
+    logs.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    Ok(logs)
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
     let analyzer_config = crate::config::load_config(cli.config.as_deref())
@@ -281,15 +297,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Info {
-            file,
+            files,
             samples,
             json_schema,
             payloads,
             timeline,
         } => {
-            // Parse log file with proper error handling
-            let logs = parse_log_file_with_config(file, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+            // Parse and merge log files, then sort by timestamp for session-wide analysis
+            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
 
             // Filter logs if filter is provided
             let filtered_logs: Vec<_> = if cli.filter.is_some() {
@@ -353,16 +368,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Perf {
-            file,
+            files,
             threshold_ms,
             top_n,
             orphans_only,
             op_type,
             sort_by,
         } => {
-            // Parse log file with proper error handling
-            let logs = parse_log_file_with_config(file, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+            // Parse and merge log files, then sort by timestamp for cross-file pairing
+            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
 
             // Convert op_type filter to string
             let op_type_filter = op_type.map(|t| match t {

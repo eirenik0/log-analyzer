@@ -39,8 +39,8 @@ log-analyzer generate-config test.log --template service-api --profile-name my-t
 |---------|---------|---------|
 | `diff` | Show differences between two log files | `/analyze-logs diff file1.log file2.log` |
 | `compare` | Full comparison with all matches | `/analyze-logs compare file1.log file2.log` |
-| `info` | Analyze structure of a single log | `/analyze-logs info test.log --samples` |
-| `perf` | Find performance bottlenecks | `/analyze-logs perf test.log --threshold-ms 500` |
+| `info` | Analyze structure across one or more logs | `/analyze-logs info ./logs/*.log --samples` |
+| `perf` | Find performance bottlenecks across one or more logs | `/analyze-logs perf ./logs/*.log --threshold-ms 500` |
 | `llm` | Generate LLM-friendly output | `/analyze-logs llm test.log` |
 | `llm-diff` | LLM-friendly diff output | `/analyze-logs llm-diff file1.log file2.log` |
 | `generate-config` | Generate a profile TOML from logs | `/analyze-logs generate-config test.log --profile-name my-team` |
@@ -99,7 +99,7 @@ When the user invokes this skill:
 
 2. **Parse the request** to determine:
    - Which command is needed (diff, compare, info, perf, llm, generate-config)
-   - Which log files to analyze
+   - Which log file(s) to analyze (one file or multiple files/globs)
    - Any filtering options (component, level, text)
 
 3. **Find log files** if not specified:
@@ -111,8 +111,8 @@ When the user invokes this skill:
 4. **Build the command** with appropriate options:
    - Use `log-analyzer` if installed, otherwise `./target/release/log-analyzer` or `cargo run --`
    - For debugging failures: use `diff` with `--diff-only`
-   - For performance issues: use `perf` with appropriate threshold
-   - For understanding logs: use `info` with `--samples --payloads`
+   - For performance issues: use `perf` with appropriate threshold (pass multiple files only when they belong to the same run/session for meaningful timing/orphan analysis)
+   - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
    - For profile generation: use `generate-config`; default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
    - `--template` can be either a file path or built-in name: `base`, `custom-start`, `service-api`, `event-pipeline`
 
@@ -141,24 +141,28 @@ log-analyzer diff passing.log failing.log -f "c:core l:ERROR !t:timeout"
 
 ### Performance Investigation
 ```bash
-# Find operations taking > 2 seconds
-log-analyzer perf test.log --threshold-ms 2000
+# Find operations taking > 2 seconds across split session logs
+log-analyzer perf ./logs/*.log --threshold-ms 2000
 
-# Find orphan operations (started but never finished)
-log-analyzer perf test.log --orphans-only
+# Find orphan operations (can pair across files)
+log-analyzer perf ./logs/*.log --orphans-only
 
 # Focus on requests only
-log-analyzer perf test.log --op-type Request --top-n 30
+log-analyzer perf ./logs/*.log --op-type Request --top-n 30
 ```
+
+Only combine files from the same session/run. Mixing unrelated logs can make latency stats and orphan results meaningless.
 
 ### Log Exploration
 ```bash
-# Full overview with samples
-log-analyzer info test.log --samples --payloads --timeline
+# Full overview with samples across multiple files
+log-analyzer info ./logs/*.log --samples --payloads --timeline
 
 # JSON output for further processing
-log-analyzer info test.log -j
+log-analyzer info ./logs/*.log -j
 ```
+
+Only combine related files (for example, rotated chunks of the same run). Otherwise counts and timeline distributions may not be useful.
 
 ### Prepare for LLM Analysis
 ```bash
@@ -231,6 +235,6 @@ Filter semantics:
 - **Statistics**: P50, P95, P99 latencies per operation type
 
 ### Info Output
-- **Components**: All log sources in the file
+- **Components**: All log sources in the input log file(s)
 - **Event Types**: Categorized operations
-- **Timeline**: Distribution of events over time
+- **Timeline**: Distribution of events over time across the merged input timeline

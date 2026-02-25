@@ -26,11 +26,11 @@ log-analyzer compare file1.log file2.log
 # Show only differences
 log-analyzer diff file1.log file2.log
 
-# Get log file overview
-log-analyzer info file.log
+# Get log overview (single file or multiple files)
+log-analyzer info logs/*.log
 
-# Analyze performance bottlenecks
-log-analyzer perf file.log
+# Analyze performance bottlenecks across one or more files
+log-analyzer perf logs/*.log
 
 # Generate LLM-friendly output
 log-analyzer llm file.log
@@ -45,8 +45,8 @@ log-analyzer generate-config file.log --template custom-start --profile-name my-
 |---------|---------|-------------|
 | `compare` | `cmp` | Compare two log files |
 | `diff` | | Compare showing only differences |
-| `info` | `i`, `inspect` | Display log file statistics |
-| `perf` | | Analyze operation timing |
+| `info` | `i`, `inspect` | Display statistics for one or more log files |
+| `perf` | | Analyze operation timing across one or more log files |
 | `process` | `llm` | Generate LLM-friendly JSON output |
 | `llm-diff` | | Generate LLM-friendly diff output |
 | `generate-config` | `gen-config` | Generate a profile TOML from logs |
@@ -111,6 +111,9 @@ Different filter types are combined with AND. Multiple values of the same type a
 
 ### info
 
+Accepts one or more log files. When multiple files are provided, entries are merged and analyzed together.
+Use this only for related logs (for example, split files from the same run/session). Mixing unrelated runs can make counts and timelines misleading.
+
 | Option | Description |
 |--------|-------------|
 | `-s, --samples` | Show sample messages per component |
@@ -119,6 +122,9 @@ Different filter types are combined with AND. Multiple values of the same type a
 | `-t, --timeline` | Show timeline analysis |
 
 ### perf
+
+Accepts one or more log files. Entries are merged and sorted by timestamp before analysis, which enables cross-file pairing (for example, orphan resolution when an operation starts in one file and completes in another).
+Use this only for related logs from the same run/session. Combining unrelated logs can produce meaningless latency/orphan results.
 
 | Option | Description |
 |--------|-------------|
@@ -158,11 +164,11 @@ log-analyzer diff file1.log file2.log -f "!l:DEBUG"
 # Save JSON diff to file
 log-analyzer -j -o diff.json diff file1.log file2.log
 
-# Show operations slower than 500ms
-log-analyzer perf file.log --threshold-ms 500
+# Show operations slower than 500ms across a session split into files (not unrelated runs)
+log-analyzer perf logs/*.log --threshold-ms 500
 
-# Comprehensive log analysis
-log-analyzer info file.log --samples --timeline --payloads
+# Comprehensive analysis across multiple files from the same run/session
+log-analyzer info logs/*.log --samples --timeline --payloads
 
 # LLM-friendly output with a custom limit
 log-analyzer llm file.log --limit 50
@@ -241,8 +247,8 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 
 ```bash
 /analyze-logs diff file1.log file2.log          # Compare and explain differences
-/analyze-logs perf test.log --threshold-ms 500  # Find performance bottlenecks
-/analyze-logs info test.log --samples           # Log structure overview
+/analyze-logs perf logs/*.log --threshold-ms 500  # Find bottlenecks across files
+/analyze-logs info logs/*.log --samples           # Cross-file log structure overview
 /analyze-logs llm test.log                      # Generate LLM-friendly output
 ```
 
@@ -252,6 +258,7 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 - **Semantic comparison** - Compares JSON objects regardless of property order
 - **Diff context improvements** - Tracks source line numbers and marks changes as added/removed/modified
 - **Advanced filtering** - Include/exclude by component, level, content, or direction
+- **Multi-file session analysis** - Merge and analyze `info`/`perf` inputs across multiple log files
 - **Performance analysis** - Identify slow and orphan operations
 - **LLM-friendly output** - Sanitized, compact JSON for AI consumption
 - **Profile-driven customization** - Override parser/perf markers via TOML config or generated templates

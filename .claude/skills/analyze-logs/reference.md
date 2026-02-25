@@ -163,11 +163,14 @@ Same options as `compare` except `--diff-only` is implicit.
 
 ### info (aliases: i, inspect)
 
-Display information about a log file.
+Display information about one or more log files.
 
 ```bash
-log-analyzer info <file> [options]
+log-analyzer info <file> [file...] [options]
 ```
+
+When multiple files are provided, entries are merged and analyzed together.
+Only combine related files (for example, split logs from the same run/session), otherwise aggregated counts/timelines may not be meaningful.
 
 **Options:**
 | Option | Description |
@@ -179,11 +182,11 @@ log-analyzer info <file> [options]
 
 **Examples:**
 ```bash
-# Full analysis
-log-analyzer info test.log --samples --payloads --timeline
+# Full analysis across multiple files
+log-analyzer info ./logs/*.log --samples --payloads --timeline
 
 # JSON schema for a specific component
-log-analyzer info test.log -f "c:socket" --json-schema
+log-analyzer info ./logs/*.log -f "c:socket" --json-schema
 
 # Quick overview
 log-analyzer info test.log
@@ -252,11 +255,14 @@ Same options as `llm` command.
 
 ### perf
 
-Analyze operation timing and identify bottlenecks.
+Analyze operation timing and identify bottlenecks across one or more log files.
 
 ```bash
-log-analyzer perf <file> [options]
+log-analyzer perf <file> [file...] [options]
 ```
+
+When multiple files are provided, entries are merged and sorted by timestamp before analysis. This allows cross-file pairing, including orphan detection when operations start in one file and complete in another.
+Only combine related files from the same run/session. Mixing unrelated logs can produce misleading or meaningless timing/orphan results.
 
 **Options:**
 | Option | Description |
@@ -274,17 +280,17 @@ log-analyzer perf <file> [options]
 
 **Examples:**
 ```bash
-# Find slow operations (>2s)
-log-analyzer perf test.log --threshold-ms 2000
+# Find slow operations (>2s) across split session logs
+log-analyzer perf ./logs/*.log --threshold-ms 2000
 
-# Find incomplete operations
-log-analyzer perf test.log --orphans-only
+# Find incomplete operations (cross-file pairing supported)
+log-analyzer perf ./logs/*.log --orphans-only
 
 # Request analysis only
-log-analyzer perf test.log --op-type Request --top-n 50
+log-analyzer perf ./logs/*.log --op-type Request --top-n 50
 
 # Sort by occurrence count
-log-analyzer perf test.log -s count
+log-analyzer perf ./logs/*.log -s count
 ```
 
 ### generate-config (alias: gen-config)

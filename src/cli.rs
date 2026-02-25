@@ -185,9 +185,9 @@ pub enum Commands {
     /// List all components, event types, log levels, and detailed statistics in a log file
     #[command(alias = "i", alias = "inspect")]
     Info {
-        /// Log file to analyze
-        #[arg(required = true)]
-        file: PathBuf,
+        /// One or more log files to analyze
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
 
         /// Show sample log messages for each component
         #[arg(short, long)]
@@ -247,9 +247,9 @@ pub enum Commands {
 
     /// Analyze operation timing and identify performance bottlenecks
     Perf {
-        /// Log file to analyze
-        #[arg(required = true)]
-        file: PathBuf,
+        /// One or more log files to analyze
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
 
         /// Duration threshold in milliseconds for highlighting slow operations
         #[arg(long, default_value = "1000")]
