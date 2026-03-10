@@ -597,6 +597,48 @@ fn test_generate_config_merges_multiple_logs_for_inference() {
 }
 
 #[test]
+fn test_generate_config_detects_rust_tracing_format() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("flux.log");
+
+    write_file(
+        &file,
+        concat!(
+            "2026-03-10T08:15:30.123Z INFO fluxomni_server::integrations::srs::callback: callback received trace_id=abc123 actor_kind=switch restream_name=stream-a\n",
+            "2026-03-10T08:15:31.123Z ERROR fluxomni_server::integrations::srs::callback: callback failed trace_id=abc123 exit_code=251\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args(["generate-config", file.to_str().expect("utf8 path")])
+        .output()
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("format = \"rust-tracing\""),
+        "expected generated parser format to match detected rust tracing logs, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("module_depth = 2"),
+        "expected generated module depth inference, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("module_strip_prefix = \"fluxomni_\""),
+        "expected generated module prefix inference, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
 fn test_search_prints_matching_entries_and_payloads() {
     let dir = tempdir().expect("temp dir");
     let file = dir.path().join("search.log");
@@ -787,6 +829,129 @@ fn test_extract_aggregates_payload_field_values() {
     assert!(
         !stdout.contains("999"),
         "expected non-matching entry to be excluded, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_search_and_extract_support_rust_tracing_structured_fields() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("flux.log");
+
+    write_file(
+        &file,
+        concat!(
+            "2026-03-10T08:15:30.123Z INFO fluxomni_server::integrations::srs::callback: callback received trace_id=abc123 actor_kind=switch restream_name=stream-a\n",
+            "2026-03-10T08:15:31.123Z INFO fluxomni_server::integrations::srs::callback: callback received trace_id=abc456 actor_kind=switch restream_name=stream-a\n",
+            "2026-03-10T08:15:32.123Z INFO fluxomni_server::integrations::srs::callback: callback received trace_id=def999 actor_kind=relay restream_name=stream-b\n",
+        ),
+    );
+
+    let search_output = Command::new(bin())
+        .args([
+            "search",
+            file.to_str().expect("utf8 path"),
+            "-f",
+            "actor_kind:switch",
+            "--payloads",
+        ])
+        .output()
+        .expect("search should run");
+
+    assert!(
+        search_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&search_output.stderr)
+    );
+
+    let search_stdout = String::from_utf8_lossy(&search_output.stdout);
+    assert!(
+        search_stdout.contains("SEARCH matched 2 entries"),
+        "expected structured-field filter to match two entries, got:\n{}",
+        search_stdout
+    );
+    assert!(
+        search_stdout.contains("\"restream_name\":\"stream-a\""),
+        "expected structured fields to be shown with --payloads, got:\n{}",
+        search_stdout
+    );
+    assert!(
+        !search_stdout.contains("stream-b"),
+        "expected non-matching structured field values to be excluded, got:\n{}",
+        search_stdout
+    );
+
+    let extract_output = Command::new(bin())
+        .args([
+            "extract",
+            file.to_str().expect("utf8 path"),
+            "-f",
+            "actor_kind:switch",
+            "--field",
+            "restream_name",
+        ])
+        .output()
+        .expect("extract should run");
+
+    assert!(
+        extract_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&extract_output.stderr)
+    );
+
+    let extract_stdout = String::from_utf8_lossy(&extract_output.stdout);
+    assert!(
+        extract_stdout.contains("restream_name=\"stream-a\" (2 occurrences)"),
+        "expected structured field extraction to aggregate values, got:\n{}",
+        extract_stdout
+    );
+}
+
+#[test]
+fn test_trace_by_id_matches_rust_tracing_trace_fields() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("trace.log");
+
+    write_file(
+        &file,
+        concat!(
+            "2026-03-10T08:15:30.123Z INFO fluxomni_server::scheduler::ingress: stream accepted trace_id=fabb5aa4 span_id=span-1 actor_kind=switch\n",
+            "2026-03-10T08:15:30.523Z INFO fluxomni_server::scheduler::ingress: stream queued trace_id=fabb5aa4 span_id=span-1 actor_kind=switch\n",
+            "2026-03-10T08:15:31.523Z ERROR fluxomni_server::scheduler::ingress: stream failed trace_id=fabb5aa4 span_id=span-1 exit_code=251\n",
+            "2026-03-10T08:15:32.523Z INFO fluxomni_server::scheduler::ingress: other trace trace_id=zzzz9999 span_id=span-2 actor_kind=switch\n",
+        ),
+    );
+
+    let output = Command::new(bin())
+        .args([
+            "trace",
+            file.to_str().expect("utf8 path"),
+            "--id",
+            "fabb5aa4",
+        ])
+        .output()
+        .expect("trace should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Matched 3 entries"),
+        "expected trace_id-based matching to find three entries, got:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("+   400ms") && stdout.contains("+  1000ms"),
+        "expected chronological timing deltas, got:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("zzzz9999"),
+        "expected unrelated trace_id entries to be excluded, got:\n{}",
         stdout
     );
 }

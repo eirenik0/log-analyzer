@@ -1,7 +1,8 @@
 use chrono::{DateTime, Local};
-use log_analyzer::config::{AnalyzerConfig, SessionLevelConfig, SessionsRules};
+use log_analyzer::config::{AnalyzerConfig, LogFormat, SessionLevelConfig, SessionsRules};
 use log_analyzer::config_generator::{GenerateConfigOptions, generate_config};
 use log_analyzer::parser::{LogEntry, LogEntryKind, RequestDirection};
+use std::collections::HashMap;
 
 fn test_timestamp() -> DateTime<Local> {
     "2025-04-03T21:35:06.000Z"
@@ -17,6 +18,8 @@ fn make_entry(component: &str, component_id: &str, kind: LogEntryKind) -> LogEnt
         level: "INFO".to_string(),
         message: "message".to_string(),
         raw_logline: "raw".to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind,
         source_line_number: 1,
     }
@@ -339,4 +342,22 @@ fn test_preserves_template_defined_session_levels() {
         generated.sessions.levels[0].summary_fields,
         vec!["concurrency"]
     );
+}
+
+#[test]
+fn test_infers_rust_tracing_parser_settings_from_module_paths() {
+    let mut entry = make_entry("srs::callback", "", LogEntryKind::Generic { payload: None });
+    entry.module_path = Some("fluxomni_server::integrations::srs::callback".to_string());
+
+    let generated = generate_config(
+        &[entry],
+        &AnalyzerConfig::default(),
+        &GenerateConfigOptions {
+            profile_name: "generated".to_string(),
+        },
+    );
+
+    assert_eq!(generated.parser.format, LogFormat::RustTracing);
+    assert_eq!(generated.parser.module_depth, 2);
+    assert_eq!(generated.parser.module_strip_prefix, "fluxomni_");
 }

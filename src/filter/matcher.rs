@@ -46,6 +46,13 @@ pub fn to_log_filter(expr: &FilterExpression) -> LogFilter {
         filter = filter.exclude_direction(&direction);
     }
 
+    for (field, value) in expr.include_structured_filters() {
+        filter = filter.with_field(Some(field), Some(value));
+    }
+    for (field, value) in expr.exclude_structured_filters() {
+        filter = filter.exclude_field(Some(field), Some(value));
+    }
+
     filter
 }
 

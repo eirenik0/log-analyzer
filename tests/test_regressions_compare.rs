@@ -3,6 +3,7 @@ use log_analyzer::SortOrder;
 use log_analyzer::comparator::{ComparisonOptions, LogFilter, compare_logs};
 use log_analyzer::parser::{LogEntry, LogEntryKind, RequestDirection};
 use serde_json::json;
+use std::collections::HashMap;
 
 fn parse_local(ts: &str) -> DateTime<Local> {
     DateTime::parse_from_rfc3339(ts)
@@ -24,6 +25,8 @@ fn request_log(
         level: "INFO".to_string(),
         message: format!("Request \"foo\" [{request_id}] will be sent with body [JSON removed]"),
         raw_logline: String::new(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Request {
             request: "foo".to_string(),
             request_id: Some(request_id.to_string()),

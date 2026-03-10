@@ -1,4 +1,4 @@
-use crate::config::{AnalyzerConfig, SessionLevelConfig};
+use crate::config::{AnalyzerConfig, LogFormat, SessionLevelConfig};
 use crate::parser::{LogEntry, LogEntryKind};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,10 +19,20 @@ pub fn generate_config(
     let mut requests = BTreeSet::new();
     let mut component_id_segments = BTreeSet::new();
     let mut prefix_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut module_paths = Vec::new();
+    let mut module_roots = BTreeSet::new();
 
     for entry in logs {
         if !entry.component.is_empty() {
             components.insert(entry.component.clone());
+        }
+        if let Some(module_path) = &entry.module_path {
+            module_paths.push(module_path.clone());
+            if let Some(root) = module_path.split("::").next()
+                && !root.is_empty()
+            {
+                module_roots.insert(root.to_string());
+            }
         }
 
         if !entry.component_id.is_empty() {
@@ -92,6 +102,14 @@ pub fn generate_config(
             .collect();
     }
 
+    if !module_paths.is_empty() {
+        config.parser.format = LogFormat::RustTracing;
+        config.parser.module_depth = inferred_module_depth(&module_paths);
+        if let Some(prefix) = infer_module_strip_prefix(&module_roots) {
+            config.parser.module_strip_prefix = prefix;
+        }
+    }
+
     config
 }
 
@@ -105,4 +123,39 @@ fn session_prefix(segment: &str) -> Option<String> {
         return None;
     }
     Some(segment[..=dash_index].to_string())
+}
+
+fn inferred_module_depth(module_paths: &[String]) -> usize {
+    if module_paths.iter().any(|path| {
+        path.split("::")
+            .filter(|segment| !segment.is_empty())
+            .count()
+            >= 2
+    }) {
+        2
+    } else {
+        1
+    }
+}
+
+fn infer_module_strip_prefix(module_roots: &BTreeSet<String>) -> Option<String> {
+    let mut roots = module_roots.iter();
+    let first = roots.next()?;
+    let mut prefix = first.clone();
+
+    for root in roots {
+        let common_len = prefix
+            .chars()
+            .zip(root.chars())
+            .take_while(|(a, b)| a == b)
+            .count();
+        prefix = prefix.chars().take(common_len).collect();
+        if prefix.is_empty() {
+            return None;
+        }
+    }
+
+    let underscore_index = prefix.rfind('_')?;
+    let candidate = &prefix[..=underscore_index];
+    (candidate.len() >= 3).then(|| candidate.to_string())
 }

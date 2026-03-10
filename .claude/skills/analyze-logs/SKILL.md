@@ -61,12 +61,22 @@ See [reference.md](reference.md) for complete command documentation.
 
 Install the latest release binary (recommended):
 ```bash
+curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/install.sh | bash
+```
+
+If you are working inside a cloned `log-analyzer` repo, this also works:
+```bash
 ./scripts/install.sh
 ```
 
 Or build from source:
 ```bash
 cargo build --release
+```
+
+Verify installation:
+```bash
+log-analyzer --version
 ```
 
 ### Running Commands
@@ -99,6 +109,9 @@ When the user invokes this skill:
    If not available, inform the user:
    ```
    The log-analyzer tool is not installed. Install it with:
+     curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/install.sh | bash
+
+   If you're inside a cloned log-analyzer repo, this also works:
      ./scripts/install.sh
 
    Or build from source:
@@ -124,13 +137,14 @@ When the user invokes this skill:
    - After the initial `errors` pass, build the causal chain with targeted follow-up queries: manager creation patterns (`search`), concurrency config extraction (`extract --field concurrency` or `search --count-by payload`), and SDK path tracing (`trace --id` / `--session`)
    - Use `diff` with `--diff-only` when comparing expected vs failing logs after the initial `errors` pass
    - For grep-like inspection with structured filters: use `search` (optionally `--context`, `--payloads`, or `--count-by payload`)
+   - Structured tracing/json fields can be filtered directly with `-f "trace_id:abc123"` or `-f "actor_kind:switch"`
    - For "what went wrong?" diagnosis: use `errors` (optionally `--warn`, `--sessions`, `--sort-by impact`, `--top-n 0` for all clusters)
-   - For aggregating one payload/settings field across matches: use `extract --field <path>` (for example `--field retryTimeout`)
+   - For aggregating one payload/settings field across matches: use `extract --field <path>` (for example `--field retryTimeout` or a tracing field like `--field restream_name`)
    - For performance issues: use `perf` with appropriate threshold (pass multiple files only when they belong to the same run/session for meaningful timing/orphan analysis)
    - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
    - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
    - If a profile includes `[[sessions.levels]]`, mention the per-level session completion summary from `info` in your findings
-  - For profile generation: use `generate-config`; it will infer parser/profile hints and generic session levels from one or more related logs (merged before inference), and default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
+   - For profile generation: use `generate-config`; it will infer parser/profile hints and generic session levels from one or more related logs (merged before inference), and default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
    - `--template` can be either a file path or built-in name: `base`, `custom-start`, `service-api`, `event-pipeline`
 
 5. **Execute and interpret**:

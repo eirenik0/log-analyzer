@@ -6,6 +6,7 @@ use log_analyzer::config::{
 };
 use log_analyzer::parser::{LogEntry, LogEntryKind, RequestDirection, parse_log_entry_with_config};
 use log_analyzer::perf_analyzer::analyze_performance_with_config;
+use std::collections::HashMap;
 use std::path::Path;
 
 #[test]
@@ -89,6 +90,8 @@ fn test_perf_markers_can_be_overridden_by_config() {
         level: "INFO".to_string(),
         message: "Command \"sync\" BEGIN".to_string(),
         raw_logline: "Command \"sync\" BEGIN".to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Command {
             command: "sync".to_string(),
             settings: None,
@@ -103,6 +106,8 @@ fn test_perf_markers_can_be_overridden_by_config() {
         level: "INFO".to_string(),
         message: "Command \"sync\" DONE".to_string(),
         raw_logline: "Command \"sync\" DONE".to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Command {
             command: "sync".to_string(),
             settings: None,
@@ -169,6 +174,8 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         level: "INFO".to_string(),
         message: "Command \"customOp\" is called".to_string(),
         raw_logline: "Command \"customOp\" is called".to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Command {
             command: "customOp".to_string(),
             settings: None,
@@ -185,6 +192,8 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         level: "INFO".to_string(),
         message: "Request \"customReq\" will be sent".to_string(),
         raw_logline: "Request \"customReq\" will be sent".to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Request {
             request: "customReq".to_string(),
             request_id: None,

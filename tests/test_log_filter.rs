@@ -1,6 +1,7 @@
 use chrono::Local;
 use log_analyzer::comparator::LogFilter;
 use log_analyzer::parser::{LogEntry, LogEntryKind};
+use std::collections::HashMap;
 
 fn create_test_log(component: &str, level: &str, message: &str) -> LogEntry {
     LogEntry {
@@ -10,9 +11,18 @@ fn create_test_log(component: &str, level: &str, message: &str) -> LogEntry {
         level: level.to_string(),
         message: message.to_string(),
         raw_logline: message.to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Generic { payload: None },
         source_line_number: 1,
     }
+}
+
+fn create_structured_test_log(key: &str, value: &str) -> LogEntry {
+    let mut log = create_test_log("worker", "INFO", "structured message");
+    log.structured_fields
+        .insert(key.to_string(), value.to_string());
+    log
 }
 
 #[test]
@@ -67,6 +77,22 @@ fn test_exclude_filters_are_case_insensitive() {
     assert!(
         !LogFilter::new()
             .excludes_text(Some("TIMEOUT"))
+            .matches(&log)
+    );
+}
+
+#[test]
+fn test_structured_field_filter_matches_extracted_fields() {
+    let log = create_structured_test_log("actor_kind", "Switch");
+
+    assert!(
+        LogFilter::new()
+            .with_field(Some("actor_kind"), Some("switch"))
+            .matches(&log)
+    );
+    assert!(
+        !LogFilter::new()
+            .with_field(Some("actor_kind"), Some("worker"))
             .matches(&log)
     );
 }

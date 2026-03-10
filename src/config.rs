@@ -68,9 +68,22 @@ impl AnalyzerConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum LogFormat {
+    #[default]
+    Auto,
+    #[serde(alias = "current", alias = "default")]
+    Classic,
+    RustTracing,
+    Syslog,
+    JsonLines,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ParserRules {
+    pub format: LogFormat,
     pub event_emit_markers: Vec<String>,
     pub event_receive_markers: Vec<String>,
     pub event_payload_separator: String,
@@ -83,11 +96,14 @@ pub struct ParserRules {
     pub request_payload_markers: Vec<String>,
     pub request_endpoint_marker: String,
     pub json_indicators: Vec<String>,
+    pub module_depth: usize,
+    pub module_strip_prefix: String,
 }
 
 impl Default for ParserRules {
     fn default() -> Self {
         Self {
+            format: LogFormat::Auto,
             event_emit_markers: vec!["Emit event of type".to_string()],
             event_receive_markers: vec!["Received event of type".to_string()],
             event_payload_separator: "with payload".to_string(),
@@ -111,6 +127,8 @@ impl Default for ParserRules {
                 "with body".to_string(),
                 "with body ".to_string(),
             ],
+            module_depth: 2,
+            module_strip_prefix: String::new(),
         }
     }
 }
@@ -608,6 +626,7 @@ mod tests {
     use super::*;
     use chrono::DateTime;
     use serde_json::json;
+    use std::collections::HashMap;
 
     fn ts(rfc3339: &str) -> DateTime<Local> {
         DateTime::parse_from_rfc3339(rfc3339)
@@ -628,6 +647,8 @@ mod tests {
             level: "INFO".to_string(),
             message: format!("Command \"{command}\" is called"),
             raw_logline: String::new(),
+            structured_fields: HashMap::new(),
+            module_path: None,
             kind: LogEntryKind::Command {
                 command: command.to_string(),
                 settings,
@@ -644,6 +665,8 @@ mod tests {
             level: "INFO".to_string(),
             message: "generic".to_string(),
             raw_logline: String::new(),
+            structured_fields: HashMap::new(),
+            module_path: None,
             kind: LogEntryKind::Generic { payload: None },
             source_line_number: 1,
         }

@@ -9,7 +9,7 @@ Complete documentation of all log-analyzer commands and options.
 The easiest way to install log-analyzer is using the installation script, which auto-detects your platform and downloads the appropriate binary:
 
 ```bash
-./scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/install.sh | bash
 ```
 
 This will:
@@ -17,6 +17,15 @@ This will:
 - Download the latest release binary
 - Install to `~/bin/log-analyzer` by default
 - Provide instructions for adding to PATH if needed
+
+If you are inside a cloned `log-analyzer` repository, `./scripts/install.sh` works too.
+
+Verify installation:
+
+```bash
+log-analyzer --version
+log-analyzer --help
+```
 
 ### Manual Download from Release Binary
 
@@ -49,6 +58,10 @@ cargo build --release
 ## Global Options
 
 These work with any command:
+
+Path/glob note:
+- Multi-file commands rely on shell-expanded globs (for example `./logs/*.log`)
+- If a path contains spaces, quote the directory part but keep the wildcard outside quotes (for example `"/path with spaces"/logs/*.log`)
 
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
@@ -470,7 +483,7 @@ All variables use `LOG_ANALYZER_` prefix:
 
 ## Log Format
 
-The tool expects logs in this format:
+The classic parser expects logs in this format:
 ```
 component | timestamp [LEVEL] message
 ```
@@ -482,3 +495,11 @@ core-universal | 2025-04-03T21:07:27.652Z [INFO ] Core universal is started on p
 ```
 
 Supports multi-line JSON payloads embedded in messages.
+
+The parser can also auto-detect:
+
+- Rust tracing: `timestamp level module::path: message key=value ...`
+- Syslog/journald-style lines: `timestamp host process[pid]: message`
+- JSON lines: `{"timestamp":...,"level":...,"message":...}`
+
+Profiles can force the format with `[parser] format = "rust-tracing"` (or `classic`, `syslog`, `json-lines`). Rust tracing fields are available to `search` filters and `extract --field ...`, for example `-f "trace_id:abc123"` or `-f "actor_kind:switch"`.

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Local};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fmt;
 
 /// Direction of an event (emitted or received)
@@ -88,6 +89,10 @@ pub struct LogEntry {
     pub message: String,
     /// The original, unaltered log line
     pub raw_logline: String,
+    /// Structured key=value fields extracted from the log line when available
+    pub structured_fields: HashMap<String, String>,
+    /// Full module/target path when the source format exposes it (for example Rust tracing)
+    pub module_path: Option<String>,
     /// Specific variant of the log entry
     pub kind: LogEntryKind,
     /// Source line number in the original file (1-indexed)
@@ -103,6 +108,10 @@ impl LogEntry {
             LogEntryKind::Request { payload, .. } => payload.as_ref(),
             LogEntryKind::Generic { payload } => payload.as_ref(),
         }
+    }
+
+    pub fn structured_field(&self, key: &str) -> Option<&str> {
+        self.structured_fields.get(key).map(String::as_str)
     }
 
     /// Check if this log entry is an event with the given type
@@ -200,6 +209,8 @@ pub fn create_event_log(params: EventLogParams) -> LogEntry {
         level: params.base.level,
         message: params.base.message,
         raw_logline: params.base.raw_logline,
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Event {
             event_type: params.event_type,
             direction: params.direction,
@@ -217,6 +228,8 @@ pub fn create_command_log(params: CommandLogParams) -> LogEntry {
         level: params.base.level,
         message: params.base.message,
         raw_logline: params.base.raw_logline,
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Command {
             command: params.command,
             settings: params.settings,
@@ -233,6 +246,8 @@ pub fn create_request_log(params: RequestLogParams) -> LogEntry {
         level: params.base.level,
         message: params.base.message,
         raw_logline: params.base.raw_logline,
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Request {
             request: params.request,
             request_id: params.request_id,
@@ -262,6 +277,8 @@ pub fn create_generic_log(
         level,
         message,
         raw_logline,
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Generic { payload },
         source_line_number,
     }

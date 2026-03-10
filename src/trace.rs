@@ -39,6 +39,14 @@ fn matches_id(entry: &LogEntry, needle: &str) -> bool {
         return true;
     }
 
+    if entry
+        .structured_fields
+        .values()
+        .any(|value| value.contains(needle))
+    {
+        return true;
+    }
+
     matches!(
         &entry.kind,
         LogEntryKind::Request {
@@ -160,6 +168,8 @@ pub fn format_trace_json(entries: &[&LogEntry], selector: &TraceSelector) -> Str
                 "log_key": entry.log_key(),
                 "message": entry.message,
                 "raw_logline": entry.raw_logline,
+                "module_path": entry.module_path,
+                "structured_fields": entry.structured_fields,
                 "source_line_number": entry.source_line_number,
                 "request_id": request_id,
             })

@@ -22,8 +22,8 @@ use errors::{ErrorsOptions, analyze_errors_with_config, format_errors_json, form
 use extract::{format_extract_json, format_extract_text};
 use filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use parser::{
-    LogEntry, LogEntryKind, ParseError, parse_log_entry, parse_log_entry_with_config,
-    parse_log_file, parse_log_file_with_config,
+    LogEntry, LogEntryKind, ParseError, detect_log_format, parse_log_entry,
+    parse_log_entry_with_config, parse_log_file, parse_log_file_with_config,
 };
 use search::{
     collect_match_indices, format_search_count_json, format_search_count_text, format_search_json,
@@ -616,6 +616,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 analyzer_config.clone()
             };
 
+            let detected_formats: Vec<_> = files
+                .iter()
+                .filter_map(|file| detect_log_format(file, &base_config).ok())
+                .collect();
             let logs = parse_and_merge_log_files_with_config(files, &base_config)?;
 
             let profile_name = profile_name.clone().unwrap_or_else(|| {
@@ -631,11 +635,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             });
 
-            let generated = config_generator::generate_config(
+            let mut generated = config_generator::generate_config(
                 &logs,
                 &base_config,
                 &config_generator::GenerateConfigOptions { profile_name },
             );
+            if let Some(first_format) = detected_formats.first().copied()
+                && detected_formats
+                    .iter()
+                    .all(|format| *format == first_format)
+            {
+                generated.parser.format = first_format;
+            }
 
             let body = toml::to_string_pretty(&generated)
                 .map_err(|e| format!("Failed to serialize generated config: {}", e))?;

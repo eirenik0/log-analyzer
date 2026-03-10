@@ -7,6 +7,29 @@ A CLI tool for analyzing and comparing JSON logs.
 
 Core parser/comparison logic stays generic; domain-specific details can be supplied via profile config files.
 
+## Supported Log Format (Quick Check)
+
+`log-analyzer` works best with structured text logs where each entry looks like:
+
+```text
+component | timestamp [LEVEL] message
+```
+
+Example:
+
+```text
+socket | 2025-04-03T21:07:27.668Z [INFO ] Emit event of type "Logger.log" with payload {...}
+core-universal | 2025-04-03T21:07:27.652Z [INFO ] Core universal is started on port 21077
+```
+
+It also auto-detects a few other common formats:
+
+- Rust tracing: `timestamp level module::path: message key=value ...`
+- Syslog/journald-style lines: `timestamp host process[pid]: message`
+- JSON lines: `{"timestamp":...,"level":...,"message":...}`
+
+Profiles can force a parser with `[parser] format = "rust-tracing"` (or `classic`, `syslog`, `json-lines`) and tune Rust target mapping with `module_depth` / `module_strip_prefix`. Structured `key=value` fields become filterable and extractable via `--filter "trace_id:abc123"` or `extract --field restream_name`.
+
 ## Installation
 
 ```bash
@@ -15,6 +38,9 @@ curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/
 
 # Or build from source
 cargo install --path .
+
+# Verify installation
+log-analyzer --version
 ```
 
 ## Quick Start
@@ -32,8 +58,14 @@ log-analyzer info logs/*.log
 # Structured grep-style search with log-aware filtering
 log-analyzer search file.log -f "t:retryTimeout" --context 2
 
+# Search Rust tracing fields directly
+log-analyzer search file.log -f "actor_kind:switch" --payloads
+
 # Extract a payload field and aggregate occurrences
 log-analyzer extract file.log -f "t:makeManager" --field concurrency
+
+# Extract a structured tracing field
+log-analyzer extract file.log -f "trace_id:fabb5aa4" --field restream_name
 
 # Diagnose clustered errors and affected sessions across related logs
 log-analyzer errors logs/*.log --warn --sessions
@@ -66,16 +98,58 @@ log-analyzer generate-config logs/*.log --template custom-start --profile-name m
 
 ```bash
 # 1. Generate a starter config from your actual logs (best first step)
-log-analyzer generate-config "logs/*.log" --template custom-start --profile-name my-team
+log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
 
 # 2. Review and refine the generated TOML - add session levels, fix markers
 #    The generator infers what it can, but domain knowledge is yours to add
 
 # 3. Always pass --config when running analysis
-log-analyzer --config my-team.toml errors "logs/*.log" --sessions
+log-analyzer --config my-team.toml errors logs/*.log --sessions
 ```
 
+If your log directory path contains spaces, quote the directory part but not the wildcard (for example `"/path with spaces"/logs/*.log`).
+
 See [Profile Configuration](#profile-configuration) for the full reference and examples. Investing 10 minutes in a good config pays back on every analysis run.
+
+## 5-Minute First Success
+
+Use this sequence to confirm the parser works on your logs before deeper analysis:
+
+```bash
+# 1. Sanity-check that entries parse and timestamps/components look right
+log-analyzer info logs/*.log
+
+# 2. Generate a starter profile from the same related log set
+log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
+
+# 3. Re-run with the generated profile and inspect payload extraction
+log-analyzer --config my-team.toml info logs/*.log --payloads --samples
+
+# 4. Pick the next command by goal
+#    Failure triage:
+log-analyzer --config my-team.toml errors logs/*.log --warn --sessions
+
+#    Performance triage:
+log-analyzer --config my-team.toml perf logs/*.log --threshold-ms 1000
+
+#    One request/session trace:
+log-analyzer --config my-team.toml trace logs/*.log --id <id-fragment>
+```
+
+If step 3 shows missing payloads or obviously wrong command/request names, tune the profile markers before trusting `errors`, `perf`, or `trace`.
+
+## What Counts as "Related Logs"?
+
+Use multiple files together only when they belong to the same run/session (for example rotated/split chunks from one test run or one service execution window).
+
+Good signs they are related:
+
+- overlapping or contiguous timestamps for one investigation window
+- same environment/test run/build context
+- shared `component_id` hierarchy or correlation/request IDs
+- files were split/rotated from one process/run
+
+Avoid mixing unrelated runs, retries from different executions, or logs from different environments in the same command. That can distort counts, traces, session impact, and latency/orphan analysis.
 
 ## Commands
 
@@ -352,6 +426,19 @@ log-analyzer generate-config logs/run-1.log logs/run-2.log --template custom-sta
 ```
 
 Only combine related logs from the same run/session when using `generate-config`; mixing unrelated runs can pollute inferred commands/requests/session levels.
+
+### Validate Your Profile (Quick Checklist)
+
+Before relying on analysis results, verify the generated/custom profile with a few quick checks:
+
+- `info --payloads --samples` shows expected command/request names and parsed payloads (not mostly missing payloads)
+- `search --payloads` for a known message displays JSON payload/settings content you expect
+- `extract --field <path>` returns real values for a known field (not only empty/missing)
+- `perf` does not show obviously impossible orphan counts/latencies for known-complete runs
+- `trace --id` or `trace --session` finds a known request/session path from your raw logs
+- `errors --sessions` reports sensible affected sessions after `[[sessions.levels]]` is tuned
+
+If these checks fail, adjust `[parser]`, `[perf]`, or `[[sessions.levels]]` markers before interpreting the output.
 
 Optional session hierarchy/lifecycle hints (used by `info` profile insights):
 

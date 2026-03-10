@@ -84,6 +84,11 @@ pub fn format_search_text(
                 .unwrap_or_else(|_| "\"<failed to serialize payload>\"".to_string());
             let _ = writeln!(out, "       payload: {payload_text}");
         }
+        if show_payloads && !entry.structured_fields.is_empty() {
+            let fields_text = serde_json::to_string(&entry.structured_fields)
+                .unwrap_or_else(|_| "\"<failed to serialize fields>\"".to_string());
+            let _ = writeln!(out, "       fields: {fields_text}");
+        }
     }
 
     out
@@ -115,6 +120,8 @@ pub fn format_search_json(
                 "log_key": entry.log_key(),
                 "message": entry.message,
                 "raw_logline": entry.raw_logline,
+                "module_path": entry.module_path,
+                "structured_fields": entry.structured_fields,
                 "payload": if show_payloads { entry.payload().cloned() } else { None },
             })
         })

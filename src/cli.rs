@@ -83,7 +83,7 @@ pub enum SearchCountBy {
     Payload,
 }
 
-/// A tool to analyze and compare two log files containing JSON objects
+/// Analyze, search, compare, and diagnose structured logs
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(name = "log-analyzer")]
@@ -95,13 +95,15 @@ pub enum SearchCountBy {
     level, lvl, l         Filter by log level (INFO, ERROR, etc.)
     text, t               Filter by text in message
     direction, dir, d     Filter by direction (incoming/outgoing)
+    <field-name>          Filter by structured key=value field (trace_id, actor_kind, ...)
 
   Different filter types are AND-ed. Multiple values of the same type are OR-ed.
   Prefix with ! to exclude. Examples:
     --filter \"c:core-universal\"           Only core-universal component
     --filter \"l:ERROR\"                    Only ERROR level logs
     --filter \"c:core !l:DEBUG\"            Core component, exclude DEBUG
-    --filter \"t:timeout d:incoming\"       Contains 'timeout', incoming only")]
+    --filter \"t:timeout d:incoming\"       Contains 'timeout', incoming only
+    --filter \"actor_kind:switch\"          Structured field filter on tracing/json logs")]
 pub struct Cli {
     /// Output format (text or json)
     #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text, global = true, group = "output_options", env = "LOG_ANALYZER_FORMAT")]
@@ -207,7 +209,7 @@ pub enum Commands {
         sort_by: SortOrder,
     },
 
-    /// List all components, event types, log levels, and detailed statistics in a log file
+    /// List components, event types, log levels, and statistics in one or more log files
     #[command(alias = "i", alias = "inspect")]
     Info {
         /// One or more log files to analyze

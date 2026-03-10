@@ -12,6 +12,8 @@ pub enum FilterType {
     Text,
     /// Filter by direction (incoming/outgoing)
     Direction,
+    /// Filter by any structured field key=value extracted from the log entry
+    StructuredField,
 }
 
 impl FromStr for FilterType {
@@ -23,7 +25,7 @@ impl FromStr for FilterType {
             "level" | "lvl" | "l" => Ok(FilterType::Level),
             "text" | "t" => Ok(FilterType::Text),
             "direction" | "dir" | "d" => Ok(FilterType::Direction),
-            _ => Err(FilterParseError::UnknownFilterType(s.to_string())),
+            _ => Ok(FilterType::StructuredField),
         }
     }
 }
@@ -36,6 +38,7 @@ impl FilterType {
             FilterType::Level => "level",
             FilterType::Text => "text",
             FilterType::Direction => "direction",
+            FilterType::StructuredField => "field",
         }
     }
 }
@@ -45,6 +48,8 @@ impl FilterType {
 pub struct FilterTerm {
     /// The type of filter
     pub filter_type: FilterType,
+    /// Field key for structured-field filters
+    pub field_key: Option<String>,
     /// The value to match
     pub value: String,
     /// Whether this is an exclusion filter (prefixed with !)
@@ -69,6 +74,7 @@ impl FilterTerm {
         }
 
         let filter_type: FilterType = parts[0].parse()?;
+        let field_key = (filter_type == FilterType::StructuredField).then(|| parts[0].to_string());
         let value = parts[1].trim().to_string();
 
         if value.is_empty() {
@@ -87,6 +93,7 @@ impl FilterTerm {
 
         Ok(FilterTerm {
             filter_type,
+            field_key,
             value,
             exclude,
         })
@@ -148,6 +155,22 @@ impl FilterExpression {
             .map(|t| t.value.as_str())
             .collect()
     }
+
+    pub fn include_structured_filters(&self) -> Vec<(&str, &str)> {
+        self.terms
+            .iter()
+            .filter(|t| t.filter_type == FilterType::StructuredField && !t.exclude)
+            .filter_map(|t| Some((t.field_key.as_deref()?, t.value.as_str())))
+            .collect()
+    }
+
+    pub fn exclude_structured_filters(&self) -> Vec<(&str, &str)> {
+        self.terms
+            .iter()
+            .filter(|t| t.filter_type == FilterType::StructuredField && t.exclude)
+            .filter_map(|t| Some((t.field_key.as_deref()?, t.value.as_str())))
+            .collect()
+    }
 }
 
 /// Split a string by whitespace while preserving quoted segments
@@ -191,6 +214,7 @@ mod tests {
     fn test_parse_simple_filter() {
         let term = FilterTerm::parse("component:core").unwrap();
         assert_eq!(term.filter_type, FilterType::Component);
+        assert_eq!(term.field_key, None);
         assert_eq!(term.value, "core");
         assert!(!term.exclude);
     }
@@ -199,6 +223,7 @@ mod tests {
     fn test_parse_exclude_filter() {
         let term = FilterTerm::parse("!level:DEBUG").unwrap();
         assert_eq!(term.filter_type, FilterType::Level);
+        assert_eq!(term.field_key, None);
         assert_eq!(term.value, "DEBUG");
         assert!(term.exclude);
     }
@@ -219,18 +244,22 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_expression() {
-        let expr = FilterExpression::parse("component:core level:ERROR !text:timeout").unwrap();
-        assert_eq!(expr.terms.len(), 3);
-        assert_eq!(expr.include_filters(&FilterType::Component), vec!["core"]);
-        assert_eq!(expr.include_filters(&FilterType::Level), vec!["ERROR"]);
-        assert_eq!(expr.exclude_filters(&FilterType::Text), vec!["timeout"]);
+    fn test_parse_structured_field_filter() {
+        let term = FilterTerm::parse("trace_id:abc123").unwrap();
+        assert_eq!(term.filter_type, FilterType::StructuredField);
+        assert_eq!(term.field_key.as_deref(), Some("trace_id"));
+        assert_eq!(term.value, "abc123");
     }
 
     #[test]
-    fn test_invalid_filter_type() {
-        let result = FilterTerm::parse("unknown:value");
-        assert!(result.is_err());
+    fn test_parse_expression() {
+        let expr = FilterExpression::parse("component:core level:ERROR !text:timeout trace_id:abc")
+            .unwrap();
+        assert_eq!(expr.terms.len(), 4);
+        assert_eq!(expr.include_filters(&FilterType::Component), vec!["core"]);
+        assert_eq!(expr.include_filters(&FilterType::Level), vec!["ERROR"]);
+        assert_eq!(expr.exclude_filters(&FilterType::Text), vec!["timeout"]);
+        assert_eq!(expr.include_structured_filters(), vec![("trace_id", "abc")]);
     }
 
     #[test]

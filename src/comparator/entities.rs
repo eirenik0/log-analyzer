@@ -66,6 +66,8 @@ pub struct LogFilter {
     exclude_levels: Vec<String>,
     include_text: Vec<String>,
     exclude_text: Vec<String>,
+    include_fields: Vec<(String, String)>,
+    exclude_fields: Vec<(String, String)>,
     include_directions: Vec<Direction>,
     exclude_directions: Vec<Direction>,
 }
@@ -117,6 +119,28 @@ impl LogFilter {
         self
     }
 
+    pub fn with_field(
+        mut self,
+        key: Option<impl Into<String>>,
+        value: Option<impl Into<String>>,
+    ) -> Self {
+        if let (Some(key), Some(value)) = (key, value) {
+            self.include_fields.push((key.into(), value.into()));
+        }
+        self
+    }
+
+    pub fn exclude_field(
+        mut self,
+        key: Option<impl Into<String>>,
+        value: Option<impl Into<String>>,
+    ) -> Self {
+        if let (Some(key), Some(value)) = (key, value) {
+            self.exclude_fields.push((key.into(), value.into()));
+        }
+        self
+    }
+
     pub fn with_direction(mut self, direction: &Option<Direction>) -> Self {
         if let Some(direction) = direction.clone() {
             self.include_directions.push(direction);
@@ -151,6 +175,11 @@ impl LogFilter {
                 .include_text
                 .iter()
                 .any(|filter| contains_ci(&log.message, filter));
+        let field_match = self.include_fields.is_empty()
+            || self.include_fields.iter().any(|(key, value)| {
+                log.structured_field(key)
+                    .is_some_and(|field_value| contains_ci(field_value, value))
+            });
 
         // Exclude filters (log must NOT match any of these)
         let exclude_component_match = self
@@ -165,6 +194,10 @@ impl LogFilter {
             .exclude_text
             .iter()
             .all(|filter| !contains_ci(&log.message, filter));
+        let exclude_field_match = self.exclude_fields.iter().all(|(key, value)| {
+            !log.structured_field(key)
+                .is_some_and(|field_value| contains_ci(field_value, value))
+        });
 
         let log_direction = match &log.kind {
             LogEntryKind::Event { direction, .. } => Some(Direction::from(direction.clone())),
@@ -189,9 +222,11 @@ impl LogFilter {
             && exclude_direction_match
             && level_match
             && contains_match
+            && field_match
             && exclude_component_match
             && exclude_level_match
             && excludes_match
+            && exclude_field_match
     }
 }
 

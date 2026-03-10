@@ -1,6 +1,7 @@
 use chrono::{DateTime, Local};
 use log_analyzer::filter::{FilterExpression, to_log_filter};
 use log_analyzer::parser::{LogEntry, LogEntryKind, RequestDirection};
+use std::collections::HashMap;
 
 fn parse_local(ts: &str) -> DateTime<Local> {
     DateTime::parse_from_rfc3339(ts)
@@ -16,6 +17,8 @@ fn generic_log(component: &str) -> LogEntry {
         level: "INFO".to_string(),
         message: "hello".to_string(),
         raw_logline: "hello".to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Generic { payload: None },
         source_line_number: 1,
     }
@@ -29,6 +32,8 @@ fn request_log(direction: RequestDirection) -> LogEntry {
         level: "INFO".to_string(),
         message: "request".to_string(),
         raw_logline: "request".to_string(),
+        structured_fields: HashMap::new(),
+        module_path: None,
         kind: LogEntryKind::Request {
             request: "foo".to_string(),
             request_id: Some("0--id".to_string()),

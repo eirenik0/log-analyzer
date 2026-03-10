@@ -86,23 +86,24 @@ fn build_extract_summary(
     let mut missing_field = 0usize;
 
     for &idx in match_indices {
-        let Some(payload) = logs[idx].payload() else {
-            missing_payload += 1;
-            continue;
-        };
-
-        let Some(value) = extract_field_value(payload, field_path) else {
-            missing_field += 1;
+        let Some(value) = extract_entry_field_value(&logs[idx], field_path) else {
+            if logs[idx].payload().is_none()
+                && !logs[idx].structured_fields.contains_key(field_path)
+            {
+                missing_payload += 1;
+            } else {
+                missing_field += 1;
+            }
             continue;
         };
 
         extracted += 1;
-        let key = serde_json::to_string(value)
+        let key = serde_json::to_string(&value)
             .unwrap_or_else(|_| "\"<failed to serialize value>\"".to_string());
         grouped
             .entry(key)
             .and_modify(|(_, count)| *count += 1)
-            .or_insert_with(|| (value.clone(), 1));
+            .or_insert_with(|| (value, 1));
     }
 
     let mut groups: Vec<_> = grouped
@@ -144,10 +145,22 @@ fn extract_field_value<'a>(value: &'a Value, field_path: &str) -> Option<&'a Val
     Some(current)
 }
 
+fn extract_entry_field_value(entry: &LogEntry, field_path: &str) -> Option<Value> {
+    if let Some(value) = entry.structured_fields.get(field_path) {
+        return Some(Value::String(value.clone()));
+    }
+
+    let payload = entry.payload()?;
+    extract_field_value(payload, field_path).cloned()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::extract_field_value;
-    use serde_json::json;
+    use super::{extract_entry_field_value, extract_field_value};
+    use crate::parser::{LogEntry, LogEntryKind};
+    use chrono::Local;
+    use serde_json::{Value, json};
+    use std::collections::HashMap;
 
     #[test]
     fn extracts_nested_object_and_array_paths() {
@@ -165,5 +178,30 @@ mod tests {
             Some(&json!(2000))
         );
         assert_eq!(extract_field_value(&payload, "settings.missing"), None);
+    }
+
+    #[test]
+    fn extracts_structured_fields_before_payload_paths() {
+        let mut structured_fields = HashMap::new();
+        structured_fields.insert("trace_id".to_string(), "abc123".to_string());
+        let entry = LogEntry {
+            timestamp: Local::now(),
+            component: "worker".to_string(),
+            component_id: String::new(),
+            level: "INFO".to_string(),
+            message: "message".to_string(),
+            raw_logline: "raw".to_string(),
+            structured_fields,
+            module_path: None,
+            kind: LogEntryKind::Generic {
+                payload: Some(json!({"trace_id": "payload-value"})),
+            },
+            source_line_number: 1,
+        };
+
+        assert_eq!(
+            extract_entry_field_value(&entry, "trace_id"),
+            Some(Value::String("abc123".to_string()))
+        );
     }
 }

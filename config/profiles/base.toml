@@ -1,6 +1,7 @@
 profile_name = "base"
 
 [parser]
+format = "auto"
 event_emit_markers = ["Emit event of type"]
 event_receive_markers = ["Received event of type"]
 event_payload_separator = "with payload"
@@ -13,6 +14,8 @@ request_receive_markers = ["finished successfully", "respond with", "that was se
 request_payload_markers = ["with body"]
 request_endpoint_marker = "address \"["
 json_indicators = ["with settings {", "with body [", "with body {", "with body", "with body "]
+module_depth = 2
+module_strip_prefix = ""
 
 [perf]
 command_start_markers = ["is called"]

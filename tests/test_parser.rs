@@ -3,8 +3,10 @@
 // and a LogRecord struct with fields such as component, timestamp, level, message, etc.
 
 use chrono::{DateTime, Local};
-use log_analyzer::parser::{LogEntryKind, RequestDirection, parse_log_entry};
+use log_analyzer::parser::{LogEntryKind, RequestDirection, parse_log_entry, parse_log_file};
 use serde_json::json;
+use std::fs;
+use tempfile::tempdir;
 
 // Test for a core-universal initialization log entry.
 #[test]
@@ -299,4 +301,82 @@ fn test_parse_command_with_settings() {
         }
         _ => panic!("Wrong kind of log entry"),
     }
+}
+
+#[test]
+fn test_parse_rust_tracing_log_with_structured_fields() {
+    let log_line = concat!(
+        "2026-03-10T08:15:30.123Z INFO ",
+        "fluxomni_server::integrations::srs::callback: received callback ",
+        "trace_id=abc123 span_id=def456 actor_kind=switch restream_name=demo-stream",
+    );
+
+    let record = parse_log_entry(log_line, 1).expect("Failed to parse rust tracing log");
+
+    assert_eq!(record.component, "srs::callback");
+    assert_eq!(
+        record.module_path.as_deref(),
+        Some("fluxomni_server::integrations::srs::callback")
+    );
+    assert_eq!(record.message, "received callback");
+    assert_eq!(record.structured_field("trace_id"), Some("abc123"));
+    assert_eq!(
+        record.structured_field("restream_name"),
+        Some("demo-stream")
+    );
+    assert!(matches!(record.kind, LogEntryKind::Generic { .. }));
+}
+
+#[test]
+fn test_parse_rust_tracing_file_with_multiline_entries() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("flux.log");
+    fs::write(
+        &file,
+        concat!(
+            "2026-03-10T08:15:30.123Z INFO fluxomni_server::ffmpeg::runner: launching ffmpeg command trace_id=abc123\n",
+            "ffmpeg -i input.ts -c:v copy output.ts\n",
+            "2026-03-10T08:15:31.123Z ERROR fluxomni_server::ffmpeg::runner: ffmpeg failed trace_id=abc123 exit_code=251\n",
+        ),
+    )
+    .expect("write log file");
+
+    let logs = parse_log_file(&file).expect("Failed to parse rust tracing file");
+
+    assert_eq!(logs.len(), 2);
+    assert!(logs[0].message.contains("launching ffmpeg command"));
+    assert!(
+        logs[0]
+            .message
+            .contains("ffmpeg -i input.ts -c:v copy output.ts")
+    );
+    assert_eq!(logs[1].structured_field("exit_code"), Some("251"));
+}
+
+#[test]
+fn test_parse_syslog_line() {
+    let log_line =
+        "2026-03-10T08:15:30Z host-a stream-manager[4221]: ERROR failed to restart pipeline";
+    let record = parse_log_entry(log_line, 1).expect("Failed to parse syslog line");
+
+    assert_eq!(record.component, "stream-manager");
+    assert_eq!(record.component_id, "4221");
+    assert_eq!(record.level, "ERROR");
+    assert_eq!(record.structured_field("host"), Some("host-a"));
+    assert_eq!(record.message, "ERROR failed to restart pipeline");
+}
+
+#[test]
+fn test_parse_json_line() {
+    let log_line = r#"{"timestamp":"2026-03-10T08:15:30Z","level":"warn","target":"fluxomni_server::workers::restream","message":"worker stalled","trace_id":"abc123","payload":{"attempt":2}}"#;
+    let record = parse_log_entry(log_line, 1).expect("Failed to parse JSON log line");
+
+    assert_eq!(record.component, "workers::restream");
+    assert_eq!(
+        record.module_path.as_deref(),
+        Some("fluxomni_server::workers::restream")
+    );
+    assert_eq!(record.level, "WARN");
+    assert_eq!(record.structured_field("trace_id"), Some("abc123"));
+    assert_eq!(record.payload(), Some(&json!({"attempt": 2})));
 }
