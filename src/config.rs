@@ -9,11 +9,18 @@ use std::sync::LazyLock;
 use thiserror::Error;
 
 const EMBEDDED_PROFILE_BASE: &str = include_str!("../config/profiles/base.toml");
+const EMBEDDED_PROFILE_EYES: &str = include_str!("../config/profiles/eyes.toml");
 const EMBEDDED_TEMPLATE_CUSTOM_START: &str = include_str!("../config/templates/custom-start.toml");
 const EMBEDDED_TEMPLATE_SERVICE_API: &str = include_str!("../config/templates/service-api.toml");
 const EMBEDDED_TEMPLATE_EVENT_PIPELINE: &str =
     include_str!("../config/templates/event-pipeline.toml");
-const BUILTIN_TEMPLATE_NAMES: &[&str] = &["base", "custom-start", "service-api", "event-pipeline"];
+const BUILTIN_TEMPLATE_NAMES: &[&str] = &[
+    "base",
+    "eyes",
+    "custom-start",
+    "service-api",
+    "event-pipeline",
+];
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -29,6 +36,8 @@ pub enum ConfigError {
         #[source]
         source: toml::de::Error,
     },
+    #[error("Unknown built-in preset '{name}'. Available built-ins: {available}")]
+    UnknownBuiltin { name: String, available: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,29 +113,18 @@ impl Default for ParserRules {
     fn default() -> Self {
         Self {
             format: LogFormat::Auto,
-            event_emit_markers: vec!["Emit event of type".to_string()],
-            event_receive_markers: vec!["Received event of type".to_string()],
-            event_payload_separator: "with payload".to_string(),
-            command_prefix: "Command \"".to_string(),
-            command_start_marker: "\" is called".to_string(),
-            command_payload_markers: vec!["with settings".to_string()],
-            request_prefix: "Request \"".to_string(),
-            request_send_markers: vec!["will be sent".to_string()],
-            request_receive_markers: vec![
-                "finished successfully".to_string(),
-                "respond with".to_string(),
-                "that was sent".to_string(),
-                "is going to retried".to_string(),
-            ],
-            request_payload_markers: vec!["with body".to_string()],
-            request_endpoint_marker: "address \"[".to_string(),
-            json_indicators: vec![
-                "with settings {".to_string(),
-                "with body [".to_string(),
-                "with body {".to_string(),
-                "with body".to_string(),
-                "with body ".to_string(),
-            ],
+            event_emit_markers: Vec::new(),
+            event_receive_markers: Vec::new(),
+            event_payload_separator: "payload".to_string(),
+            command_prefix: String::new(),
+            command_start_marker: String::new(),
+            command_payload_markers: Vec::new(),
+            request_prefix: String::new(),
+            request_send_markers: Vec::new(),
+            request_receive_markers: Vec::new(),
+            request_payload_markers: Vec::new(),
+            request_endpoint_marker: String::new(),
+            json_indicators: Vec::new(),
             module_depth: 2,
             module_strip_prefix: String::new(),
         }
@@ -144,13 +142,16 @@ pub struct PerfRules {
 impl Default for PerfRules {
     fn default() -> Self {
         Self {
-            command_start_markers: vec!["is called".to_string()],
-            command_completion_markers: vec![
-                "finished".to_string(),
-                "returned".to_string(),
-                "completed".to_string(),
+            command_start_markers: Vec::new(),
+            command_completion_markers: Vec::new(),
+            event_correlation_keys: vec![
+                "trace_id".to_string(),
+                "traceId".to_string(),
+                "request_id".to_string(),
+                "requestId".to_string(),
+                "id".to_string(),
+                "key".to_string(),
             ],
-            event_correlation_keys: vec!["key".to_string()],
         }
     }
 }
@@ -281,9 +282,17 @@ pub fn contains_any_marker(text: &str, markers: &[String]) -> bool {
         .any(|marker| !marker.is_empty() && text.contains(marker))
 }
 
-pub fn load_config(path: Option<&Path>) -> Result<AnalyzerConfig, ConfigError> {
+pub fn load_config(
+    path: Option<&Path>,
+    preset: Option<&str>,
+) -> Result<AnalyzerConfig, ConfigError> {
     if let Some(path) = path {
         load_config_from_path(path)
+    } else if let Some(preset) = preset {
+        load_builtin_template(preset).ok_or_else(|| ConfigError::UnknownBuiltin {
+            name: preset.to_string(),
+            available: builtin_template_names().join(", "),
+        })
     } else {
         Ok(default_config().clone())
     }
@@ -315,6 +324,7 @@ pub fn load_builtin_template(name: &str) -> Option<AnalyzerConfig> {
     let template_key = normalized_template_key(name)?;
     let (source_path, raw) = match template_key.as_str() {
         "base" => ("embedded:config/profiles/base.toml", EMBEDDED_PROFILE_BASE),
+        "eyes" => ("embedded:config/profiles/eyes.toml", EMBEDDED_PROFILE_EYES),
         "custom-start" => (
             "embedded:config/templates/custom-start.toml",
             EMBEDDED_TEMPLATE_CUSTOM_START,

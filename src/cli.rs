@@ -142,6 +142,15 @@ pub struct Cli {
     #[arg(long, global = true, env = "LOG_ANALYZER_CONFIG")]
     pub config: Option<PathBuf>,
 
+    /// Built-in preset/profile to use instead of --config (base, eyes, custom-start, service-api, event-pipeline)
+    #[arg(
+        long,
+        global = true,
+        env = "LOG_ANALYZER_PRESET",
+        conflicts_with = "config"
+    )]
+    pub preset: Option<String>,
+
     /// Control color output (auto, always, never)
     #[arg(long, value_enum, default_value_t = ColorMode::Auto, global = true, env = "LOG_ANALYZER_COLOR")]
     pub color: ColorMode,
@@ -378,7 +387,7 @@ pub enum Commands {
         #[arg(long)]
         profile_name: Option<String>,
 
-        /// Base template path or built-in name (base, custom-start, service-api, event-pipeline)
+        /// Base template path or built-in name (base, eyes, custom-start, service-api, event-pipeline)
         #[arg(long)]
         template: Option<PathBuf>,
     },

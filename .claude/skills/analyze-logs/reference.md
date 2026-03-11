@@ -71,6 +71,7 @@ Path/glob note:
 | `-f, --filter` | expression | none | Filter expression (see below) |
 | `-o, --output` | path | stdout | Save results to file |
 | `--config` | path | none | Load parser/perf/profile rules from TOML |
+| `--preset` | name | none | Use a built-in preset/profile (`base`, `eyes`, `custom-start`, `service-api`, `event-pipeline`) |
 | `--color` | `auto`, `always`, `never` | `auto` | Control color output |
 | `-v, --verbose` | count | 0 | Increase verbosity (repeatable) |
 | `-q, --quiet` | flag | off | Show only errors |
@@ -88,13 +89,15 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 ```
 
 Available files:
-- `config/profiles/base.toml` - default parser/perf/profile baseline
+- `config/profiles/base.toml` - generic parser/perf/profile baseline
+- `config/profiles/eyes.toml` - Eyes/Applitools-specific preset
 - `config/templates/custom-start.toml` - generic starter with placeholders
 - `config/templates/service-api.toml` - service/API oriented wording
 - `config/templates/event-pipeline.toml` - event-driven pipeline wording
 
 Built-in template names (for `generate-config --template`):
 - `base`
+- `eyes`
 - `custom-start`
 - `service-api`
 - `event-pipeline`
@@ -102,6 +105,7 @@ Built-in template names (for `generate-config --template`):
 Use a profile with any command:
 
 ```bash
+log-analyzer --preset eyes info ./logs/test.log
 log-analyzer --config config/profiles/my-team.toml info ./logs/test.log
 log-analyzer --config config/profiles/my-team.toml diff ./logs/a.log ./logs/b.log
 ```
@@ -445,7 +449,7 @@ When multiple files are provided, entries are merged before profile inference. O
 | Option | Description |
 |--------|-------------|
 | `--profile-name <name>` | Name to set in `profile_name` (defaults to input filename stem for one file, otherwise `generated-profile`) |
-| `--template <path\|name>` | Base profile to inherit parser/perf rules from (`base`, `custom-start`, `service-api`, `event-pipeline`) |
+| `--template <path\|name>` | Base profile to inherit parser/perf rules from (`base`, `eyes`, `custom-start`, `service-api`, `event-pipeline`) |
 
 Output is always TOML. Use global `-o, --output` to write generated profile files.
 
@@ -466,6 +470,12 @@ log-analyzer generate-config ./logs/*.log \
   --template service-api \
   --profile-name service-api \
   -o .claude/skills/analyze-logs/profiles/service-api.toml
+
+# Generate a repo profile starting from the Eyes preset
+log-analyzer generate-config ./logs/*.log \
+  --template eyes \
+  --profile-name eyes \
+  -o .claude/skills/analyze-logs/profiles/eyes.toml
 ```
 
 ## Environment Variables
@@ -479,6 +489,8 @@ All variables use `LOG_ANALYZER_` prefix:
 | `LOG_ANALYZER_COMPACT` | Enable compact mode |
 | `LOG_ANALYZER_FILTER` | Default filter expression |
 | `LOG_ANALYZER_OUTPUT` | Default output file |
+| `LOG_ANALYZER_CONFIG` | Default profile/config file |
+| `LOG_ANALYZER_PRESET` | Default built-in preset/profile |
 | `LOG_ANALYZER_SORT_BY` | Default sort order |
 
 ## Log Format

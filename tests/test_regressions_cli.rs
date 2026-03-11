@@ -8,6 +8,12 @@ fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_log-analyzer")
 }
 
+fn command() -> Command {
+    let mut cmd = Command::new(bin());
+    cmd.env("LOG_ANALYZER_PRESET", "eyes");
+    cmd
+}
+
 fn write_file(path: &Path, content: &str) {
     fs::write(path, content).expect("failed to write test file");
 }
@@ -28,7 +34,7 @@ fn test_json_format_written_to_output_file_is_json() {
         "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"x\":2}\n",
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "-F",
             "json",
@@ -70,7 +76,7 @@ fn test_full_diff_prints_full_json_payloads() {
         "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"a\":3,\"b\":4}\n",
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "diff",
             "--full",
@@ -105,7 +111,7 @@ fn test_info_json_schema_uses_request_occurrence_counts() {
     );
     write_file(&file, content);
 
-    let output = Command::new(bin())
+    let output = command()
         .args(["info", "--json-schema", file.to_str().expect("utf8 path")])
         .output()
         .expect("command should run");
@@ -139,7 +145,7 @@ fn test_info_json_schema_aggregates_request_counts_across_multiple_files() {
         "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id2] will be sent with body {\"x\":2}\n",
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "info",
             "--json-schema",
@@ -174,7 +180,7 @@ fn test_process_honors_output_file_flag() {
         "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"x\":1}\n",
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "-o",
             out.to_str().expect("utf8 path"),
@@ -209,7 +215,7 @@ fn test_perf_text_honors_output_file_flag() {
     );
     write_file(&file, content);
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "-o",
             out.to_str().expect("utf8 path"),
@@ -254,7 +260,7 @@ fn test_perf_orphans_only_resolves_cross_file_pairs_after_timestamp_sort() {
         "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"statusCode\":100}\n",
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "perf",
             "--orphans-only",
@@ -296,7 +302,7 @@ fn test_compare_shows_unpaired_annotation_in_unique_output() {
     write_file(&file1, a_content);
     write_file(&file2, b_content);
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "-v",
             "compare",
@@ -343,7 +349,7 @@ fn test_diff_json_includes_unpaired_entries_in_unique_sections() {
     write_file(&file1, a_content);
     write_file(&file2, b_content);
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "-F",
             "json",
@@ -397,7 +403,7 @@ fn test_diff_text_includes_unpaired_entries_in_unique_sections() {
     write_file(&file1, a_content);
     write_file(&file2, b_content);
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "-v",
             "diff",
@@ -442,7 +448,7 @@ fn test_trace_by_id_sorts_matches_across_files_and_shows_step_timing() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "trace",
             file_late.to_str().expect("utf8 path"),
@@ -511,7 +517,7 @@ fn test_trace_by_session_filters_using_component_id_hierarchy() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "trace",
             file.to_str().expect("utf8 path"),
@@ -558,7 +564,7 @@ fn test_generate_config_merges_multiple_logs_for_inference() {
         "network (manager-ufg-2/eyes-ufg-2) | 2026-01-01T00:00:01.000Z [INFO ] Request \"render\" [0--id1] will be sent with body {\"x\":1}\n",
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "generate-config",
             file1.to_str().expect("utf8 path"),
@@ -609,7 +615,7 @@ fn test_generate_config_detects_rust_tracing_format() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args(["generate-config", file.to_str().expect("utf8 path")])
         .output()
         .expect("command should run");
@@ -652,7 +658,7 @@ fn test_search_prints_matching_entries_and_payloads() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -704,7 +710,7 @@ fn test_search_context_shows_neighbor_entries_only() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -750,7 +756,7 @@ fn test_search_count_by_payload_groups_duplicate_payloads() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -801,7 +807,7 @@ fn test_extract_aggregates_payload_field_values() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "extract",
             file.to_str().expect("utf8 path"),
@@ -847,7 +853,7 @@ fn test_search_and_extract_support_rust_tracing_structured_fields() {
         ),
     );
 
-    let search_output = Command::new(bin())
+    let search_output = command()
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -881,7 +887,7 @@ fn test_search_and_extract_support_rust_tracing_structured_fields() {
         search_stdout
     );
 
-    let extract_output = Command::new(bin())
+    let extract_output = command()
         .args([
             "extract",
             file.to_str().expect("utf8 path"),
@@ -922,7 +928,7 @@ fn test_trace_by_id_matches_rust_tracing_trace_fields() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "trace",
             file.to_str().expect("utf8 path"),
@@ -971,7 +977,7 @@ fn test_errors_defaults_to_error_only_and_normalizes_cluster_pattern() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args(["errors", file.to_str().expect("utf8 path")])
         .output()
         .expect("command should run");
@@ -1017,7 +1023,7 @@ fn test_errors_warn_and_sessions_show_completed_and_orphaned_sessions() {
         ),
     );
 
-    let output = Command::new(bin())
+    let output = command()
         .args([
             "errors",
             file.to_str().expect("utf8 path"),

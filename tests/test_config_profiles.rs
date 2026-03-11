@@ -43,6 +43,7 @@ fn test_parse_with_custom_event_marker() {
 #[test]
 fn test_request_direction_can_be_overridden_by_config() {
     let mut config = AnalyzerConfig::default();
+    config.parser.request_prefix = "Request \"".to_string();
     config.parser.request_send_markers = vec!["queued".to_string()];
     config.parser.request_receive_markers = vec!["done".to_string()];
 
@@ -127,6 +128,8 @@ fn test_perf_markers_can_be_overridden_by_config() {
 #[test]
 fn test_empty_command_payload_marker_does_not_panic() {
     let mut config = AnalyzerConfig::default();
+    config.parser.command_prefix = "Command \"".to_string();
+    config.parser.command_start_marker = "\" is called".to_string();
     config.parser.command_payload_markers = vec!["".to_string(), "with settings".to_string()];
 
     let line =
@@ -216,10 +219,12 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
 fn test_all_profile_templates_are_valid_toml() {
     let files = [
         "config/profiles/base.toml",
+        "config/profiles/eyes.toml",
         "config/templates/custom-start.toml",
         "config/templates/service-api.toml",
         "config/templates/event-pipeline.toml",
         ".claude/skills/analyze-logs/templates/base.toml",
+        ".claude/skills/analyze-logs/templates/eyes.toml",
         ".claude/skills/analyze-logs/templates/custom-start.toml",
         ".claude/skills/analyze-logs/templates/service-api.toml",
         ".claude/skills/analyze-logs/templates/event-pipeline.toml",
@@ -235,17 +240,18 @@ fn test_all_profile_templates_are_valid_toml() {
 fn test_default_config_comes_from_embedded_base_toml() {
     let config = default_config();
     assert_eq!(config.profile_name, "base");
-    assert_eq!(config.parser.event_payload_separator, "with payload");
-    assert_eq!(
-        config.perf.command_start_markers,
-        vec!["is called".to_string()]
-    );
+    assert!(config.parser.event_emit_markers.is_empty());
+    assert!(config.parser.request_send_markers.is_empty());
+    assert!(config.perf.command_start_markers.is_empty());
 }
 
 #[test]
 fn test_builtin_templates_can_be_loaded_from_names_and_paths() {
     let base = load_builtin_template("base").expect("base template should load");
     assert_eq!(base.profile_name, "base");
+
+    let eyes = load_builtin_template("eyes").expect("eyes template should load");
+    assert_eq!(eyes.profile_name, "eyes");
 
     let service =
         load_builtin_template("service-api.toml").expect("service-api template should load");
@@ -258,6 +264,12 @@ fn test_builtin_templates_can_be_loaded_from_names_and_paths() {
     assert!(load_builtin_template("unknown-template").is_none());
     assert_eq!(
         builtin_template_names(),
-        &["base", "custom-start", "service-api", "event-pipeline"]
+        &[
+            "base",
+            "eyes",
+            "custom-start",
+            "service-api",
+            "event-pipeline"
+        ]
     );
 }

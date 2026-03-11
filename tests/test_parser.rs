@@ -3,10 +3,18 @@
 // and a LogRecord struct with fields such as component, timestamp, level, message, etc.
 
 use chrono::{DateTime, Local};
-use log_analyzer::parser::{LogEntryKind, RequestDirection, parse_log_entry, parse_log_file};
+use log_analyzer::config::{AnalyzerConfig, load_builtin_template};
+use log_analyzer::parser::{
+    LogEntryKind, RequestDirection, parse_log_entry, parse_log_entry_with_config,
+    parse_log_file_with_config,
+};
 use serde_json::json;
 use std::fs;
 use tempfile::tempdir;
+
+fn eyes_config() -> AnalyzerConfig {
+    load_builtin_template("eyes").expect("eyes preset should load")
+}
 
 // Test for a core-universal initialization log entry.
 #[test]
@@ -31,8 +39,8 @@ fn test_parse_core_universal_initialization() {
   'mask-log': false,
   '$0': '../core_universal/apts/core_universal/bin/core'
 }"#;
-    let record =
-        parse_log_entry(log_line, 1).expect("Failed to parse core-universal initialization log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse core-universal initialization log");
 
     assert_eq!(record.component, "core-universal");
     assert_eq!(
@@ -75,7 +83,8 @@ fn test_parse_socket_emit_event() {
     "level": "info",
     "message": "Logs saved in: /Users/eiro/sdk/logs"
 }"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse socket emit event log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse socket emit event log");
 
     // Assert component and level.
     assert_eq!(record.component, "socket");
@@ -113,7 +122,8 @@ fn test_parse_socket_received_event() {
     },
     "spec": "webdriver"
 }"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse received event log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse received event log");
 
     // Validate basic fields.
     assert_eq!(record.component, "socket");
@@ -125,7 +135,8 @@ fn test_parse_socket_received_event() {
 #[test]
 fn test_parse_driver_switch_context() {
     let log_line = r#"driver (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx) | 2025-04-03T21:35:14.042Z [INFO ] Switching to a child context with depth: 0"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse driver context switch log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse driver context switch log");
 
     // Assert that the component and message contain expected keywords.
     assert_eq!(record.component, "driver");
@@ -140,7 +151,8 @@ fn test_parse_driver_switch_context() {
 #[test]
 fn test_parse_dom_snapshot_log() {
     let log_line = r#"core-ufg (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx) | 2025-04-03T21:35:15.301Z [INFO ] Taking dom snapshot for viewport size [object Object]"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse DOM snapshot log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse DOM snapshot log");
 
     // Validate that the log message indicates a DOM snapshot.
     assert_eq!(record.component, "core-ufg");
@@ -159,7 +171,8 @@ fn test_parse_dom_snapshot_log() {
 #[test]
 fn test_parse_open_eyes_request() {
     let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.apts.com/api/sessions/running" with body {"startInfo":{ ... }}"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse openEyes request log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse openEyes request log");
 
     // Assert that the log has been parsed with correct component and request information.
     assert_eq!(record.component, "core-requests");
@@ -183,7 +196,8 @@ fn test_parse_start_renders() {
     needMoreDom: undefined
   }
 ]"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse startRenders log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse startRenders log");
 
     // Check that the component is correct and the message mentions startRenders.
     assert_eq!(record.component, "ufg-requests");
@@ -220,7 +234,8 @@ fn test_parse_start_renders() {
 #[test]
 fn test_parse_with_request() {
     let log_line = r#"ufg-requests (manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-lrd/get-actual-environment-4bu/get-actual-environments-g55 & manager-ufg-hoh/eyes-ufg-aif/check-ufg-ebh/environment-g6p/get-actual-environment-fpc/get-actual-environments-g55) | 2025-04-03T21:08:12.795Z [INFO ] Request "getActualEnvironments" [0--1af9f42c-67ff-48c9-b1f8-09ee02017cdb] will be sent to the address "[POST]https://ufg-wus.apts.com/job-info" with body [{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":400,"height":800,"target":"viewport"}},{"agentId":"eyes-universal/4.33.0/eyes.visualgrid.ruby/6.6.1 [eyes.selenium.visualgrid.ruby/6.6.1]","webhook":"","stitchingService":"","platform":{"name":"linux","type":"web"},"browser":{"name":"chrome"},"renderInfo":{"width":1000,"height":800,"target":"viewport"}}]"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse getActualEnvironments log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse getActualEnvironments log");
 
     // Check that the component is correct and the message mentions getActualEnvironments.
     assert_eq!(record.component, "ufg-requests");
@@ -253,7 +268,8 @@ fn test_parse_with_request() {
 #[test]
 fn test_parse_with_request2() {
     let log_line = r#"core-requests (manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx/environment-oja/eyes-base-htm/core-request-bdg) | 2025-04-03T21:35:29.392Z [INFO ] Request "openEyes" [0--e6f57eb8-a8a0-4d1f-985b-9de36025ce90] will be sent to the address "[POST]https://eyesapi.apts.com/api/sessions/running" with body {"startInfo":{"agentId":"eyes-universal/4.35.0/eyes.selenium.visualgrid.python/6.1.0","agentSessionId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","agentRunId":"CheckWindowWithReloadLayoutBreakpoints--6894fe00-2c2b-4f39-b9b8-a309bc6b2359","appIdOrName":"Applitools Eyes SDK","scenarioIdOrName":"CheckWindowWithReloadLayoutBreakpoints","properties":[{"name":"browserVersion","value":"135.0.7049.52"}],"batchInfo":{"id":"6e8afcf5-bc7a-406a-9104-728d710183d5","name":"Py3.12|Sel4.15.2 Generated tests","startedAt":"2025-04-03T21:35:04Z"},"egSessionId":"f03c5a9b-dbad-4d04-8c65-d1abf3300f7a","environment":{"ufgJobType":"web","inferred":"useragent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/135.0.0.0 Safari/537.36","deviceInfo":"Desktop","displaySize":{"width":400,"height":800},"0.sg1fmhj9ufh":"got you!"},"branchName":"master","parentBranchName":"master","compareWithParentBranch":false,"ignoreBaseline":false,"latestCommitInfo":{"sha":"32dba3b1ba58911956b430911eeb7624e51cad66","timestamp":"2025-04-03T21:37:57+02:00"},"processId":"056b3f40-e104-4df2-b3df-5baefcbc35b9"}}"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse openEyes log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse openEyes log");
 
     // Check that the component is correct and the message mentions getActualEnvironments.
     assert_eq!(record.component, "core-requests");
@@ -291,7 +307,8 @@ fn test_parse_command_with_settings() {
   testMetadata: undefined,
   environments: undefined
 }"#;
-    let record = parse_log_entry(log_line, 1).expect("Failed to parse openEyes log");
+    let record = parse_log_entry_with_config(log_line, 1, &eyes_config())
+        .expect("Failed to parse openEyes log");
 
     assert_eq!(record.component, "core-base");
 
@@ -341,7 +358,8 @@ fn test_parse_rust_tracing_file_with_multiline_entries() {
     )
     .expect("write log file");
 
-    let logs = parse_log_file(&file).expect("Failed to parse rust tracing file");
+    let logs = parse_log_file_with_config(&file, &eyes_config())
+        .expect("Failed to parse rust tracing file");
 
     assert_eq!(logs.len(), 2);
     assert!(logs[0].message.contains("launching ffmpeg command"));
@@ -379,4 +397,13 @@ fn test_parse_json_line() {
     assert_eq!(record.level, "WARN");
     assert_eq!(record.structured_field("trace_id"), Some("abc123"));
     assert_eq!(record.payload(), Some(&json!({"attempt": 2})));
+}
+
+#[test]
+fn test_default_base_profile_keeps_specialized_eyes_message_generic() {
+    let log_line = r#"svc | 2026-01-01T00:00:00.000Z [INFO ] Request "foo" [0--id1] will be sent with body {"x":1}"#;
+    let record = parse_log_entry(log_line, 1).expect("Failed to parse generic base line");
+
+    assert!(matches!(record.kind, LogEntryKind::Generic { .. }));
+    assert_eq!(record.payload(), Some(&json!({ "x": 1 })));
 }

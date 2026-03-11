@@ -3,9 +3,9 @@
 [![CI](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml)
 [![Release](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml)
 
-A CLI tool for analyzing and comparing JSON logs.
+A CLI tool for analyzing and comparing structured logs.
 
-Core parser/comparison logic stays generic; domain-specific details can be supplied via profile config files.
+The default `base` profile is intentionally generic. Use a built-in preset such as `--preset eyes` or a repo-specific `--config` file when you need log-family-specific parsing and lifecycle semantics.
 
 ## Supported Log Format (Quick Check)
 
@@ -55,6 +55,9 @@ log-analyzer diff file1.log file2.log
 # Get log overview (single file or multiple files)
 log-analyzer info logs/*.log
 
+# Opt into the built-in Eyes/Applitools preset when analyzing that log family
+log-analyzer --preset eyes info logs/*.log
+
 # Structured grep-style search with log-aware filtering
 log-analyzer search file.log -f "t:retryTimeout" --context 2
 
@@ -68,10 +71,10 @@ log-analyzer extract file.log -f "t:makeManager" --field concurrency
 log-analyzer extract file.log -f "trace_id:fabb5aa4" --field restream_name
 
 # Diagnose clustered errors and affected sessions across related logs
-log-analyzer errors logs/*.log --warn --sessions
+log-analyzer --preset eyes errors logs/*.log --warn --sessions
 
 # Analyze performance bottlenecks across one or more files
-log-analyzer perf logs/*.log
+log-analyzer --preset eyes perf logs/*.log
 
 # Trace one operation lifecycle by correlation/request ID or session path
 log-analyzer trace logs/*.log --id f227f11e
@@ -81,6 +84,9 @@ log-analyzer llm file.log
 
 # Generate a starter profile from one or more related logs
 log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
+
+# Generate a profile starting from the Eyes preset
+log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-team
 ```
 
 ## Configuration is Essential
@@ -97,7 +103,11 @@ log-analyzer generate-config logs/*.log --template custom-start --profile-name m
 **How to get started:**
 
 ```bash
-# 1. Generate a starter config from your actual logs (best first step)
+# 1. Start from the right built-in preset/template for your log family
+#    Eyes / Applitools-style logs:
+log-analyzer generate-config logs/*.log --template eyes --profile-name my-team
+
+#    Other structured logs:
 log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
 
 # 2. Review and refine the generated TOML - add session levels, fix markers
@@ -117,10 +127,11 @@ Use this sequence to confirm the parser works on your logs before deeper analysi
 
 ```bash
 # 1. Sanity-check that entries parse and timestamps/components look right
-log-analyzer info logs/*.log
+#    Use a preset if your logs already match one of the built-ins
+log-analyzer --preset eyes info logs/*.log
 
 # 2. Generate a starter profile from the same related log set
-log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
+log-analyzer generate-config logs/*.log --template eyes --profile-name my-team
 
 # 3. Re-run with the generated profile and inspect payload extraction
 log-analyzer --config my-team.toml info logs/*.log --payloads --samples
@@ -315,7 +326,7 @@ Generate a profile from one or more related log files (for example, split/rotate
 | Option | Description |
 |--------|-------------|
 | `--profile-name <name>` | Name for the generated profile (defaults to file stem for a single input, otherwise `generated-profile`) |
-| `--template <path-or-name>` | Base template path or built-in: `base`, `custom-start`, `service-api`, `event-pipeline` |
+| `--template <path-or-name>` | Base template path or built-in: `base`, `eyes`, `custom-start`, `service-api`, `event-pipeline` |
 
 ## Examples
 
@@ -330,7 +341,7 @@ log-analyzer diff file1.log file2.log -f "!l:DEBUG"
 log-analyzer -j -o diff.json diff file1.log file2.log
 
 # Show operations slower than 500ms across a session split into files (not unrelated runs)
-log-analyzer perf logs/*.log --threshold-ms 500
+log-analyzer --preset eyes perf logs/*.log --threshold-ms 500
 
 # Trace one operation across split files using a request/correlation ID fragment
 log-analyzer trace logs/*.log --id f227f11e
@@ -351,7 +362,7 @@ log-analyzer search file.log -f "t:retryTimeout" --context 2
 log-analyzer search file.log -f "t:concurrency" --count-by payload
 
 # Cluster recurring failures and include per-session outcomes
-log-analyzer errors logs/*.log --warn --sessions --sort-by impact
+log-analyzer --preset eyes errors logs/*.log --warn --sessions --sort-by impact
 
 # Extract a specific payload field and aggregate values
 log-analyzer extract file.log -f "t:makeManager" --field concurrency
@@ -377,16 +388,17 @@ Set defaults via environment variables (prefix `LOG_ANALYZER_`):
 export LOG_ANALYZER_FORMAT=json
 export LOG_ANALYZER_FILTER="!l:DEBUG"
 export LOG_ANALYZER_COMPACT=true
-export LOG_ANALYZER_CONFIG="./config/profiles/base.toml"
+export LOG_ANALYZER_PRESET="eyes"
 ```
 
 ## Profile Configuration
 
 Use profile TOML files to keep the binary generic and push case-specific knowledge into config.
 
-Included examples:
+Included built-ins:
 
 - `config/profiles/base.toml` - minimal reusable defaults
+- `config/profiles/eyes.toml` - Eyes/Applitools-specific preset
 - `config/templates/custom-start.toml` - starter template for any project
 - `config/templates/service-api.toml` - service/API wording template
 - `config/templates/event-pipeline.toml` - event-driven wording template
@@ -395,6 +407,7 @@ These profiles/templates are also embedded in the binary and can be referenced b
 `generate-config --template`:
 
 - `base`
+- `eyes`
 - `custom-start`
 - `service-api`
 - `event-pipeline`
@@ -403,7 +416,10 @@ Examples:
 
 ```bash
 # Generic base profile
-log-analyzer --config config/profiles/base.toml info logs/app.log
+log-analyzer info logs/app.log
+
+# Built-in Eyes preset
+log-analyzer --preset eyes info logs/app.log
 ```
 
 Create your own profile from templates:
@@ -426,6 +442,8 @@ log-analyzer generate-config logs/run-1.log logs/run-2.log --template custom-sta
 ```
 
 Only combine related logs from the same run/session when using `generate-config`; mixing unrelated runs can pollute inferred commands/requests/session levels.
+
+For consumer repositories, prefer a tiny wrapper script or Make target that pins either `--preset <name>` or `--config <repo-profile.toml>`. That keeps the binary generic while making repo workflows explicit and repeatable.
 
 ### Validate Your Profile (Quick Checklist)
 

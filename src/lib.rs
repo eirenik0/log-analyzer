@@ -178,7 +178,7 @@ fn parse_and_merge_log_files_with_config(
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
-    let analyzer_config = config::load_config(cli.config.as_deref())
+    let analyzer_config = config::load_config(cli.config.as_deref(), cli.preset.as_deref())
         .map_err(|e| format!("Failed to load config: {}", e))?;
     let format = cli.effective_format();
     let compact = cli.effective_compact();
@@ -219,6 +219,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Config profile: {}", analyzer_config.profile_name);
         if let Some(config_path) = &cli.config {
             eprintln!("Config file: {}", config_path.display());
+        }
+        if let Some(preset) = &cli.preset {
+            eprintln!("Config preset: {}", preset);
         }
     }
 

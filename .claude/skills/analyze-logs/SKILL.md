@@ -10,10 +10,10 @@ context: fork
 
 Analyze structured logs using the `log-analyzer` CLI tool.
 
-When behavior needs to be case-specific, pass a profile config:
+The default `base` profile is intentionally generic. When behavior needs to be case-specific, prefer a built-in preset or pass a profile config:
 
 ```bash
-log-analyzer --config config/profiles/base.toml <command> ...
+log-analyzer --preset eyes <command> ...
 log-analyzer --config config/profiles/custom.toml <command> ...
 ```
 
@@ -29,9 +29,10 @@ cp config/templates/custom-start.toml config/profiles/my-team.toml
 cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
 ```
 
-Built-in templates are also available directly in the binary:
+Built-in templates/presets are also available directly in the binary:
 
 ```bash
+log-analyzer --preset eyes info ./logs/*.log
 log-analyzer generate-config ./logs/*.log --template service-api --profile-name my-team
 ```
 
@@ -144,8 +145,9 @@ When the user invokes this skill:
    - For tracing one operation/session: use `trace --id <id-fragment>` or `trace --session <component_id-fragment>` (multiple files are fine when they are from the same run/session)
    - For understanding logs: use `info` with `--samples --payloads` (pass multiple files only when they are related, e.g. split output from one run)
    - If a profile includes `[[sessions.levels]]`, mention the per-level session completion summary from `info` in your findings
+   - If the logs match a known built-in grammar (for example Eyes/Applitools logs), prefer `--preset eyes` for analysis commands and `--template eyes` for profile generation
    - For profile generation: use `generate-config`; it will infer parser/profile hints and generic session levels from one or more related logs (merged before inference), and default `-o` to `.claude/skills/analyze-logs/profiles/<name>.toml` if not provided
-   - `--template` can be either a file path or built-in name: `base`, `custom-start`, `service-api`, `event-pipeline`
+   - `--template` can be either a file path or built-in name: `base`, `eyes`, `custom-start`, `service-api`, `event-pipeline`
 
 5. **Execute and interpret**:
    - Run the log-analyzer command
@@ -158,7 +160,7 @@ When the user invokes this skill:
 ### Debug Test Failure
 ```bash
 # First pass: structured error inventory ("what went wrong?")
-log-analyzer errors failing.log --warn --sessions
+log-analyzer --preset eyes errors failing.log --warn --sessions
 
 # Follow-up: inspect manager creation / setup patterns
 log-analyzer search failing.log -f "t:makeManager" --payloads
@@ -185,13 +187,13 @@ log-analyzer diff passing.log failing.log -f "c:core l:ERROR !t:timeout"
 ### Performance Investigation
 ```bash
 # Find operations taking > 2 seconds across split session logs
-log-analyzer perf ./logs/*.log --threshold-ms 2000
+log-analyzer --preset eyes perf ./logs/*.log --threshold-ms 2000
 
 # Find orphan operations (can pair across files)
-log-analyzer perf ./logs/*.log --orphans-only
+log-analyzer --preset eyes perf ./logs/*.log --orphans-only
 
 # Focus on requests only
-log-analyzer perf ./logs/*.log --op-type request --top-n 30
+log-analyzer --preset eyes perf ./logs/*.log --op-type request --top-n 30
 ```
 
 Only combine files from the same session/run. Mixing unrelated logs can make latency stats and orphan results meaningless.
@@ -202,7 +204,7 @@ Only combine files from the same session/run. Mixing unrelated logs can make lat
 log-analyzer trace ./logs/*.log --id f227f11e
 
 # Trace by component_id hierarchy/session path
-log-analyzer trace ./logs/*.log --session manager-ufg-3nl
+log-analyzer --preset eyes trace ./logs/*.log --session manager-ufg-3nl
 ```
 
 Only combine related files from the same run/session so the trace timeline stays meaningful.

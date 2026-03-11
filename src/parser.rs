@@ -818,7 +818,9 @@ fn determine_log_entry_kind(
     source_line_number: usize,
     parser_rules: &ParserRules,
 ) -> Result<LogEntry, ParseError> {
-    if contains_any_marker(message, &parser_rules.event_emit_markers) {
+    if !parser_rules.event_payload_separator.is_empty()
+        && contains_any_marker(message, &parser_rules.event_emit_markers)
+    {
         let event_parts: Vec<&str> = message
             .splitn(2, &parser_rules.event_payload_separator)
             .collect();
@@ -850,7 +852,9 @@ fn determine_log_entry_kind(
                 payload,
             }));
         }
-    } else if contains_any_marker(message, &parser_rules.event_receive_markers) {
+    } else if !parser_rules.event_payload_separator.is_empty()
+        && contains_any_marker(message, &parser_rules.event_receive_markers)
+    {
         let event_parts: Vec<&str> = message
             .splitn(2, &parser_rules.event_payload_separator)
             .collect();
@@ -882,7 +886,9 @@ fn determine_log_entry_kind(
                 payload,
             }));
         }
-    } else if message.contains(&parser_rules.command_prefix)
+    } else if !parser_rules.command_prefix.is_empty()
+        && !parser_rules.command_start_marker.is_empty()
+        && message.contains(&parser_rules.command_prefix)
         && message.contains(&parser_rules.command_start_marker)
     {
         let cmd_prefix = parser_rules.command_prefix.as_str();
@@ -929,7 +935,9 @@ fn determine_log_entry_kind(
                 }));
             }
         }
-    } else if message.contains(&parser_rules.request_prefix) {
+    } else if !parser_rules.request_prefix.is_empty()
+        && message.contains(&parser_rules.request_prefix)
+    {
         let (request_name, request_id, endpoint, direction, payload) =
             extract_request_info(message, parser_rules);
 
@@ -1035,7 +1043,9 @@ fn extract_request_info(
         }
     }
 
-    if let Some(addr_start) = message.find(&parser_rules.request_endpoint_marker) {
+    if !parser_rules.request_endpoint_marker.is_empty()
+        && let Some(addr_start) = message.find(&parser_rules.request_endpoint_marker)
+    {
         let addr_content_start = addr_start + parser_rules.request_endpoint_marker.len();
         if let Some(addr_end) = message[addr_content_start..].find(']') {
             endpoint = Some(message[addr_content_start..addr_content_start + addr_end].to_string());
