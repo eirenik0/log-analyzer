@@ -106,9 +106,6 @@ fabric.properties
 # Log files for testing
 logs/
 
-# Local/private profile examples
-config/profiles/eyes.toml
-
 # Junie memory
 .junie/
 .DS_Store

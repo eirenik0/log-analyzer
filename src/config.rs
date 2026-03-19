@@ -745,6 +745,22 @@ summary_fields = ["concurrency", "batch.id"]
     }
 
     #[test]
+    fn builtin_eyes_preset_loads_expected_session_levels() {
+        let cfg = load_builtin_template("eyes").expect("eyes preset loads");
+
+        assert_eq!(cfg.profile_name, "eyes");
+
+        let levels = cfg.effective_session_levels();
+        assert_eq!(levels.len(), 3);
+        assert_eq!(levels[0].name, "runner");
+        assert_eq!(levels[0].segment_prefix, "manager-");
+        assert_eq!(levels[1].name, "test");
+        assert_eq!(levels[1].segment_prefix, "eyes-");
+        assert_eq!(levels[2].name, "environment");
+        assert_eq!(levels[2].segment_prefix, "environment-");
+    }
+
+    #[test]
     fn analyze_profile_builds_session_tree_and_lifecycle() {
         let cfg = AnalyzerConfig {
             sessions: SessionsRules {

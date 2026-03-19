@@ -1,0 +1,111 @@
+profile_name = "eyes"
+
+[parser]
+event_emit_markers = ["Emit event of type"]
+event_receive_markers = ["Received event of type"]
+event_payload_separator = "with payload"
+command_prefix = "Command \""
+command_start_marker = "\" is called"
+command_payload_markers = ["with settings"]
+request_prefix = "Request \""
+request_send_markers = ["will be sent"]
+request_receive_markers = ["finished successfully", "respond with", "that was sent", "is going to retried"]
+request_payload_markers = ["with body"]
+request_endpoint_marker = "address \"["
+json_indicators = ["with settings {", "with body [", "with body {", "with body", "with body "]
+
+[perf]
+command_start_markers = ["is called"]
+command_completion_markers = ["finished", "returned", "completed"]
+event_correlation_keys = ["key"]
+
+[profile]
+known_components = [
+  "core",
+  "core-base",
+  "core-classic",
+  "core-ufg",
+  "core-universal",
+  "core-autonomous",
+  "core-requests",
+  "core-requests-offline",
+  "driver",
+  "ec-client",
+  "nml-client",
+  "ufg-client",
+  "ufg-requests",
+  "socket",
+  "tunnel-client",
+  "ec-tunnel-manager",
+  "cypress-plugin",
+  "offline-exec",
+  "screenshoter"
+]
+known_commands = [
+  "makeManager",
+  "openEyes",
+  "check",
+  "getResults",
+  "abort",
+  "closeBatch",
+  "close",
+  "deleteTest",
+  "getAccountInfo",
+  "takeSnapshots",
+  "getBaseEyes"
+]
+known_requests = [
+  "openEyes",
+  "openFunctionalSession",
+  "openCheckAndClose",
+  "openCheckAndCloseEyes",
+  "check",
+  "checkAndClose",
+  "close",
+  "closeEyes",
+  "abort",
+  "closeBatch",
+  "deleteTest",
+  "report",
+  "getResults",
+  "getAccountInfo",
+  "updateIfScm",
+  "sendHeartbeat",
+  "heartbeat",
+  "logEvent",
+  "logEventBatch",
+  "matchWindow",
+  "locate",
+  "locateText",
+  "extractText",
+  "startRenders",
+  "getRenderResults",
+  "getActualEnvironments",
+  "getChromeEmulationDevices",
+  "getIOSDevices",
+  "getAndroidDevices",
+  "checkResources",
+  "uploadResource",
+  "preRescaleActivity",
+  "preTakeScreenshot",
+  "takeScreenshots",
+  "takeSnapshots",
+  "reportSelfHealing"
+]
+
+[[sessions.levels]]
+name = "runner"
+segment_prefix = "manager-"
+create_command = "makeManager"
+complete_commands = ["getResults", "closeBatch"]
+summary_fields = ["concurrency", "batch.id"]
+
+[[sessions.levels]]
+name = "test"
+segment_prefix = "eyes-"
+create_command = "openEyes"
+complete_commands = ["close", "abort"]
+
+[[sessions.levels]]
+name = "environment"
+segment_prefix = "environment-"
