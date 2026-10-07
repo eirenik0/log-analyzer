@@ -5,12 +5,14 @@ pub use display::{
     display_perf_results, format_perf_results_json, format_perf_results_json_with_options,
     format_perf_results_text, truncate_string,
 };
-pub use entities::{OperationStats, OrphanOperation, PerfAnalysisResults, TimedOperation};
+pub use entities::{
+    AmbiguousGroup, OperationStats, OrphanOperation, PerfAnalysisResults, SourceLocation,
+    TimedOperation, UnmatchedEvent,
+};
 
 use crate::comparator::LogFilter;
 use crate::config::{AnalyzerConfig, PerfRules, contains_any_marker, default_config};
 use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
-use std::collections::HashMap;
 
 /// Extracts the request ID from a log message containing [request_id] pattern
 /// The pattern is: Request "name" [id] where id contains "--" (e.g., "0--uuid" or "0--uuid#2")
@@ -54,28 +56,6 @@ fn extract_event_key_with_rules(payload: &serde_json::Value, rules: &PerfRules) 
     })
 }
 
-/// Extracts command correlation key from log entry
-fn extract_command_key(entry: &LogEntry) -> Option<String> {
-    // Use command name + component_id as correlation key
-    if let LogEntryKind::Command { command, .. } = &entry.kind {
-        return Some(format!("{}:{}", command, entry.component_id));
-    }
-    None
-}
-
-/// Checks if the logs contain any Command completion patterns
-/// If not, Command tracking should be skipped since they would all appear as orphans
-fn has_command_completion_patterns(logs: &[LogEntry], rules: &PerfRules) -> bool {
-    logs.iter().any(|entry| {
-        if let LogEntryKind::Command { .. } = &entry.kind {
-            // Check for "finished" pattern which indicates command completion
-            contains_any_marker(&entry.message, &rules.command_completion_markers)
-        } else {
-            false
-        }
-    })
-}
-
 /// Analyzes logs for performance bottlenecks by tracking paired operations
 pub fn analyze_performance(
     logs: &[LogEntry],
@@ -94,227 +74,246 @@ pub fn analyze_performance_with_config(
 ) -> PerfAnalysisResults {
     let mut results = PerfAnalysisResults::new();
 
-    // Track pending operations by correlation key
-    let mut pending_requests: HashMap<String, &LogEntry> = HashMap::new();
-    let mut pending_events: HashMap<String, &LogEntry> = HashMap::new();
-    let mut pending_commands: HashMap<String, &LogEntry> = HashMap::new();
-
-    // Check if we should track commands (only if completion patterns exist)
-    let track_commands = has_command_completion_patterns(logs, &config.perf);
-
-    // Filter logs first
-    let filtered_logs: Vec<&LogEntry> = logs.iter().filter(|log| filter.matches(log)).collect();
-
-    results.total_entries = filtered_logs.len();
-
-    // Determine time range
-    if !filtered_logs.is_empty() {
-        let first_time = filtered_logs.first().unwrap().timestamp;
-        let last_time = filtered_logs.last().unwrap().timestamp;
-        results.time_range = Some((first_time, last_time));
-    }
-
-    // Process logs to find paired operations
-    for entry in filtered_logs {
-        match &entry.kind {
+    let filtered: Vec<_> = logs.iter().filter(|entry| filter.matches(entry)).collect();
+    results.total_entries = filtered.len();
+    results.time_range = filtered
+        .iter()
+        .map(|entry| entry.timestamp)
+        .min()
+        .zip(filtered.iter().map(|entry| entry.timestamp).max());
+    let track_commands = filtered.iter().any(|entry| {
+        matches!(entry.kind, LogEntryKind::Command { .. })
+            && contains_any_marker(&entry.message, &config.perf.command_completion_markers)
+    });
+    let mut groups: std::collections::BTreeMap<CorrelationKey, Vec<BoundaryEvent<'_>>> =
+        std::collections::BTreeMap::new();
+    for entry in filtered {
+        let (name, id, start, end) = match &entry.kind {
             LogEntryKind::Request {
                 request,
                 request_id,
-                endpoint,
                 direction,
-                payload,
-            } => {
-                if op_type_filter.is_some() && op_type_filter != Some("Request") {
-                    continue;
-                }
-
-                // Try to find correlation key
-                let correlation_key = if let Some(req_id) = request_id {
-                    Some(req_id.clone())
-                } else {
-                    extract_request_id(&entry.message)
-                };
-
-                match direction {
-                    RequestDirection::Send => {
-                        // This is a request start - store it
-                        if let Some(key) = correlation_key {
-                            pending_requests.insert(key, entry);
-                        }
-                    }
-                    RequestDirection::Receive => {
-                        // This is a request end - try to match with start
-                        if let Some(key) = correlation_key
-                            && let Some(start_entry) = pending_requests.remove(&key)
-                        {
-                            // Calculate duration
-                            let duration = entry
-                                .timestamp
-                                .signed_duration_since(start_entry.timestamp)
-                                .num_milliseconds();
-
-                            // Extract status from payload
-                            let status = payload
-                                .as_ref()
-                                .and_then(|p| p.get("statusCode"))
-                                .and_then(|s| s.as_i64())
-                                .map(|s| s.to_string());
-
-                            results.operations.push(TimedOperation {
-                                op_type: "Request".to_string(),
-                                name: request.clone(),
-                                correlation_id: Some(key),
-                                start_time: start_entry.timestamp,
-                                end_time: entry.timestamp,
-                                duration_ms: duration,
-                                start_component: start_entry.component.clone(),
-                                end_component: entry.component.clone(),
-                                endpoint: endpoint.clone(),
-                                status,
-                            });
-                        }
-                    }
-                }
-            }
+                ..
+            } => (
+                request.as_str(),
+                request_id
+                    .clone()
+                    .or_else(|| extract_request_id(&entry.message)),
+                *direction == RequestDirection::Send,
+                *direction == RequestDirection::Receive,
+            ),
             LogEntryKind::Event {
                 event_type,
-                direction,
                 payload,
-            } => {
-                if op_type_filter.is_some() && op_type_filter != Some("Event") {
-                    continue;
-                }
-
-                // Try to get correlation key from payload
-                let correlation_key = payload
+                direction,
+            } => (
+                event_type.as_str(),
+                payload
                     .as_ref()
-                    .and_then(|p| extract_event_key_with_rules(p, &config.perf));
-
-                match direction {
-                    EventDirection::Receive => {
-                        // Event received - this is the start
-                        if let Some(key) = correlation_key {
-                            pending_events.insert(key, entry);
-                        }
-                    }
-                    EventDirection::Emit => {
-                        // Event emitted - this is the end
-                        if let Some(key) = correlation_key
-                            && let Some(start_entry) = pending_events.remove(&key)
-                        {
-                            let duration = entry
-                                .timestamp
-                                .signed_duration_since(start_entry.timestamp)
-                                .num_milliseconds();
-
-                            results.operations.push(TimedOperation {
-                                op_type: "Event".to_string(),
-                                name: event_type.clone(),
-                                correlation_id: Some(key),
-                                start_time: start_entry.timestamp,
-                                end_time: entry.timestamp,
-                                duration_ms: duration,
-                                start_component: start_entry.component.clone(),
-                                end_component: entry.component.clone(),
-                                endpoint: None,
-                                status: None,
-                            });
-                        }
-                    }
+                    .and_then(|p| extract_event_key_with_rules(p, &config.perf)),
+                *direction == EventDirection::Receive,
+                *direction == EventDirection::Emit,
+            ),
+            LogEntryKind::Command { command, .. } if track_commands => (
+                command.as_str(),
+                Some(command.clone()),
+                contains_any_marker(&entry.message, &config.perf.command_start_markers),
+                contains_any_marker(&entry.message, &config.perf.command_completion_markers),
+            ),
+            _ => continue,
+        };
+        let op_type = entry.entry_type();
+        if op_type_filter.is_some_and(|selected| selected != op_type) || (!start && !end) {
+            continue;
+        }
+        let event = BoundaryEvent {
+            entry,
+            name,
+            id,
+            start,
+        };
+        if start && end {
+            results
+                .unmatched_events
+                .push(event.unmatched(Vec::new(), "ambiguous_boundary"));
+            continue;
+        }
+        let Some(id) = event.id.clone().filter(|id| !id.is_empty()) else {
+            results
+                .unmatched_events
+                .push(event.unmatched(Vec::new(), "missing_correlation_key"));
+            continue;
+        };
+        let scope = config
+            .perf
+            .correlation_scope_fields
+            .iter()
+            .map(|field| match field.as_str() {
+                "component_id" => Some(entry.component_id.clone()),
+                "component" => Some(entry.component.clone()),
+                _ => entry
+                    .structured_field(field)
+                    .map(str::to_owned)
+                    .or_else(|| {
+                        entry
+                            .payload()
+                            .and_then(|p| p.get(field))
+                            .filter(|value| !value.is_null())
+                            .map(|value| {
+                                value
+                                    .as_str()
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| value.to_string())
+                            })
+                    }),
+            })
+            .collect::<Option<Vec<_>>>();
+        let Some(scope) = scope else {
+            results
+                .unmatched_events
+                .push(event.unmatched(Vec::new(), "missing_scope_field"));
+            continue;
+        };
+        groups
+            .entry(CorrelationKey {
+                op_type: op_type.to_string(),
+                name: name.to_string(),
+                id,
+                scope,
+            })
+            .or_default()
+            .push(event);
+    }
+    for (key, mut events) in groups {
+        events.sort_by_key(|event| event.entry.timestamp);
+        let mut active = false;
+        let ambiguous = events.iter().any(|event| {
+            if event.start {
+                if active {
+                    return true;
+                }
+                active = true;
+            } else {
+                active = false;
+            }
+            false
+        });
+        if ambiguous {
+            let preserved: Vec<_> = events
+                .iter()
+                .map(|event| event.unmatched(key.scope.clone(), "overlapping_starts"))
+                .collect();
+            for event in &events {
+                if event.start {
+                    results.orphans.push(event.orphan());
                 }
             }
-            LogEntryKind::Command { command, .. } => {
-                if op_type_filter.is_some() && op_type_filter != Some("Command") {
-                    continue;
-                }
-
-                // Skip Command tracking if no completion patterns exist in the logs
-                // This prevents showing all Commands as orphans when the SDK doesn't log completion
-                if !track_commands {
-                    continue;
-                }
-
-                // Check if this is a start or finish
-                let is_start =
-                    contains_any_marker(&entry.message, &config.perf.command_start_markers);
-                let is_finish =
-                    contains_any_marker(&entry.message, &config.perf.command_completion_markers);
-
-                if let Some(key) = extract_command_key(entry) {
-                    if is_start {
-                        pending_commands.insert(key, entry);
-                    } else if is_finish && let Some(start_entry) = pending_commands.remove(&key) {
-                        let duration = entry
-                            .timestamp
-                            .signed_duration_since(start_entry.timestamp)
-                            .num_milliseconds();
-
-                        results.operations.push(TimedOperation {
-                            op_type: "Command".to_string(),
-                            name: command.clone(),
-                            correlation_id: Some(key),
-                            start_time: start_entry.timestamp,
-                            end_time: entry.timestamp,
-                            duration_ms: duration,
-                            start_component: start_entry.component.clone(),
-                            end_component: entry.component.clone(),
-                            endpoint: None,
-                            status: None,
-                        });
-                    }
-                }
+            results.unmatched_events.extend(preserved.clone());
+            results.ambiguous_groups.push(AmbiguousGroup {
+                op_type: key.op_type,
+                name: key.name,
+                correlation_id: key.id,
+                scope: key.scope,
+                events: preserved,
+            });
+            continue;
+        }
+        let mut pending: Option<BoundaryEvent<'_>> = None;
+        for event in events {
+            if event.start {
+                pending = Some(event);
+            } else if let Some(start) = pending.take() {
+                let entry = event.entry;
+                results.operations.push(TimedOperation {
+                    op_type: key.op_type.clone(),
+                    name: key.name.clone(),
+                    correlation_id: Some(key.id.clone()),
+                    start_time: start.entry.timestamp,
+                    end_time: entry.timestamp,
+                    duration_ms: entry
+                        .timestamp
+                        .signed_duration_since(start.entry.timestamp)
+                        .num_milliseconds(),
+                    start_component: start.entry.component.clone(),
+                    end_component: entry.component.clone(),
+                    start_source: source(start.entry),
+                    end_source: source(entry),
+                    scope: key.scope.clone(),
+                    endpoint: match &entry.kind {
+                        LogEntryKind::Request { endpoint, .. } => endpoint.clone(),
+                        _ => None,
+                    },
+                    status: entry
+                        .payload()
+                        .and_then(|p| p.get("statusCode"))
+                        .and_then(|v| v.as_i64())
+                        .map(|v| v.to_string()),
+                });
+            } else {
+                results
+                    .unmatched_events
+                    .push(event.unmatched(key.scope.clone(), "missing_start"));
             }
-            LogEntryKind::Generic { .. } => {
-                // Skip generic log entries for performance analysis
-            }
+        }
+        if let Some(event) = pending {
+            results.orphans.push(event.orphan());
+            results
+                .unmatched_events
+                .push(event.unmatched(key.scope, "missing_end"));
         }
     }
-
-    // Convert remaining pending operations to orphans
-    for (key, entry) in pending_requests {
-        if let LogEntryKind::Request { request, .. } = &entry.kind {
-            results.orphans.push(OrphanOperation {
-                op_type: "Request".to_string(),
-                name: request.clone(),
-                correlation_id: Some(key),
-                start_time: entry.timestamp,
-                component: entry.component.clone(),
-                component_id: (!entry.component_id.is_empty()).then(|| entry.component_id.clone()),
-                context: entry.message.clone(),
-            });
-        }
-    }
-
-    for (key, entry) in pending_events {
-        if let LogEntryKind::Event { event_type, .. } = &entry.kind {
-            results.orphans.push(OrphanOperation {
-                op_type: "Event".to_string(),
-                name: event_type.clone(),
-                correlation_id: Some(key),
-                start_time: entry.timestamp,
-                component: entry.component.clone(),
-                component_id: (!entry.component_id.is_empty()).then(|| entry.component_id.clone()),
-                context: entry.message.clone(),
-            });
-        }
-    }
-
-    for (key, entry) in pending_commands {
-        if let LogEntryKind::Command { command, .. } = &entry.kind {
-            results.orphans.push(OrphanOperation {
-                op_type: "Command".to_string(),
-                name: command.clone(),
-                correlation_id: Some(key),
-                start_time: entry.timestamp,
-                component: entry.component.clone(),
-                component_id: (!entry.component_id.is_empty()).then(|| entry.component_id.clone()),
-                context: entry.message.clone(),
-            });
-        }
-    }
-
-    // Calculate statistics
     results.calculate_stats();
-
     results
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct CorrelationKey {
+    op_type: String,
+    name: String,
+    id: String,
+    scope: Vec<String>,
+}
+
+struct BoundaryEvent<'a> {
+    entry: &'a LogEntry,
+    name: &'a str,
+    id: Option<String>,
+    start: bool,
+}
+
+fn source(entry: &LogEntry) -> SourceLocation {
+    SourceLocation {
+        file: entry.source_file.clone(),
+        line: entry.source_line_number,
+    }
+}
+
+impl BoundaryEvent<'_> {
+    fn unmatched(&self, scope: Vec<String>, reason: &str) -> UnmatchedEvent {
+        UnmatchedEvent {
+            op_type: self.entry.entry_type().to_string(),
+            name: self.name.to_string(),
+            correlation_id: self.id.clone(),
+            scope,
+            boundary: if self.start { "start" } else { "end" }.to_string(),
+            reason: reason.to_string(),
+            timestamp: self.entry.timestamp,
+            component: self.entry.component.clone(),
+            source: source(self.entry),
+            context: self.entry.raw_logline.clone(),
+        }
+    }
+    fn orphan(&self) -> OrphanOperation {
+        OrphanOperation {
+            op_type: self.entry.entry_type().to_string(),
+            name: self.name.to_string(),
+            correlation_id: self.id.clone(),
+            start_time: self.entry.timestamp,
+            component: self.entry.component.clone(),
+            component_id: (!self.entry.component_id.is_empty())
+                .then(|| self.entry.component_id.clone()),
+            source: source(self.entry),
+            context: self.entry.message.clone(),
+        }
+    }
 }

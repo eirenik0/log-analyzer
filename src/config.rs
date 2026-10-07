@@ -137,6 +137,8 @@ pub struct PerfRules {
     pub command_start_markers: Vec<String>,
     pub command_completion_markers: Vec<String>,
     pub event_correlation_keys: Vec<String>,
+    /// Composite scope fields; component_id scopes related split files by default.
+    pub correlation_scope_fields: Vec<String>,
 }
 
 impl Default for PerfRules {
@@ -144,6 +146,7 @@ impl Default for PerfRules {
         Self {
             command_start_markers: Vec::new(),
             command_completion_markers: Vec::new(),
+            correlation_scope_fields: vec!["component_id".to_string()],
             event_correlation_keys: vec![
                 "trace_id".to_string(),
                 "traceId".to_string(),
@@ -660,6 +663,7 @@ mod tests {
             raw_logline: String::new(),
             structured_fields: HashMap::new(),
             module_path: None,
+            source_file: None,
             kind: LogEntryKind::Command {
                 command: command.to_string(),
                 settings,
@@ -678,6 +682,7 @@ mod tests {
             raw_logline: String::new(),
             structured_fields: HashMap::new(),
             module_path: None,
+            source_file: None,
             kind: LogEntryKind::Generic { payload: None },
             source_line_number: 1,
         }

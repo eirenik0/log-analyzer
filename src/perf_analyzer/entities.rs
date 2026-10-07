@@ -20,6 +20,9 @@ pub struct TimedOperation {
     pub start_component: String,
     /// Component that ended the operation
     pub end_component: String,
+    pub start_source: SourceLocation,
+    pub end_source: SourceLocation,
+    pub scope: Vec<String>,
     /// Endpoint information (for requests)
     pub endpoint: Option<String>,
     /// HTTP status or result status
@@ -41,6 +44,7 @@ pub struct OrphanOperation {
     pub component: String,
     /// Session/component path (`component_id`) when present on the source log entry
     pub component_id: Option<String>,
+    pub source: SourceLocation,
     /// Additional context about the operation
     pub context: String,
 }
@@ -68,6 +72,35 @@ pub struct OperationStats {
     pub p99_duration_ms: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceLocation {
+    pub file: Option<String>,
+    pub line: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnmatchedEvent {
+    pub op_type: String,
+    pub name: String,
+    pub correlation_id: Option<String>,
+    pub scope: Vec<String>,
+    pub boundary: String,
+    pub reason: String,
+    pub timestamp: DateTime<Local>,
+    pub component: String,
+    pub source: SourceLocation,
+    pub context: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AmbiguousGroup {
+    pub op_type: String,
+    pub name: String,
+    pub correlation_id: String,
+    pub scope: Vec<String>,
+    pub events: Vec<UnmatchedEvent>,
+}
+
 /// Results of performance analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerfAnalysisResults {
@@ -77,6 +110,8 @@ pub struct PerfAnalysisResults {
     pub orphans: Vec<OrphanOperation>,
     /// Aggregated statistics per operation type
     pub stats: Vec<OperationStats>,
+    pub unmatched_events: Vec<UnmatchedEvent>,
+    pub ambiguous_groups: Vec<AmbiguousGroup>,
     /// Time range of the analyzed logs
     pub time_range: Option<(DateTime<Local>, DateTime<Local>)>,
     /// Total number of log entries analyzed
@@ -90,6 +125,8 @@ impl PerfAnalysisResults {
             operations: Vec::new(),
             orphans: Vec::new(),
             stats: Vec::new(),
+            unmatched_events: Vec::new(),
+            ambiguous_groups: Vec::new(),
             time_range: None,
             total_entries: 0,
         }

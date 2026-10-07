@@ -93,6 +93,7 @@ fn test_perf_markers_can_be_overridden_by_config() {
         raw_logline: "Command \"sync\" BEGIN".to_string(),
         structured_fields: HashMap::new(),
         module_path: None,
+        source_file: None,
         kind: LogEntryKind::Command {
             command: "sync".to_string(),
             settings: None,
@@ -109,6 +110,7 @@ fn test_perf_markers_can_be_overridden_by_config() {
         raw_logline: "Command \"sync\" DONE".to_string(),
         structured_fields: HashMap::new(),
         module_path: None,
+        source_file: None,
         kind: LogEntryKind::Command {
             command: "sync".to_string(),
             settings: None,
@@ -179,6 +181,7 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         raw_logline: "Command \"customOp\" is called".to_string(),
         structured_fields: HashMap::new(),
         module_path: None,
+        source_file: None,
         kind: LogEntryKind::Command {
             command: "customOp".to_string(),
             settings: None,
@@ -197,6 +200,7 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         raw_logline: "Request \"customReq\" will be sent".to_string(),
         structured_fields: HashMap::new(),
         module_path: None,
+        source_file: None,
         kind: LogEntryKind::Request {
             request: "customReq".to_string(),
             request_id: None,

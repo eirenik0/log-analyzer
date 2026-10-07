@@ -178,7 +178,10 @@ pub fn parse_log_file_report(
             return;
         }
         match parse_log_entry_in_format(text, line_number, config, format) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.source_file = Some(path.display().to_string());
+                entries.push(entry);
+            }
             Err(_) => coverage.rejected_candidates += 1,
         }
     };

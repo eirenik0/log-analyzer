@@ -13,6 +13,7 @@ fn create_test_log(component: &str, level: &str, message: &str) -> LogEntry {
         raw_logline: message.to_string(),
         structured_fields: HashMap::new(),
         module_path: None,
+        source_file: None,
         kind: LogEntryKind::Generic { payload: None },
         source_line_number: 1,
     }
