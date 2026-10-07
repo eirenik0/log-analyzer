@@ -22,6 +22,26 @@ static CLASSIC_ENTRY_START: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[\w-]+(?:\s+\([^)]*\))?\s+\|\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
         .expect("valid classic log entry start regex")
 });
+static CONSOLE_SOURCE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?P<source>\S+:\d+(?::\d+)?)\s+")
+        .expect("valid browser console source prefix regex")
+});
+
+fn split_console_source(line: &str) -> (&str, Option<&str>) {
+    if let Some(captures) = CONSOLE_SOURCE_PREFIX.captures(line) {
+        let prefix = captures.get(0).expect("matched prefix");
+        return (
+            &line[prefix.end()..],
+            captures.name("source").map(|value| value.as_str()),
+        );
+    }
+    (line, None)
+}
+
+fn classic_entry_start(line: &str) -> bool {
+    CLASSIC_ENTRY_START.is_match(split_console_source(line).0)
+}
+
 static RUST_TRACING_ENTRY_START: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"^\d{4}-\d{2}-\d{2}[T ][0-9:.+-]+(?:Z|[+-]\d{2}:?\d{2})?\s+(?i:trace|debug|info|warn|warning|error|fatal)\b",
@@ -261,7 +281,7 @@ fn detect_format_from_lines<'a>(
     {
         let trimmed = line.trim();
 
-        if CLASSIC_ENTRY_START.is_match(line) {
+        if classic_entry_start(line) {
             classic += 1;
         }
         if RUST_TRACING_ENTRY.is_match(line) {
@@ -310,7 +330,7 @@ fn format_priority(format: LogFormat) -> u8 {
 
 fn line_starts_entry(line: &str, format: LogFormat) -> bool {
     match format {
-        LogFormat::Classic => CLASSIC_ENTRY_START.is_match(line),
+        LogFormat::Classic => classic_entry_start(line),
         LogFormat::RustTracing => RUST_TRACING_ENTRY_START.is_match(line),
         LogFormat::Syslog => SYSLOG_ENTRY_START.is_match(line),
         LogFormat::JsonLines => looks_like_json_line(line.trim()),
@@ -347,7 +367,25 @@ fn parse_classic_log_entry(
     source_line_number: usize,
     config: &AnalyzerConfig,
 ) -> Result<LogEntry, ParseError> {
-    let mut parts = log_text.splitn(2, " | ");
+    let (first_line, console_source) =
+        split_console_source(log_text.lines().next().unwrap_or_default());
+    let normalized;
+    let classic_text = if console_source.is_some() {
+        // Normalize continuation prefixes for payload parsing; raw text stays untouched.
+        normalized = std::iter::once(first_line)
+            .chain(
+                log_text
+                    .lines()
+                    .skip(1)
+                    .map(|line| split_console_source(line).0),
+            )
+            .collect::<Vec<_>>()
+            .join("\n");
+        normalized.as_str()
+    } else {
+        log_text
+    };
+    let mut parts = classic_text.splitn(2, " | ");
 
     let component_part = parts
         .next()
@@ -361,6 +399,11 @@ fn parse_classic_log_entry(
     let (timestamp_str, level, message) = extract_log_parts(rest)
         .ok_or_else(|| ParseError::InvalidLogFormat("Invalid classic log format".to_string()))?;
 
+    let mut structured_fields = HashMap::new();
+    if let Some(source) = console_source {
+        structured_fields.insert("console_source".to_string(), source.to_string());
+    }
+
     build_log_entry(
         component.to_string(),
         component_id.to_string(),
@@ -370,7 +413,7 @@ fn parse_classic_log_entry(
         log_text.to_string(),
         source_line_number,
         &config.parser,
-        HashMap::new(),
+        structured_fields,
         None,
         None,
     )

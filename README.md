@@ -22,6 +22,16 @@ socket | 2025-04-03T21:07:27.668Z [INFO ] Emit event of type "Logger.log" with p
 core-universal | 2025-04-03T21:07:27.652Z [INFO ] Core universal is started on port 21077
 ```
 
+Classic logs copied from a browser console may start with a source location:
+`background.js:123 worker | timestamp [LEVEL] message`. Supported locations are
+filenames, paths, or URLs followed by `:line` or `:line:column`, then whitespace
+and a complete classic entry header. Detection and parsing normalize that prefix;
+`raw_logline` and physical source line numbers remain unchanged. The location is
+available as `structured_fields.console_source` (also filterable/extractable).
+When the entry header is prefixed, source prefixes on its continuation lines are
+removed for message/payload parsing. Text that lacks a complete classic header
+remains continuation text.
+
 It also auto-detects a few other common formats:
 
 - Rust tracing: `timestamp level module::path: message key=value ...`

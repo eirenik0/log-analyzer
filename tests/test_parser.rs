@@ -457,3 +457,91 @@ fn test_json_lines_coverage_includes_malformed_and_missing_timestamp_candidates(
     assert_eq!(report.coverage.rejected_candidates, 2);
     assert_eq!(report.coverage.nonempty_lines, 3);
 }
+
+#[test]
+fn test_browser_console_classic_entries_preserve_source_and_raw_text() {
+    use log_analyzer::config::LogFormat;
+    use log_analyzer::parser::parse_log_file_report;
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("console.log");
+    let content = concat!(
+        "\n",
+        "background.js:123 worker | 2026-10-07T10:00:00.000Z [INFO ] started\n",
+        "background.js:124 worker | 2026-10-07T10:00:01.000Z [ERROR] example failure\n",
+    );
+    fs::write(&file, content).unwrap();
+    for format in [LogFormat::Auto, LogFormat::Classic] {
+        let mut config = AnalyzerConfig::default();
+        config.parser.format = format;
+        let report = parse_log_file_report(&file, &config).unwrap();
+        assert_eq!(report.coverage.selected_parser, LogFormat::Classic);
+        assert_eq!(report.coverage.parsed_entries, 2);
+        assert_eq!(report.coverage.rejected_candidates, 0);
+        for (index, entry) in report.entries.iter().enumerate() {
+            assert_eq!(entry.component, "worker");
+            assert_eq!(entry.component_id, "");
+            assert_eq!(entry.source_line_number, index + 2);
+            assert_eq!(entry.timestamp.timestamp(), 1791367200 + index as i64);
+            assert_eq!(
+                entry.structured_field("console_source"),
+                Some(if index == 0 {
+                    "background.js:123"
+                } else {
+                    "background.js:124"
+                })
+            );
+            assert_eq!(entry.raw_logline, content.lines().nth(index + 1).unwrap());
+        }
+        assert_eq!(report.entries[0].level, "INFO");
+        assert_eq!(report.entries[0].message, "started");
+        assert_eq!(report.entries[1].level, "ERROR");
+        assert_eq!(report.entries[1].message, "example failure");
+    }
+}
+
+#[test]
+fn test_browser_console_multiline_payloads_and_continuations() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("console.log");
+    let content = concat!(
+        "https://example.test/assets/background.js:123:8 worker (session-1) | 2026-10-07T10:00:00Z [INFO ] payload {\n",
+        "https://example.test/assets/background.js:123:8   \"answer\": 42\n",
+        "https://example.test/assets/background.js:123:8 }\n",
+        "./assets/background.js:124:2 worker | 2026-10-07T10:00:01Z [ERROR] failed\n",
+        "./assets/background.js:124:2     at frame1\n",
+        "arbitrary continuation background.js:125 worker | 2026-10-07T10:00:02Z [ERROR] embedded text\n",
+        "background.js:126 ordinary continuation text\n",
+        "quoted worker | 2026-10-07T10:00:02Z [ERROR] continuation example\n",
+        "worker | 2026-10-07T10:00:03Z [INFO ] ordinary log\n",
+    );
+    fs::write(&file, content).unwrap();
+    let entries = parse_log_file_with_config(&file, &AnalyzerConfig::default()).unwrap();
+    assert_eq!(entries.len(), 3);
+    assert_eq!(entries[0].payload(), Some(&json!({"answer": 42})));
+    assert_eq!(entries[0].component_id, "session-1");
+    assert!(
+        entries[0]
+            .raw_logline
+            .contains("background.js:123:8   \"answer\"")
+    );
+    assert_eq!(entries[1].source_line_number, 4);
+    assert!(entries[1].message.contains("at frame1"));
+    assert!(entries[1].message.contains("embedded text"));
+    assert!(entries[1].message.contains("ordinary continuation text"));
+    assert!(entries[1].message.contains("continuation example"));
+    assert_eq!(entries[2].source_line_number, 9);
+    assert_eq!(entries[2].message, "ordinary log");
+    assert_eq!(entries[2].structured_field("console_source"), None);
+
+    // Single-entry callers retain the existing permissive component parsing.
+    let ordinary = parse_log_entry("worker.api | 2026-10-07T10:00:00Z [INFO ] started", 1).unwrap();
+    assert_eq!(ordinary.component, "worker.api");
+    assert_eq!(ordinary.message, "started");
+
+    let direct = parse_log_entry(content.lines().next().unwrap(), 17).unwrap();
+    assert_eq!(direct.source_line_number, 17);
+    assert_eq!(
+        direct.structured_field("console_source"),
+        Some("https://example.test/assets/background.js:123:8")
+    );
+}

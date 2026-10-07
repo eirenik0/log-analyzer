@@ -527,3 +527,13 @@ matches (`zero_filter_matches`), and parsed error-free input (`parsed`) succeed.
 Multiline continuation lines do not count as rejected candidates.
 Use `info -F json` for coverage plus component/level totals. On parsing failure,
 JSON stdout and `-o` still contain coverage; inspect stderr for the diagnostic.
+
+## Browser Console Logs
+
+Classic entries support a leading `filename:line`, `path:line:column`, or
+`URL:line:column` source location followed by whitespace and a classic header.
+No input rewriting is needed. Physical source line numbers and `raw_logline`
+remain original; `console_source` is exposed as a structured field. Prefixed
+continuation lines stay attached to the entry and are normalized for payload
+parsing. Use `search --payloads` or `extract --field console_source` to inspect
+source locations.

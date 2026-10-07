@@ -1170,7 +1170,7 @@ fn test_nonempty_unparsed_input_text_fails_even_in_a_mixed_file_set() {
 }
 
 #[test]
-fn test_unsupported_console_fixture_reports_zero_parse_coverage() {
+fn test_browser_console_fixture_reports_real_error_with_full_coverage() {
     let dir = tempdir().unwrap();
     let file = dir.path().join("console.log");
     write_file(
@@ -1185,10 +1185,16 @@ fn test_unsupported_console_fixture_reports_zero_parse_coverage() {
             .args(["-F", "json", subcommand, file.to_str().unwrap()])
             .output()
             .unwrap();
-        assert_eq!(result.status.code(), Some(1));
+        assert!(result.status.success());
         let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-        assert_eq!(value["coverage"]["status"], "unparsed_input");
-        assert_eq!(value["coverage"]["files"][0]["parsed_entries"], 0);
-        assert_eq!(value["coverage"]["files"][0]["rejected_candidates"], 2);
+        assert_eq!(value["coverage"]["parsed_entries"], 2);
+        assert_eq!(value["coverage"]["files"][0]["rejected_candidates"], 0);
+        if subcommand == "errors" {
+            assert_eq!(value["errors"]["summary"]["error_count"], 1);
+            assert_eq!(
+                value["errors"]["clusters"][0]["sample_message"],
+                "example failure"
+            );
+        }
     }
 }
