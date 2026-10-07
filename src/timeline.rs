@@ -330,8 +330,9 @@ pub fn format_text(report: &TimelineReport) -> String {
     for event in &report.events {
         let _ = writeln!(
             out,
-            "{} {} {:?}; gap since previous matched event {:?}ms at {}:{}",
+            "{} [offset: {}] {} {:?}; gap since previous matched event {:?}ms at {}:{}",
             event.timestamp.to_rfc3339(),
+            event.timestamp_offset_source,
             event.event_type,
             event.key,
             event.gap_since_previous_match_ms,

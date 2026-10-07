@@ -211,3 +211,21 @@ fn timeline_evidence_preserves_source_offsets_in_text_and_json() {
         }
     }
 }
+
+#[test]
+fn text_and_json_label_offsets_assumed_for_naive_timestamps() {
+    let entry = parse_log_entry_with_config(
+        "core (demo) | 2026-01-01T00:00:00 [INFO] begin id=a",
+        1,
+        &AnalyzerConfig::default(),
+    )
+    .unwrap();
+    let report = timeline::analyze(&[&entry], &rules()).unwrap().unwrap();
+    assert_eq!(report.events[0].timestamp_offset_source, "host_assumed");
+    assert!(timeline::format_text(&report).contains("[offset: host_assumed]"));
+    assert!(
+        serde_json::to_string(&report)
+            .unwrap()
+            .contains("host_assumed")
+    );
+}
