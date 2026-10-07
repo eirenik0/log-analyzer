@@ -374,10 +374,10 @@ pub enum Commands {
         files: Vec<PathBuf>,
 
         /// Duration threshold in milliseconds for highlighting slow operations
-        #[arg(long, default_value = "1000")]
+        #[arg(long, default_value = "1000", conflicts_with = "orphans_only")]
         threshold_ms: u64,
 
-        /// Number of slowest operations to display
+        /// Maximum rows per performance section (0 = unlimited)
         #[arg(long, default_value = "20")]
         top_n: usize,
 
@@ -389,8 +389,8 @@ pub enum Commands {
         #[arg(long)]
         op_type: Option<OperationType>,
 
-        /// Sort results by field
-        #[arg(short = 's', long, value_enum, default_value_t = PerfSortOrder::Duration)]
+        /// Sort completed operations and statistics by field
+        #[arg(short = 's', long, value_enum, default_value_t = PerfSortOrder::Duration, conflicts_with = "orphans_only")]
         sort_by: PerfSortOrder,
     },
 

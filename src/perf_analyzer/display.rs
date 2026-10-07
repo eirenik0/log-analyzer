@@ -4,6 +4,124 @@ use crate::comparator::create_styled_table;
 use comfy_table::Cell;
 use std::fmt::Write as _;
 
+#[derive(serde::Serialize)]
+pub struct PerfCounts {
+    pub operations: usize,
+    pub stats: usize,
+    pub orphans: usize,
+    pub threshold_violations: usize,
+}
+
+#[derive(serde::Serialize)]
+pub struct PerfReport {
+    #[serde(flatten)]
+    pub results: PerfAnalysisResults,
+    pub threshold_ms: u64,
+    pub threshold_violations: Vec<TimedOperation>,
+    pub totals: PerfCounts,
+    pub omitted: PerfCounts,
+}
+
+fn select_results(
+    results: &PerfAnalysisResults,
+    threshold_ms: u64,
+    top_n: usize,
+    orphans_only: bool,
+    sort_by: PerfSortOrder,
+) -> PerfReport {
+    let mut selected = results.clone();
+    selected.stats.sort_by(|a, b| {
+        let primary = match sort_by {
+            PerfSortOrder::Duration => b.avg_duration_ms.total_cmp(&a.avg_duration_ms),
+            PerfSortOrder::Count => b.count.cmp(&a.count),
+            PerfSortOrder::Name => a.name.cmp(&b.name),
+        };
+        primary
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.op_type.cmp(&b.op_type))
+    });
+    let counts: std::collections::HashMap<_, _> = results
+        .stats
+        .iter()
+        .map(|stat| ((stat.op_type.as_str(), stat.name.as_str()), stat.count))
+        .collect();
+    selected.operations.sort_by(|a, b| {
+        let primary = match sort_by {
+            PerfSortOrder::Duration => b.duration_ms.cmp(&a.duration_ms),
+            PerfSortOrder::Count => counts
+                .get(&(b.op_type.as_str(), b.name.as_str()))
+                .cmp(&counts.get(&(a.op_type.as_str(), a.name.as_str()))),
+            PerfSortOrder::Name => a.name.cmp(&b.name),
+        };
+        primary
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.op_type.cmp(&b.op_type))
+            .then_with(|| a.start_time.cmp(&b.start_time))
+            .then_with(|| a.correlation_id.cmp(&b.correlation_id))
+    });
+    selected.orphans.sort_by(|a, b| {
+        a.start_time
+            .cmp(&b.start_time)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.correlation_id.cmp(&b.correlation_id))
+    });
+    let mut violations: Vec<_> = selected
+        .operations
+        .iter()
+        .filter(|op| u64::try_from(op.duration_ms).is_ok_and(|duration| duration >= threshold_ms))
+        .cloned()
+        .collect();
+    let totals = PerfCounts {
+        operations: results.operations.len(),
+        stats: results.stats.len(),
+        orphans: results.orphans.len(),
+        threshold_violations: violations.len(),
+    };
+    if orphans_only {
+        selected.operations.clear();
+        selected.stats.clear();
+        violations.clear();
+    }
+    if top_n > 0 {
+        selected.operations.truncate(top_n);
+        selected.stats.truncate(top_n);
+        selected.orphans.truncate(top_n);
+        violations.truncate(top_n);
+    }
+    let omitted = PerfCounts {
+        operations: totals.operations - selected.operations.len(),
+        stats: totals.stats - selected.stats.len(),
+        orphans: totals.orphans - selected.orphans.len(),
+        threshold_violations: totals.threshold_violations - violations.len(),
+    };
+    PerfReport {
+        results: selected,
+        threshold_ms,
+        threshold_violations: violations,
+        totals,
+        omitted,
+    }
+}
+
+fn write_selection_summary(out: &mut String, report: &PerfReport) {
+    let _ = writeln!(
+        out,
+        "Full totals: {} completed operations, {} statistics groups, {} orphans, {} threshold violations",
+        report.totals.operations,
+        report.totals.stats,
+        report.totals.orphans,
+        report.totals.threshold_violations
+    );
+    let _ = writeln!(
+        out,
+        "Omitted: {} completed operations, {} statistics groups, {} orphans, {} threshold violations",
+        report.omitted.operations,
+        report.omitted.stats,
+        report.omitted.orphans,
+        report.omitted.threshold_violations
+    );
+}
+
 /// Display performance analysis results in text format
 pub fn display_perf_results(
     results: &PerfAnalysisResults,
@@ -25,6 +143,9 @@ pub fn format_perf_results_text(
     sort_by: PerfSortOrder,
 ) -> String {
     let mut out = String::new();
+    let report = select_results(results, threshold_ms, top_n, orphans_only, sort_by);
+    let results = &report.results;
+    write_selection_summary(&mut out, &report);
 
     if orphans_only {
         write_orphans_only(&mut out, results);
@@ -49,9 +170,9 @@ pub fn format_perf_results_text(
     let _ = writeln!(
         out,
         "Completed operations:       {}",
-        results.operations.len()
+        report.totals.operations
     );
-    let _ = writeln!(out, "Orphaned operations:        {}", results.orphans.len());
+    let _ = writeln!(out, "Orphaned operations:        {}", report.totals.orphans);
 
     if let Some((start, end)) = results.time_range {
         let duration = end.signed_duration_since(start);
@@ -97,20 +218,7 @@ pub fn format_perf_results_text(
             "P99(ms)",
         ]);
 
-        let mut stats = results.stats.clone();
-        match sort_by {
-            PerfSortOrder::Duration => {
-                stats.sort_by(|a, b| b.avg_duration_ms.partial_cmp(&a.avg_duration_ms).unwrap());
-            }
-            PerfSortOrder::Count => {
-                stats.sort_by_key(|a| std::cmp::Reverse(a.count));
-            }
-            PerfSortOrder::Name => {
-                stats.sort_by(|a, b| a.name.cmp(&b.name));
-            }
-        }
-
-        for stat in stats.iter().take(top_n) {
+        for stat in &results.stats {
             table.add_row(vec![
                 Cell::new(&stat.op_type),
                 Cell::new(truncate_string(&stat.name, 30)),
@@ -136,8 +244,8 @@ pub fn format_perf_results_text(
         );
         let _ = writeln!(
             out,
-            "║           TOP {} SLOWEST OPERATIONS                       ║",
-            top_n
+            "║           SELECTED OPERATIONS ({})                       ║",
+            results.operations.len()
         );
         let _ = writeln!(
             out,
@@ -145,15 +253,14 @@ pub fn format_perf_results_text(
         );
         let _ = writeln!(out);
 
-        let top_ops = results.top_slowest_operations(top_n);
-        for (i, op) in top_ops.iter().enumerate() {
+        for (i, op) in results.operations.iter().enumerate() {
             write_timed_operation(&mut out, i + 1, op);
         }
         let _ = writeln!(out);
     }
 
     // 4. Threshold violations
-    let violations = results.operations_exceeding_threshold(threshold_ms);
+    let violations = &report.threshold_violations;
     if !violations.is_empty() {
         let _ = writeln!(
             out,
@@ -172,18 +279,14 @@ pub fn format_perf_results_text(
         let _ = writeln!(
             out,
             "Found {} operation(s) exceeding {}ms threshold",
-            violations.len(),
-            threshold_ms
+            report.totals.threshold_violations, threshold_ms
         );
         let _ = writeln!(out);
 
-        for (i, op) in violations.iter().take(20).enumerate() {
+        for (i, op) in violations.iter().enumerate() {
             write_timed_operation(&mut out, i + 1, op);
         }
 
-        if violations.len() > 20 {
-            let _ = writeln!(out, "... and {} more operations", violations.len() - 20);
-        }
         let _ = writeln!(out);
     }
 
@@ -204,12 +307,12 @@ pub fn format_perf_results_text(
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "Operations that started but never completed: {}",
+            "Displayed operations that started but never completed: {}",
             results.orphans.len()
         );
         let _ = writeln!(out);
 
-        for (i, orphan) in results.orphans.iter().take(10).enumerate() {
+        for (i, orphan) in results.orphans.iter().enumerate() {
             let _ = writeln!(
                 out,
                 "{}. [{}] {} - {}",
@@ -230,13 +333,6 @@ pub fn format_perf_results_text(
             let _ = writeln!(out);
         }
 
-        if results.orphans.len() > 10 {
-            let _ = writeln!(
-                out,
-                "... and {} more orphaned operations",
-                results.orphans.len() - 10
-            );
-        }
         let _ = writeln!(out);
     }
 
@@ -264,7 +360,11 @@ fn write_orphans_only(out: &mut String, results: &PerfAnalysisResults) {
         return;
     }
 
-    let _ = writeln!(out, "Total orphaned operations: {}", results.orphans.len());
+    let _ = writeln!(
+        out,
+        "Displayed orphaned operations: {}",
+        results.orphans.len()
+    );
     let _ = writeln!(out);
 
     for (i, orphan) in results.orphans.iter().enumerate() {
@@ -331,4 +431,22 @@ pub fn truncate_string(s: &str, max_len: usize) -> String {
 /// Format performance analysis results as JSON
 pub fn format_perf_results_json(results: &PerfAnalysisResults) -> String {
     serde_json::to_string_pretty(results).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Format the same selected rows, full totals, and omissions used in text output.
+pub fn format_perf_results_json_with_options(
+    results: &PerfAnalysisResults,
+    threshold_ms: u64,
+    top_n: usize,
+    orphans_only: bool,
+    sort_by: PerfSortOrder,
+) -> String {
+    serde_json::to_string_pretty(&select_results(
+        results,
+        threshold_ms,
+        top_n,
+        orphans_only,
+        sort_by,
+    ))
+    .expect("performance report is serializable")
 }

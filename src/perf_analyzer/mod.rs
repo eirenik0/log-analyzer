@@ -2,7 +2,8 @@ mod display;
 mod entities;
 
 pub use display::{
-    display_perf_results, format_perf_results_json, format_perf_results_text, truncate_string,
+    display_perf_results, format_perf_results_json, format_perf_results_json_with_options,
+    format_perf_results_text, truncate_string,
 };
 pub use entities::{OperationStats, OrphanOperation, PerfAnalysisResults, TimedOperation};
 
