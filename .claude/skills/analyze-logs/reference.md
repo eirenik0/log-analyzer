@@ -314,9 +314,12 @@ log-analyzer process <file> [options]
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `-s, --sort-by <field>` | Sort by: time, component, level, type, diff-count |
+| `-s, --sort-by <field>` | Sort by: time (earliest first), component, level (highest severity first), type |
 | `--limit <n>` | Max entries (default: 100, 0 = unlimited) |
 | `--no-sanitize` | Disable sensitive field redaction |
+
+Filtering and sorting precede the limit. Timestamp breaks ties; exact ties keep input order.
+The time range describes the returned entries. `diff-count` is only valid for diffs.
 
 **Output format:**
 ```json

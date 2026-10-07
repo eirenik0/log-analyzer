@@ -380,8 +380,11 @@ This is intended for tracing a single run/session across split logs. Mixing unre
 | `-s, --sort-by` | Sort by: `time`, `component`, `level`, `type`, `diff-count` |
 | `--no-sanitize` | Disable sensitive field hiding |
 
-`llm` (`process`) also supports:
-- `--limit <number>` - Max entries (default: 100, `0` = unlimited)
+`llm` (`process`) supports `time` (default, earliest first), `component`,
+`level` (highest severity first), and `type` sorting. `diff-count` applies only
+to `llm-diff`. Filtering and sorting happen before `--limit` (default: 100,
+`0` = unlimited). Ties retain input order after a timestamp tie-breaker.
+The reported time range is the minimum/maximum timestamp among returned entries.
 
 ### generate-config
 
