@@ -1609,3 +1609,127 @@ fn process_timestamps_preserve_instants_across_timezones_dst_and_midnight() {
         );
     }
 }
+
+#[test]
+fn perf_json_and_text_apply_selection_with_full_totals() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("requests.log");
+    write_file(
+        &file,
+        concat!(
+            "core (demo) | 2026-01-01T00:00:00.000Z [INFO] Request \"slow\" [0--first] sent\n",
+            "core (demo) | 2026-01-01T00:00:02.000Z [INFO] Request \"slow\" [0--first] completed\n",
+            "core (demo) | 2026-01-01T00:00:03.000Z [INFO] Request \"fast\" [0--second] sent\n",
+            "core (demo) | 2026-01-01T00:00:03.010Z [INFO] Request \"fast\" [0--second] completed\n",
+            "core (demo) | 2026-01-01T00:00:04.000Z [INFO] Request \"fast\" [0--third] sent\n",
+            "core (demo) | 2026-01-01T00:00:04.010Z [INFO] Request \"fast\" [0--third] completed\n",
+            "core (demo) | 2026-01-01T00:00:05.000Z [INFO] Request \"pending\" [0--fourth] sent\n",
+            "core (demo) | 2026-01-01T00:00:06.000Z [INFO] Request \"pending2\" [0--fifth] sent\n",
+        ),
+    );
+    for (sort, selected_name) in [("duration", "slow"), ("count", "fast"), ("name", "fast")] {
+        let output = command()
+            .args([
+                "--preset",
+                "service-api",
+                "-j",
+                "perf",
+                file.to_str().unwrap(),
+                "--top-n",
+                "1",
+                "--sort-by",
+                sort,
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["operations"][0]["name"], selected_name);
+        assert_eq!(report["stats"][0]["name"], selected_name);
+        for section in ["operations", "stats", "orphans", "threshold_violations"] {
+            assert_eq!(report[section].as_array().unwrap().len(), 1, "{section}");
+        }
+        assert_eq!(report["totals"]["operations"], 3);
+        assert_eq!(report["totals"]["stats"], 2);
+        assert_eq!(report["totals"]["orphans"], 2);
+        assert_eq!(report["omitted"]["operations"], 2);
+        assert_eq!(report["omitted"]["stats"], 1);
+        assert_eq!(report["omitted"]["orphans"], 1);
+        let output = command()
+            .args([
+                "--preset",
+                "service-api",
+                "perf",
+                file.to_str().unwrap(),
+                "--top-n",
+                "1",
+                "--sort-by",
+                sort,
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains("Full totals: 3 completed operations, 2 statistics groups, 2 orphans, 1 threshold violations"));
+        assert!(text.contains("Omitted: 2 completed operations, 1 statistics groups, 1 orphans, 0 threshold violations"));
+        assert!(text.contains(&format!("1. [Request] {selected_name} -")));
+        assert!(!text.contains("pending2"));
+    }
+    let output = command()
+        .args([
+            "--preset",
+            "service-api",
+            "-j",
+            "perf",
+            file.to_str().unwrap(),
+            "--orphans-only",
+            "--top-n",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report["operations"].as_array().unwrap().is_empty());
+    assert!(report["stats"].as_array().unwrap().is_empty());
+    assert!(
+        report["threshold_violations"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(report["orphans"].as_array().unwrap().len(), 1);
+    assert_eq!(report["totals"]["operations"], 3);
+    assert_eq!(report["omitted"]["operations"], 3);
+    let output = command()
+        .args([
+            "--preset",
+            "service-api",
+            "-j",
+            "perf",
+            file.to_str().unwrap(),
+            "--top-n",
+            "0",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["operations"].as_array().unwrap().len(), 3);
+    for section in ["operations", "stats", "orphans", "threshold_violations"] {
+        assert_eq!(report["omitted"][section], 0);
+    }
+    for option in [["--sort-by", "name"], ["--threshold-ms", "1000"]] {
+        let output = command()
+            .args(["perf", file.to_str().unwrap(), "--orphans-only"])
+            .args(option)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be used with"));
+    }
+}

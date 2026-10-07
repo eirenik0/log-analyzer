@@ -717,7 +717,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 OutputFormat::Json => {
-                    let json = perf_analyzer::format_perf_results_json(&results);
+                    let json = perf_analyzer::format_perf_results_json_with_options(
+                        &results,
+                        *threshold_ms,
+                        *top_n,
+                        *orphans_only,
+                        *sort_by,
+                    );
                     let json = render_analysis_report(&json, format, &coverage)?;
                     print!("{}", json);
                     if let Some(path) = output {

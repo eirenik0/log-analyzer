@@ -354,11 +354,23 @@ Use this only for related logs from the same run/session. Combining unrelated lo
 | Option | Description |
 |--------|-------------|
 | `--threshold-ms <ms>` | Slow operation threshold (default: 1000) |
-| `--top-n <number>` | Number of slowest operations (default: 20) |
+| `--top-n <number>` | Maximum rows per section (default: 20, `0` = unlimited) |
 | `--orphans-only` | Show only unfinished operations |
 | `--op-type <request\|event\|command>` | Filter by operation type |
 
 Sort options: `duration`, `count`, `name`
+
+Text and JSON apply the same selection before output. `--top-n` limits each
+operations, statistics, orphans, and threshold-violations section separately;
+`0` includes all rows. Duration sorts operations by elapsed time and statistics
+by average duration, descending. Count sorts by the full operation-group count;
+name sorts alphabetically. Orphans are chronological. Full `totals` and `omitted`
+counts describe the analysis before selection, including with `--orphans-only`.
+The threshold highlights slow completed operations; it does not filter statistics.
+Explicit `--sort-by` or `--threshold-ms` conflicts with `--orphans-only`, since
+unfinished operations have no measured duration or completed-operation count.
+
+
 
 ### trace
 
