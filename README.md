@@ -570,6 +570,12 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 /analyze-logs llm test.log                      # Generate LLM-friendly output
 ```
 
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for Conventional Commit rules, local hooks,
+quality checks, and hosted Codex review. Agent and reviewer guidance lives in
+[AGENTS.md](AGENTS.md).
+
 ## Features
 
 - **Structured parsing** - Extracts and parses JSON payloads automatically
