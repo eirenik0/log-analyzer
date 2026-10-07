@@ -18,7 +18,10 @@ pub use comparator::{
     ComparisonOptions, compare_json, compare_logs, display_comparison_results, generate_json_output,
 };
 use comparator::{LogFilter, display_log_summary};
-use errors::{ErrorsOptions, analyze_errors_with_config, format_errors_json, format_errors_text};
+use errors::{
+    ErrorReportLimits, ErrorsOptions, analyze_errors_with_config, format_bounded_errors_text,
+    format_errors_json, format_errors_text,
+};
 use extract::{format_extract_json, format_extract_text};
 use filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use parser::{
@@ -592,6 +595,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             warn,
             sessions,
             sort_by,
+            bounded,
+            complete: _,
+            max_sample_chars,
+            max_stack_frames,
+            max_output_chars,
         } => {
             let (logs, coverage) =
                 read_analysis_inputs(files, &analyzer_config, &filter, format, output.as_deref())?;
@@ -601,16 +609,48 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 show_sessions: *sessions,
                 sort_by: *sort_by,
                 file_count: files.len(),
+                limits: if *bounded
+                    || max_sample_chars.is_some()
+                    || max_stack_frames.is_some()
+                    || max_output_chars.is_some()
+                {
+                    let defaults = ErrorReportLimits::default();
+                    Some(ErrorReportLimits {
+                        max_sample_chars: max_sample_chars.unwrap_or(defaults.max_sample_chars),
+                        max_stack_frames: max_stack_frames.unwrap_or(defaults.max_stack_frames),
+                        max_output_chars: max_output_chars.unwrap_or(defaults.max_output_chars),
+                    })
+                } else {
+                    None
+                },
             };
 
             let report =
                 analyze_errors_with_config(&logs, &filter, &analyzer_config, &error_options);
             let rendered = match format {
-                OutputFormat::Text => format_errors_text(&report, &error_options),
-                OutputFormat::Json => format_errors_json(&report, &error_options),
+                OutputFormat::Text => {
+                    if let Some(limits) = error_options.limits {
+                        format_bounded_errors_text(
+                            &report,
+                            &error_options,
+                            limits,
+                            &coverage_text(&coverage),
+                        )
+                    } else {
+                        render_analysis_report(
+                            &format_errors_text(&report, &error_options),
+                            format,
+                            &coverage,
+                        )?
+                    }
+                }
+                OutputFormat::Json => render_analysis_report(
+                    &format_errors_json(&report, &error_options),
+                    format,
+                    &coverage,
+                )?,
             };
 
-            let rendered = render_analysis_report(&rendered, format, &coverage)?;
             print!("{rendered}");
             if let Some(path) = output {
                 write_output_file(path, &rendered)?;

@@ -537,3 +537,20 @@ remain original; `console_source` is exposed as a structured field. Prefixed
 continuation lines stay attached to the entry and are normalized for payload
 parsing. Use `search --payloads` or `extract --field console_source` to inspect
 source locations.
+
+## Bounded Error Reports
+
+Use `errors --bounded --sessions` for a compact inventory instead of piping to
+`head`. Defaults: 600 Unicode characters per sample/pattern, 5 stack-frame lines,
+and 12000 Unicode characters for total text output, including newlines/coverage.
+Override with `--max-sample-chars`, `--max-stack-frames`, `--max-output-chars`;
+any limit enables bounded mode. Zero suppresses that detail or requests a zero
+budget. Scope, totals, impact, and cluster overviews appear before samples.
+Omission counts cover hidden clusters, sample characters, stack-frame lines,
+pattern characters, and requested session detail rows. Metadata is always kept;
+if it exceeds the budget, print it with a warning and omit cluster details.
+Text overviews limit patterns to 120 characters or the smaller sample limit.
+JSON keeps full coverage/totals and bounded details with omission counts; the
+total output character budget applies only to text. Complete output is the
+default; `--complete --top-n 0` explicitly requests every cluster without detail
+limits and conflicts with bounded/limit flags.

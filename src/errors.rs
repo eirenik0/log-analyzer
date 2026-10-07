@@ -57,6 +57,24 @@ pub struct ErrorsOptions {
     pub show_sessions: bool,
     pub sort_by: ErrorsSortBy,
     pub file_count: usize,
+    pub limits: Option<ErrorReportLimits>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ErrorReportLimits {
+    pub max_sample_chars: usize,
+    pub max_stack_frames: usize,
+    pub max_output_chars: usize,
+}
+
+impl Default for ErrorReportLimits {
+    fn default() -> Self {
+        Self {
+            max_sample_chars: 600,
+            max_stack_frames: 5,
+            max_output_chars: 12000,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -236,6 +254,9 @@ pub fn analyze_errors_with_config(
 }
 
 pub fn format_errors_text(report: &ErrorAnalysisReport, options: &ErrorsOptions) -> String {
+    if let Some(limits) = options.limits {
+        return format_bounded_errors_text(report, options, limits, "");
+    }
     let mut out = String::new();
     let header_label = if report.warn_count > 0 {
         "ERRORS/WARNS"
@@ -255,6 +276,31 @@ pub fn format_errors_text(report: &ErrorAnalysisReport, options: &ErrorsOptions)
             "files"
         }
     );
+
+    out.push('\n');
+    let _ = writeln!(out, "Impact summary");
+    let _ = writeln!(out, "  Total errors: {}", report.error_count);
+    if report.include_warn {
+        let _ = writeln!(out, "  Total warnings: {}", report.warn_count);
+    }
+    let _ = writeln!(out, "  Unique error patterns: {}", report.unique_patterns);
+    let _ = writeln!(
+        out,
+        "  Affected sessions: {}",
+        report.affected_sessions_count
+    );
+    if let Some(longest) = &report.longest_blocking {
+        let _ = writeln!(
+            out,
+            "  Longest blocking error: {}  [{}] {}",
+            format_duration_approx(longest.duration_ms),
+            longest.severity,
+            longest.pattern
+        );
+        let _ = writeln!(out, "  Session: {}", longest.session_path);
+    } else {
+        let _ = writeln!(out, "  Longest blocking error: n/a");
+    }
 
     if report.total_entries == 0 {
         let _ = writeln!(out, "\nNo matching ERROR/WARN entries found.");
@@ -346,36 +392,319 @@ pub fn format_errors_text(report: &ErrorAnalysisReport, options: &ErrorsOptions)
         );
     }
 
-    out.push('\n');
-    let _ = writeln!(out, "Impact summary");
-    let _ = writeln!(out, "  Total errors: {}", report.error_count);
-    if report.include_warn {
-        let _ = writeln!(out, "  Total warnings: {}", report.warn_count);
+    out
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+struct DetailOmissions {
+    clusters: usize,
+    sample_chars: usize,
+    stack_frames: usize,
+    pattern_chars: usize,
+    session_details: usize,
+}
+
+impl DetailOmissions {
+    fn text(&self) -> String {
+        format!(
+            "\nOmitted: {} clusters; {} sample characters; {} stack-frame lines; {} pattern characters; {} session details.\n",
+            self.clusters,
+            self.sample_chars,
+            self.stack_frames,
+            self.pattern_chars,
+            self.session_details
+        )
     }
-    let _ = writeln!(out, "  Unique error patterns: {}", report.unique_patterns);
-    let _ = writeln!(
-        out,
-        "  Affected sessions: {}",
-        report.affected_sessions_count
+}
+
+fn char_prefix(text: &str, limit: usize) -> &str {
+    match text.char_indices().nth(limit) {
+        Some((index, _)) => &text[..index],
+        None => text,
+    }
+}
+
+fn is_stack_frame(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("at ")
+        || line.starts_with("at\t")
+        || line.starts_with("File \"")
+        || line.split_once(':').is_some_and(|(index, rest)| {
+            !index.is_empty()
+                && index.chars().all(|ch| ch.is_ascii_digit())
+                && rest.starts_with(' ')
+        })
+}
+
+fn frame_count(message: &str) -> usize {
+    message.lines().filter(|line| is_stack_frame(line)).count()
+}
+
+fn bounded_sample(message: &str, limits: ErrorReportLimits) -> (String, usize, usize) {
+    let mut frames = 0;
+    let lines: Vec<_> = message
+        .lines()
+        .filter(|line| {
+            if is_stack_frame(line) {
+                frames += 1;
+                frames <= limits.max_stack_frames
+            } else {
+                true
+            }
+        })
+        .collect();
+    let filtered = lines.join("\n");
+    let sample = char_prefix(&filtered, limits.max_sample_chars).to_string();
+    let retained_frames = complete_frame_count(&sample, &filtered);
+    let omitted_chars = message
+        .chars()
+        .count()
+        .saturating_sub(sample.chars().count());
+    (
+        sample,
+        omitted_chars,
+        frame_count(message).saturating_sub(retained_frames),
+    )
+}
+
+fn complete_frame_count(sample: &str, original: &str) -> usize {
+    let mut count = frame_count(sample);
+    if sample.len() < original.len()
+        && !sample.ends_with('\n')
+        && !original[sample.len()..].starts_with('\n')
+        && sample.lines().last().is_some_and(is_stack_frame)
+    {
+        count = count.saturating_sub(1);
+    }
+    count
+}
+
+/// Reserve scope, totals, impact and omission counts, then share detail space across clusters.
+/// Mandatory metadata is retained even when it exceeds the requested character budget.
+pub fn format_bounded_errors_text(
+    report: &ErrorAnalysisReport,
+    options: &ErrorsOptions,
+    limits: ErrorReportLimits,
+    scope: &str,
+) -> String {
+    let mut out = format!(
+        "{}: {} entries ({} patterns) across {} {}\n{}\nImpact summary\n  Total errors: {}\n  Total warnings: {}\n  Unique error patterns: {}\n  Affected sessions: {}\n",
+        if report.warn_count > 0 {
+            "ERRORS/WARNS"
+        } else {
+            "ERRORS"
+        },
+        report.total_entries,
+        report.unique_patterns,
+        report.file_count,
+        if report.file_count == 1 {
+            "file"
+        } else {
+            "files"
+        },
+        scope,
+        report.error_count,
+        report.warn_count,
+        report.unique_patterns,
+        report.affected_sessions_count,
     );
     if let Some(longest) = &report.longest_blocking {
+        let pattern = char_prefix(&longest.pattern, limits.max_sample_chars.min(120));
         let _ = writeln!(
             out,
-            "  Longest blocking error: {}  [{}] {}",
+            "  Longest blocking error: {} [{}] {}{}\n  Session: {}",
             format_duration_approx(longest.duration_ms),
             longest.severity,
-            longest.pattern
+            pattern,
+            if pattern.len() < longest.pattern.len() {
+                " [pattern truncated]"
+            } else {
+                ""
+            },
+            longest.session_path
         );
-        let _ = writeln!(out, "  Session: {}", longest.session_path);
     } else {
-        let _ = writeln!(out, "  Longest blocking error: n/a");
+        out.push_str("  Longest blocking error: n/a\n");
+    }
+    let _ = writeln!(
+        out,
+        "Budget: {} Unicode characters including newlines; mandatory metadata may exceed budget.",
+        limits.max_output_chars
+    );
+    if report.total_entries == 0 {
+        out.push_str("No matching ERROR/WARN entries found.\n");
     }
 
+    let mut omitted = DetailOmissions {
+        clusters: report.clusters.len(),
+        sample_chars: report
+            .clusters
+            .iter()
+            .map(|cluster| cluster.sample_message.chars().count())
+            .sum(),
+        stack_frames: report
+            .clusters
+            .iter()
+            .map(|cluster| frame_count(&cluster.sample_message))
+            .sum(),
+        pattern_chars: report
+            .clusters
+            .iter()
+            .map(|cluster| cluster.pattern.chars().count())
+            .sum(),
+        session_details: if options.show_sessions {
+            report
+                .clusters
+                .iter()
+                .map(|cluster| cluster.affected_sessions.len())
+                .sum()
+        } else {
+            0
+        },
+    };
+    let footer_reserve = omitted.text().chars().count();
+    let mandatory_chars = out.chars().count() + footer_reserve;
+    if mandatory_chars > limits.max_output_chars {
+        out.push_str("Mandatory metadata exceeds budget; no cluster details shown.\n");
+    }
+    let mut remaining = limits.max_output_chars.saturating_sub(mandatory_chars);
+    let mut displayed = Vec::new();
+    let show_date = spans_multiple_dates(report);
+
+    // Put every overview that fits before any samples or session detail rows.
+    for (index, cluster) in report
+        .clusters
+        .iter()
+        .take(displayed_cluster_count(report, options))
+        .enumerate()
+    {
+        let pattern = char_prefix(&cluster.pattern, limits.max_sample_chars.min(120));
+        let components = cluster.components.join(", ");
+        let heading = format!(
+            "\n #{:<2} [{}] ×{} {}{}\n     {}{}\n     First: {}  Last: {}; affected sessions: {}\n",
+            index + 1,
+            cluster.severity,
+            cluster.count,
+            char_prefix(&components, 80),
+            if components.chars().count() > 80 {
+                "..."
+            } else {
+                ""
+            },
+            pattern,
+            if pattern.len() < cluster.pattern.len() {
+                " [pattern truncated]"
+            } else {
+                ""
+            },
+            format_timestamp(cluster.first_timestamp, show_date),
+            format_timestamp(cluster.last_timestamp, show_date),
+            cluster.affected_sessions_count,
+        );
+        let cost = heading.chars().count();
+        if cost > remaining {
+            break;
+        }
+        out.push_str(&heading);
+        remaining -= cost;
+        omitted.clusters -= 1;
+        omitted.pattern_chars -= pattern.chars().count();
+        displayed.push((index, cluster));
+    }
+    let count = displayed.len();
+    for (position, (index, cluster)) in displayed.into_iter().enumerate() {
+        let mut share = remaining / (count - position);
+        let sample_label = format!("\n Sample #{}: ", index + 1);
+        let overhead = sample_label.chars().count() + 1;
+        if share > overhead {
+            let (sample, _, _) = bounded_sample(
+                &cluster.sample_message,
+                ErrorReportLimits {
+                    max_sample_chars: limits.max_sample_chars.min(share - overhead),
+                    ..limits
+                },
+            );
+            if !sample.is_empty() {
+                let detail = format!("{sample_label}{sample}\n");
+                let cost = detail.chars().count();
+                out.push_str(&detail);
+                share -= cost;
+                remaining -= cost;
+                omitted.sample_chars -= sample.chars().count();
+                let (filtered, _, _) = bounded_sample(
+                    &cluster.sample_message,
+                    ErrorReportLimits {
+                        max_sample_chars: usize::MAX,
+                        ..limits
+                    },
+                );
+                omitted.stack_frames -= complete_frame_count(&sample, &filtered);
+            }
+        }
+        if options.show_sessions {
+            for session in &cluster.affected_sessions {
+                let row = format!(
+                    "     Session #{}: {} ×{} {}{}\n",
+                    index + 1,
+                    session.session_path,
+                    session.error_count,
+                    session.outcome.as_label(),
+                    session
+                        .blocking_ms
+                        .filter(|ms| *ms > 0)
+                        .map(|ms| format!(" ({})", format_duration_approx(ms)))
+                        .unwrap_or_default()
+                );
+                let cost = row.chars().count();
+                if cost > share {
+                    break;
+                }
+                out.push_str(&row);
+                share -= cost;
+                remaining -= cost;
+                omitted.session_details -= 1;
+            }
+        }
+    }
+    out.push_str(&omitted.text());
     out
 }
 
 pub fn format_errors_json(report: &ErrorAnalysisReport, options: &ErrorsOptions) -> String {
     let display_limit = displayed_cluster_count(report, options);
+    let mut omitted = DetailOmissions::default();
+    let clusters: Vec<_> = report
+        .clusters
+        .iter()
+        .take(display_limit)
+        .map(|cluster| {
+            let mut displayed = cluster.clone();
+            if let Some(limits) = options.limits {
+                let (sample, sample_chars, frames) =
+                    bounded_sample(&cluster.sample_message, limits);
+                displayed.sample_message = sample;
+                let pattern = char_prefix(&cluster.pattern, limits.max_sample_chars);
+                displayed.pattern = pattern.to_string();
+                omitted.sample_chars += sample_chars;
+                omitted.stack_frames += frames;
+                omitted.pattern_chars += cluster.pattern.chars().count() - pattern.chars().count();
+            }
+            displayed
+        })
+        .collect();
+    omitted.clusters = report.clusters.len() - display_limit;
+    for cluster in report.clusters.iter().skip(display_limit) {
+        omitted.sample_chars += cluster.sample_message.chars().count();
+        omitted.stack_frames += frame_count(&cluster.sample_message);
+        omitted.pattern_chars += cluster.pattern.chars().count();
+    }
+    let mut longest_blocking = report.longest_blocking.clone();
+    let mut longest_pattern_chars_omitted = 0;
+    if let (Some(longest), Some(limits)) = (&mut longest_blocking, options.limits) {
+        let shortened = char_prefix(&longest.pattern, limits.max_sample_chars).to_string();
+        longest_pattern_chars_omitted = longest.pattern.chars().count() - shortened.chars().count();
+        longest.pattern = shortened;
+    }
     serde_json::to_string_pretty(&json!({
         "errors": {
             "summary": {
@@ -386,16 +715,20 @@ pub fn format_errors_json(report: &ErrorAnalysisReport, options: &ErrorsOptions)
                 "warn_count": report.warn_count,
                 "unique_patterns": report.unique_patterns,
                 "affected_sessions_count": report.affected_sessions_count,
-                "longest_blocking": report.longest_blocking,
+                "longest_blocking": longest_blocking,
+                "longest_blocking_pattern_chars_omitted": longest_pattern_chars_omitted,
             },
             "options": {
                 "top_n": options.top_n,
                 "show_sessions": options.show_sessions,
+                "limits": options.limits,
+                "output_budget_applies_to": "text",
                 "sort_by": format!("{:?}", options.sort_by).to_ascii_lowercase(),
             },
             "clusters_total": report.clusters.len(),
             "clusters_displayed": display_limit,
-            "clusters": report.clusters.iter().take(display_limit).collect::<Vec<_>>(),
+            "clusters": clusters,
+            "omitted": omitted,
         }
     }))
     .unwrap_or_else(|_| "{\"errors\":{\"error\":\"failed to serialize errors output\"}}".into())

@@ -306,6 +306,38 @@ Use this only for related logs from the same run/session. Combining unrelated lo
 | `--sessions` | Show affected sessions per cluster (cross-references `component_id`) |
 | `-s, --sort-by <field>` | Sort by: `count` (default), `time`, `impact` |
 
+Use `errors --bounded` for reports with long stacks. It defaults to 600 Unicode
+characters per sample/pattern, 5 stack-frame lines per sample, and 12,000 Unicode
+characters for the entire text report (including coverage, newlines, and omission
+counts). Override with `--max-sample-chars`, `--max-stack-frames`, and
+`--max-output-chars`; specifying any limit enables bounded mode. Zero omits that
+detail or requests a zero text budget. Recognized stack-frame lines start with
+`at `, `at` followed by a tab, Python's `File "`, or a Rust frame number and colon.
+All sample content still counts against the character limits.
+
+Coverage, overall totals, and session impact precede cluster overviews and
+samples. Overviews receive space before sample details; remaining space is shared
+across displayed clusters. Reports state omitted cluster, sample-character,
+stack-frame, pattern-character, and requested session-detail counts. Counts
+include details in clusters hidden by `--top-n` or the budget. Patterns in text
+overviews are capped at 120 characters (or the smaller sample limit).
+
+If mandatory scope/totals/impact metadata and omission counts exceed the text
+budget, they are printed in full with an explicit warning, and cluster details
+are omitted. This is the only exception to the text budget. JSON preserves full
+coverage and totals, limits samples/patterns/frames, and reports omissions;
+`--max-output-chars` applies only to text so JSON remains valid. Numeric analysis
+totals are calculated before any presentation limits.
+
+Complete details remain the default. Use `--complete --top-n 0` for every cluster
+without detail limits; `--complete` conflicts with bounded mode and limit flags.
+
+```bash
+log-analyzer errors stacks.log --sessions --bounded --max-output-chars 2400
+log-analyzer -F json errors stacks.log --bounded --max-stack-frames 2
+log-analyzer errors stacks.log --complete --top-n 0
+```
+
 ### extract
 
 Extracts a named field from parsed payload/settings JSON for matching log entries and aggregates counts by value.

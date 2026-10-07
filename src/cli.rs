@@ -279,6 +279,26 @@ pub enum Commands {
         #[arg(long)]
         sessions: bool,
 
+        /// Bound samples and text output (defaults: 600 sample chars, 5 frames, 12000 output chars)
+        #[arg(long, conflicts_with = "complete")]
+        bounded: bool,
+
+        /// Show complete details (default); combine with --top-n 0 for every cluster
+        #[arg(long, conflicts_with_all = ["bounded", "max_sample_chars", "max_stack_frames", "max_output_chars"])]
+        complete: bool,
+
+        /// Maximum Unicode characters per sample/pattern (implies --bounded; 0 omits samples)
+        #[arg(long)]
+        max_sample_chars: Option<usize>,
+
+        /// Maximum stack-frame lines per sample (implies --bounded; 0 omits frames)
+        #[arg(long)]
+        max_stack_frames: Option<usize>,
+
+        /// Text report budget in Unicode characters including newlines; metadata may exceed it
+        #[arg(long)]
+        max_output_chars: Option<usize>,
+
         /// Sort clusters by field
         #[arg(short = 's', long, value_enum, default_value_t = ErrorsSortBy::Count)]
         sort_by: ErrorsSortBy,
