@@ -1198,3 +1198,241 @@ fn test_browser_console_fixture_reports_real_error_with_full_coverage() {
         }
     }
 }
+
+fn long_stack_fixture() -> String {
+    let mut content = String::new();
+    for (index, name) in ["alpha", "beta", "gamma"].iter().enumerate() {
+        content.push_str(&format!("worker (session-{name}) | 2026-10-07T10:00:0{index}.000Z [ERROR] Failed task {name} 🦀\n"));
+        for frame in 0..80 {
+            content.push_str(&format!(
+                "    at syntheticFunction{frame} (/example/app.js:{}:1)\n",
+                frame + 1
+            ));
+        }
+    }
+    content
+}
+
+#[test]
+fn test_bounded_errors_preserves_coverage_and_all_cluster_overviews_before_samples() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("stacks.log");
+    let out = dir.path().join("report.txt");
+    write_file(&file, &long_stack_fixture());
+    let result = command()
+        .args([
+            "--color",
+            "never",
+            "-o",
+            out.to_str().unwrap(),
+            "errors",
+            file.to_str().unwrap(),
+            "--sessions",
+            "--bounded",
+            "--top-n",
+            "3",
+            "--max-output-chars",
+            "2400",
+            "--max-stack-frames",
+            "2",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(fs::read(&out).unwrap(), result.stdout);
+    let text = String::from_utf8(result.stdout).unwrap();
+    assert!(text.chars().count() <= 2400, "{}", text.chars().count());
+    assert!(text.contains("3 entries (3 patterns) across 1 file"));
+    assert!(text.contains("parsed=3 entries, rejected=0 candidates"));
+    assert!(text.contains("Affected sessions: 3"));
+    assert!(text.contains("Omitted: 0 clusters;"));
+    assert!(text.contains("234 stack-frame lines"));
+    let impact = text.find("Impact summary").unwrap();
+    let sample = text.find("Sample #1").unwrap();
+    for heading in ["#1", "#2", "#3"] {
+        let index = text.find(heading).unwrap();
+        assert!(impact < index && index < sample);
+    }
+    assert_eq!(
+        text.lines()
+            .filter(|line| line.trim_start().starts_with("at "))
+            .count(),
+        6
+    );
+    let first_50 = text.lines().take(50).collect::<Vec<_>>().join("\n");
+    assert!(first_50.contains("#3"));
+    assert!(first_50.contains("Impact summary"));
+}
+
+#[test]
+fn test_errors_budget_tiny_and_zero_limits_retain_metadata_and_omissions() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("stacks.log");
+    write_file(&file, &long_stack_fixture());
+    for budget in ["0", "1", "900", "1200", "2000"] {
+        let result = command()
+            .args([
+                "errors",
+                file.to_str().unwrap(),
+                "--sessions",
+                "--max-output-chars",
+                budget,
+                "--max-sample-chars",
+                "0",
+                "--max-stack-frames",
+                "0",
+            ])
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        let text = String::from_utf8(result.stdout).unwrap();
+        assert!(text.contains("Total errors: 3"));
+        assert!(text.contains("Affected sessions: 3"));
+        assert!(text.contains("Parse coverage"));
+        assert!(text.contains("240 stack-frame lines"));
+        assert!(!text.contains("Sample #"));
+        if budget.parse::<usize>().unwrap() < 900 {
+            assert!(text.contains("Mandatory metadata exceeds budget"));
+            assert!(text.contains("Omitted: 3 clusters;"));
+        } else {
+            assert!(text.chars().count() <= budget.parse::<usize>().unwrap());
+        }
+    }
+}
+
+#[test]
+fn test_errors_json_bounded_details_preserve_machine_readable_totals() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("stacks.log");
+    write_file(&file, &long_stack_fixture());
+    let result = command()
+        .args([
+            "-F",
+            "json",
+            "errors",
+            file.to_str().unwrap(),
+            "--bounded",
+            "--top-n",
+            "2",
+            "--max-sample-chars",
+            "600",
+            "--max-stack-frames",
+            "2",
+            "--max-output-chars",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    let errors = &value["errors"];
+    assert_eq!(errors["summary"]["error_count"], 3);
+    assert_eq!(errors["summary"]["unique_patterns"], 3);
+    assert_eq!(errors["summary"]["affected_sessions_count"], 3);
+    assert_eq!(errors["clusters_total"], 3);
+    assert_eq!(errors["clusters_displayed"], 2);
+    assert_eq!(errors["omitted"]["clusters"], 1);
+    assert_eq!(errors["omitted"]["stack_frames"], 236);
+    assert_eq!(errors["options"]["output_budget_applies_to"], "text");
+    let mut visible_chars = 0;
+    for cluster in errors["clusters"].as_array().unwrap() {
+        let sample = cluster["sample_message"].as_str().unwrap();
+        assert!(sample.chars().count() <= 600);
+        visible_chars += sample.chars().count();
+        assert_eq!(
+            sample
+                .lines()
+                .filter(|line| line.trim_start().starts_with("at "))
+                .count(),
+            2
+        );
+    }
+    let entries = log_analyzer::parse_log_file(&file).unwrap();
+    let total_chars: usize = entries
+        .iter()
+        .map(|entry| entry.message.chars().count())
+        .sum();
+    assert_eq!(
+        errors["omitted"]["sample_chars"],
+        total_chars - visible_chars
+    );
+
+    let complete = command()
+        .args([
+            "-F",
+            "json",
+            "errors",
+            file.to_str().unwrap(),
+            "--complete",
+            "--top-n",
+            "0",
+        ])
+        .output()
+        .unwrap();
+    assert!(complete.status.success());
+    let complete: serde_json::Value = serde_json::from_slice(&complete.stdout).unwrap();
+    for field in [
+        "file_count",
+        "total_entries",
+        "error_count",
+        "warn_count",
+        "unique_patterns",
+        "affected_sessions_count",
+    ] {
+        assert_eq!(
+            complete["errors"]["summary"][field],
+            errors["summary"][field]
+        );
+    }
+    assert_eq!(
+        complete["errors"]["summary"]["longest_blocking"]["duration_ms"],
+        errors["summary"]["longest_blocking"]["duration_ms"]
+    );
+    assert_eq!(complete["errors"]["clusters_displayed"], 3);
+    assert_eq!(complete["errors"]["omitted"]["sample_chars"], 0);
+    assert_eq!(complete["errors"]["omitted"]["stack_frames"], 0);
+    assert!(
+        complete["errors"]["clusters"][0]["sample_message"]
+            .as_str()
+            .unwrap()
+            .contains("syntheticFunction79")
+    );
+}
+
+#[test]
+fn test_error_limits_handle_unicode_and_complete_flag_conflicts() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("unicode.log");
+    write_file(&file, "worker | 2026-10-07T10:00:00Z [ERROR] 🦀🦀🦀ééé\n");
+    let result = command()
+        .args([
+            "-F",
+            "json",
+            "errors",
+            file.to_str().unwrap(),
+            "--max-sample-chars",
+            "4",
+        ])
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(value["errors"]["clusters"][0]["sample_message"], "🦀🦀🦀é");
+    assert_eq!(value["errors"]["omitted"]["sample_chars"], 2);
+    for flags in [
+        vec!["--bounded"],
+        vec!["--max-output-chars", "1000"],
+        vec!["--max-sample-chars", "4"],
+    ] {
+        let result = command()
+            .args(["errors", file.to_str().unwrap(), "--complete"])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(2));
+    }
+}
