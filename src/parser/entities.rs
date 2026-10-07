@@ -97,6 +97,8 @@ pub struct LogEntry {
     pub kind: LogEntryKind,
     /// Source file when parsed from disk; absent for standalone entries.
     pub source_file: Option<String>,
+    /// Structured JSON envelope payload, retained separately from embedded message payloads.
+    pub envelope_payload: Option<Value>,
     /// Source line number in the original file (1-indexed)
     pub source_line_number: usize,
 }
@@ -214,6 +216,7 @@ pub fn create_event_log(params: EventLogParams) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        envelope_payload: None,
         kind: LogEntryKind::Event {
             event_type: params.event_type,
             direction: params.direction,
@@ -234,6 +237,7 @@ pub fn create_command_log(params: CommandLogParams) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        envelope_payload: None,
         kind: LogEntryKind::Command {
             command: params.command,
             settings: params.settings,
@@ -253,6 +257,7 @@ pub fn create_request_log(params: RequestLogParams) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        envelope_payload: None,
         kind: LogEntryKind::Request {
             request: params.request,
             request_id: params.request_id,
@@ -285,6 +290,7 @@ pub fn create_generic_log(
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        envelope_payload: None,
         kind: LogEntryKind::Generic { payload },
         source_line_number,
     }

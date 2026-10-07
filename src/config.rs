@@ -664,6 +664,7 @@ mod tests {
             structured_fields: HashMap::new(),
             module_path: None,
             source_file: None,
+            envelope_payload: None,
             kind: LogEntryKind::Command {
                 command: command.to_string(),
                 settings,
@@ -683,6 +684,7 @@ mod tests {
             structured_fields: HashMap::new(),
             module_path: None,
             source_file: None,
+            envelope_payload: None,
             kind: LogEntryKind::Generic { payload: None },
             source_line_number: 1,
         }

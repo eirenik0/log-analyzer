@@ -149,15 +149,19 @@ pub fn analyze_performance_with_config(
             .correlation_scope_fields
             .iter()
             .map(|field| match field.as_str() {
-                "component_id" => Some(entry.component_id.clone()),
+                "component_id" => {
+                    (!entry.component_id.trim().is_empty()).then(|| entry.component_id.clone())
+                }
                 "component" => Some(entry.component.clone()),
                 _ => entry
                     .structured_field(field)
                     .map(str::to_owned)
                     .or_else(|| {
                         entry
-                            .payload()
+                            .envelope_payload
+                            .as_ref()
                             .and_then(|p| p.get(field))
+                            .or_else(|| entry.payload().and_then(|p| p.get(field)))
                             .filter(|value| !value.is_null())
                             .map(|value| {
                                 value
@@ -167,6 +171,7 @@ pub fn analyze_performance_with_config(
                             })
                     }),
             })
+            .map(|value| value.filter(|value| !value.trim().is_empty() && value != "null"))
             .collect::<Option<Vec<_>>>();
         let Some(scope) = scope else {
             results

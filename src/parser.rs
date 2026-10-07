@@ -629,11 +629,17 @@ fn build_log_entry(
         parser_rules,
     )?;
 
-    if let Some(payload) = payload_override
-        && let LogEntryKind::Generic { payload: existing } = &mut entry.kind
-        && existing.is_none()
-    {
-        *existing = Some(payload);
+    entry.envelope_payload = payload_override.clone();
+    if let Some(payload) = payload_override {
+        let existing = match &mut entry.kind {
+            LogEntryKind::Generic { payload }
+            | LogEntryKind::Event { payload, .. }
+            | LogEntryKind::Request { payload, .. } => payload,
+            LogEntryKind::Command { settings, .. } => settings,
+        };
+        if existing.is_none() {
+            *existing = Some(payload);
+        }
     }
 
     entry.structured_fields = structured_fields;

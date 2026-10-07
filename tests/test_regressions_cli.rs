@@ -253,11 +253,11 @@ fn test_perf_orphans_only_resolves_cross_file_pairs_after_timestamp_sort() {
     // the completion would be seen before the start and the request would remain orphaned.
     write_file(
         &file_finish,
-        "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id1] finished successfully with body {\"statusCode\":200}\n",
+        "svc (demo) | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id1] finished successfully with body {\"statusCode\":200}\n",
     );
     write_file(
         &file_start,
-        "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"statusCode\":100}\n",
+        "svc (demo) | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"statusCode\":100}\n",
     );
 
     let output = command()
@@ -1777,10 +1777,15 @@ fn perf_scopes_reused_ids_and_preserves_ambiguous_events_with_sources() {
         &(unscoped
             + "core | 2026-01-01T00:00:05.000Z [INFO] Request \"other\" [0--end] completed\n"),
     );
+    let config = dir.path().join("unscoped.toml");
+    let mut profile = log_analyzer::config::load_builtin_template("service-api").unwrap();
+    profile.perf.correlation_scope_fields.clear();
+    write_file(&config, &toml::to_string(&profile).unwrap());
     let output = command()
+        .env_remove("LOG_ANALYZER_PRESET")
         .args([
-            "--preset",
-            "service-api",
+            "--config",
+            config.to_str().unwrap(),
             "-j",
             "perf",
             file.to_str().unwrap(),
@@ -1805,7 +1810,13 @@ fn perf_scopes_reused_ids_and_preserves_ambiguous_events_with_sources() {
     assert_eq!(unmatched[0]["reason"], "overlapping_starts");
     assert_eq!(unmatched[4]["reason"], "missing_start");
     let output = command()
-        .args(["--preset", "service-api", "perf", file.to_str().unwrap()])
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "perf",
+            file.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -1871,4 +1882,89 @@ fn perf_custom_composite_scope_pairs_across_files_and_reports_missing_fields() {
         report["unmatched_events"][0]["reason"],
         "missing_scope_field"
     );
+}
+
+#[test]
+fn perf_rejects_missing_default_scope_even_for_unique_pairs() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("unscoped.jsonl");
+    write_file(
+        &file,
+        concat!(
+            "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"Request \\\"fetch\\\" [0--same] sent\"}\n",
+            "{\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":\"Request \\\"fetch\\\" [0--same] completed\"}\n",
+        ),
+    );
+    let output = command()
+        .args([
+            "--preset",
+            "service-api",
+            "-j",
+            "perf",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report["operations"].as_array().unwrap().is_empty());
+    assert_eq!(report["unmatched_events"].as_array().unwrap().len(), 2);
+    assert!(
+        report["unmatched_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event["reason"] == "missing_scope_field")
+    );
+}
+
+#[test]
+fn perf_uses_json_envelope_scope_alongside_embedded_payload() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("scope.toml");
+    let mut profile = log_analyzer::config::load_builtin_template("service-api").unwrap();
+    profile.perf.correlation_scope_fields = vec!["component_id".into(), "tenant".into()];
+    write_file(&config, &toml::to_string(&profile).unwrap());
+    let file = dir.path().join("envelope.jsonl");
+    for envelope_field in ["payload", "fields"] {
+        let rows = [
+            serde_json::json!({"timestamp":"2026-01-01T00:00:00Z", "session_id":"demo", "message":"Request \"fetch\" [0--same] sent with body {\"attempt\":1}", envelope_field: {"tenant":"a"}}),
+            serde_json::json!({"timestamp":"2026-01-01T00:00:01Z", "session_id":"demo", "message":"Request \"fetch\" [0--same] completed", envelope_field: {"tenant":"a"}}),
+        ];
+        write_file(
+            &file,
+            &rows
+                .iter()
+                .map(|row| row.to_string() + "\n")
+                .collect::<String>(),
+        );
+        let output = command()
+            .env_remove("LOG_ANALYZER_PRESET")
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "-j",
+                "perf",
+                file.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            report["operations"].as_array().unwrap().len(),
+            1,
+            "{envelope_field}"
+        );
+        assert_eq!(report["operations"][0]["duration_ms"], 1000);
+        assert_eq!(
+            report["operations"][0]["scope"],
+            serde_json::json!(["demo", "a"])
+        );
+        assert!(report["unmatched_events"].as_array().unwrap().is_empty());
+    }
 }

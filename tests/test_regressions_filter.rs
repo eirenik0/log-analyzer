@@ -20,6 +20,7 @@ fn generic_log(component: &str) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        envelope_payload: None,
         kind: LogEntryKind::Generic { payload: None },
         source_line_number: 1,
     }
@@ -36,6 +37,7 @@ fn request_log(direction: RequestDirection) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        envelope_payload: None,
         kind: LogEntryKind::Request {
             request: "foo".to_string(),
             request_id: Some("0--id".to_string()),
