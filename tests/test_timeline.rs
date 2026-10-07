@@ -143,3 +143,71 @@ fn invalid_rules_and_missing_keys_are_explicit() {
             .all(|i| i.reason == "missing_correlation_field")
     );
 }
+
+#[test]
+fn tied_cross_file_boundaries_are_ambiguous_in_both_input_orders() {
+    let mut logs = entries(&["begin id=a", "response id=a"]);
+    logs[0].source_file = Some("start.log".into());
+    logs[1].source_file = Some("end.log".into());
+    logs[1].timestamp = logs[0].timestamp;
+    logs[1].source_timestamp = logs[0].source_timestamp;
+    let mut configured = rules();
+    configured.pairs.truncate(1);
+    for _ in 0..2 {
+        let report = timeline::analyze(&logs.iter().collect::<Vec<_>>(), &configured)
+            .unwrap()
+            .unwrap();
+        assert!(report.intervals.is_empty());
+        assert_eq!(report.ambiguous_groups.len(), 1);
+        assert_eq!(report.incomplete.len(), 2);
+        assert_eq!(report.measured_work_sum_ms, None);
+        assert!(
+            report
+                .incomplete
+                .iter()
+                .all(|item| item.reason == "ambiguous_boundary")
+        );
+        logs.reverse();
+    }
+}
+
+#[test]
+fn timeline_evidence_preserves_source_offsets_in_text_and_json() {
+    let mut configured = rules();
+    configured.pairs.truncate(1);
+    for json in [false, true] {
+        let inputs = [
+            ("2026-01-01T05:30:00+05:30", "begin id=a"),
+            ("2025-12-31T19:00:01-05:00", "response id=a"),
+        ];
+        let logs = inputs
+            .iter()
+            .enumerate()
+            .map(|(i, (timestamp, message))| {
+                let raw = if json {
+                    serde_json::json!({"timestamp":timestamp,"session_id":"demo","message":message})
+                        .to_string()
+                } else {
+                    format!("core (demo) | {timestamp} [INFO] {message}")
+                };
+                parse_log_entry_with_config(&raw, i + 1, &AnalyzerConfig::default()).unwrap()
+            })
+            .collect::<Vec<_>>();
+        let report = timeline::analyze(&logs.iter().collect::<Vec<_>>(), &configured)
+            .unwrap()
+            .unwrap();
+        assert_eq!(report.intervals[0].measured_duration_ms, Some(1000));
+        assert_eq!(report.events[0].timestamp.offset().local_minus_utc(), 19800);
+        assert_eq!(
+            report.events[1].timestamp.offset().local_minus_utc(),
+            -18000
+        );
+        assert_eq!(report.events[0].timestamp_offset_source, "source");
+        let text = timeline::format_text(&report);
+        let json = serde_json::to_string(&report).unwrap();
+        for offset in ["+05:30", "-05:00"] {
+            assert!(text.contains(offset));
+            assert!(json.contains(offset));
+        }
+    }
+}

@@ -421,7 +421,9 @@ produce `measured_duration_ms`; all pairs retain their observed timestamp gap.
 A retry logged after sleep should end an `inferred_sleep` pair, not a response-time
 measurement. Missing boundaries/keys and overlapping starts remain explicit;
 no arbitrary pairing is attempted. Events retain source lines, full timestamps,
-sample counts, and gaps since the previous matched event. Summed measured work
+sample counts, and gaps since the previous matched event. Explicit source offsets
+are retained in timeline timestamps; naive times are marked `host_assumed`. Equal
+timestamps across files cannot establish boundary order and remain ambiguous. Summed measured work
 can exceed elapsed capture time when work overlaps. The capture window describes
 observed entries; upstream capture completeness remains `unknown`.
 Timeline evidence is retained in full independently of the performance row limit.

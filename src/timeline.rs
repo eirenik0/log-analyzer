@@ -1,6 +1,6 @@
 use crate::parser::LogEntry;
 use crate::perf_analyzer::SourceLocation;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, FixedOffset};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,7 +40,8 @@ pub enum Timing {
 pub struct TimelineEvent {
     pub event_type: String,
     pub key: Option<Vec<String>>,
-    pub timestamp: DateTime<Local>,
+    pub timestamp: DateTime<FixedOffset>,
+    pub timestamp_offset_source: String,
     pub source: SourceLocation,
     pub raw: String,
     pub gap_since_previous_match_ms: Option<i64>,
@@ -72,10 +73,16 @@ pub struct TimelineReport {
     pub intervals: Vec<TimelineInterval>,
     pub incomplete: Vec<IncompleteInterval>,
     pub ambiguous_groups: Vec<Vec<TimelineEvent>>,
-    pub capture_window: Option<(DateTime<Local>, DateTime<Local>)>,
+    pub capture_window: Option<(DateTime<FixedOffset>, DateTime<FixedOffset>)>,
     pub upstream_capture_completeness: String,
     pub measured_work_sum_ms: Option<i64>,
     pub elapsed_capture_ms: Option<i64>,
+}
+
+fn evidence_timestamp(entry: &LogEntry) -> DateTime<FixedOffset> {
+    entry
+        .source_timestamp
+        .unwrap_or_else(|| entry.timestamp.fixed_offset())
 }
 
 pub fn analyze(
@@ -133,9 +140,9 @@ pub fn analyze(
     }
     let capture_window = logs
         .iter()
-        .map(|e| e.timestamp)
+        .map(|e| evidence_timestamp(e))
         .min()
-        .zip(logs.iter().map(|e| e.timestamp).max());
+        .zip(logs.iter().map(|e| evidence_timestamp(e)).max());
     let mut report = TimelineReport {
         status: "no_applicable_events".into(),
         events: Vec::new(),
@@ -186,7 +193,13 @@ pub fn analyze(
             report.events.push(TimelineEvent {
                 event_type: rule.name.clone(),
                 key,
-                timestamp: entry.timestamp,
+                timestamp: evidence_timestamp(entry),
+                timestamp_offset_source: if entry.source_timestamp.is_some() {
+                    "source"
+                } else {
+                    "host_assumed"
+                }
+                .into(),
                 source: SourceLocation {
                     file: entry.source_file.clone(),
                     line: entry.source_line_number,
@@ -226,9 +239,9 @@ pub fn analyze(
         for (key, events) in groups {
             let mut active = false;
             let shared_boundary = events.windows(2).any(|pair| {
-                pair[0].source.file == pair[1].source.file
-                    && pair[0].source.line == pair[1].source.line
-                    && pair[0].timestamp == pair[1].timestamp
+                pair[0].timestamp == pair[1].timestamp
+                    && (pair[0].source.file != pair[1].source.file
+                        || pair[0].source.line == pair[1].source.line)
             });
             if shared_boundary
                 || events.iter().any(|event| {
@@ -318,7 +331,7 @@ pub fn format_text(report: &TimelineReport) -> String {
         let _ = writeln!(
             out,
             "{} {} {:?}; gap since previous matched event {:?}ms at {}:{}",
-            event.timestamp.with_timezone(&chrono::Utc).to_rfc3339(),
+            event.timestamp.to_rfc3339(),
             event.event_type,
             event.key,
             event.gap_since_previous_match_ms,

@@ -411,6 +411,7 @@ fn parse_classic_log_entry(
         component.to_string(),
         component_id.to_string(),
         parse_timestamp(timestamp_str)?,
+        timestamp_str,
         normalize_level(level),
         message.to_string(),
         log_text.to_string(),
@@ -455,6 +456,7 @@ fn parse_rust_tracing_log_entry(
         component,
         String::new(),
         parse_timestamp(timestamp)?,
+        timestamp,
         normalize_level(level),
         message,
         log_text.to_string(),
@@ -504,6 +506,7 @@ fn parse_syslog_log_entry(
         process.to_string(),
         pid.to_string(),
         parse_timestamp(timestamp)?,
+        timestamp,
         infer_level_from_text(&message),
         message,
         log_text.to_string(),
@@ -592,6 +595,7 @@ fn parse_json_line_entry(
         component,
         component_id,
         parse_timestamp(&timestamp)?,
+        &timestamp,
         normalize_level(&level),
         message,
         log_text.to_string(),
@@ -608,6 +612,7 @@ fn build_log_entry(
     component: String,
     component_id: String,
     timestamp: DateTime<Local>,
+    source_timestamp: &str,
     level: String,
     message: String,
     raw_logline: String,
@@ -629,6 +634,7 @@ fn build_log_entry(
         parser_rules,
     )?;
 
+    entry.source_timestamp = DateTime::parse_from_rfc3339(source_timestamp).ok();
     entry.envelope_payload = payload_override.clone();
     if let Some(payload) = payload_override {
         let existing = match &mut entry.kind {
