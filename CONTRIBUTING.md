@@ -18,16 +18,17 @@ Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `buil
 `BREAKING CHANGE:` footer explaining migration. Generated merge commits are
 excluded from the commit check. Squash commits must retain the valid PR title.
 
-Enable the commit-message hook in each checkout (Python 3 required):
+Install [pre-commit](https://pre-commit.com/#install), then enable the configured
+commit-message hook in your clone:
 
 ```bash
-git config --local core.hooksPath .githooks
+pre-commit install --install-hooks
 ```
 
-If you already use a hooks manager, call `python3 scripts/check_commits.py
---message-file "$1"` from its commit-msg hook instead of replacing your setup.
-CI validates both the PR title and all non-merge commits introduced by the PR.
-Fix an invalid commit with amend/rebase before requesting review.
+The configuration uses the standard
+[conventional-pre-commit](https://github.com/compilerla/conventional-pre-commit)
+hook at the `commit-msg` stage. It checks local commit messages; keep PR titles
+conventional when editing them on GitHub too.
 
 ## Quality checks
 
@@ -38,7 +39,6 @@ cargo fmt --all -- --check
 cargo check --locked
 cargo clippy --locked -- -D warnings
 cargo test --locked
-python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
 When the evaluation corpus is available, also run its documented checks after

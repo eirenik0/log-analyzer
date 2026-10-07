@@ -1,2 +1,0 @@
-#!/bin/sh
-exec python3 scripts/check_commits.py --message-file "$1"

@@ -53,7 +53,7 @@ Project behavior/details should be discovered from:
   `type(scope): description`. Scope is optional; use `!` for breaking changes.
   Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
   `build`, `ci`, `chore`, `revert`. Example: `fix(parser): preserve timezone offsets`.
-- Follow [CONTRIBUTING.md](CONTRIBUTING.md) for local hooks and quality checks.
+- Follow [CONTRIBUTING.md](CONTRIBUTING.md) for pre-commit setup and quality checks.
 - Keep formatting, lint, tests, and applicable evaluation checks passing. Do not
   silence failures or weaken assertions to make CI green.
 - Add a focused regression test for a bug fix. Use synthetic, generic data;
