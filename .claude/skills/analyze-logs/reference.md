@@ -515,3 +515,15 @@ The parser can also auto-detect:
 - JSON lines: `{"timestamp":...,"level":...,"message":...}`
 
 Profiles can force the format with `[parser] format = "rust-tracing"` (or `classic`, `syslog`, `json-lines`). Rust tracing fields are available to `search` filters and `extract --field ...`, for example `-f "trace_id:abc123"` or `-f "actor_kind:switch"`.
+
+## Parse Coverage
+
+Check `info`, `errors`, or `perf` coverage before interpreting the result. Text
+and JSON expose each file's parser/profile, byte size, parsed entry count, and
+rejected candidates. Coverage counts precede filters and ERROR/WARN selection.
+A nonempty file with no recognized entries exits 1 and reports `unparsed_input`,
+even in a mixed file set. Empty/whitespace input (`empty_input`), zero filter
+matches (`zero_filter_matches`), and parsed error-free input (`parsed`) succeed.
+Multiline continuation lines do not count as rejected candidates.
+Use `info -F json` for coverage plus component/level totals. On parsing failure,
+JSON stdout and `-o` still contain coverage; inspect stderr for the diagnostic.
