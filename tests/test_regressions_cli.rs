@@ -1436,3 +1436,123 @@ fn test_error_limits_handle_unicode_and_complete_flag_conflicts() {
         assert_eq!(result.status.code(), Some(2));
     }
 }
+
+#[test]
+fn process_sorts_before_limit_and_reports_timestamp_bounds() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("order.jsonl");
+    write_file(
+        &file,
+        concat!(
+            "{\"timestamp\":\"2026-01-01T00:00:02Z\",\"level\":\"INFO\",\"component\":\"alpha\",\"message\":\"later\"}\n",
+            "{\"timestamp\":\"2026-01-01T00:00:01Z\",\"level\":\"ERROR\",\"component\":\"zeta\",\"message\":\"earlier\"}\n",
+            "{\"timestamp\":\"2026-01-01T00:00:01Z\",\"level\":\"ERROR\",\"component\":\"zeta\",\"message\":\"tied\"}\n",
+        ),
+    );
+    for (sort, first) in [
+        ("time", "earlier"),
+        ("component", "later"),
+        ("level", "earlier"),
+        ("type", "earlier"),
+    ] {
+        let output = command()
+            .args([
+                "process",
+                file.to_str().unwrap(),
+                "--sort-by",
+                sort,
+                "--limit",
+                "1",
+            ])
+            .env("TZ", "UTC")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["logs"].as_array().unwrap().len(), 1);
+        assert_eq!(report["logs"][0]["msg"], first, "sort: {sort}");
+        assert_eq!(report["metadata"]["total_entries"], 3);
+        assert_eq!(report["metadata"]["filtered_entries"], 1);
+    }
+    let output = command()
+        .args([
+            "process",
+            file.to_str().unwrap(),
+            "--sort-by",
+            "component",
+            "--limit",
+            "0",
+        ])
+        .env("TZ", "UTC")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        report["metadata"]["time_range"]["start"],
+        "2026-01-01T00:00:01.000Z"
+    );
+    assert_eq!(
+        report["metadata"]["time_range"]["end"],
+        "2026-01-01T00:00:02.000Z"
+    );
+    assert_eq!(report["logs"][1]["msg"], "earlier");
+    assert_eq!(report["logs"][2]["msg"], "tied");
+    let output = command()
+        .args(["process", file.to_str().unwrap(), "--sort-by", "diff-count"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid value"));
+}
+
+#[test]
+fn process_type_sort_orders_kinds_and_filters_before_limiting() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("types.log");
+    write_file(
+        &file,
+        concat!(
+            "svc | 2026-01-01T00:00:01.000Z [INFO] worker alive\n",
+            "svc | 2026-01-01T00:00:02.000Z [INFO] Request \"fetch\" [0--demo] will be sent with body {\"x\":1}\n",
+            "svc | 2026-01-01T00:00:03.000Z [INFO] Command \"run\" is called with settings {\"x\":1}\n",
+        ),
+    );
+    let output = command()
+        .args([
+            "process",
+            file.to_str().unwrap(),
+            "--sort-by",
+            "type",
+            "--limit",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["logs"][0]["typ"], "C:run");
+    let output = command()
+        .args([
+            "--filter",
+            "text:fetch",
+            "process",
+            file.to_str().unwrap(),
+            "--limit",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["metadata"]["total_entries"], 1);
+    assert!(report["logs"][0]["msg"].as_str().unwrap().contains("fetch"));
+}

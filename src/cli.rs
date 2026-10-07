@@ -37,6 +37,19 @@ pub enum SortOrder {
     DiffCount,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
+pub enum ProcessSortOrder {
+    /// Sort by timestamp (earliest first)
+    #[default]
+    Time,
+    /// Sort by component name
+    Component,
+    /// Sort by log level severity (highest first)
+    Level,
+    /// Sort by entry type (Command, Event, Generic, Request)
+    Type,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 pub enum OperationType {
     /// Request operations (send/receive)
@@ -342,8 +355,8 @@ pub enum Commands {
         file: PathBuf,
 
         /// Sort output by given field
-        #[arg(short = 's', long, value_enum, default_value_t = SortOrder::Time, env = "LOG_ANALYZER_SORT_BY")]
-        sort_by: SortOrder,
+        #[arg(short = 's', long, value_enum, default_value_t = ProcessSortOrder::Time, env = "LOG_ANALYZER_SORT_BY")]
+        sort_by: ProcessSortOrder,
 
         /// Maximum number of log entries to include (0 = unlimited)
         #[arg(long, default_value = "100")]

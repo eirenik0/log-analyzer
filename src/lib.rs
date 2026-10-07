@@ -524,7 +524,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Process {
             file,
-            sort_by: _,
+            sort_by,
             limit,
             no_sanitize,
         } => {
@@ -533,11 +533,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
             // Filter logs
-            let filtered_logs: Vec<_> = logs
+            let mut filtered_logs: Vec<_> = logs
                 .iter()
                 .filter(|log| filter.matches(log))
                 .cloned()
                 .collect();
+
+            llm_processor::sort_logs(&mut filtered_logs, *sort_by);
 
             // Process logs for LLM consumption (sanitize by default, unless --no-sanitize is used)
             let llm_output =

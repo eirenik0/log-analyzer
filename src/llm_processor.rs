@@ -177,6 +177,28 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
     }
 }
 
+pub fn sort_logs(logs: &mut [LogEntry], order: crate::cli::ProcessSortOrder) {
+    use crate::cli::ProcessSortOrder;
+    let severity = |level: &str| match level.trim().to_uppercase().as_str() {
+        "FATAL" => 6,
+        "ERROR" => 5,
+        "WARN" | "WARNING" => 4,
+        "INFO" => 3,
+        "DEBUG" => 2,
+        "TRACE" => 1,
+        _ => 0,
+    };
+    logs.sort_by(|a, b| {
+        let primary = match order {
+            ProcessSortOrder::Time => a.timestamp.cmp(&b.timestamp),
+            ProcessSortOrder::Component => a.component.cmp(&b.component),
+            ProcessSortOrder::Level => severity(&b.level).cmp(&severity(&a.level)),
+            ProcessSortOrder::Type => a.entry_type().cmp(b.entry_type()),
+        };
+        primary.then_with(|| a.timestamp.cmp(&b.timestamp))
+    });
+}
+
 pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> LlmLogOutput {
     let total_entries = logs.len();
     let filtered_entries = if limit > 0 && limit < logs.len() {
@@ -234,13 +256,15 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
     let time_range = if !logs_to_process.is_empty() {
         Some(TimeRange {
             start: logs_to_process
-                .first()
+                .iter()
+                .min_by_key(|log| log.timestamp)
                 .unwrap()
                 .timestamp
                 .format("%Y-%m-%dT%H:%M:%S%.3fZ")
                 .to_string(),
             end: logs_to_process
-                .last()
+                .iter()
+                .max_by_key(|log| log.timestamp)
                 .unwrap()
                 .timestamp
                 .format("%Y-%m-%dT%H:%M:%S%.3fZ")
