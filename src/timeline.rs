@@ -66,10 +66,20 @@ pub struct IncompleteInterval {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairCoverage {
+    pub status: String,
+    pub start_samples: usize,
+    pub end_samples: usize,
+    pub completed_intervals: usize,
+    pub timing: Timing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineReport {
     pub status: String,
     pub events: Vec<TimelineEvent>,
     pub sample_counts: BTreeMap<String, usize>,
+    pub pair_coverage: BTreeMap<String, PairCoverage>,
     pub intervals: Vec<TimelineInterval>,
     pub incomplete: Vec<IncompleteInterval>,
     pub ambiguous_groups: Vec<Vec<TimelineEvent>>,
@@ -146,7 +156,12 @@ pub fn analyze(
     let mut report = TimelineReport {
         status: "no_applicable_events".into(),
         events: Vec::new(),
-        sample_counts: BTreeMap::new(),
+        sample_counts: rules
+            .events
+            .iter()
+            .map(|rule| (rule.name.clone(), 0))
+            .collect(),
+        pair_coverage: BTreeMap::new(),
         intervals: Vec::new(),
         incomplete: Vec::new(),
         ambiguous_groups: Vec::new(),
@@ -307,8 +322,41 @@ pub fn analyze(
             }
         }
     }
+    for pair in &rules.pairs {
+        let start_samples = report.sample_counts[&pair.start_event];
+        let end_samples = report.sample_counts[&pair.end_event];
+        let completed_intervals = report
+            .intervals
+            .iter()
+            .filter(|interval| interval.pair == pair.name)
+            .count();
+        let status = if start_samples + end_samples == 0 {
+            "no_applicable_events"
+        } else if completed_intervals == 0
+            || report.incomplete.iter().any(|item| item.pair == pair.name)
+        {
+            "insufficient_evidence"
+        } else {
+            "boundaries_available"
+        };
+        report.pair_coverage.insert(
+            pair.name.clone(),
+            PairCoverage {
+                status: status.into(),
+                start_samples,
+                end_samples,
+                completed_intervals,
+                timing: pair.timing,
+            },
+        );
+    }
     if !report.events.is_empty() {
-        report.status = if report.intervals.is_empty() || !report.incomplete.is_empty() {
+        report.status = if report.pair_coverage.is_empty()
+            || report
+                .pair_coverage
+                .values()
+                .any(|pair| pair.status != "boundaries_available")
+        {
             "insufficient_evidence"
         } else {
             "boundaries_available"
@@ -327,6 +375,17 @@ pub fn format_text(report: &TimelineReport) -> String {
         report.measured_work_sum_ms,
         report.elapsed_capture_ms
     );
+    for (name, pair) in &report.pair_coverage {
+        let _ = writeln!(
+            out,
+            "Pair {name}: {}, {} start samples, {} end samples, {} intervals ({:?})",
+            pair.status,
+            pair.start_samples,
+            pair.end_samples,
+            pair.completed_intervals,
+            pair.timing
+        );
+    }
     for event in &report.events {
         let _ = writeln!(
             out,

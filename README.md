@@ -426,6 +426,8 @@ are retained in timeline timestamps; naive times are marked `host_assumed`. Equa
 timestamps across files cannot establish boundary order and remain ambiguous. Summed measured work
 can exceed elapsed capture time when work overlaps. The capture window describes
 observed entries; upstream capture completeness remains `unknown`.
+Per-pair coverage reports unavailable measurements even when another pair succeeds;
+configured event types with no matches have explicit zero sample counts.
 Timeline evidence is retained in full independently of the performance row limit.
 
 ### trace

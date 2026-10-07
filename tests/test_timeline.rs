@@ -229,3 +229,41 @@ fn text_and_json_label_offsets_assumed_for_naive_timestamps() {
             .contains("host_assumed")
     );
 }
+
+#[test]
+fn absent_configured_pairs_are_reported_as_unavailable() {
+    let mut configured = rules();
+    configured.pairs.truncate(1);
+    for name in ["heartbeat_start", "heartbeat_end"] {
+        configured.events.push(EventRule {
+            name: name.into(),
+            pattern: name.into(),
+            correlation_fields: vec!["component_id".into()],
+        });
+    }
+    configured.pairs.push(PairRule {
+        name: "heartbeat".into(),
+        start_event: "heartbeat_start".into(),
+        end_event: "heartbeat_end".into(),
+        timing: Timing::Measured,
+    });
+    let logs = entries(&["begin id=a", "response id=a"]);
+    let report = timeline::analyze(&logs.iter().collect::<Vec<_>>(), &configured)
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.intervals.len(), 1);
+    assert_eq!(report.status, "insufficient_evidence");
+    assert_eq!(report.sample_counts["heartbeat_start"], 0);
+    assert_eq!(report.sample_counts["heartbeat_end"], 0);
+    assert_eq!(
+        report.pair_coverage["heartbeat"].status,
+        "no_applicable_events"
+    );
+    assert_eq!(report.pair_coverage["heartbeat"].completed_intervals, 0);
+    assert_eq!(report.pair_coverage["fetch"].status, "boundaries_available");
+    assert!(timeline::format_text(&report).contains("Pair heartbeat: no_applicable_events"));
+    assert_eq!(
+        serde_json::to_value(&report).unwrap()["pair_coverage"]["heartbeat"]["status"],
+        "no_applicable_events"
+    );
+}
