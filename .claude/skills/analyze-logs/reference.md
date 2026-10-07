@@ -437,6 +437,42 @@ sections also obey `--top-n`, with full totals and omitted counts; `0` preserves
 
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 
+### Configurable event timelines
+
+Custom profiles can add event regexes and named start/end pairs. `perf` includes
+`event_timeline`; `trace` applies the same rules to selected matches. Patterns
+match original raw entries and may expose named captures used in composite keys.
+Correlation fields also accept `component_id`, `component`, structured fields,
+and top-level JSON envelope/payload fields. Each pair must use identical key fields.
+
+```toml
+[[timeline.events]]
+name = "fetch_begin"
+pattern = 'fetch begin id=(?P<id>\w+)'
+correlation_fields = ["component_id", "id"]
+
+[[timeline.events]]
+name = "fetch_response"
+pattern = 'fetch response id=(?P<id>\w+)'
+correlation_fields = ["component_id", "id"]
+
+[[timeline.pairs]]
+name = "fetch"
+start_event = "fetch_begin"
+end_event = "fetch_response"
+timing = "measured"
+```
+
+Pair timing is `measured`, `inferred_sleep`, or `unknown`. Only measured boundaries
+produce `measured_duration_ms`; all pairs retain their observed timestamp gap.
+A retry logged after sleep should end an `inferred_sleep` pair, not a response-time
+measurement. Missing boundaries/keys and overlapping starts remain explicit;
+no arbitrary pairing is attempted. Events retain source lines, full timestamps,
+sample counts, and gaps since the previous matched event. Summed measured work
+can exceed elapsed capture time when work overlaps. The capture window describes
+observed entries; upstream capture completeness remains `unknown`.
+Timeline evidence is retained in full independently of the performance row limit.
+
 ### trace
 
 Trace a single operation lifecycle by correlation/request ID or by `component_id` session path across one or more log files.

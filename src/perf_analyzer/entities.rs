@@ -110,6 +110,8 @@ pub struct PerfAnalysisResults {
     pub orphans: Vec<OrphanOperation>,
     /// Aggregated statistics per operation type
     pub stats: Vec<OperationStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_timeline: Option<crate::timeline::TimelineReport>,
     pub unmatched_events: Vec<UnmatchedEvent>,
     pub ambiguous_groups: Vec<AmbiguousGroup>,
     /// Time range of the analyzed logs
@@ -125,6 +127,7 @@ impl PerfAnalysisResults {
             operations: Vec::new(),
             orphans: Vec::new(),
             stats: Vec::new(),
+            event_timeline: None,
             unmatched_events: Vec::new(),
             ambiguous_groups: Vec::new(),
             time_range: None,

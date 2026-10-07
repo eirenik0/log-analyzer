@@ -9,6 +9,7 @@ pub mod llm_processor;
 pub mod parser;
 pub mod perf_analyzer;
 pub mod search;
+pub mod timeline;
 pub mod trace;
 
 pub use cli::{
@@ -693,12 +694,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             // Analyze performance
-            let results = perf_analyzer::analyze_performance_with_config(
+            let mut results = perf_analyzer::analyze_performance_with_config(
                 &logs,
                 &filter,
                 op_type_filter,
                 &analyzer_config,
             );
+
+            let selected: Vec<_> = logs.iter().filter(|entry| filter.matches(entry)).collect();
+            results.event_timeline = timeline::analyze(&selected, &analyzer_config.timeline)?;
 
             // Display results based on format
             match format {
@@ -745,16 +749,26 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             let entries = collect_trace_entries(&logs, &filter, &selector);
 
+            let event_timeline = timeline::analyze(&entries, &analyzer_config.timeline)?;
+
             match format {
                 OutputFormat::Text => {
-                    let text = format_trace_text(&entries, &selector);
+                    let mut text = format_trace_text(&entries, &selector);
+                    if let Some(report) = &event_timeline {
+                        text.push_str(&timeline::format_text(report));
+                    }
                     print!("{text}");
                     if let Some(path) = output {
                         write_output_file(path, &text)?;
                     }
                 }
                 OutputFormat::Json => {
-                    let json = format_trace_json(&entries, &selector);
+                    let mut report: serde_json::Value =
+                        serde_json::from_str(&format_trace_json(&entries, &selector))?;
+                    if let Some(timeline) = &event_timeline {
+                        report["trace"]["event_timeline"] = serde_json::to_value(timeline)?;
+                    }
+                    let json = serde_json::to_string_pretty(&report)?;
                     println!("{}", json);
                     if let Some(path) = output {
                         write_output_file(path, &json)?;

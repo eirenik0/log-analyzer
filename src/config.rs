@@ -47,6 +47,7 @@ pub struct AnalyzerConfig {
     pub profile_name: String,
     pub parser: ParserRules,
     pub perf: PerfRules,
+    pub timeline: crate::timeline::TimelineRules,
     pub profile: ProfileRules,
     #[serde(skip_serializing_if = "SessionsRules::is_empty")]
     pub sessions: SessionsRules,
@@ -58,6 +59,7 @@ impl Default for AnalyzerConfig {
             profile_name: "base".to_string(),
             parser: ParserRules::default(),
             perf: PerfRules::default(),
+            timeline: crate::timeline::TimelineRules::default(),
             profile: ProfileRules::default(),
             sessions: SessionsRules::default(),
         }
