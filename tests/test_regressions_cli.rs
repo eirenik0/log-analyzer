@@ -1068,3 +1068,127 @@ fn test_errors_warn_and_sessions_show_completed_and_orphaned_sessions() {
         stdout
     );
 }
+
+#[test]
+fn test_analysis_coverage_distinguishes_parsing_from_selection() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("coverage.log");
+    let out = dir.path().join("coverage.json");
+    let cases = [
+        ("", "empty_input", 0, 0, 0),
+        ("\n  \n", "empty_input", 0, 0, 0),
+        (
+            "unsupported format\n    at frame1\n    at frame2\n",
+            "unparsed_input",
+            0,
+            0,
+            1,
+        ),
+        (
+            "worker | 2026-10-07T10:00:00.000Z [INFO ] started\n",
+            "parsed",
+            1,
+            1,
+            0,
+        ),
+    ];
+    for (content, status, parsed, matched, rejected) in cases {
+        write_file(&file, content);
+        for subcommand in ["info", "errors", "perf"] {
+            let result = command()
+                .args([
+                    "-F",
+                    "json",
+                    "-o",
+                    out.to_str().unwrap(),
+                    subcommand,
+                    file.to_str().unwrap(),
+                ])
+                .output()
+                .unwrap();
+            assert_eq!(
+                result.status.code(),
+                Some(if status == "unparsed_input" { 1 } else { 0 })
+            );
+            let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+            assert_eq!(value["coverage"]["status"], status);
+            assert_eq!(value["coverage"]["parsed_entries"], parsed);
+            assert_eq!(value["coverage"]["filter_matches"], matched);
+            let coverage = &value["coverage"]["files"][0];
+            assert_eq!(coverage["input_bytes"], content.len());
+            assert_eq!(coverage["parsed_entries"], parsed);
+            assert_eq!(coverage["rejected_candidates"], rejected);
+            assert_eq!(coverage["selected_parser"], "classic");
+            assert_eq!(coverage["configured_parser"], "auto");
+            assert_eq!(coverage["profile"], "eyes");
+            assert_eq!(fs::read(&out).unwrap(), result.stdout);
+            if subcommand == "errors" && status == "parsed" {
+                assert_eq!(value["errors"]["summary"]["total_entries"], 0);
+            }
+        }
+    }
+    write_file(&file, "worker | 2026-10-07T10:00:00.000Z [INFO ] started\n");
+    for subcommand in ["info", "errors", "perf"] {
+        let result = command()
+            .args([
+                "-F",
+                "json",
+                "-f",
+                "c:absent",
+                subcommand,
+                file.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(value["coverage"]["status"], "zero_filter_matches");
+        assert_eq!(value["coverage"]["parsed_entries"], 1);
+        assert_eq!(value["coverage"]["filter_matches"], 0);
+    }
+}
+
+#[test]
+fn test_nonempty_unparsed_input_text_fails_even_in_a_mixed_file_set() {
+    let dir = tempdir().unwrap();
+    let bad = dir.path().join("bad.log");
+    let good = dir.path().join("good.log");
+    write_file(&bad, "an unsupported record\n");
+    write_file(&good, "worker | 2026-10-07T10:00:00.000Z [INFO ] started\n");
+    for subcommand in ["info", "errors", "perf"] {
+        let result = command()
+            .args([subcommand, good.to_str().unwrap(), bad.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        let text = String::from_utf8(result.stdout).unwrap();
+        assert!(text.contains("Status: unparsed_input"));
+        assert!(text.contains("input=22 bytes, parsed=0 entries, rejected=1 candidates"));
+        assert!(!text.contains("completed successfully"));
+        assert!(String::from_utf8_lossy(&result.stderr).contains("no recognized log entries"));
+    }
+}
+
+#[test]
+fn test_unsupported_console_fixture_reports_zero_parse_coverage() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("console.log");
+    write_file(
+        &file,
+        concat!(
+            "background.js:123 worker | 2026-10-07T10:00:00.000Z [INFO ] started\n",
+            "background.js:124 worker | 2026-10-07T10:00:01.000Z [ERROR] example failure\n",
+        ),
+    );
+    for subcommand in ["info", "errors", "perf"] {
+        let result = command()
+            .args(["-F", "json", subcommand, file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(value["coverage"]["status"], "unparsed_input");
+        assert_eq!(value["coverage"]["files"][0]["parsed_entries"], 0);
+        assert_eq!(value["coverage"]["files"][0]["rejected_candidates"], 2);
+    }
+}

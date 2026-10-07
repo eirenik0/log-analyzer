@@ -30,6 +30,28 @@ It also auto-detects a few other common formats:
 
 Profiles can force a parser with `[parser] format = "rust-tracing"` (or `classic`, `syslog`, `json-lines`) and tune Rust target mapping with `module_depth` / `module_strip_prefix`. Structured `key=value` fields become filterable and extractable via `--filter "trace_id:abc123"` or `extract --field restream_name`.
 
+## Parse Coverage and Exit Status
+
+`info`, `errors`, and `perf` report each file's selected parser, active profile,
+input size in bytes, parsed entry count, and rejected candidate count before
+filtering. JSON reports expose these under `coverage.files`, with aggregate
+`parsed_entries`, `filter_matches`, and `status`. `info -F json` includes entry,
+component, and level totals.
+
+An input file with non-whitespace content but no recognized entries fails with
+exit status **1**, even if other input files parse successfully. Its coverage
+report is still printed and saved by `-o`; no success summary is printed.
+Empty/whitespace-only files succeed (`empty_input`). Parsed input with no filter
+matches succeeds (`zero_filter_matches`). Parsed input without selected
+ERROR/WARN entries succeeds with zero error totals (`parsed`). Other runtime
+failures also exit 1; invalid CLI arguments exit 2.
+
+Rejected candidates count attempted entries, including malformed JSON lines and
+unrecognized leading blocks. Multiline payloads and stack frames stay attached
+to their entry and do not count as separate rejections. Partially recognized
+files succeed but expose rejected candidates; review coverage before trusting
+a diagnosis. Format auto-detection samples the first ten nonempty lines.
+
 ## Installation
 
 ```bash

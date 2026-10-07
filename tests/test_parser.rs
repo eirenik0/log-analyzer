@@ -407,3 +407,53 @@ fn test_default_base_profile_keeps_specialized_eyes_message_generic() {
     assert!(matches!(record.kind, LogEntryKind::Generic { .. }));
     assert_eq!(record.payload(), Some(&json!({ "x": 1 })));
 }
+
+#[test]
+fn test_parse_coverage_counts_candidates_without_counting_continuations() {
+    use log_analyzer::parser::{ParseError, parse_log_file_report};
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("coverage.log");
+    let content = concat!(
+        "worker | 2026-10-07T10:00:00.000Z [INFO ] started\n",
+        "{\n  \"payload\": 1\n}\n",
+        "    at frame1\n",
+        "worker | 2026-99-07T10:00:00.000Z [ERROR] invalid timestamp\n",
+        "    at frame2\n    at frame3\n",
+    );
+    fs::write(&file, content).unwrap();
+    let report = parse_log_file_report(&file, &AnalyzerConfig::default()).unwrap();
+    assert_eq!(report.coverage.input_bytes, content.len() as u64);
+    assert_eq!(report.coverage.parsed_entries, 1);
+    assert_eq!(report.coverage.rejected_candidates, 1);
+    assert_eq!(report.entries[0].source_line_number, 1);
+    assert!(report.entries[0].raw_logline.contains("frame1"));
+    fs::write(&file, "unsupported record\n    at frame\n").unwrap();
+    assert!(matches!(
+        parse_log_file_with_config(&file, &AnalyzerConfig::default()),
+        Err(ParseError::NoRecognizedEntries(_))
+    ));
+}
+
+#[test]
+fn test_json_lines_coverage_includes_malformed_and_missing_timestamp_candidates() {
+    use log_analyzer::config::LogFormat;
+    use log_analyzer::parser::parse_log_file_report;
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("coverage.jsonl");
+    fs::write(
+        &file,
+        concat!(
+            "{\"timestamp\":\"2026-10-07T10:00:00Z\",\"message\":\"ok\"}\n",
+            "{broken json\n",
+            "{\"message\":\"missing timestamp\"}\n",
+            "\n",
+        ),
+    )
+    .unwrap();
+    let mut config = AnalyzerConfig::default();
+    config.parser.format = LogFormat::JsonLines;
+    let report = parse_log_file_report(&file, &config).unwrap();
+    assert_eq!(report.coverage.parsed_entries, 1);
+    assert_eq!(report.coverage.rejected_candidates, 2);
+    assert_eq!(report.coverage.nonempty_lines, 3);
+}

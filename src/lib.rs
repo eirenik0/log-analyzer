@@ -176,6 +176,104 @@ fn parse_and_merge_log_files_with_config(
     Ok(logs)
 }
 
+#[derive(serde::Serialize)]
+struct AnalysisCoverage {
+    files: Vec<parser::ParseCoverage>,
+    parsed_entries: usize,
+    filter_matches: usize,
+    status: &'static str,
+}
+
+fn read_analysis_inputs(
+    files: &[std::path::PathBuf],
+    config: &config::AnalyzerConfig,
+    filter: &LogFilter,
+    format: OutputFormat,
+    output: Option<&std::path::Path>,
+) -> Result<(Vec<LogEntry>, AnalysisCoverage), Box<dyn std::error::Error>> {
+    let mut logs = Vec::new();
+    let mut coverage = AnalysisCoverage {
+        files: Vec::new(),
+        parsed_entries: 0,
+        filter_matches: 0,
+        status: "parsed",
+    };
+    for file in files {
+        let parsed = parser::parse_log_file_report(file, config)
+            .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+        logs.extend(parsed.entries);
+        coverage.files.push(parsed.coverage);
+    }
+    logs.sort_by_key(|entry| entry.timestamp);
+    coverage.parsed_entries = logs.len();
+    coverage.filter_matches = logs.iter().filter(|entry| filter.matches(entry)).count();
+    coverage.status = if coverage
+        .files
+        .iter()
+        .any(parser::ParseCoverage::is_unparsed)
+    {
+        "unparsed_input"
+    } else if coverage.parsed_entries == 0 {
+        "empty_input"
+    } else if coverage.filter_matches == 0 {
+        "zero_filter_matches"
+    } else {
+        "parsed"
+    };
+    if coverage.status == "unparsed_input" {
+        let rendered = render_analysis_report("", format, &coverage)?;
+        print!("{rendered}");
+        if let Some(path) = output {
+            write_output_file(path, &rendered)?;
+        }
+        return Err("Nonempty input has no recognized log entries; inspect the selected parser/profile and rejected candidates".into());
+    }
+    Ok((logs, coverage))
+}
+
+fn coverage_text(coverage: &AnalysisCoverage) -> String {
+    use std::fmt::Write;
+    let mut text = String::from("Parse coverage\n");
+    for file in &coverage.files {
+        let parser = serde_json::to_value(file.selected_parser).expect("parser serializes");
+        let _ = writeln!(
+            text,
+            "  {}: parser={}, profile={}, input={} bytes, parsed={} entries, rejected={} candidates",
+            file.file,
+            parser.as_str().unwrap_or("unknown"),
+            file.profile,
+            file.input_bytes,
+            file.parsed_entries,
+            file.rejected_candidates
+        );
+    }
+    let _ = writeln!(
+        text,
+        "  Status: {}; parsed entries: {}; filter matches: {}\n",
+        coverage.status, coverage.parsed_entries, coverage.filter_matches
+    );
+    text
+}
+
+fn render_analysis_report(
+    report: &str,
+    format: OutputFormat,
+    coverage: &AnalysisCoverage,
+) -> Result<String, Box<dyn std::error::Error>> {
+    match format {
+        OutputFormat::Text => Ok(format!("{}{report}", coverage_text(coverage))),
+        OutputFormat::Json => {
+            let mut value = if report.is_empty() {
+                serde_json::json!({})
+            } else {
+                serde_json::from_str::<serde_json::Value>(report)?
+            };
+            value["coverage"] = serde_json::to_value(coverage)?;
+            Ok(format!("{}\n", serde_json::to_string_pretty(&value)?))
+        }
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
     let analyzer_config = config::load_config(cli.config.as_deref(), cli.preset.as_deref())
@@ -370,7 +468,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             timeline,
         } => {
             // Parse and merge log files, then sort by timestamp for session-wide analysis
-            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
+            let (logs, coverage) =
+                read_analysis_inputs(files, &analyzer_config, &filter, format, output.as_deref())?;
 
             // Filter logs if filter is provided
             let filtered_logs: Vec<_> = if cli.filter.is_some() {
@@ -381,6 +480,25 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 logs
             };
+
+            if matches!(format, OutputFormat::Json) {
+                let mut levels = std::collections::BTreeMap::new();
+                let mut components = std::collections::BTreeMap::new();
+                for entry in &filtered_logs {
+                    *levels.entry(&entry.level).or_insert(0usize) += 1;
+                    *components.entry(&entry.component).or_insert(0usize) += 1;
+                }
+                let report = serde_json::json!({"info": {
+                    "total_entries": filtered_logs.len(), "levels": levels, "components": components,
+                }}).to_string();
+                let rendered = render_analysis_report(&report, format, &coverage)?;
+                print!("{rendered}");
+                if let Some(path) = output {
+                    write_output_file(path, &rendered)?;
+                }
+                return Ok(());
+            }
+            print!("{}", coverage_text(&coverage));
 
             // Display log summary with enhanced options
             display_log_summary(&filtered_logs, *samples, *json_schema, *payloads, *timeline);
@@ -475,7 +593,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sessions,
             sort_by,
         } => {
-            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
+            let (logs, coverage) =
+                read_analysis_inputs(files, &analyzer_config, &filter, format, output.as_deref())?;
             let error_options = ErrorsOptions {
                 top_n: *top_n,
                 include_warn: *warn,
@@ -491,6 +610,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 OutputFormat::Json => format_errors_json(&report, &error_options),
             };
 
+            let rendered = render_analysis_report(&rendered, format, &coverage)?;
             print!("{rendered}");
             if let Some(path) = output {
                 write_output_file(path, &rendered)?;
@@ -520,7 +640,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse and merge log files, then sort by timestamp for cross-file pairing
-            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
+            let (logs, coverage) =
+                read_analysis_inputs(files, &analyzer_config, &filter, format, output.as_deref())?;
 
             // Convert op_type filter to string
             let op_type_filter = op_type.map(|t| match t {
@@ -547,6 +668,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         *orphans_only,
                         *sort_by,
                     );
+                    let text = render_analysis_report(&text, format, &coverage)?;
                     print!("{text}");
                     if let Some(path) = output {
                         write_output_file(path, &text)?;
@@ -554,7 +676,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 OutputFormat::Json => {
                     let json = perf_analyzer::format_perf_results_json(&results);
-                    println!("{}", json);
+                    let json = render_analysis_report(&json, format, &coverage)?;
+                    print!("{}", json);
                     if let Some(path) = output {
                         write_output_file(path, &json)?;
                     }

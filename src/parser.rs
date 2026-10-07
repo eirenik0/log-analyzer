@@ -1,5 +1,6 @@
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone};
 use regex::Regex;
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -59,6 +60,7 @@ pub enum ParseError {
     IoError(std::io::Error),
     InvalidLogFormat(String),
     JsonParseError(String),
+    NoRecognizedEntries(ParseCoverage),
 }
 
 impl From<std::io::Error> for ParseError {
@@ -102,65 +104,126 @@ pub fn detect_log_format(
     ))
 }
 
-/// Parses a log file into a vector of LogEntry structs using explicit analyzer config
+/// Coverage is measured before filters or severity selection.
+#[derive(Debug, Clone, Serialize)]
+pub struct ParseCoverage {
+    pub file: String,
+    pub profile: String,
+    pub configured_parser: LogFormat,
+    pub selected_parser: LogFormat,
+    pub input_bytes: u64,
+    pub nonempty_lines: usize,
+    pub parsed_entries: usize,
+    pub rejected_candidates: usize,
+}
+
+impl ParseCoverage {
+    pub fn is_unparsed(&self) -> bool {
+        self.nonempty_lines > 0 && self.parsed_entries == 0
+    }
+}
+
+#[derive(Debug)]
+pub struct ParsedLogFile {
+    pub entries: Vec<LogEntry>,
+    pub coverage: ParseCoverage,
+}
+
+/// Parse with coverage, retaining diagnostics even when no entries are recognized.
+pub fn parse_log_file_report(
+    path: impl AsRef<Path>,
+    config: &AnalyzerConfig,
+) -> Result<ParsedLogFile, ParseError> {
+    let path = path.as_ref();
+    let format = detect_log_format(path, config)?;
+    let file = File::open(path)?;
+    let mut coverage = ParseCoverage {
+        file: path.display().to_string(),
+        profile: config.profile_name.clone(),
+        configured_parser: config.parser.format,
+        selected_parser: format,
+        input_bytes: file.metadata()?.len(),
+        nonempty_lines: 0,
+        parsed_entries: 0,
+        rejected_candidates: 0,
+    };
+    let reader = BufReader::new(file);
+    let mut entries = Vec::new();
+    let mut current_log: Option<String> = None;
+    let mut current_line_number = 0;
+
+    let mut finish = |text: &str, line_number: usize| {
+        if format != LogFormat::JsonLines && !line_starts_entry(text, format) {
+            coverage.rejected_candidates += 1;
+            return;
+        }
+        match parse_log_entry_in_format(text, line_number, config, format) {
+            Ok(entry) => entries.push(entry),
+            Err(_) => coverage.rejected_candidates += 1,
+        }
+    };
+
+    for (index, line) in reader.lines().enumerate() {
+        let line = line?;
+        if !line.trim().is_empty() {
+            coverage.nonempty_lines += 1;
+        }
+        if format == LogFormat::JsonLines {
+            if !line.trim().is_empty() {
+                finish(&line, index + 1);
+            }
+        } else if line_starts_entry(&line, format) || looks_like_entry_candidate(&line) {
+            if let Some(text) = current_log.take() {
+                finish(&text, current_line_number);
+            }
+            current_log = Some(line);
+            current_line_number = index + 1;
+        } else if let Some(text) = &mut current_log {
+            text.push('\n');
+            text.push_str(&line);
+        } else if !line.trim().is_empty() {
+            // An unrecognized leading block is one candidate, not one per stack frame.
+            current_log = Some(line);
+            current_line_number = index + 1;
+        }
+    }
+    if let Some(text) = current_log {
+        finish(&text, current_line_number);
+    }
+    coverage.parsed_entries = entries.len();
+    Ok(ParsedLogFile { entries, coverage })
+}
+
+/// Reject nonempty files with no recognized entries for all parser callers.
 pub fn parse_log_file_with_config(
     path: impl AsRef<Path>,
     config: &AnalyzerConfig,
 ) -> Result<Vec<LogEntry>, ParseError> {
-    let path = path.as_ref();
-    let format = detect_log_format(path, config)?;
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let mut logs = Vec::new();
-
-    if format == LogFormat::JsonLines {
-        for (index, line) in reader.lines().enumerate() {
-            let line = line?;
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            match parse_log_entry_in_format(&line, index + 1, config, format) {
-                Ok(entry) => logs.push(entry),
-                Err(ParseError::InvalidLogFormat(_)) => {}
-                Err(err) => return Err(err),
-            }
-        }
-
-        return Ok(logs);
+    let parsed = parse_log_file_report(path, config)?;
+    if parsed.coverage.is_unparsed() {
+        return Err(ParseError::NoRecognizedEntries(parsed.coverage));
     }
+    Ok(parsed.entries)
+}
 
-    let mut current_log: Option<String> = None;
-    let mut current_line_number = 0usize;
-
-    for (index, line) in reader.lines().enumerate() {
-        let line_number = index + 1;
-        let line = line?;
-
-        if line_starts_entry(&line, format) {
-            if let Some(log_text) = current_log.take() {
-                match parse_log_entry_in_format(&log_text, current_line_number, config, format) {
-                    Ok(entry) => logs.push(entry),
-                    Err(ParseError::InvalidLogFormat(_)) => {}
-                    Err(err) => return Err(err),
-                }
-            }
-
-            current_log = Some(line);
-            current_line_number = line_number;
-        } else if let Some(ref mut log_text) = current_log {
-            log_text.push('\n');
-            log_text.push_str(&line);
-        }
-    }
-
-    if let Some(log_text) = current_log
-        && let Ok(entry) = parse_log_entry_in_format(&log_text, current_line_number, config, format)
-    {
-        logs.push(entry);
-    }
-
-    Ok(logs)
+fn looks_like_entry_candidate(line: &str) -> bool {
+    static STRUCTURED_CANDIDATE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"^(?:\S+[:#]\S+\s+)?[\w-]+(?:\s+\([^)]*\))?\s+\|\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",
+        )
+        .expect("valid entry candidate regex")
+    });
+    STRUCTURED_CANDIDATE.is_match(line)
+        || RUST_TRACING_ENTRY_START.is_match(line)
+        || SYSLOG_ENTRY_START.is_match(line)
+        || (line.starts_with('{')
+            && serde_json::from_str::<Value>(line)
+                .ok()
+                .is_some_and(|value| {
+                    ["timestamp", "@timestamp", "ts", "time"]
+                        .iter()
+                        .any(|key| value.get(key).is_some())
+                }))
 }
 
 /// Parses a single log entry string into a LogEntry struct
