@@ -103,7 +103,7 @@ pub fn format_perf_results_text(
                 stats.sort_by(|a, b| b.avg_duration_ms.partial_cmp(&a.avg_duration_ms).unwrap());
             }
             PerfSortOrder::Count => {
-                stats.sort_by(|a, b| b.count.cmp(&a.count));
+                stats.sort_by_key(|a| std::cmp::Reverse(a.count));
             }
             PerfSortOrder::Name => {
                 stats.sort_by(|a, b| a.name.cmp(&b.name));

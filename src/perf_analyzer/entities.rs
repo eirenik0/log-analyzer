@@ -106,7 +106,7 @@ impl PerfAnalysisResults {
     /// Get top N slowest operations
     pub fn top_slowest_operations(&self, n: usize) -> Vec<&TimedOperation> {
         let mut ops: Vec<&TimedOperation> = self.operations.iter().collect();
-        ops.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
+        ops.sort_by_key(|a| std::cmp::Reverse(a.duration_ms));
         ops.into_iter().take(n).collect()
     }
 

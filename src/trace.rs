@@ -66,7 +66,7 @@ pub fn collect_trace_entries<'a>(
         .filter(|entry| filter.matches(entry) && selector.matches(entry))
         .collect();
 
-    entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    entries.sort_by_key(|a| a.timestamp);
     entries
 }
 

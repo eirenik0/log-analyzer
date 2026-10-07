@@ -408,10 +408,11 @@ pub fn analyze_profile(logs: &[LogEntry], cfg: &AnalyzerConfig) -> ProfileInsigh
                     insights.unknown_commands.insert(command.clone());
                 }
             }
-            LogEntryKind::Request { request, .. } => {
-                if !known_requests.is_empty() && !known_requests.contains(&request.to_lowercase()) {
-                    insights.unknown_requests.insert(request.clone());
-                }
+            LogEntryKind::Request { request, .. }
+                if !known_requests.is_empty()
+                    && !known_requests.contains(&request.to_lowercase()) =>
+            {
+                insights.unknown_requests.insert(request.clone());
             }
             _ => {}
         }

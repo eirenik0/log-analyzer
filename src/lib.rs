@@ -172,7 +172,7 @@ fn parse_and_merge_log_files_with_config(
         logs.append(&mut parsed);
     }
 
-    logs.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    logs.sort_by_key(|a| a.timestamp);
     Ok(logs)
 }
 

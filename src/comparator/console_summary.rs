@@ -172,7 +172,7 @@ pub fn display_log_summary(
 
             // Convert to vec and sort by count (descending)
             let mut items: Vec<(&str, usize)> = counts.into_iter().collect();
-            items.sort_by(|a, b| b.1.cmp(&a.1));
+            items.sort_by_key(|a| std::cmp::Reverse(a.1));
 
             println!("\n{}", title.bold());
             println!("{}", "-".repeat(80).bright_black());
@@ -492,7 +492,7 @@ fn display_timeline_analysis(
     // Sort components by total count
     let mut components: Vec<(&str, &Vec<DateTime<Local>>)> =
         component_timeline.iter().map(|(k, v)| (*k, v)).collect();
-    components.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    components.sort_by_key(|a| std::cmp::Reverse(a.1.len()));
 
     // Display top 5 components
     for (name, timestamps) in components.iter().take(5) {

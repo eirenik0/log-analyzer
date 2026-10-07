@@ -300,24 +300,26 @@ fn test_preserves_template_defined_session_levels() {
         LogEntryKind::Generic { payload: None },
     )];
 
-    let mut base = AnalyzerConfig::default();
-    base.sessions = SessionsRules {
-        levels: vec![
-            SessionLevelConfig {
-                name: "runner".to_string(),
-                segment_prefix: "manager-".to_string(),
-                create_command: Some("makeManager".to_string()),
-                complete_commands: vec!["getResults".to_string(), "closeBatch".to_string()],
-                summary_fields: vec!["concurrency".to_string()],
-            },
-            SessionLevelConfig {
-                name: "test".to_string(),
-                segment_prefix: "eyes-".to_string(),
-                create_command: Some("openEyes".to_string()),
-                complete_commands: vec!["close".to_string(), "abort".to_string()],
-                summary_fields: vec![],
-            },
-        ],
+    let base = AnalyzerConfig {
+        sessions: SessionsRules {
+            levels: vec![
+                SessionLevelConfig {
+                    name: "runner".to_string(),
+                    segment_prefix: "manager-".to_string(),
+                    create_command: Some("makeManager".to_string()),
+                    complete_commands: vec!["getResults".to_string(), "closeBatch".to_string()],
+                    summary_fields: vec!["concurrency".to_string()],
+                },
+                SessionLevelConfig {
+                    name: "test".to_string(),
+                    segment_prefix: "eyes-".to_string(),
+                    create_command: Some("openEyes".to_string()),
+                    complete_commands: vec!["close".to_string(), "abort".to_string()],
+                    summary_fields: vec![],
+                },
+            ],
+        },
+        ..AnalyzerConfig::default()
     };
 
     let generated = generate_config(

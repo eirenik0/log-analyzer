@@ -211,7 +211,7 @@ pub fn compare_logs(
 
     // Apply DiffCount sorting if selected
     if options.sort_order == SortOrder::DiffCount {
-        shared_comparisons.sort_by(|a, b| b.json_differences.len().cmp(&a.json_differences.len()));
+        shared_comparisons.sort_by_key(|a| std::cmp::Reverse(a.json_differences.len()));
     }
 
     // Create and return results
