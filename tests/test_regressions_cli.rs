@@ -1556,3 +1556,56 @@ fn process_type_sort_orders_kinds_and_filters_before_limiting() {
     assert_eq!(report["metadata"]["total_entries"], 1);
     assert!(report["logs"][0]["msg"].as_str().unwrap().contains("fetch"));
 }
+
+#[test]
+fn process_timestamps_preserve_instants_across_timezones_dst_and_midnight() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("clock.jsonl");
+    let instants = [
+        ("2026-01-01T00:00:02Z", "2026-01-01T00:00:02.000Z"),
+        ("2026-01-01T00:30:00+02:00", "2025-12-31T22:30:00.000Z"),
+        ("2026-03-29T01:59:59.999+01:00", "2026-03-29T00:59:59.999Z"),
+        ("2026-03-29T03:00:00+02:00", "2026-03-29T01:00:00.000Z"),
+        ("2026-10-25T02:30:00+02:00", "2026-10-25T00:30:00.000Z"),
+        ("2026-10-25T02:30:00+01:00", "2026-10-25T01:30:00.000Z"),
+    ];
+    write_file(
+        &file,
+        &instants
+            .iter()
+            .map(|(input, _)| {
+                serde_json::json!({"timestamp": input, "message": "sample"}).to_string() + "\n"
+            })
+            .collect::<String>(),
+    );
+    let mut expected = instants.iter().map(|(_, utc)| *utc).collect::<Vec<_>>();
+    expected.sort();
+    for timezone in ["UTC", "Europe/Bratislava", "America/New_York"] {
+        let output = command()
+            .args(["process", file.to_str().unwrap(), "--limit", "0"])
+            .env("TZ", timezone)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let actual = report["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["ts"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected, "timezone: {timezone}");
+        assert_eq!(
+            report["metadata"]["time_range"]["start"],
+            *expected.first().unwrap()
+        );
+        assert_eq!(
+            report["metadata"]["time_range"]["end"],
+            *expected.last().unwrap()
+        );
+    }
+}

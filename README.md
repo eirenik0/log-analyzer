@@ -385,6 +385,8 @@ This is intended for tracing a single run/session across split logs. Mixing unre
 to `llm-diff`. Filtering and sorting happen before `--limit` (default: 100,
 `0` = unlimited). Ties retain input order after a timestamp tie-breaker.
 The reported time range is the minimum/maximum timestamp among returned entries.
+All `process` timestamps (entry `ts` and time-range bounds) use full RFC 3339
+UTC dates and times with milliseconds and `Z`, independent of the host timezone.
 
 ### generate-config
 

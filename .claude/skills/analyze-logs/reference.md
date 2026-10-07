@@ -320,6 +320,8 @@ log-analyzer process <file> [options]
 
 Filtering and sorting precede the limit. Timestamp breaks ties; exact ties keep input order.
 The time range describes the returned entries. `diff-count` is only valid for diffs.
+Entry `ts` and time-range bounds are full RFC 3339 UTC timestamps with milliseconds
+and `Z`; they preserve the instant across host timezones, DST, and midnight.
 
 **Output format:**
 ```json
@@ -334,7 +336,7 @@ The time range describes the returned entries. `diff-count` is only valid for di
   "logs": [
     {
       "idx": 1,
-      "ts": "21:07:27.621",
+      "ts": "2026-01-01T21:07:27.621Z",
       "comp": "core-universal",
       "lvl": "INFO",
       "typ": "E:Emit:Logger.log",

@@ -260,15 +260,15 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
                 .min_by_key(|log| log.timestamp)
                 .unwrap()
                 .timestamp
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string(),
+                .with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             end: logs_to_process
                 .iter()
                 .max_by_key(|log| log.timestamp)
                 .unwrap()
                 .timestamp
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string(),
+                .with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         })
     } else {
         None
@@ -328,7 +328,10 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
 
             LlmLogEntry {
                 idx: idx + 1,
-                ts: log.timestamp.format("%H:%M:%S%.3f").to_string(),
+                ts: log
+                    .timestamp
+                    .with_timezone(&chrono::Utc)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
                 comp: log.component.clone(),
                 lvl: log.level.clone(),
                 typ: entry_type,
