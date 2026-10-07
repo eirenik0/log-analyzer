@@ -79,6 +79,11 @@ pub fn format_trace_text(entries: &[&LogEntry], selector: &TraceSelector) -> Str
         selector.value()
     );
 
+    let _ = writeln!(
+        out,
+        "Matches may span multiple lifecycles; substring selection does not establish correlation."
+    );
+
     if entries.is_empty() {
         let _ = writeln!(out, "No matching log entries found.");
         return out;
@@ -190,6 +195,8 @@ pub fn format_trace_json(entries: &[&LogEntry], selector: &TraceSelector) -> Str
             },
             "count": entries.len(),
             "total_duration_ms": total_duration_ms,
+            "timing_semantics": "elapsed_span_of_matches",
+            "correlation_established": false,
             "entries": rows,
         }
     }))

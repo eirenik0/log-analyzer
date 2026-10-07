@@ -10,6 +10,8 @@ pub struct PerfCounts {
     pub stats: usize,
     pub orphans: usize,
     pub threshold_violations: usize,
+    pub unmatched_events: usize,
+    pub ambiguous_groups: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -71,11 +73,16 @@ fn select_results(
         .filter(|op| u64::try_from(op.duration_ms).is_ok_and(|duration| duration >= threshold_ms))
         .cloned()
         .collect();
+    selected
+        .unmatched_events
+        .sort_by_key(|event| event.timestamp);
     let totals = PerfCounts {
         operations: results.operations.len(),
         stats: results.stats.len(),
         orphans: results.orphans.len(),
         threshold_violations: violations.len(),
+        unmatched_events: results.unmatched_events.len(),
+        ambiguous_groups: results.ambiguous_groups.len(),
     };
     if orphans_only {
         selected.operations.clear();
@@ -87,12 +94,16 @@ fn select_results(
         selected.stats.truncate(top_n);
         selected.orphans.truncate(top_n);
         violations.truncate(top_n);
+        selected.unmatched_events.truncate(top_n);
+        selected.ambiguous_groups.truncate(top_n);
     }
     let omitted = PerfCounts {
         operations: totals.operations - selected.operations.len(),
         stats: totals.stats - selected.stats.len(),
         orphans: totals.orphans - selected.orphans.len(),
         threshold_violations: totals.threshold_violations - violations.len(),
+        unmatched_events: totals.unmatched_events - selected.unmatched_events.len(),
+        ambiguous_groups: totals.ambiguous_groups - selected.ambiguous_groups.len(),
     };
     PerfReport {
         results: selected,
@@ -146,6 +157,29 @@ pub fn format_perf_results_text(
     let report = select_results(results, threshold_ms, top_n, orphans_only, sort_by);
     let results = &report.results;
     write_selection_summary(&mut out, &report);
+    let _ = writeln!(
+        out,
+        "Correlation diagnostics: {} ambiguous groups, {} unmatched events",
+        report.totals.ambiguous_groups, report.totals.unmatched_events
+    );
+    let _ = writeln!(
+        out,
+        "Omitted correlation diagnostics: {} ambiguous groups, {} unmatched events",
+        report.omitted.ambiguous_groups, report.omitted.unmatched_events
+    );
+    for event in &results.unmatched_events {
+        let _ = writeln!(
+            out,
+            "  [{}] {} {}: {} at {}:{} ({})",
+            event.op_type,
+            event.name,
+            event.boundary,
+            event.reason,
+            event.source.file.as_deref().unwrap_or("<unknown>"),
+            event.source.line,
+            event.timestamp.to_rfc3339()
+        );
+    }
 
     if orphans_only {
         write_orphans_only(&mut out, results);
@@ -403,6 +437,18 @@ fn write_timed_operation(out: &mut String, index: usize, op: &TimedOperation) {
         op.start_time.format("%H:%M:%S%.3f"),
         op.end_time.format("%H:%M:%S%.3f")
     );
+
+    let _ = writeln!(
+        out,
+        "   Source: {}:{} → {}:{}",
+        op.start_source.file.as_deref().unwrap_or("<unknown>"),
+        op.start_source.line,
+        op.end_source.file.as_deref().unwrap_or("<unknown>"),
+        op.end_source.line
+    );
+    if !op.scope.is_empty() {
+        let _ = writeln!(out, "   Scope: {:?}", op.scope);
+    }
 
     if let Some(ref endpoint) = op.endpoint {
         let _ = writeln!(out, "   Endpoint: {}", endpoint);

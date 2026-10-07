@@ -20,6 +20,8 @@ fn make_entry(component: &str, component_id: &str, kind: LogEntryKind) -> LogEnt
         raw_logline: "raw".to_string(),
         structured_fields: HashMap::new(),
         module_path: None,
+        source_file: None,
+        envelope_payload: None,
         kind,
         source_line_number: 1,
     }

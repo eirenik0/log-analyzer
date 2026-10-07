@@ -178,7 +178,10 @@ pub fn parse_log_file_report(
             return;
         }
         match parse_log_entry_in_format(text, line_number, config, format) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.source_file = Some(path.display().to_string());
+                entries.push(entry);
+            }
             Err(_) => coverage.rejected_candidates += 1,
         }
     };
@@ -626,11 +629,17 @@ fn build_log_entry(
         parser_rules,
     )?;
 
-    if let Some(payload) = payload_override
-        && let LogEntryKind::Generic { payload: existing } = &mut entry.kind
-        && existing.is_none()
-    {
-        *existing = Some(payload);
+    entry.envelope_payload = payload_override.clone();
+    if let Some(payload) = payload_override {
+        let existing = match &mut entry.kind {
+            LogEntryKind::Generic { payload }
+            | LogEntryKind::Event { payload, .. }
+            | LogEntryKind::Request { payload, .. } => payload,
+            LogEntryKind::Command { settings, .. } => settings,
+        };
+        if existing.is_none() {
+            *existing = Some(payload);
+        }
     }
 
     entry.structured_fields = structured_fields;

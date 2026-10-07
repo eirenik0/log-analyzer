@@ -253,11 +253,11 @@ fn test_perf_orphans_only_resolves_cross_file_pairs_after_timestamp_sort() {
     // the completion would be seen before the start and the request would remain orphaned.
     write_file(
         &file_finish,
-        "svc | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id1] finished successfully with body {\"statusCode\":200}\n",
+        "svc (demo) | 2026-01-01T00:00:01.000Z [INFO ] Request \"foo\" [0--id1] finished successfully with body {\"statusCode\":200}\n",
     );
     write_file(
         &file_start,
-        "svc | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"statusCode\":100}\n",
+        "svc (demo) | 2026-01-01T00:00:00.000Z [INFO ] Request \"foo\" [0--id1] will be sent with body {\"statusCode\":100}\n",
     );
 
     let output = command()
@@ -1731,5 +1731,240 @@ fn perf_json_and_text_apply_selection_with_full_totals() {
             .unwrap();
         assert!(!output.status.success());
         assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be used with"));
+    }
+}
+
+#[test]
+fn perf_scopes_reused_ids_and_preserves_ambiguous_events_with_sources() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("collision.log");
+    write_file(
+        &file,
+        concat!(
+            "core (context-a) | 2026-01-01T00:00:00.000Z [INFO] Request \"fetch\" [0--same] sent\n",
+            "core (context-b) | 2026-01-01T00:00:01.000Z [INFO] Request \"fetch\" [0--same] sent\n",
+            "core (context-a) | 2026-01-01T00:00:02.000Z [INFO] Request \"fetch\" [0--same] completed\n",
+            "core (context-b) | 2026-01-01T00:00:04.000Z [INFO] Request \"fetch\" [0--same] completed\n",
+        ),
+    );
+    let output = command()
+        .args([
+            "--preset",
+            "service-api",
+            "-j",
+            "perf",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let ops = report["operations"].as_array().unwrap();
+    assert_eq!(ops.len(), 2);
+    assert_eq!(ops[0]["duration_ms"], 3000);
+    assert_eq!(ops[1]["duration_ms"], 2000);
+    assert_eq!(ops[1]["scope"], serde_json::json!(["context-a"]));
+    assert_eq!(ops[1]["start_source"]["line"], 1);
+    assert_eq!(ops[1]["end_source"]["line"], 3);
+    assert_eq!(ops[1]["start_source"]["file"], file.to_str().unwrap());
+    assert!(report["unmatched_events"].as_array().unwrap().is_empty());
+    let unscoped = fs::read_to_string(&file)
+        .unwrap()
+        .replace(" (context-a)", "")
+        .replace(" (context-b)", "");
+    write_file(
+        &file,
+        &(unscoped
+            + "core | 2026-01-01T00:00:05.000Z [INFO] Request \"other\" [0--end] completed\n"),
+    );
+    let config = dir.path().join("unscoped.toml");
+    let mut profile = log_analyzer::config::load_builtin_template("service-api").unwrap();
+    profile.perf.correlation_scope_fields.clear();
+    write_file(&config, &toml::to_string(&profile).unwrap());
+    let output = command()
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "-j",
+            "perf",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report["operations"].as_array().unwrap().is_empty());
+    assert!(report["stats"].as_array().unwrap().is_empty());
+    assert_eq!(report["orphans"].as_array().unwrap().len(), 2);
+    assert_eq!(report["ambiguous_groups"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        report["ambiguous_groups"][0]["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    let unmatched = report["unmatched_events"].as_array().unwrap();
+    assert_eq!(unmatched.len(), 5);
+    assert_eq!(unmatched[0]["reason"], "overlapping_starts");
+    assert_eq!(unmatched[4]["reason"], "missing_start");
+    let output = command()
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "perf",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("1 ambiguous groups, 5 unmatched events")
+    );
+}
+
+#[test]
+fn perf_custom_composite_scope_pairs_across_files_and_reports_missing_fields() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("scope.toml");
+    let mut profile = log_analyzer::config::load_builtin_template("service-api").unwrap();
+    profile.perf.correlation_scope_fields = vec!["component_id".to_string(), "tenant".to_string()];
+    write_file(&config, &toml::to_string(&profile).unwrap());
+    let start = dir.path().join("start.jsonl");
+    let end = dir.path().join("end.jsonl");
+    write_file(
+        &start,
+        concat!(
+            "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"session_id\":\"demo\",\"tenant\":\"a\",\"message\":\"Request \\\"fetch\\\" [0--same] sent\"}\n",
+            "{\"timestamp\":\"2026-01-01T00:00:01Z\",\"session_id\":\"demo\",\"tenant\":\"b\",\"message\":\"Request \\\"fetch\\\" [0--same] sent\"}\n",
+        ),
+    );
+    write_file(
+        &end,
+        concat!(
+            "{\"timestamp\":\"2026-01-01T00:00:02Z\",\"session_id\":\"demo\",\"tenant\":\"a\",\"message\":\"Request \\\"fetch\\\" [0--same] completed\"}\n",
+            "{\"timestamp\":\"2026-01-01T00:00:04Z\",\"session_id\":\"demo\",\"tenant\":\"b\",\"message\":\"Request \\\"fetch\\\" [0--same] completed\"}\n",
+            "{\"timestamp\":\"2026-01-01T00:00:05Z\",\"session_id\":\"demo\",\"message\":\"Request \\\"fetch\\\" [0--missing] sent\"}\n",
+        ),
+    );
+    let output = command()
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "-j",
+            "perf",
+            end.to_str().unwrap(),
+            start.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["operations"].as_array().unwrap().len(), 2);
+    assert_eq!(report["operations"][0]["duration_ms"], 3000);
+    assert_eq!(report["operations"][1]["duration_ms"], 2000);
+    assert_eq!(
+        report["operations"][1]["start_source"]["file"],
+        start.to_str().unwrap()
+    );
+    assert_eq!(
+        report["operations"][1]["end_source"]["file"],
+        end.to_str().unwrap()
+    );
+    assert_eq!(
+        report["unmatched_events"][0]["reason"],
+        "missing_scope_field"
+    );
+}
+
+#[test]
+fn perf_rejects_missing_default_scope_even_for_unique_pairs() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("unscoped.jsonl");
+    write_file(
+        &file,
+        concat!(
+            "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"Request \\\"fetch\\\" [0--same] sent\"}\n",
+            "{\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":\"Request \\\"fetch\\\" [0--same] completed\"}\n",
+        ),
+    );
+    let output = command()
+        .args([
+            "--preset",
+            "service-api",
+            "-j",
+            "perf",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report["operations"].as_array().unwrap().is_empty());
+    assert_eq!(report["unmatched_events"].as_array().unwrap().len(), 2);
+    assert!(
+        report["unmatched_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event["reason"] == "missing_scope_field")
+    );
+}
+
+#[test]
+fn perf_uses_json_envelope_scope_alongside_embedded_payload() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("scope.toml");
+    let mut profile = log_analyzer::config::load_builtin_template("service-api").unwrap();
+    profile.perf.correlation_scope_fields = vec!["component_id".into(), "tenant".into()];
+    write_file(&config, &toml::to_string(&profile).unwrap());
+    let file = dir.path().join("envelope.jsonl");
+    for envelope_field in ["payload", "fields"] {
+        let rows = [
+            serde_json::json!({"timestamp":"2026-01-01T00:00:00Z", "session_id":"demo", "message":"Request \"fetch\" [0--same] sent with body {\"attempt\":1}", envelope_field: {"tenant":"a"}}),
+            serde_json::json!({"timestamp":"2026-01-01T00:00:01Z", "session_id":"demo", "message":"Request \"fetch\" [0--same] completed", envelope_field: {"tenant":"a"}}),
+        ];
+        write_file(
+            &file,
+            &rows
+                .iter()
+                .map(|row| row.to_string() + "\n")
+                .collect::<String>(),
+        );
+        let output = command()
+            .env_remove("LOG_ANALYZER_PRESET")
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "-j",
+                "perf",
+                file.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            report["operations"].as_array().unwrap().len(),
+            1,
+            "{envelope_field}"
+        );
+        assert_eq!(report["operations"][0]["duration_ms"], 1000);
+        assert_eq!(
+            report["operations"][0]["scope"],
+            serde_json::json!(["demo", "a"])
+        );
+        assert!(report["unmatched_events"].as_array().unwrap().is_empty());
     }
 }

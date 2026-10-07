@@ -193,6 +193,8 @@ mod tests {
             raw_logline: "raw".to_string(),
             structured_fields,
             module_path: None,
+            source_file: None,
+            envelope_payload: None,
             kind: LogEntryKind::Generic {
                 payload: Some(json!({"trace_id": "payload-value"})),
             },

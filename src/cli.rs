@@ -394,7 +394,7 @@ pub enum Commands {
         sort_by: PerfSortOrder,
     },
 
-    /// Trace a single operation lifecycle by correlation/request ID or session path
+    /// Trace matching events by ID substring or session path (may include multiple lifecycles)
     Trace {
         /// One or more log files to search (supports shell-expanded globs)
         #[arg(required = true, num_args = 1..)]

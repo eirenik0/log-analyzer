@@ -27,6 +27,8 @@ fn request_log(
         raw_logline: String::new(),
         structured_fields: HashMap::new(),
         module_path: None,
+        source_file: None,
+        envelope_payload: None,
         kind: LogEntryKind::Request {
             request: "foo".to_string(),
             request_id: Some(request_id.to_string()),
