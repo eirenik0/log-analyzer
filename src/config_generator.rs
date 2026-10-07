@@ -56,10 +56,8 @@ pub fn generate_config(
                     commands.insert(command.clone());
                 }
             }
-            LogEntryKind::Request { request, .. } => {
-                if !request.is_empty() {
-                    requests.insert(request.clone());
-                }
+            LogEntryKind::Request { request, .. } if !request.is_empty() => {
+                requests.insert(request.clone());
             }
             _ => {}
         }

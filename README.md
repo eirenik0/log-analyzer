@@ -519,3 +519,13 @@ Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for int
 - **LLM-friendly output** - Sanitized, compact JSON for AI consumption
 - **Profile-driven customization** - Override parser/perf markers via TOML config or generated templates
 - **Flexible output** - Text or JSON format with color and verbosity control
+
+## Development
+
+CI uses the latest stable Rust toolchain. The codebase is verified with Rust 1.99.0. Run formatting, lint, and test checks before submitting changes:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+```
