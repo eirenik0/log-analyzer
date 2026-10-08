@@ -297,3 +297,63 @@ fn json5_comments_keep_apostrophes_quotes_and_brackets_opaque() {
         assert_eq!(result.operations.len(), 1);
     }
 }
+
+#[test]
+fn invalid_early_candidates_do_not_hide_a_valid_later_command() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for context in [
+        r#"previous=Operation "" "#,
+        r#"previous=Operation "  " "#,
+        r#"previous=Operation "unfinished "#,
+    ] {
+        let start = parse(&format!("{context}Operation \"work\" started"), 0, &config);
+        let end = parse(
+            &format!("{context}Operation \"work\" completed"),
+            1,
+            &config,
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{context}");
+        assert_eq!(result.operations[0].name, "work");
+    }
+}
+
+#[test]
+fn many_unmatched_openers_do_not_prevent_command_classification_or_pairing() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let context = "{".repeat(50_000);
+    let start = parse(&format!("{context} Operation \"work\" started"), 0, &config);
+    let end = parse(
+        &format!("{context} Operation \"work\" completed"),
+        1,
+        &config,
+    );
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, end],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert_eq!(result.operations.len(), 1);
+    assert_eq!(result.operations[0].duration_ms, 1000);
+}
+
+#[test]
+fn custom_quoted_names_can_keep_adjacent_lifecycle_wording() {
+    let mut config = config::load_builtin_template("service-api").unwrap();
+    config.parser.command_start_marker = "\"started".into();
+    let start = parse("Operation \"work\"started", 0, &config);
+    let end = parse("Operation \"work\"completed", 1, &config);
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, end],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert_eq!(result.operations.len(), 1);
+}

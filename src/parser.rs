@@ -885,36 +885,54 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
     if prefix.is_empty() {
         return None;
     }
-    let start = message.match_indices(prefix).find_map(|(start, _)| {
-        let inside_json = message
-            .char_indices()
-            .take_while(|(index, _)| *index < start)
-            .any(|(index, ch)| {
-                matches!(ch, '{' | '[')
-                    && extract_json_span_from_position(message, index)
-                        .is_some_and(|(_, end)| start < end)
-            });
-        (!inside_json).then_some(start)
-    })?;
-    let name_start = start + prefix.len();
-    let (command, name_end) = if let Some(quote @ ('"' | '\'')) = prefix.chars().next_back() {
+    let spans = valid_json_spans(message);
+    message.match_indices(prefix).find_map(|(start, _)| {
+        let index = spans.partition_point(|span| span.end <= start);
+        if spans.get(index).is_some_and(|span| span.contains(&start)) {
+            return None;
+        }
+        parse_command_candidate(message, start + prefix.len(), rules)
+    })
+}
+
+fn parse_command_candidate(
+    message: &str,
+    name_start: usize,
+    rules: &ParserRules,
+) -> Option<(String, usize)> {
+    let prefix = rules.command_prefix.as_str();
+    let (command, name_end, quoted) = if let Some(quote @ ('"' | '\'')) = prefix.chars().next_back()
+    {
         let quote_start = name_start - quote.len_utf8();
         let (name, consumed) = parse_quoted_field_value(&message[quote_start..], quote)?;
-        (name, quote_start + consumed)
+        (name, quote_start + consumed, true)
     } else {
         let remaining = message[name_start..].trim_start();
         let offset = message.len() - remaining.len();
         if let Some(quote @ ('"' | '\'')) = remaining.chars().next() {
             let (name, consumed) = parse_quoted_field_value(remaining, quote)?;
-            (name, offset + consumed)
+            (name, offset + consumed, true)
         } else {
             if rules.command_start_marker.is_empty() {
                 return None;
             }
             let end = remaining.find(&rules.command_start_marker)?;
-            (remaining[..end].trim_end().to_string(), offset + end)
+            (remaining[..end].trim_end().to_string(), offset + end, false)
         }
     };
+    let after_name = &message[name_end..];
+    if quoted
+        && after_name
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_alphanumeric())
+        && after_name
+            .split_whitespace()
+            .next()
+            .is_some_and(|word| word.contains(['"', '\'']))
+    {
+        return None;
+    }
     (!command.trim().is_empty()).then_some((command, name_end))
 }
 
@@ -922,12 +940,9 @@ pub(crate) fn command_lifecycle_message<'a>(message: &'a str, rules: &ParserRule
     let body = extract_command_name(message, rules)
         .map(|(_, end)| &message[end..])
         .unwrap_or(message);
-    let end = body
-        .char_indices()
-        .find_map(|(index, ch)| {
-            (matches!(ch, '{' | '[') && extract_json_from_position(body, index).is_some())
-                .then_some(index)
-        })
+    let end = valid_json_spans(body)
+        .first()
+        .map(|span| span.start)
         .unwrap_or(body.len());
     &body[..end]
 }
@@ -1343,16 +1358,44 @@ fn extract_json_from_position(input: &str, start_pos: usize) -> Option<Value> {
 
 fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Value, usize)> {
     let remaining = input.get(start_pos..)?;
-    if !matches!(remaining.chars().next()?, '{' | '[') {
+    let span = balanced_json_spans(remaining).into_iter().next()?;
+    if span.start != 0 {
         return None;
     }
+    let json = remaining[span.clone()].replace("undefined", "null");
+    json5::from_str::<Value>(&json)
+        .ok()
+        .map(|value| (value, start_pos + span.end))
+}
+
+fn valid_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
+    balanced_json_spans(input)
+        .into_iter()
+        .filter(|span| {
+            json5::from_str::<Value>(&input[span.clone()].replace("undefined", "null")).is_ok()
+        })
+        .collect()
+}
+
+// Scan disjoint outer spans once; unmatched opening delimiters do not trigger
+// repeated suffix scans. Quotes/comments are significant only inside a span.
+fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
+    let mut spans = Vec::new();
     let mut delimiters = Vec::new();
+    let mut root_start = 0;
     let mut string_quote = None;
     let mut escape_next = false;
-    let mut characters = remaining.char_indices().peekable();
+    let mut characters = input.char_indices().peekable();
     let mut line_comment = false;
     let mut block_comment = false;
     while let Some((index, ch)) = characters.next() {
+        if delimiters.is_empty() {
+            if matches!(ch, '{' | '[') {
+                root_start = index;
+                delimiters.push(ch);
+            }
+            continue;
+        }
         if line_comment {
             if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
                 line_comment = false;
@@ -1389,19 +1432,14 @@ fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Val
             '{' | '[' => delimiters.push(ch),
             '}' | ']' => {
                 let expected = if ch == '}' { '{' } else { '[' };
-                if delimiters.pop()? != expected {
-                    return None;
-                }
-                if delimiters.is_empty() {
-                    let end = start_pos + index + ch.len_utf8();
-                    let json = input[start_pos..end].replace("undefined", "null");
-                    return json5::from_str::<Value>(&json)
-                        .ok()
-                        .map(|value| (value, end));
+                if delimiters.pop() != Some(expected) {
+                    delimiters.clear();
+                } else if delimiters.is_empty() {
+                    spans.push(root_start..index + ch.len_utf8());
                 }
             }
             _ => {}
         }
     }
-    None
+    spans
 }
