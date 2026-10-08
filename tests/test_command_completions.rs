@@ -1233,3 +1233,49 @@ fn adjacent_name_text_requires_a_configured_boundary_marker() {
         }
     }
 }
+
+#[test]
+fn request_subjects_keep_command_shaped_context_from_completing_operations() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for tail in [
+        "completed after Operation \"work\" completed",
+        "completed after Operation \"work\" started",
+    ] {
+        let operation = parse(r#"Operation "work" started"#, 0, &config);
+        let request_start = parse(r#"Request "fetch" [0--id] sent"#, 1, &config);
+        let request_end = parse(&format!("Request \"fetch\" [0--id] {tail}"), 2, &config);
+        assert!(
+            matches!(&request_end.kind, LogEntryKind::Request {request, ..} if request == "fetch")
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[operation, request_start, request_end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{tail}");
+        assert_eq!(result.operations[0].name, "fetch");
+        assert_eq!(result.operations[0].duration_ms, 1000);
+    }
+    for context in [
+        r#"note='Request "fetch" completed' "#,
+        r#"context={note:'Request "fetch" completed'} "#,
+        r#"previous=Request "fetch" "#,
+        r#"FakeRequest "fetch" "#,
+    ] {
+        let start = parse(&format!("{context}Operation \"work\" started"), 0, &config);
+        let end = parse(
+            &format!("{context}Operation \"work\" completed"),
+            1,
+            &config,
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{context}");
+        assert_eq!(result.operations[0].name, "work");
+    }
+}

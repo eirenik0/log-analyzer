@@ -146,6 +146,8 @@ configured lifecycle phrase preserve that phrase and exclude the explanation. Na
 and Unicode. Word-like command prefixes require a Unicode token boundary.
 Text attached directly to the closing name quote must begin a configured
 lifecycle marker; separated names remain independent of phase wording.
+An earlier valid request subject takes precedence over later command-shaped
+context, preserving request classification and pairing.
 A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
 assignment values, quoted context, or balanced payload regions (including invalid JSON) are not commands.

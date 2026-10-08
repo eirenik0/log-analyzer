@@ -938,11 +938,40 @@ fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<(Strin
         true,
     );
     let unfinished_payload = unfinished_payload_start(message, rules, &spans, &quotes);
+    let request_subject = (!rules.request_prefix.is_empty())
+        .then(|| {
+            message
+                .match_indices(rules.request_prefix.as_str())
+                .filter(|(start, _)| {
+                    command_prefix_boundary(message, *start, &rules.request_prefix)
+                })
+                .find_map(|(start, _)| {
+                    if unfinished_payload.is_some_and(|boundary| start >= boundary)
+                        || [&spans, &quotes, &assignments].iter().any(|ranges| {
+                            let index = ranges.partition_point(|span| span.end <= start);
+                            ranges.get(index).is_some_and(|span| span.contains(&start))
+                        })
+                    {
+                        return None;
+                    }
+                    let end = start + rules.request_prefix.len();
+                    let name = if rules.request_prefix.ends_with('"') {
+                        &message[end - 1..]
+                    } else {
+                        message[end..].trim_start()
+                    };
+                    let (name, _) = parse_quoted_field_value(name, '"')?;
+                    (!name.trim().is_empty()).then_some(start)
+                })
+        })
+        .flatten();
     let mut candidates = message
         .match_indices(prefix)
         .filter(|(start, _)| command_prefix_boundary(message, *start, prefix))
         .filter_map(|(start, _)| {
-            if unfinished_payload.is_some_and(|boundary| start >= boundary) {
+            if unfinished_payload.is_some_and(|boundary| start >= boundary)
+                || request_subject.is_some_and(|request| request < start)
+            {
                 return None;
             }
             let index = spans.partition_point(|span| span.end <= start);
