@@ -357,3 +357,38 @@ fn custom_quoted_names_can_keep_adjacent_lifecycle_wording() {
     );
     assert_eq!(result.operations.len(), 1);
 }
+
+#[test]
+fn undecodable_payload_words_cannot_complete_an_operation() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for payload in [
+        r#"{"note":"completed",,}"#,
+        r#"{"note":"completed""#,
+        r#"[{"note":"completed"}] trailing"#,
+        r#"[{"note":"completed"}]"#,
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let inspect = parse(
+            &format!("Operation \"work\" inspected {payload}"),
+            1,
+            &config,
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, inspect, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{payload}");
+        assert_eq!(result.orphans.len(), 1);
+        assert_eq!(result.orphans[0].name, "work");
+        assert!(
+            result
+                .operation_coverage
+                .suppressed_operation_types
+                .iter()
+                .any(|s| s.reason == "no_recognized_boundary")
+        );
+    }
+}

@@ -135,7 +135,8 @@ log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-t
 Command classification uses `[parser].command_prefix` and a nonempty quoted
 name independently of start/completion wording. Shipped profiles recognize
 completion-only command lines too; `[perf]` determines their lifecycle role from
-text after the name and before embedded JSON. Names support escaped quotes and
+text after the name and before payload delimiters, including malformed or
+unclosed payloads. Names support escaped quotes and
 Unicode. A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names and prefixes inside JSON payloads are not commands.
 Custom unquoted names retain the legacy `command_start_marker` delimiter; use

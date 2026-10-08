@@ -940,9 +940,11 @@ pub(crate) fn command_lifecycle_message<'a>(message: &'a str, rules: &ParserRule
     let body = extract_command_name(message, rules)
         .map(|(_, end)| &message[end..])
         .unwrap_or(message);
-    let end = valid_json_spans(body)
-        .first()
-        .map(|span| span.start)
+    // Payload syntax is opaque even when malformed: its words cannot prove a
+    // lifecycle boundary. Do not depend on successful JSON decoding here.
+    let end = body
+        .char_indices()
+        .find_map(|(index, ch)| matches!(ch, '{' | '[').then_some(index))
         .unwrap_or(body.len());
     &body[..end]
 }
