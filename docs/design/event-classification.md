@@ -60,7 +60,8 @@ remain unsupported by the existing regex crate.
 Version-2 text adapters may set `complete_payload_capture = "body"` to the name
 of an existing regex capture. When that capture participates, it must contain
 one balanced object/array followed only by whitespace or complete JSON5 comments.
-The scanner handles nested containers, quoted strings, escapes and comments,
+The scanner handles nested containers, quoted strings, escapes and comments
+(including LF, CR, U+2028 and U+2029 line-comment terminators),
 with the parser's 128-container depth limit. Nonparticipating optional captures
 need no validation. This checks container boundaries, not JSON5 value syntax or
 payload decoding; existing parser normalization still owns decoding. An invalid

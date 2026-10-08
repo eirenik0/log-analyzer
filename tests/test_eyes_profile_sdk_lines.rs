@@ -178,3 +178,49 @@ fn complete_nested_response_bodies_keep_their_boundary() {
         );
     }
 }
+
+#[test]
+fn json5_line_comment_terminators_do_not_hide_pending_prose() {
+    let cfg = config::load_builtin_template("eyes").unwrap();
+    for terminator in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        for body in ["{}", "[]"] {
+            let suffix = format!(" with body {body} // comment{terminator}is still pending");
+            let messages = request_pair(" with body undefined", &suffix);
+            let logs = parse(&cfg, "manager-a/eyes-b/request-c", &messages);
+            let result = perf_analyzer::analyze_performance_with_config(
+                &logs,
+                &LogFilter::new(),
+                None,
+                &cfg,
+            );
+            assert!(result.operations.is_empty(), "{suffix:?}");
+            assert_eq!(result.orphans.len(), 1, "{suffix:?}");
+            assert_eq!(result.operation_coverage.status, "insufficient_evidence");
+
+            let complete = format!(" with body {body} // comment{terminator} /* complete */");
+            assert_eq!(
+                pair_count(&request_pair(" with body undefined", &complete)),
+                1,
+                "{complete:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn json5_body_comments_end_before_undefined_values_for_every_line_terminator() {
+    let cfg = config::load_builtin_template("eyes").unwrap();
+    for terminator in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        let suffix = format!(" with body {{ // comment{terminator}value: undefined }}");
+        let logs = parse(
+            &cfg,
+            "manager-a/eyes-b/request-c",
+            &request_pair(" with body undefined", &suffix),
+        );
+        let result =
+            perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg);
+        assert_eq!(result.operations.len(), 1, "{suffix:?}");
+        let payload = logs[1].payload().expect("valid JSON5 body must decode");
+        assert!(payload.get("value").unwrap().is_null(), "{suffix:?}");
+    }
+}

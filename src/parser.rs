@@ -1000,7 +1000,7 @@ fn normalize_json5_undefined(input: &str) -> String {
     let mut chars = input.char_indices().peekable();
     while let Some((position, ch)) = chars.next() {
         if line_comment {
-            line_comment = ch != '\n';
+            line_comment = !is_json5_line_terminator(ch);
             continue;
         }
         if block_comment {
@@ -1062,6 +1062,10 @@ fn normalize_json5_undefined(input: &str) -> String {
     output
 }
 
+fn is_json5_line_terminator(ch: char) -> bool {
+    matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
 pub(crate) fn complete_container_suffix(input: &str) -> bool {
     input.starts_with(['{', '['])
         && command_payload_end(input).is_some_and(|end| command_payload_trivia(&input[end..]))
@@ -1075,7 +1079,9 @@ fn command_payload_trivia(mut input: &str) -> bool {
             return true;
         }
         if let Some(comment) = input.strip_prefix("//") {
-            input = comment.find('\n').map_or("", |end| &comment[end + 1..]);
+            input = comment
+                .find(is_json5_line_terminator)
+                .map_or("", |end| &comment[end..]);
         } else if let Some(comment) = input.strip_prefix("/*") {
             let Some(end) = comment.find("*/") else {
                 return false;
@@ -1097,7 +1103,7 @@ fn command_payload_end(input: &str) -> Option<usize> {
     let mut chars = input.char_indices().peekable();
     while let Some((position, ch)) = chars.next() {
         if line_comment {
-            line_comment = ch != '\n';
+            line_comment = !is_json5_line_terminator(ch);
             continue;
         }
         if block_comment {
