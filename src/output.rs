@@ -35,6 +35,8 @@ struct OutputState {
     mask_ids: Vec<String>,
     masked_values: BTreeMap<String, String>,
     generated: HashSet<String>,
+    reserved: HashSet<String>,
+    source_ids: Vec<String>,
     next_id: usize,
     matcher: Option<(AhoCorasick, Vec<String>)>,
     preserve_numeric_metadata: bool,
@@ -147,7 +149,47 @@ fn field_matches(key: &str, field: &str) -> bool {
 }
 
 impl OutputState {
+    fn reserve_id(&mut self, value: &str) {
+        if value.is_empty() || value == "null" || !self.reserved.insert(value.to_string()) {
+            return;
+        }
+        self.source_ids.push(value.to_string());
+        if self.generated.contains(value) {
+            // A newly observed file/selector can reserve a previously allocated label.
+            self.masked_values.clear();
+            self.generated.clear();
+            self.next_id = 0;
+        }
+        self.matcher = None;
+    }
+
+    fn collect_identifier(&mut self, key: &str, value: &str) {
+        if self.mask_ids.iter().any(|field| field_matches(key, field)) {
+            self.reserve_id(value);
+        }
+    }
+
+    fn ensure_masks(&mut self) {
+        for value in &self.source_ids[self.masked_values.len()..] {
+            if self.masked_values.contains_key(value) {
+                continue;
+            }
+            self.next_id += 1;
+            while self
+                .reserved
+                .contains(&format!("[MASKED_ID:{}]", self.next_id))
+            {
+                self.next_id += 1;
+            }
+            let mask = format!("[MASKED_ID:{}]", self.next_id);
+            self.generated.insert(mask.clone());
+            self.masked_values.insert(value.clone(), mask);
+            self.matcher = None;
+        }
+    }
+
     fn replacement(&mut self, key: &str, value: &str) -> Option<String> {
+        self.ensure_masks();
         let decoded = percent_decode(key);
         let leaf = canonical(decoded.rsplit('.').next().unwrap_or(&decoded));
 
@@ -166,15 +208,9 @@ impl OutputState {
             if let Some(mask) = self.masked_values.get(value) {
                 return Some(mask.clone());
             }
-            self.next_id += 1;
-            while format!("[MASKED_ID:{}]", self.next_id) == value {
-                self.next_id += 1;
-            }
-            let mask = format!("[MASKED_ID:{}]", self.next_id);
-            self.generated.insert(mask.clone());
-            self.masked_values.insert(value.to_string(), mask.clone());
-            self.matcher = None;
-            return Some(mask);
+            self.reserve_id(value);
+            self.ensure_masks();
+            return self.masked_values.get(value).cloned();
         }
         SECRET_FIELDS
             .iter()
@@ -249,6 +285,7 @@ impl OutputState {
     }
 
     fn text(&mut self, text: &str) -> String {
+        self.ensure_masks();
         if !(self.preserve_numeric_metadata && text.chars().all(|c| c.is_ascii_digit()))
             && let Some(replacement) = self.masked_values.get(text)
         {
@@ -335,7 +372,7 @@ impl OutputState {
         });
         // Also handle log-style key=value and JSON5-style key: value fragments.
         static ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
-            Regex::new(r#"(?i)([A-Za-z_][A-Za-z0-9_.-]*)([\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s]+)"#).unwrap()
+            Regex::new(r#"(?i)([A-Za-z_][A-Za-z0-9_.-]*)([\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"[^\s]*|'(?:\\.|[^'\\])*'[^\s]*|[^\s]+)"#).unwrap()
         });
         static HEADER: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r#"(?i)\b(authorization|auth|cookie|set[_.-]?cookie)(["']?[ \t]*[:=][ \t]*)([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)"#).unwrap()
@@ -392,7 +429,16 @@ impl OutputState {
         static TIMESTAMP: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})").unwrap()
         });
-        let mut placeholders: Vec<_> = PLACEHOLDER.find_iter(text).map(|m| m.range()).collect();
+        let mut placeholders: Vec<_> = PLACEHOLDER
+            .find_iter(text)
+            .filter(|m| {
+                let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+                (m.as_str() == "[REDACTED]" || self.generated.contains(m.as_str()))
+                    && !text[m.end()..].chars().next().is_some_and(is_word)
+                    && !text[..m.start()].chars().next_back().is_some_and(is_word)
+            })
+            .map(|m| m.range())
+            .collect();
         placeholders.extend(
             TIMESTAMP
                 .find_iter(text)
@@ -450,7 +496,7 @@ impl OutputState {
                             .as_str()
                             .map(str::to_string)
                             .unwrap_or_else(|| value.to_string());
-                        self.replacement(&path, &rendered);
+                        self.collect_identifier(&path, &rendered);
                     }
                     self.collect_value(value, &path);
                 }
@@ -478,7 +524,7 @@ impl OutputState {
                 let raw = &captures[2];
                 let value = serde_json::from_str::<String>(raw)
                     .unwrap_or_else(|_| percent_decode(raw.trim_matches('\'')));
-                self.replacement(&captures[1], &value);
+                self.collect_identifier(&captures[1], &value);
             }
         }
         for (start, ch) in text
@@ -617,7 +663,7 @@ pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
             return;
         };
         for entry in entries {
-            state.replacement("component_id", &entry.component_id);
+            state.collect_identifier("component_id", &entry.component_id);
             for payload in [entry.payload(), entry.envelope_payload.as_ref()]
                 .into_iter()
                 .flatten()
@@ -625,14 +671,14 @@ pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
                 state.collect_value(payload, "");
             }
             for (key, value) in &entry.structured_fields {
-                state.replacement(key, value);
+                state.collect_identifier(key, value);
             }
             if let crate::parser::LogEntryKind::Request {
                 request_id: Some(id),
                 ..
             } = &entry.kind
             {
-                state.replacement("request_id", id);
+                state.collect_identifier("request_id", id);
             }
             state.collect_text(&entry.raw_logline);
         }
@@ -641,12 +687,17 @@ pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
 
 pub fn identifier(value: &str) -> String {
     STATE.with(|state| {
-        state
-            .borrow()
-            .as_ref()
-            .and_then(|s| s.masked_values.get(value))
-            .cloned()
-            .unwrap_or_else(|| value.to_string())
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut() {
+            state.ensure_masks();
+            state
+                .masked_values
+                .get(value)
+                .cloned()
+                .unwrap_or_else(|| value.to_string())
+        } else {
+            value.to_string()
+        }
     })
 }
 
@@ -687,7 +738,7 @@ pub fn register_selector(value: &str) {
             return;
         };
         let field = state.mask_ids[0].clone();
-        state.replacement(&field, value);
+        state.collect_identifier(&field, value);
     });
 }
 

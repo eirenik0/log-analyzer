@@ -976,3 +976,92 @@ fn numeric_ids_in_unique_comparison_messages_are_masked_before_formatting() {
     assert!(text.contains("answer for [MASKED_ID:"), "{text}");
     assert!(text.contains("1 unique log types"), "{text}");
 }
+
+#[test]
+fn raw_placeholder_ids_remain_distinct_from_generated_masks() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("reserved.jsonl");
+    let rows: String = ["ordinary", "[MASKED_ID:1]", "[MASKED_ID:2]"].iter().map(|id| {
+        format!("{}\n", json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":format!("answer for {id}"), "payload":{"request_id":id}}))
+    }).collect();
+    fs::write(&file, rows).unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "-F",
+        "json",
+        "search",
+        file.to_str().unwrap(),
+        "--payloads",
+    ]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let entries = report["search"]["entries"].as_array().unwrap();
+    let masks: Vec<_> = entries
+        .iter()
+        .map(|e| e["payload"]["request_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        masks
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3
+    );
+    for (entry, mask) in entries.iter().zip(masks) {
+        assert_ne!(mask, "[MASKED_ID:1]");
+        assert_ne!(mask, "[MASKED_ID:2]");
+        assert_eq!(entry["message"], format!("answer for {mask}"));
+    }
+}
+
+#[test]
+fn quoted_secret_scalars_consume_attached_suffixes() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("quoted.jsonl");
+    let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":"token=\"prefix\"double-secret password='prefix'single-secret api_key=\"escaped\\\"prefix\"escape-secret token=\"[REDACTED]\"fake-secret"});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    for format in ["text", "json"] {
+        let output = run(&["--redact", "-F", format, "search", file.to_str().unwrap()]);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        for secret in [
+            "double-secret",
+            "single-secret",
+            "escape-secret",
+            "fake-secret",
+        ] {
+            assert!(!text.contains(secret), "{text}");
+        }
+        assert!(text.contains("[REDACTED]"));
+    }
+}
+
+#[test]
+fn a_generated_mask_prefix_does_not_hide_a_raw_longer_identifier() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("prefix.jsonl");
+    let rows: String = ["ordinary", "[MASKED_ID:1]-customer-42"].iter().map(|id| {
+        format!("{}\n", json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":format!("answer for {id}"), "payload":{"request_id":id}}))
+    }).collect();
+    fs::write(&file, rows).unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "-F",
+        "json",
+        "search",
+        file.to_str().unwrap(),
+        "--payloads",
+    ]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        report["search"]["entries"][1]["message"],
+        "answer for [MASKED_ID:2]"
+    );
+    assert!(!report.to_string().contains("customer-42"));
+}
