@@ -885,3 +885,60 @@ fn redacted_performance_contexts_truncate_unicode_safely() {
     assert!(text.contains("[REDACTED]"), "{text}");
     assert!(!text.contains("token=x"));
 }
+
+#[test]
+fn numeric_masks_preserve_nested_error_and_performance_timestamps() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("time.log");
+    fs::write(&file, "core (demo) | 2026-01-01T00:00:01.000Z [ERROR] Request \"a\" [0--id] will be sent request_id=01 failure for 01\n").unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "-F",
+        "json",
+        "errors",
+        file.to_str().unwrap(),
+        "--sessions",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let text = report.to_string();
+    let timestamp =
+        report["errors"]["clusters"][0]["affected_sessions"][0]["first_error_timestamp"]
+            .as_str()
+            .unwrap();
+    assert_eq!(
+        chrono::DateTime::parse_from_rfc3339(timestamp)
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+            .to_rfc3339(),
+        "2026-01-01T00:00:01+00:00"
+    );
+    assert!(!text.contains("failure for 01"), "{text}");
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "-F",
+        "text",
+        "perf",
+        file.to_str().unwrap(),
+        "--orphans-only",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    let expected = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:01Z")
+        .unwrap()
+        .with_timezone(&chrono::Local)
+        .to_rfc3339();
+    assert!(text.contains(&expected), "{text}");
+}

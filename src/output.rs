@@ -238,7 +238,8 @@ impl OutputState {
                         | "level"
                 );
                 let previous = self.preserve_numeric_metadata;
-                self.preserve_numeric_metadata = metadata;
+                self.preserve_numeric_metadata =
+                    metadata || chrono::DateTime::parse_from_rfc3339(text).is_ok();
                 let rendered = self.text(text);
                 self.preserve_numeric_metadata = previous;
                 Value::String(rendered)
@@ -388,7 +389,17 @@ impl OutputState {
         }
         static PLACEHOLDER: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"\[(?:MASKED_ID:\d+|REDACTED)\]").unwrap());
-        let placeholders: Vec<_> = PLACEHOLDER.find_iter(text).map(|m| m.range()).collect();
+        static TIMESTAMP: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})").unwrap()
+        });
+        let mut placeholders: Vec<_> = PLACEHOLDER.find_iter(text).map(|m| m.range()).collect();
+        placeholders.extend(
+            TIMESTAMP
+                .find_iter(text)
+                .filter(|m| chrono::DateTime::parse_from_rfc3339(m.as_str()).is_ok())
+                .map(|m| m.range()),
+        );
+        placeholders.sort_by_key(|range| range.start);
         let (matcher, originals) = self.matcher.as_ref().unwrap();
         let mut out = String::new();
         let mut cursor = 0;
