@@ -615,3 +615,5 @@ Use `log-analyzer capabilities` to inspect the installed build and supported com
 Compact text preserves Unicode graphemes and disambiguates shortened field names. See README “Safe compact text” for omission-marker collisions and existing limits.
 
 Check `perf` operation coverage separately from parse coverage before interpreting empty results. README “perf” describes evidence statuses, suppressions, ambiguous/rejected events, and capture limits.
+
+Shipped command profiles recognize quoted start and completion names independently. For command pairing, tune `[perf]` lifecycle markers; command names and embedded JSON are excluded from boundary matching. See README “Configuration is Essential” for custom unquoted-name compatibility.

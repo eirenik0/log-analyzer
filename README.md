@@ -132,6 +132,15 @@ log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-t
 - **Payload extraction** (`extract`, `search --payloads`) relies on `json_indicators` and `command_payload_markers` from `[parser]` to locate and parse embedded JSON. If these don't match your log format, payloads are invisible.
 - **Request lifecycle tracing** (`trace`, `perf --orphans-only`) depends on `request_send_markers`, `request_receive_markers`, and `request_endpoint_marker` to pair outgoing requests with their responses.
 
+Command classification uses `[parser].command_prefix` and a nonempty quoted
+name independently of start/completion wording. Shipped profiles recognize
+completion-only command lines too; `[perf]` determines their lifecycle role from
+text after the name and before embedded JSON. Names support escaped quotes and
+Unicode. A missing boundary remains diagnostic rather than producing a duration.
+Empty/unterminated names and prefixes inside JSON payloads are not commands.
+Custom unquoted names retain the legacy `command_start_marker` delimiter; use
+quoted names to recognize completion lines independently of that delimiter.
+
 **How to get started:**
 
 ```bash

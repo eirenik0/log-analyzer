@@ -878,6 +878,59 @@ fn parse_field_value(input: &str) -> Option<(String, usize)> {
     }
 }
 
+// Command identity is independent of lifecycle wording. Only quoted names have
+// an unambiguous end on completion lines; retain legacy start-delimited names.
+fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, usize)> {
+    let prefix = rules.command_prefix.as_str();
+    if prefix.is_empty() {
+        return None;
+    }
+    let start = message.find(prefix)?;
+    if message
+        .char_indices()
+        .take_while(|(index, _)| *index < start)
+        .any(|(index, ch)| {
+            matches!(ch, '{' | '[') && extract_json_from_position(message, index).is_some()
+        })
+    {
+        return None;
+    }
+    let name_start = start + prefix.len();
+    let (command, name_end) = if let Some(quote @ ('"' | '\'')) = prefix.chars().next_back() {
+        let quote_start = name_start - quote.len_utf8();
+        let (name, consumed) = parse_quoted_field_value(&message[quote_start..], quote)?;
+        (name, quote_start + consumed)
+    } else {
+        let remaining = message[name_start..].trim_start();
+        let offset = message.len() - remaining.len();
+        if let Some(quote @ ('"' | '\'')) = remaining.chars().next() {
+            let (name, consumed) = parse_quoted_field_value(remaining, quote)?;
+            (name, offset + consumed)
+        } else {
+            if rules.command_start_marker.is_empty() {
+                return None;
+            }
+            let end = remaining.find(&rules.command_start_marker)?;
+            (remaining[..end].trim_end().to_string(), offset + end)
+        }
+    };
+    (!command.trim().is_empty()).then_some((command, name_end))
+}
+
+pub(crate) fn command_lifecycle_message<'a>(message: &'a str, rules: &ParserRules) -> &'a str {
+    let body = extract_command_name(message, rules)
+        .map(|(_, end)| &message[end..])
+        .unwrap_or(message);
+    let end = body
+        .char_indices()
+        .find_map(|(index, ch)| {
+            (matches!(ch, '{' | '[') && extract_json_from_position(body, index).is_some())
+                .then_some(index)
+        })
+        .unwrap_or(body.len());
+    &body[..end]
+}
+
 fn parse_quoted_field_value(input: &str, quote: char) -> Option<(String, usize)> {
     let mut escape_next = false;
     for (index, ch) in input.char_indices().skip(1) {
@@ -1057,55 +1110,37 @@ fn determine_log_entry_kind(
                 payload,
             }));
         }
-    } else if !parser_rules.command_prefix.is_empty()
-        && !parser_rules.command_start_marker.is_empty()
-        && message.contains(&parser_rules.command_prefix)
-        && message.contains(&parser_rules.command_start_marker)
-    {
-        let cmd_prefix = parser_rules.command_prefix.as_str();
-        let cmd_suffix = parser_rules.command_start_marker.as_str();
-
-        if let Some(start_idx) = message.find(cmd_prefix) {
-            let cmd_name_start = start_idx + cmd_prefix.len();
-            if let Some(end_idx) = message[cmd_name_start..].find(cmd_suffix) {
-                let command = message[cmd_name_start..cmd_name_start + end_idx].to_string();
-
-                let mut settings = None;
-                let mut cleaned_message = message.to_string();
-
-                for indicator in &parser_rules.command_payload_markers {
-                    if indicator.is_empty() {
-                        continue;
-                    }
-
-                    if let Some(start_idx) = message.find(indicator.as_str()) {
-                        let settings_start = start_idx + indicator.len() - 1;
-                        let settings_str = &message[settings_start..];
-                        settings = extract_json(settings_str, &parser_rules.json_indicators);
-
-                        cleaned_message = message[..start_idx].to_string();
-                        cleaned_message.push_str(indicator);
-                        cleaned_message.push_str(" [JSON removed]");
-                        break;
-                    }
-                }
-
-                message_text = cleaned_message;
-                return Ok(create_command_log(CommandLogParams {
-                    base: LogEntryBase {
-                        component,
-                        component_id,
-                        timestamp,
-                        level,
-                        message: message_text,
-                        raw_logline,
-                        source_line_number,
-                    },
-                    command,
-                    settings,
-                }));
+    } else if let Some((command, name_end)) = extract_command_name(message, parser_rules) {
+        let mut settings = None;
+        let mut cleaned_message = message.to_string();
+        for indicator in &parser_rules.command_payload_markers {
+            if indicator.is_empty() {
+                continue;
+            }
+            if let Some(relative_start) = message[name_end..].find(indicator.as_str()) {
+                let start_idx = name_end + relative_start;
+                let settings_start =
+                    start_idx + indicator.len() - indicator.chars().next_back().unwrap().len_utf8();
+                settings = extract_json(&message[settings_start..], &parser_rules.json_indicators);
+                cleaned_message = message[..start_idx].to_string();
+                cleaned_message.push_str(indicator);
+                cleaned_message.push_str(" [JSON removed]");
+                break;
             }
         }
+        return Ok(create_command_log(CommandLogParams {
+            base: LogEntryBase {
+                component,
+                component_id,
+                timestamp,
+                level,
+                message: cleaned_message,
+                raw_logline,
+                source_line_number,
+            },
+            command,
+            settings,
+        }));
     } else if !parser_rules.request_prefix.is_empty()
         && message.contains(&parser_rules.request_prefix)
     {
