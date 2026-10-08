@@ -167,7 +167,8 @@ endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
 id = "request-end-id"
 [event_rules.rules.adapter]
 type = "text"
-pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body (?s:\{.*|\[.*)|respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)))?'
+complete_payload_capture = "body"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?'
 [event_rules.rules.mapping]
 kind = "request"
 name = { from = "capture", capture = "name", decode = "json_string" }
@@ -180,7 +181,8 @@ endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
 id = "request-end-missing-id"
 [event_rules.rules.adapter]
 type = "text"
-pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body (?s:\{.*|\[.*)|respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)))?'
+complete_payload_capture = "body"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?'
 [event_rules.rules.mapping]
 kind = "request"
 name = { from = "capture", capture = "name", decode = "json_string" }

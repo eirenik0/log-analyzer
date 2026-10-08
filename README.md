@@ -171,6 +171,8 @@ Supported shipped request/event grammar:
   `, httpVersion: default` (or another version). Retry tails accept
   `with body ... is going to retried due to ...`. Arbitrary prose such as
   `that was sent ... is still pending` does not establish an end boundary.
+  A standalone object/array response body must be structurally complete, with
+  only whitespace or complete JSON5 comments after its root container.
   `Received event of type "name"` starts and `Emit event of type "name"` ends,
   with optional `with payload {payload}` / `[payload]`. The compact
   `{"name":"name"}` event subject is also supported. Event identity uses `payload.key`.

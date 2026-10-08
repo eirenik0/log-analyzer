@@ -1062,6 +1062,11 @@ fn normalize_json5_undefined(input: &str) -> String {
     output
 }
 
+pub(crate) fn complete_container_suffix(input: &str) -> bool {
+    input.starts_with(['{', '['])
+        && command_payload_end(input).is_some_and(|end| command_payload_trivia(&input[end..]))
+}
+
 // Only whitespace and complete JSON5 comments may follow the bounded root value.
 fn command_payload_trivia(mut input: &str) -> bool {
     loop {

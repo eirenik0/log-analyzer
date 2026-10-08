@@ -57,6 +57,15 @@ avoid permissive wildcards around lifecycle words. Matching contains no English
 negation, clause, parenthetical, or adverb heuristics. Backreferences/lookaround
 remain unsupported by the existing regex crate.
 
+Version-2 text adapters may set `complete_payload_capture = "body"` to the name
+of an existing regex capture. When that capture participates, it must contain
+one balanced object/array followed only by whitespace or complete JSON5 comments.
+The scanner handles nested containers, quoted strings, escapes and comments,
+with the parser's 128-container depth limit. Nonparticipating optional captures
+need no validation. This checks container boundaries, not JSON5 value syntax or
+payload decoding; existing parser normalization still owns decoding. An invalid
+container suffix makes the rule a nonmatch and cannot supply a lifecycle phase.
+
 A structured adapter has `type = "structured"` and 1..16 `conditions`. Every
 condition has an exact top-level `field` key and scalar `equals`. Conditions are
 ANDed; field names are case-sensitive literal keys, not JSON pointers. Typed JSON

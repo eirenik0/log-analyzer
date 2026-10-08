@@ -72,6 +72,8 @@ fn request_end_accepts_every_response_suffix() {
         " respond with OK(200), dont retry returned false",
         " respond with OK(200), dont retry returned true, httpVersion: default",
         " with body undefined is going to retried due to a network error",
+        r#" with body {"ok":false} is going to retried due to a network error"#,
+        " with body [false] is going to retried due to a network error",
     ] {
         assert_eq!(
             pair_count(&request_pair(" with body undefined", suffix)),
@@ -104,6 +106,12 @@ fn pending_request_suffixes_do_not_supply_an_end_boundary() {
         " is still pending(200)",
         " respond with an unknown result",
         " with body undefined is still pending",
+        r#" with body {"ok":false} is still pending"#,
+        r#" with body [false] is still pending"#,
+        r#" with body {"ok":false} is still pending {}"#,
+        r#" with body [false] is still pending []"#,
+        " with body {unfinished",
+        " with body [unfinished",
         " respond with OK(200), still waiting for completion",
     ] {
         let messages = request_pair(" with body undefined", suffix);
@@ -154,4 +162,19 @@ fn direct_response_status_preserves_duration_and_endpoint() {
         result.operations[0].endpoint.as_deref(),
         Some("[POST]https://eyes.example.test/api/sessions")
     );
+}
+
+#[test]
+fn complete_nested_response_bodies_keep_their_boundary() {
+    for body in [
+        r#" with body {"nested":[{"text":"} is still pending"}]}"#,
+        r#" with body [{"nested":[false,{"text":"]"}]}]"#,
+        " with body {nested: [undefined]} /* complete comment */",
+    ] {
+        assert_eq!(
+            pair_count(&request_pair(" with body undefined", body)),
+            1,
+            "{body}"
+        );
+    }
 }
