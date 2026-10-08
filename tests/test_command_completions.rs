@@ -215,3 +215,53 @@ fn lifecycle_words_and_payload_markers_inside_names_or_json_are_not_boundaries()
         assert_eq!(result.operation_coverage.suppressed_events, 1);
     }
 }
+
+#[test]
+fn leading_json_context_does_not_hide_commands_and_crossed_brackets_never_panic() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for prefix in [
+        "context {} ",
+        "context [] ",
+        "context {\"Operation \":\"ignored\"} ",
+    ] {
+        let start = parse(
+            &format!("{prefix}Operation \"reconcile\" started"),
+            0,
+            &config,
+        );
+        let end = parse(
+            &format!("{prefix}Operation \"reconcile\" completed"),
+            1,
+            &config,
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{prefix}");
+        assert_eq!(result.operations[0].duration_ms, 1000);
+    }
+    for brackets in ["[}", "{]", "[{]}", "{[}]", "[{", "é[}💻"] {
+        let start = parse(
+            &format!("Operation \"work\" started {brackets}"),
+            0,
+            &config,
+        );
+        let end = parse(
+            &format!("Operation \"work\" completed {brackets}"),
+            1,
+            &config,
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{brackets}");
+        // The shared JSON probe also handles arbitrary generic log content.
+        parse(&format!("heartbeat {brackets}"), 0, &config);
+    }
+}

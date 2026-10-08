@@ -885,16 +885,17 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
     if prefix.is_empty() {
         return None;
     }
-    let start = message.find(prefix)?;
-    if message
-        .char_indices()
-        .take_while(|(index, _)| *index < start)
-        .any(|(index, ch)| {
-            matches!(ch, '{' | '[') && extract_json_from_position(message, index).is_some()
-        })
-    {
-        return None;
-    }
+    let start = message.match_indices(prefix).find_map(|(start, _)| {
+        let inside_json = message
+            .char_indices()
+            .take_while(|(index, _)| *index < start)
+            .any(|(index, ch)| {
+                matches!(ch, '{' | '[')
+                    && extract_json_span_from_position(message, index)
+                        .is_some_and(|(_, end)| start < end)
+            });
+        (!inside_json).then_some(start)
+    })?;
     let name_start = start + prefix.len();
     let (command, name_end) = if let Some(quote @ ('"' | '\'')) = prefix.chars().next_back() {
         let quote_start = name_start - quote.len_utf8();
@@ -1337,59 +1338,46 @@ fn extract_json(input: &str, json_indicators: &[String]) -> Option<Value> {
 }
 
 fn extract_json_from_position(input: &str, start_pos: usize) -> Option<Value> {
-    if start_pos >= input.len() {
+    extract_json_span_from_position(input, start_pos).map(|(value, _)| value)
+}
+
+fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Value, usize)> {
+    let remaining = input.get(start_pos..)?;
+    if !matches!(remaining.chars().next()?, '{' | '[') {
         return None;
     }
-
-    let first_char = input[start_pos..].chars().next()?;
-    if first_char != '{' && first_char != '[' {
-        return None;
-    }
-
-    let mut brace_count = 0;
-    let mut bracket_count = 0;
-    let mut in_string = false;
+    let mut delimiters = Vec::new();
+    let mut string_quote = None;
     let mut escape_next = false;
-
-    for (index, ch) in input[start_pos..].char_indices() {
-        if in_string {
+    for (index, ch) in remaining.char_indices() {
+        if let Some(quote) = string_quote {
             if escape_next {
                 escape_next = false;
-                continue;
-            }
-            if ch == '\\' {
+            } else if ch == '\\' {
                 escape_next = true;
-                continue;
-            }
-            if ch == '"' {
-                in_string = false;
+            } else if ch == quote {
+                string_quote = None;
             }
             continue;
         }
-
         match ch {
-            '"' => in_string = true,
-            '{' => brace_count += 1,
-            '}' => {
-                brace_count -= 1;
-                if brace_count == 0 && first_char == '{' && bracket_count == 0 {
-                    let json_str =
-                        input[start_pos..=start_pos + index].replace("undefined", "null");
-                    return json5::from_str::<Value>(&json_str).ok();
+            '"' | '\'' => string_quote = Some(ch),
+            '{' | '[' => delimiters.push(ch),
+            '}' | ']' => {
+                let expected = if ch == '}' { '{' } else { '[' };
+                if delimiters.pop()? != expected {
+                    return None;
                 }
-            }
-            '[' => bracket_count += 1,
-            ']' => {
-                bracket_count -= 1;
-                if bracket_count == 0 && first_char == '[' && brace_count == 0 {
-                    let json_str =
-                        input[start_pos..=start_pos + index].replace("undefined", "null");
-                    return json5::from_str::<Value>(&json_str).ok();
+                if delimiters.is_empty() {
+                    let end = start_pos + index + ch.len_utf8();
+                    let json = input[start_pos..end].replace("undefined", "null");
+                    return json5::from_str::<Value>(&json)
+                        .ok()
+                        .map(|value| (value, end));
                 }
             }
             _ => {}
         }
     }
-
     None
 }
