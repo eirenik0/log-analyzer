@@ -400,3 +400,90 @@ fn bounded_json_samples_do_not_expand_after_truncation() {
     assert!(!sample.contains("token=x"));
     assert_eq!(report["redaction"]["applied"], true);
 }
+
+#[test]
+fn authorization_redacts_digest_aws_and_unknown_schemes() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("authorization.jsonl");
+    let rows = [
+        "Authorization: AWS4-HMAC-SHA256 Credential=aws-secret, SignedHeaders=host, Signature=signature-secret",
+        "Authorization: Digest username=\"digest-secret\", response=\"response-secret\"",
+        "Authorization: CustomScheme opaque-secret second-secret",
+        "Authorization: CustomScheme first-secret\n continuation-secret\nrequest_id=allowed",
+    ].iter().map(|message| json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core","message":message}).to_string()).collect::<Vec<_>>().join("\n");
+    fs::write(&file, rows).unwrap();
+    for format in ["text", "json"] {
+        let output = run(&["--redact", "-F", format, "search", file.to_str().unwrap()]);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        for secret in [
+            "aws-secret",
+            "signature-secret",
+            "digest-secret",
+            "response-secret",
+            "opaque-secret",
+            "second-secret",
+            "first-secret",
+            "continuation-secret",
+        ] {
+            assert!(!text.contains(secret), "{text}");
+        }
+        assert!(text.contains("allowed"), "{text}");
+    }
+}
+
+#[test]
+fn compaction_preserves_identifier_strings_across_name_styles() {
+    let id = "correlation-".to_string() + &"x".repeat(250);
+    for key in [
+        "requestId",
+        "traceId",
+        "REQUEST_ID",
+        "trace-id",
+        "requestid",
+        "custom_Id",
+    ] {
+        let compact = log_analyzer::llm_processor::compact_json_value(&json!({key:id}), 3, 0);
+        assert_eq!(compact[key], id);
+        let compact =
+            log_analyzer::llm_processor::compact_json_value(&json!({key: vec!["x";30]}), 3, 0);
+        assert_eq!(compact[key].as_array().unwrap().len(), 11);
+    }
+    let compact =
+        log_analyzer::llm_processor::compact_json_value(&json!({"grid":"x".repeat(250)}), 3, 0);
+    assert!(compact["grid"].as_str().unwrap().len() <= 100);
+}
+
+#[test]
+fn sensitive_assignments_redact_whole_embedded_structures_and_cookie_headers() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("structures.jsonl");
+    let rows = [
+        "Authorization: {\"proof\":\"auth-object-secret\"}",
+        "token=[{\"proof\":\"token-array-secret\"}]",
+        "Cookie: session=cookie-secret; other=second-cookie-secret",
+        "Set-Cookie: name=set-cookie-secret; Path=/; Secure",
+    ]
+    .iter()
+    .map(|message| {
+        json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core","message":message})
+            .to_string()
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
+    fs::write(&file, rows).unwrap();
+    for format in ["text", "json"] {
+        let output = run(&["--redact", "-F", format, "search", file.to_str().unwrap()]);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        for secret in [
+            "auth-object-secret",
+            "token-array-secret",
+            "cookie-secret",
+            "second-cookie-secret",
+            "set-cookie-secret",
+        ] {
+            assert!(!text.contains(secret), "{text}");
+        }
+    }
+}

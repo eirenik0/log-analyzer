@@ -128,7 +128,12 @@ pub fn format_trace_text(entries: &[&LogEntry], selector: &TraceSelector) -> Str
         } else {
             format!("{} ({})", entry.component, entry.component_id)
         };
-        let message = entry.message.replace('\n', "\\n");
+        let message = if crate::output::redaction_enabled() {
+            // Preserve header boundaries through the final presentation pass.
+            crate::output::diagnostic(&entry.message)
+        } else {
+            entry.message.replace('\n', "\\n")
+        };
 
         let _ = writeln!(
             out,

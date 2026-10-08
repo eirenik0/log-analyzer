@@ -23,6 +23,8 @@ const SECRET_FIELDS: &[&str] = &[
     "cookie",
     "set_cookie",
     "credentials",
+    "credential",
+    "signature",
     "private_key",
 ];
 
@@ -98,7 +100,7 @@ pub fn diagnostic(text: &str) -> String {
     )
 }
 
-fn canonical(field: &str) -> String {
+pub(crate) fn canonical(field: &str) -> String {
     field
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
@@ -209,8 +211,28 @@ impl OutputState {
                 serde_json::Deserializer::from_str(&text[start..]).into_iter::<Value>();
             if let Some(Ok(value)) = stream.next() {
                 let end = start + stream.byte_offset();
-                out.push_str(&self.fragment(&text[raw_start..start]));
-                out.push_str(&self.value(&value).to_string());
+                let prefix = &text[raw_start..start];
+                static FIELD: LazyLock<Regex> = LazyLock::new(|| {
+                    Regex::new(r#"([A-Za-z_][A-Za-z0-9_.-]*)(["']?\s*[:=]\s*)$"#).unwrap()
+                });
+                let replacement = FIELD.captures(prefix).and_then(|captures| {
+                    self.replacement(&captures[1], &value.to_string())
+                        .map(|replacement| {
+                            (
+                                captures.get(0).unwrap().start(),
+                                captures[1].to_string(),
+                                captures[2].to_string(),
+                                replacement,
+                            )
+                        })
+                });
+                if let Some((offset, key, separator, replacement)) = replacement {
+                    out.push_str(&self.fragment(&prefix[..offset]));
+                    out.push_str(&format!("{key}{separator}{}", json!(replacement)));
+                } else {
+                    out.push_str(&self.fragment(prefix));
+                    out.push_str(&self.value(&value).to_string());
+                }
                 search = end;
                 raw_start = end;
             } else {
@@ -237,13 +259,10 @@ impl OutputState {
         static ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r#"(?i)([A-Za-z_][A-Za-z0-9_.-]*)([\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,}\]]+)"#).unwrap()
         });
-        static AUTH: LazyLock<Regex> = LazyLock::new(|| {
-            Regex::new(
-                r#"(?i)\b(authorization|auth)(["']?\s*[:=]\s*)(?:Bearer|Basic)\s+[^\s'",}\]]+"#,
-            )
-            .unwrap()
+        static HEADER: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r#"(?i)\b(authorization|auth|cookie|set[_-]cookie)(["']?[ \t]*[:=][ \t]*)([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)"#).unwrap()
         });
-        let out = AUTH.replace_all(&out, |captures: &regex::Captures<'_>| {
+        let out = HEADER.replace_all(&out, |captures: &regex::Captures<'_>| {
             format!("{}{}[REDACTED]", &captures[1], &captures[2])
         });
         let assignment = &*ASSIGNMENT;
@@ -277,7 +296,7 @@ impl OutputState {
             LazyLock::new(|| Regex::new(r"\[(?:MASKED_ID:\d+|REDACTED)\]").unwrap());
         let mut text = text.to_string();
         for (original, replacement) in &self.masked_values {
-            // Bare numeric values are also report measurements; only mask those with field context.
+            // Preserve existing placeholders while masking known identifiers in prose.
             if original.is_empty() {
                 continue;
             }
@@ -531,4 +550,8 @@ pub fn prepare_bounded_output(text: &str, json_output: bool) -> String {
         state.prepared = true;
         state.report(&text)
     })
+}
+
+pub fn redaction_enabled() -> bool {
+    STATE.with(|state| state.borrow().as_ref().is_some_and(|s| s.redact))
 }

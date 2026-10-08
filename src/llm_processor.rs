@@ -118,6 +118,29 @@ pub fn sanitize_json_value(value: &Value) -> Value {
     }
 }
 
+fn is_identifier_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    let canonical = crate::output::canonical(key);
+    matches!(
+        canonical.as_str(),
+        "id" | "requestid"
+            | "traceid"
+            | "spanid"
+            | "correlationid"
+            | "sessionid"
+            | "componentid"
+            | "jobid"
+            | "testid"
+            | "userid"
+            | "renderid"
+            | "checkid"
+            | "clientid"
+    ) || lower.ends_with("_id")
+        || lower.ends_with("-id")
+        || key.ends_with("Id")
+        || key.ends_with("ID")
+}
+
 pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize) -> Value {
     if current_depth >= max_depth {
         return json!("[TRUNCATED]");
@@ -143,7 +166,7 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
 
                 compacted_map.insert(
                     compact_key,
-                    if (key == "id" || key.ends_with("_id")) && val.is_string() {
+                    if is_identifier_key(key) && val.is_string() {
                         val.clone()
                     } else {
                         compact_json_value(val, max_depth, current_depth + 1)
