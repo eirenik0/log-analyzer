@@ -918,9 +918,21 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
             return None;
         }
         parse_command_candidate(message, start + prefix.len(), rules)
+            .map(|candidate| (candidate, start))
     });
-    let candidate = candidates.next()?;
+    let (candidate, start) = candidates.next()?;
     if candidates.next().is_some() {
+        return None;
+    }
+    let assignments = metadata_assignment_spans(message, &quotes);
+    if assignments.iter().any(|span| {
+        let field = &message[span.clone()];
+        field.find(['=', ':']).is_some_and(|separator| {
+            let value = field[separator + 1..].trim_start();
+            let value_start = span.end - value.len();
+            (value_start..span.end).contains(&start)
+        })
+    }) {
         return None;
     }
     Some(candidate)
@@ -1214,7 +1226,15 @@ pub(crate) fn lifecycle_qualifier(word: &str) -> bool {
             | "awaits"
             | "needs"
             | "requires"
-            | "unlikely"
+    ) || word.ends_with("n't")
+        || word.ends_with("n’t")
+        || lifecycle_uncertainty(word)
+}
+
+pub(crate) fn lifecycle_uncertainty(word: &str) -> bool {
+    matches!(
+        word,
+        "unlikely"
             | "likely"
             | "maybe"
             | "perhaps"
@@ -1268,8 +1288,7 @@ pub(crate) fn lifecycle_qualifier(word: &str) -> bool {
             | "unclear"
             | "unverified"
             | "unproven"
-    ) || word.ends_with("n't")
-        || word.ends_with("n’t")
+    )
 }
 
 fn parse_quoted_field_value(input: &str, quote: char) -> Option<(String, usize)> {

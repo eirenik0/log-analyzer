@@ -28,8 +28,20 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
                         || !text[end..].chars().next().is_some_and(word))
                     && !marker_is_nonaffirmative(&text[..start])
                     && !crate::parser::lifecycle_question(&text[end..])
+                    && !marker_has_trailing_condition(&text[end..])
             })
         })
+}
+
+fn marker_has_trailing_condition(suffix: &str) -> bool {
+    let clause = suffix.split(['.', '!', '?', '\n']).next().unwrap_or(suffix);
+    crate::parser::lifecycle_words(clause).any(|word| {
+        let word = word.to_lowercase();
+        matches!(
+            word.as_str(),
+            "if" | "unless" | "provided" | "assuming" | "conditionally" | "depending"
+        ) || crate::parser::lifecycle_uncertainty(&word)
+    })
 }
 
 fn marker_is_nonaffirmative(prefix: &str) -> bool {

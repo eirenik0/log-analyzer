@@ -855,6 +855,13 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is almost completed",
         "is partially completed",
         "is unlikely to have completed",
+        "is considered completed if validation passes",
+        "completed unless validation fails",
+        "completed, if validation passes",
+        "completed; if validation passes",
+        "completed, probably",
+        "completed probably",
+        "completed allegedly",
         "is likely to have completed",
         "probably completed",
         "perhaps completed",
@@ -899,6 +906,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is scheduled to be started",
         "is unlikely to have started",
         "probably started",
+        "started if validation passes",
     ] {
         let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
         let end = parse(r#"Operation "work" completed"#, 1, &config);
@@ -984,4 +992,39 @@ fn explanatory_colons_preserve_boundary_phrases_without_matching_the_explanation
         );
         assert!(result.operations.is_empty(), "{metadata}");
     }
+}
+
+#[test]
+fn assignment_values_cannot_supply_command_subjects() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for context in ["note=", "note = ", "note:", "note: ", "note=inner="] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let note = parse(
+            &format!("{context}Operation \"work\" completed"),
+            1,
+            &config,
+        );
+        assert!(
+            !matches!(note.kind, LogEntryKind::Command { .. }),
+            "{context}"
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, note, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{context}");
+    }
+    let start = parse(r#"note=old Operation "work" started"#, 0, &config);
+    let end = parse(r#"note=old Operation "work" completed"#, 1, &config);
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, end],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert_eq!(result.operations.len(), 1);
+    assert_eq!(result.operations[0].duration_ms, 1000);
 }
