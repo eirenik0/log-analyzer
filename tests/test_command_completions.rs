@@ -265,3 +265,35 @@ fn leading_json_context_does_not_hide_commands_and_crossed_brackets_never_panic(
         parse(&format!("heartbeat {brackets}"), 0, &config);
     }
 }
+
+#[test]
+fn json5_comments_keep_apostrophes_quotes_and_brackets_opaque() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for payload in [
+        "{foo: 1 // user's choice\n}",
+        "{foo: 1 /* user's \"choice [} */}",
+        "{foo: 1 // user's choice [}\r\n}",
+        "{foo: 1, text: 'it\\'s }[', /* \"unterminated quote */}",
+    ] {
+        let command = parse(
+            &format!("Operation \"work\" started with settings {payload}"),
+            0,
+            &config,
+        );
+        assert!(
+            matches!(&command.kind,LogEntryKind::Command {settings:Some(settings),..} if settings["foo"]==1),
+            "{payload}: {:?}",
+            command.kind
+        );
+        let generic = parse(&format!("heartbeat {payload}"), 0, &config);
+        assert_eq!(generic.payload().unwrap()["foo"], 1, "{payload}");
+        let end = parse("Operation \"work\" completed", 1, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[command, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1);
+    }
+}

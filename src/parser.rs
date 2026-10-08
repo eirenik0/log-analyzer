@@ -1349,7 +1349,23 @@ fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Val
     let mut delimiters = Vec::new();
     let mut string_quote = None;
     let mut escape_next = false;
-    for (index, ch) in remaining.char_indices() {
+    let mut characters = remaining.char_indices().peekable();
+    let mut line_comment = false;
+    let mut block_comment = false;
+    while let Some((index, ch)) = characters.next() {
+        if line_comment {
+            if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                line_comment = false;
+            }
+            continue;
+        }
+        if block_comment {
+            if ch == '*' && characters.peek().is_some_and(|(_, next)| *next == '/') {
+                characters.next();
+                block_comment = false;
+            }
+            continue;
+        }
         if let Some(quote) = string_quote {
             if escape_next {
                 escape_next = false;
@@ -1361,6 +1377,14 @@ fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Val
             continue;
         }
         match ch {
+            '/' if characters.peek().is_some_and(|(_, next)| *next == '/') => {
+                characters.next();
+                line_comment = true;
+            }
+            '/' if characters.peek().is_some_and(|(_, next)| *next == '*') => {
+                characters.next();
+                block_comment = true;
+            }
             '"' | '\'' => string_quote = Some(ch),
             '{' | '[' => delimiters.push(ch),
             '}' | ']' => {
