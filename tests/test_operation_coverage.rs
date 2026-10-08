@@ -104,6 +104,7 @@ fn inferred_years_and_equal_timestamp_files_cannot_invent_pairs() {
             perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &config);
         assert!(result.operations.is_empty());
         assert_eq!(result.operation_coverage.ambiguous_events, 2);
+        assert!(result.orphans.is_empty());
         assert_eq!(result.operation_coverage.ambiguous_pairs, None);
         logs.reverse();
     }

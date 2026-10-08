@@ -468,7 +468,7 @@ The observed capture window uses filtered parsed timestamps and preserves source
 offsets. Bounds and elapsed time are unavailable for empty selections or inferred
 years. Boundaries outside the input or filters remain unknown; upstream export
 completeness is always `unknown`. Equal timestamps across files or duplicated
-physical rows with identical row paths have no established boundary order and cannot create durations.
+physical rows with identical row paths have no established boundary order and cannot create durations or assert a missing completion in the orphan list.
 
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 

@@ -291,7 +291,7 @@ pub fn analyze_performance_with_config(
                 })
                 .collect();
             for event in &events {
-                if event.start {
+                if event.start && !tied {
                     results.orphans.push(event.orphan());
                 }
             }
