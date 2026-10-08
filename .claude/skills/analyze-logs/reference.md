@@ -594,3 +594,9 @@ JSON keeps full coverage/totals and bounded details with omission counts; the
 total output character budget applies only to text. Complete output is the
 default; `--complete --top-n 0` explicitly requests every cluster without detail
 limits and conflicts with bounded/limit flags.
+
+### Structured exports
+
+Preview unknown JSON exports with `schema <file> --samples 3` before mapping fields.
+Use explicit paths and timestamp units from [README](../../../README.md#structured-export-normalization),
+then check normalization diagnostics in `info -j` coverage before investigating.

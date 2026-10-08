@@ -188,6 +188,12 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
+    Schema {
+        file: PathBuf,
+        #[arg(long, default_value="3", value_parser=clap::value_parser!(u32).range(1..=20))]
+        samples: u32,
+    },
     /// Compare two log files and show differences between JSON objects
     #[command(alias = "cmp")]
     Compare {

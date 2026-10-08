@@ -17,6 +17,7 @@ fn create_test_log(component: &str, level: &str, message: &str) -> LogEntry {
         envelope_payload: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
+        source_row_path: None,
         kind: LogEntryKind::Generic { payload: None },
         source_line_number: 1,
     }

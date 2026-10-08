@@ -207,6 +207,7 @@ Avoid mixing unrelated runs, retries from different executions, or logs from dif
 | `perf` | | Analyze operation timing across one or more log files |
 | `trace` | | Trace one operation/session across one or more log files |
 | `process` | `llm` | Generate LLM-friendly JSON output |
+| `schema` | | Preview structured-export JSON paths and types |
 | `llm-diff` | | Generate LLM-friendly diff output |
 | `generate-config` | `gen-config` | Generate a profile TOML from logs |
 
@@ -678,3 +679,33 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 ```
+
+### Structured export normalization
+
+Run `log-analyzer schema export.jsonl --samples 3` to preview JSON Pointer paths
+and types without processing or decoding strings. Preview limits are explicit
+in JSON (four levels, twenty object fields, three array items); it does not infer
+field meanings. Configure a profile explicitly, for example for tuple rows:
+
+```toml
+[normalization.fields]
+timestamp = "/0"
+message = "/1/info/event"
+payload = "/1/info"
+```
+
+Paths use JSON Pointer syntax, including numeric array indexes. For nested arrays,
+set `[normalization] root_path = "/rows"` and `expand_rows = true`. Field paths
+are then relative to each expanded row. `decode_paths` explicitly decodes strings
+before root selection; `row_decode_paths` decodes strings within each selected row.
+No string is implicitly decoded. All mapped fields are required; missing, null,
+and wrong-type fields cause that row to be skipped with a diagnostic.
+
+`timestamp_unit` accepts `seconds`, `milliseconds`, `microseconds`, or `nanoseconds`
+for integer Unix timestamps, including negative values. Without an explicit unit,
+timestamps must be strings. Omitted level/component fields use parser defaults;
+unmapped rows must already have the normal object schema. Configuration forces
+JSON-lines parsing. Normalization diagnostics appear in analysis `coverage.files`
+and text coverage; single-file commands also emit skipped-row diagnostics on stderr.
+Provenance retains the original file, physical line, and expanded JSON row path.
+Use `info -j` to inspect coverage before interpreting an investigation report.

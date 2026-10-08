@@ -228,6 +228,7 @@ pub fn analyze(
                 source: SourceLocation {
                     file: entry.source_file.clone(),
                     line: entry.source_line_number,
+                    row_path: entry.source_row_path.clone(),
                 },
                 raw: entry.raw_logline.clone(),
                 gap_since_previous_match_ms: None,

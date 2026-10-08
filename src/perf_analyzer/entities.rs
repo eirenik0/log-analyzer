@@ -76,6 +76,7 @@ pub struct OperationStats {
 pub struct SourceLocation {
     pub file: Option<String>,
     pub line: usize,
+    pub row_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
