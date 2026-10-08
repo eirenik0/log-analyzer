@@ -157,6 +157,9 @@ pub fn format_perf_results_text(
     let report = select_results(results, threshold_ms, top_n, orphans_only, sort_by);
     let results = &report.results;
     write_selection_summary(&mut out, &report);
+    if let Some(timeline) = &results.event_timeline {
+        out.push_str(&crate::timeline::format_text(timeline));
+    }
     let _ = writeln!(
         out,
         "Correlation diagnostics: {} ambiguous groups, {} unmatched events",

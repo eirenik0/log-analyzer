@@ -95,6 +95,8 @@ fn test_perf_markers_can_be_overridden_by_config() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        source_timestamp: None,
+        timestamp_year_inferred: false,
         kind: LogEntryKind::Command {
             command: "sync".to_string(),
             settings: None,
@@ -113,6 +115,8 @@ fn test_perf_markers_can_be_overridden_by_config() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        source_timestamp: None,
+        timestamp_year_inferred: false,
         kind: LogEntryKind::Command {
             command: "sync".to_string(),
             settings: None,
@@ -185,6 +189,8 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        source_timestamp: None,
+        timestamp_year_inferred: false,
         kind: LogEntryKind::Command {
             command: "customOp".to_string(),
             settings: None,
@@ -205,6 +211,8 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        source_timestamp: None,
+        timestamp_year_inferred: false,
         kind: LogEntryKind::Request {
             request: "customReq".to_string(),
             request_id: None,

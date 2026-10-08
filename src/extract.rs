@@ -195,6 +195,8 @@ mod tests {
             module_path: None,
             source_file: None,
             envelope_payload: None,
+            source_timestamp: None,
+            timestamp_year_inferred: false,
             kind: LogEntryKind::Generic {
                 payload: Some(json!({"trace_id": "payload-value"})),
             },

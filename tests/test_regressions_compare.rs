@@ -29,6 +29,8 @@ fn request_log(
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        source_timestamp: None,
+        timestamp_year_inferred: false,
         kind: LogEntryKind::Request {
             request: "foo".to_string(),
             request_id: Some(request_id.to_string()),

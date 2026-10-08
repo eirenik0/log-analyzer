@@ -1968,3 +1968,71 @@ fn perf_uses_json_envelope_scope_alongside_embedded_payload() {
         assert!(report["unmatched_events"].as_array().unwrap().is_empty());
     }
 }
+
+#[test]
+fn configured_timelines_are_available_in_perf_and_trace_text_and_json() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("timeline.log");
+    let config = dir.path().join("timeline.toml");
+    write_file(
+        &file,
+        "core (demo) | 2026-01-01T00:00:00Z [INFO] fetch begin id=a\ncore (demo) | 2026-01-01T00:00:02Z [INFO] fetch response id=a\n",
+    );
+    write_file(
+        &config,
+        r#"
+[[timeline.events]]
+name = "begin"
+pattern = 'fetch begin id=(?P<id>\w+)'
+correlation_fields = ["component_id", "id"]
+[[timeline.events]]
+name = "response"
+pattern = 'fetch response id=(?P<id>\w+)'
+correlation_fields = ["component_id", "id"]
+[[timeline.pairs]]
+name = "fetch"
+start_event = "begin"
+end_event = "response"
+timing = "measured"
+"#,
+    );
+    for subcommand in ["perf", "trace"] {
+        for json in [true, false] {
+            let mut cmd = command();
+            cmd.env_remove("LOG_ANALYZER_PRESET")
+                .args(["--config", config.to_str().unwrap()]);
+            if json {
+                cmd.arg("-j");
+            }
+            cmd.args([subcommand, file.to_str().unwrap()]);
+            if subcommand == "trace" {
+                cmd.args(["--session", "demo"]);
+            }
+            let output = cmd.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            if json {
+                let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                let timeline = if subcommand == "trace" {
+                    &value["trace"]["event_timeline"]
+                } else {
+                    &value["event_timeline"]
+                };
+                assert_eq!(timeline["intervals"][0]["measured_duration_ms"], 2000);
+                assert_eq!(
+                    timeline["events"][0]["source"]["file"],
+                    file.to_str().unwrap()
+                );
+                assert_eq!(timeline["sample_counts"]["response"], 1);
+            } else {
+                assert!(
+                    String::from_utf8_lossy(&output.stdout)
+                        .contains("EVENT TIMELINE: boundaries_available")
+                );
+            }
+        }
+    }
+}

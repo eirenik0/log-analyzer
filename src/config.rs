@@ -47,6 +47,7 @@ pub struct AnalyzerConfig {
     pub profile_name: String,
     pub parser: ParserRules,
     pub perf: PerfRules,
+    pub timeline: crate::timeline::TimelineRules,
     pub profile: ProfileRules,
     #[serde(skip_serializing_if = "SessionsRules::is_empty")]
     pub sessions: SessionsRules,
@@ -58,6 +59,7 @@ impl Default for AnalyzerConfig {
             profile_name: "base".to_string(),
             parser: ParserRules::default(),
             perf: PerfRules::default(),
+            timeline: crate::timeline::TimelineRules::default(),
             profile: ProfileRules::default(),
             sessions: SessionsRules::default(),
         }
@@ -665,6 +667,8 @@ mod tests {
             module_path: None,
             source_file: None,
             envelope_payload: None,
+            source_timestamp: None,
+            timestamp_year_inferred: false,
             kind: LogEntryKind::Command {
                 command: command.to_string(),
                 settings,
@@ -685,6 +689,8 @@ mod tests {
             module_path: None,
             source_file: None,
             envelope_payload: None,
+            source_timestamp: None,
+            timestamp_year_inferred: false,
             kind: LogEntryKind::Generic { payload: None },
             source_line_number: 1,
         }

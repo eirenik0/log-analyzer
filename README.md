@@ -390,6 +390,50 @@ sections also obey `--top-n`, with full totals and omitted counts; `0` preserves
 
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 
+### Configurable event timelines
+
+Custom profiles can add event regexes and named start/end pairs. `perf` includes
+`event_timeline`; `trace` applies the same rules to selected matches. Patterns
+match original raw entries and may expose named captures used in composite keys.
+Correlation fields also accept `component_id`, `component`, structured fields,
+and top-level JSON envelope/payload fields. Each pair must use identical key fields.
+
+```toml
+[[timeline.events]]
+name = "fetch_begin"
+pattern = 'fetch begin id=(?P<id>\w+)'
+correlation_fields = ["component_id", "id"]
+
+[[timeline.events]]
+name = "fetch_response"
+pattern = 'fetch response id=(?P<id>\w+)'
+correlation_fields = ["component_id", "id"]
+
+[[timeline.pairs]]
+name = "fetch"
+start_event = "fetch_begin"
+end_event = "fetch_response"
+timing = "measured"
+```
+
+Pair timing is `measured`, `inferred_sleep`, or `unknown`. Only measured boundaries
+produce `measured_duration_ms`; all pairs retain their observed timestamp gap.
+A retry logged after sleep should end an `inferred_sleep` pair, not a response-time
+measurement. Missing boundaries/keys and overlapping starts remain explicit;
+ambiguity stays within the affected lifecycle segment, preserving independent
+completed intervals. Events retain source lines, full timestamps,
+sample counts, and gaps since the previous matched event. Explicit source offsets
+are retained in timeline timestamps; naive times are marked `host_assumed`.
+Yearless syslog dates are marked `inferred_year` and cannot produce measured
+intervals or capture spans until the missing year is resolved. All cross-event
+gaps remain unavailable when mixed year provenance prevents overall ordering. Equal
+timestamps across files cannot establish boundary order and remain ambiguous. Summed measured work
+can exceed elapsed capture time when work overlaps. The capture window describes
+observed entries; upstream capture completeness remains `unknown`.
+Per-pair coverage reports unavailable measurements even when another pair succeeds;
+configured event types with no matches have explicit zero sample counts.
+Timeline evidence is retained in full independently of the performance row limit.
+
 ### trace
 
 Accepts one or more log files. Entries are merged and sorted by timestamp, then filtered by one selector:

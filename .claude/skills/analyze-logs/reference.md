@@ -437,6 +437,13 @@ sections also obey `--top-n`, with full totals and omitted counts; `0` preserves
 
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 
+### Configurable event timelines
+
+See [README: Configurable event timelines](../../../README.md#configurable-event-timelines)
+for the profile syntax. For retries, identify the response boundary separately
+from the marker written after sleep. Inspect incomplete/ambiguous groups before
+using durations; use `trace` to narrow the evidence to a related context.
+
 ### trace
 
 Trace a single operation lifecycle by correlation/request ID or by `component_id` session path across one or more log files.
