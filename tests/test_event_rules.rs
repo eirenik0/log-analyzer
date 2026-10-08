@@ -467,27 +467,31 @@ fn adding_a_format_needs_only_rules_and_flat_field_fixtures() {
 #[test]
 fn documented_toml_example_loads_and_compiles() {
     let document = include_str!("../docs/design/event-classification.md");
-    let raw = document
-        .split("```toml\n")
-        .nth(1)
-        .unwrap()
-        .split("```")
-        .next()
-        .unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("documented.toml");
-    std::fs::write(&path, raw).unwrap();
-    let config = load_config_from_path(&path).unwrap();
-    let fields = json!({"trace_id":"trace-1","session":"session-1"});
-    assert!(matches!(
-        classify(
-            config.event_rules.as_ref().unwrap(),
-            &record(),
-            r#"Operation "work" completed"#,
-            &fields
-        ),
-        Classification::Recognized(_)
-    ));
+    let lf = document.replace("\r\n", "\n");
+    let crlf = lf.replace('\n', "\r\n");
+    for document in [&lf, &crlf] {
+        let raw = document
+            .lines()
+            .skip_while(|line| *line != "```toml")
+            .skip(1)
+            .take_while(|line| *line != "```")
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&path, raw).unwrap();
+        let config = load_config_from_path(&path).unwrap();
+        let fields = json!({"trace_id":"trace-1","session":"session-1"});
+        assert!(matches!(
+            classify(
+                config.event_rules.as_ref().unwrap(),
+                &record(),
+                r#"Operation "work" completed"#,
+                &fields
+            ),
+            Classification::Recognized(_)
+        ));
+    }
 }
 
 #[test]
