@@ -25,6 +25,7 @@ pub mod normalize;
 mod output;
 pub mod parser;
 pub mod perf_analyzer;
+pub mod profile_validation;
 mod report_budget;
 pub mod search;
 pub mod timeline;
@@ -211,6 +212,17 @@ fn read_analysis_files(
     format: OutputFormat,
     output: Option<&std::path::Path>,
 ) -> Result<AnalysisFiles, Box<dyn std::error::Error>> {
+    read_analysis_files_impl(files, config, filter, format, output, false)
+}
+
+fn read_analysis_files_impl(
+    files: &[std::path::PathBuf],
+    config: &config::AnalyzerConfig,
+    filter: &LogFilter,
+    format: OutputFormat,
+    output: Option<&std::path::Path>,
+    allow_unparsed: bool,
+) -> Result<AnalysisFiles, Box<dyn std::error::Error>> {
     let mut inputs = Vec::new();
     let mut coverage = AnalysisCoverage {
         files: Vec::new(),
@@ -257,7 +269,7 @@ fn read_analysis_files(
     } else {
         "parsed"
     };
-    if coverage.status == "unparsed_input" {
+    if coverage.status == "unparsed_input" && !allow_unparsed {
         let rendered = render_analysis_report("", format, &coverage)?;
         report_print!("{rendered}");
         if let Some(path) = output {
@@ -363,6 +375,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     | Commands::LlmDiff { .. }
                     | Commands::Schema { .. }
                     | Commands::Capabilities
+                    | Commands::ValidateProfile { .. }
             ),
     );
     if cli.common_reports() {
@@ -400,7 +413,10 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     output::set_evidence(evidence::Context::new(cli, &analyzer_config)?);
     let format = if matches!(
         &cli.command,
-        Commands::Process { .. } | Commands::LlmDiff { .. } | Commands::Schema { .. }
+        Commands::Process { .. }
+            | Commands::LlmDiff { .. }
+            | Commands::Schema { .. }
+            | Commands::ValidateProfile { .. }
     ) {
         OutputFormat::Json
     } else {
@@ -455,6 +471,53 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.command {
         Commands::Capabilities => unreachable!("capabilities returned before config loading"),
+        Commands::ValidateProfile {
+            files,
+            kind,
+            purpose,
+            expected,
+        } => {
+            let (expectations, expected_digest) =
+                profile_validation::load_expectations(expected.as_deref())?;
+            let AnalysisFiles { inputs, coverage } = read_analysis_files_impl(
+                files,
+                &analyzer_config,
+                &filter,
+                format,
+                output.as_deref(),
+                true,
+            )?;
+            let kind = match kind {
+                cli::OperationType::Request => config::OperationKind::Request,
+                cli::OperationType::Command => config::OperationKind::Command,
+                cli::OperationType::Event => config::OperationKind::Event,
+            };
+            let mut report = profile_validation::analyze(
+                &inputs,
+                &analyzer_config,
+                &filter,
+                kind,
+                *purpose,
+                expectations.as_ref(),
+                expected_digest,
+            );
+            if coverage.status != "parsed" {
+                report["profile_validation"]["suitability"]["status"] =
+                    serde_json::json!("insufficient_evidence");
+                report["profile_validation"]["suitability"]["reason"] =
+                    serde_json::json!(coverage.status);
+            }
+            let supported = report["profile_validation"]["suitability"]["status"] == "supported";
+            report["coverage"] = serde_json::to_value(coverage)?;
+            let rendered = serde_json::to_string_pretty(&report)?;
+            report_println!("{rendered}");
+            if let Some(path) = output {
+                write_output_file(path, &rendered)?;
+            }
+            if !supported {
+                return Err("Selected profile does not establish the requested analysis on this sample; inspect profile_validation diagnostics and expected results".into());
+            }
+        }
         Commands::Schema { file, samples } => {
             let preview = normalize::schema_preview(file, *samples as usize)?;
             let rendered = serde_json::to_string_pretty(&preview)?;

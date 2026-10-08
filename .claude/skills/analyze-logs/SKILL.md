@@ -347,3 +347,15 @@ For common bounded JSON investigation output, use the report budget controls
 advertised by capabilities. Follow snapshot-bound cursors without changing
 selection/redaction and inspect stop/omission states before concluding. Use
 `--complete-output` when needed; see the common-budget reference for compatibility.
+
+### Validate candidates against known evidence
+
+Before relying on lifecycle measurements from a new or generated profile, run
+`validate-profile SAMPLE --kind request|event|command` with the explicitly selected
+preset/candidate. Use `--expected facts.json` for source-addressed positive/negative
+classification and exact pair facts. Timing support and recognition support are
+separate. Keep candidate TOML separate until explicitly selected; never infer
+lifecycle meaning from wording similarity or choose a profile by match count.
+Unsupported/conflicting/insufficient evidence requires reviewing cited rules,
+identity fields, scope witnesses and capture limits. Use common pagination for
+omitted details. See `docs/design/profile-validation.md` and the reference guide.

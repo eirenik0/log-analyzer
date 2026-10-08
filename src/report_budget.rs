@@ -61,6 +61,13 @@ impl Collection {
 // remain atomic; a huge record must be retrieved with a larger budget or complete mode.
 fn collections(report: &mut Value) -> Vec<Collection> {
     let mut paths: Vec<String> = [
+        "/profile_validation/records",
+        "/profile_validation/diagnostics",
+        "/profile_validation/operations",
+        "/profile_validation/expected_results",
+        "/profile_validation/suggestions",
+        "/profile_validation/effective_rules/event_rules/rules",
+        "/profile_validation/effective_rules/command_rules/rules",
         "/ambiguous_groups",
         "/unmatched_events",
         "/orphans",

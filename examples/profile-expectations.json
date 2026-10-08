@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "source": {
+        "input": 0,
+        "line": 1,
+        "row_path": null
+      },
+      "checks": {
+        "/status": "event",
+        "/semantics/phase": "start",
+        "/rule_ids": [
+          "begin"
+        ]
+      }
+    },
+    {
+      "source": {
+        "input": 0,
+        "line": 3,
+        "row_path": null
+      },
+      "checks": {
+        "/status": "unclassified"
+      }
+    }
+  ],
+  "pairs": [
+    {
+      "start": {
+        "input": 0,
+        "line": 1,
+        "row_path": null
+      },
+      "end": {
+        "input": 0,
+        "line": 2,
+        "row_path": null
+      },
+      "duration_ms": 1000
+    }
+  ]
+}

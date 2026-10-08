@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source-addressed profile expected facts, version 1",
+  "$defs": {
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "line",
+        "row_path"
+      ],
+      "properties": {
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "row_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(/.*)?$"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "checks"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/address"
+          },
+          "checks": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "/status": {
+                "enum": [
+                  "event",
+                  "unclassified",
+                  "conflict",
+                  "invalid"
+                ]
+              },
+              "/profile": {
+                "type": "string"
+              },
+              "/rule_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "/kinds": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "command",
+                    "request",
+                    "event"
+                  ]
+                }
+              },
+              "/semantics/kind": {
+                "enum": [
+                  "command",
+                  "request",
+                  "event"
+                ]
+              },
+              "/semantics/name": {
+                "type": "string"
+              },
+              "/semantics/phase": {
+                "enum": [
+                  "start",
+                  "end",
+                  null
+                ]
+              },
+              "/semantics/outcome": {
+                "enum": [
+                  "success",
+                  "failure",
+                  null
+                ]
+              },
+              "/semantics/correlation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "/semantics/scope": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "/semantics/end_expected": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "pairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "start": {
+            "$ref": "#/$defs/address"
+          },
+          "end": {
+            "$ref": "#/$defs/address"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "records"
+      ],
+      "properties": {
+        "records": {
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "required": [
+        "pairs"
+      ],
+      "properties": {
+        "pairs": {
+          "minItems": 1
+        }
+      }
+    }
+  ]
+}

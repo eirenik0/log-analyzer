@@ -163,5 +163,20 @@
       "{fixture}"
     ],
     "pointer": "/evidence_records"
+  },
+  {
+    "args": [
+      "--config",
+      "examples/profile-candidate.toml",
+      "--report-max-items",
+      "4",
+      "validate-profile",
+      "examples/profile-validation.jsonl",
+      "--kind",
+      "request",
+      "--expected",
+      "examples/profile-expectations.json"
+    ],
+    "pointer": "/profile_validation/suitability/status"
   }
 ]

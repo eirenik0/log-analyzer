@@ -1742,6 +1742,422 @@
         "classification",
         "input_ordinal"
       ]
+    },
+    "profile_validation": {
+      "type": "object",
+      "required": [
+        "version",
+        "requested",
+        "suitability",
+        "global_classification",
+        "requested_coverage",
+        "totals",
+        "expected_facts",
+        "effective_rules",
+        "records",
+        "diagnostics",
+        "operations",
+        "expected_results",
+        "suggestions",
+        "limitations"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requested": {
+          "type": "object",
+          "required": [
+            "kind",
+            "purpose"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "command",
+                "request",
+                "event"
+              ]
+            },
+            "purpose": {
+              "enum": [
+                "recognition",
+                "timing"
+              ]
+            }
+          }
+        },
+        "suitability": {
+          "type": "object",
+          "required": [
+            "status",
+            "reason",
+            "basis",
+            "semantic_correctness"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "supported",
+                "unsupported",
+                "conflicting",
+                "insufficient_evidence"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "basis": {
+              "const": "observed_sample_only"
+            },
+            "semantic_correctness": {
+              "const": "not_established_by_match_count"
+            }
+          }
+        },
+        "global_classification": {
+          "type": "object"
+        },
+        "requested_coverage": {
+          "type": "object",
+          "required": [
+            "classification",
+            "status",
+            "paired_events",
+            "unmatched_events",
+            "ambiguous_groups",
+            "start_only_events",
+            "capture_window"
+          ]
+        },
+        "totals": {
+          "type": "object",
+          "required": [
+            "records",
+            "diagnostics",
+            "operations",
+            "expected_checks",
+            "failed_expected_checks",
+            "scope_alias_groups"
+          ],
+          "properties": {
+            "records": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "diagnostics": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "operations": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "expected_checks": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed_expected_checks": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scope_alias_groups": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "expected_facts": {
+          "type": "object",
+          "required": [
+            "sha256",
+            "status"
+          ],
+          "properties": {
+            "sha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "not_supplied"
+              ]
+            }
+          }
+        },
+        "effective_rules": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "string",
+              "pattern": "^\\[MASKED_ID:[0-9]+\\]$"
+            }
+          ]
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "input_ordinal",
+              "source_file",
+              "source_line_number",
+              "source_row_path",
+              "evidence_ref",
+              "timestamp",
+              "timestamp_year_inferred",
+              "timestamp_offset_source",
+              "classification",
+              "requested_kind"
+            ],
+            "properties": {
+              "input_ordinal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "source_file": {
+                "type": "string"
+              },
+              "source_line_number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "source_row_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "evidence_ref": {
+                "$ref": "#/$defs/reference"
+              },
+              "timestamp": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([+-]\\d{2}:\\d{2}|Z)$"
+              },
+              "timestamp_year_inferred": {
+                "type": "boolean"
+              },
+              "timestamp_offset_source": {
+                "enum": [
+                  "source",
+                  "local_assumption"
+                ]
+              },
+              "classification": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/classification"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "requested_kind": {
+                "type": "boolean"
+              },
+              "scope_origin": {
+                "enum": [
+                  "explicit_rule",
+                  "inherited_record_fields",
+                  "legacy_record_fields",
+                  "unavailable"
+                ]
+              }
+            }
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              },
+              "witnesses": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/source"
+                }
+              }
+            }
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "expected_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "status",
+              "reason"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "record",
+                  "pair"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "passed",
+                  "failed"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              },
+              "start_source": {
+                "$ref": "#/$defs/source"
+              },
+              "end_source": {
+                "$ref": "#/$defs/source"
+              },
+              "address": {
+                "$ref": "#/$defs/fact_address"
+              },
+              "start_address": {
+                "$ref": "#/$defs/fact_address"
+              },
+              "end_address": {
+                "$ref": "#/$defs/fact_address"
+              },
+              "observed_available": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "action",
+              "reason",
+              "unknown"
+            ],
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "unknown": {
+                "type": "string"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/source"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "witnesses": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/source"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "fact_address": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "line",
+        "row_path"
+      ],
+      "properties": {
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "row_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(/.*)?$"
+        },
+        "location_redacted": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "location_redacted"
+            ],
+            "properties": {
+              "location_redacted": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "row_path": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "type": "object",
@@ -1763,6 +2179,18 @@
     }
   },
   "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "profile_validation",
+        "coverage"
+      ],
+      "properties": {
+        "profile_validation": {
+          "$ref": "#/$defs/profile_validation"
+        }
+      }
+    },
     {
       "type": "object",
       "properties": {
@@ -2149,7 +2577,12 @@
       },
       "required": [
         "coverage"
-      ]
+      ],
+      "not": {
+        "required": [
+          "profile_validation"
+        ]
+      }
     }
   ]
 }

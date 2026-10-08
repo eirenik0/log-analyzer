@@ -358,6 +358,9 @@ impl OutputState {
             }
             Value::String(text) => {
                 let leaf = path.rsplit('.').next().unwrap_or(path);
+                if path.ends_with(".ValidateProfile.expected") {
+                    return Value::String(self.path_text(text));
+                }
                 if matches!(
                     leaf,
                     "file"
@@ -638,6 +641,9 @@ impl OutputState {
                 }
             }
             Value::Array(items) => {
+                if self.mask_ids.iter().any(|field| field_matches(path, field)) {
+                    self.collect_context_leaves(path, value);
+                }
                 for item in items {
                     self.collect_value(item, path);
                 }
@@ -775,22 +781,28 @@ impl OutputState {
         if let Ok(value) = serde_json::from_str::<Value>(text)
             && value.is_object()
         {
+            self.collect_validation_context(&value);
             let original = value.clone();
             let mut value = if self.prepared {
                 value
             } else {
                 self.value(&value)
             };
+            self.redact_validation_context(&original, &mut value);
             // A second pass covers generic ID labels encountered before their named fields.
             if !self.prepared {
                 value = self.value(&value);
+            }
+            if let Some(validation) = original.get("profile_validation") {
+                self.restore_validation_metadata(validation, &mut value["profile_validation"], "");
+                self.redact_validation_addresses(&original, &mut value);
             }
             self.restore_evidence_refs(&original, &mut value, false);
             if let Some(coverage) = original.get("coverage") {
                 restore_coverage_metadata(coverage, &mut value["coverage"]);
             }
             if original.get("operation_coverage").is_some() {
-                restore_performance_metadata(&original, &mut value, "");
+                restore_performance_metadata(&original, &mut value, "", self);
             }
             // Aggregate extraction puts a selected field's values under generic `value` keys.
             if let Some(extract) = value.get_mut("extract")
@@ -909,6 +921,12 @@ pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
         };
         for entry in entries {
             state.collect_identifier("component_id", &entry.component_id);
+            if let Some(classification) = &entry.classification {
+                state.collect_value(
+                    &serde_json::to_value(classification).unwrap(),
+                    "classification",
+                );
+            }
             for payload in [entry.payload(), entry.envelope_payload.as_ref()]
                 .into_iter()
                 .flatten()
@@ -1097,7 +1115,7 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
             }
             state.collect_value(&value, "");
             let mut redacted = state.value(&value);
-            restore_performance_metadata(&value, &mut redacted, "");
+            restore_performance_metadata(&value, &mut redacted, "", state);
             state.restore_evidence_refs(&value, &mut redacted, false);
             *results = serde_json::from_value(redacted)
                 .expect("source redaction preserves typed performance metadata");
@@ -1120,7 +1138,12 @@ pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
 
 // Performance has source strings and analytic metadata in the same object. Keep
 // typed measurements/provenance intact, including when an opaque ID equals a label.
-fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &str) {
+fn restore_performance_metadata(
+    original: &Value,
+    redacted: &mut Value,
+    path: &str,
+    state: &mut OutputState,
+) {
     if path == "evidence_records" {
         return;
     }
@@ -1149,7 +1172,7 @@ fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &s
     match original {
         Value::Object(map) => {
             if !redacted.is_object() {
-                *redacted = original.clone();
+                *redacted = state.value(original);
             }
             for (key, value) in map {
                 let path = if path.is_empty() {
@@ -1157,15 +1180,15 @@ fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &s
                 } else {
                     format!("{path}.{key}")
                 };
-                restore_performance_metadata(value, &mut redacted[key], &path);
+                restore_performance_metadata(value, &mut redacted[key], &path, state);
             }
         }
         Value::Array(items) => {
             if !redacted.is_array() {
-                *redacted = original.clone();
+                *redacted = state.value(original);
             }
             for (original, redacted) in items.iter().zip(redacted.as_array_mut().unwrap()) {
-                restore_performance_metadata(original, redacted, path);
+                restore_performance_metadata(original, redacted, path, state);
             }
         }
         Value::Number(_) | Value::Bool(_) | Value::Null => *redacted = original.clone(),
@@ -1194,6 +1217,86 @@ fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &s
     }
 }
 
+// Preserve the field context of assertions and candidate literals even when they
+// do not match source records. These are data disclosures, not generated labels.
+fn validation_contexts(report: &Value) -> Vec<(String, String, Value)> {
+    let mut contexts = Vec::new();
+    if let Some(checks) = report
+        .pointer("/profile_validation/expected_results")
+        .and_then(Value::as_array)
+    {
+        for (i, check) in checks.iter().enumerate() {
+            if let Some(pointer) = check["pointer"].as_str() {
+                let field = pointer.trim_start_matches('/').replace('/', ".");
+                for key in ["expected", "observed"] {
+                    if let Some(value) = check.get(key) {
+                        contexts.push((
+                            field.clone(),
+                            format!("/profile_validation/expected_results/{i}/{key}"),
+                            value.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    for section in ["event_rules", "command_rules"] {
+        if let Some(rules) = report
+            .pointer(&format!(
+                "/profile_validation/effective_rules/{section}/rules"
+            ))
+            .and_then(Value::as_array)
+        {
+            for (i, rule) in rules.iter().enumerate() {
+                let prefix = format!("/profile_validation/effective_rules/{section}/rules/{i}");
+                if let Some(conditions) = rule
+                    .pointer("/adapter/conditions")
+                    .and_then(Value::as_array)
+                {
+                    for (j, condition) in conditions.iter().enumerate() {
+                        if let (Some(field), Some(value)) =
+                            (condition["field"].as_str(), condition.get("equals"))
+                        {
+                            contexts.push((
+                                field.into(),
+                                format!("{prefix}/adapter/conditions/{j}/equals"),
+                                value.clone(),
+                            ));
+                        }
+                    }
+                }
+                if let Some(mapping) = rule["mapping"].as_object() {
+                    for (field, value) in mapping {
+                        if value["from"] == "literal"
+                            && let Some(literal) = value.get("value")
+                        {
+                            contexts.push((
+                                field.clone(),
+                                format!("{prefix}/mapping/{field}/value"),
+                                literal.clone(),
+                            ));
+                        }
+                        if let Some(values) = value.as_array() {
+                            for (j, value) in values.iter().enumerate() {
+                                if value["from"] == "literal"
+                                    && let Some(literal) = value.get("value")
+                                {
+                                    contexts.push((
+                                        field.clone(),
+                                        format!("{prefix}/mapping/{field}/{j}/value"),
+                                        literal.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    contexts
+}
+
 impl OutputState {
     fn redact_reference(&mut self, original: &Value) -> Value {
         let mut reference = original.clone();
@@ -1211,8 +1314,135 @@ impl OutputState {
         }
         reference
     }
-    // Classification mixes generated provenance with source-derived identities. Rebuild
-    // its generated scaffold, redacting source semantics independently of container masks.
+    // This report contains generated measurements and classification, never payloads.
+    // Expected/observed values and editable rule definitions remain ordinary data.
+    fn contextual_value(&mut self, field: &str, value: &Value) -> Value {
+        let rendered = value
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| value.to_string());
+        self.replacement(field, &rendered)
+            .map(Value::String)
+            .unwrap_or_else(|| self.value(value))
+    }
+    fn collect_context_leaves(&mut self, field: &str, value: &Value) {
+        match value {
+            Value::Array(items) => {
+                for value in items {
+                    self.collect_context_leaves(field, value);
+                }
+            }
+            Value::Object(map) => {
+                for value in map.values() {
+                    self.collect_context_leaves(field, value);
+                }
+            }
+            Value::Null => (),
+            value => self.collect_identifier(
+                field,
+                &value
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| value.to_string()),
+            ),
+        }
+    }
+    fn redact_validation_addresses(&mut self, original: &Value, report: &mut Value) {
+        if let Some(checks) = original
+            .pointer("/profile_validation/expected_results")
+            .and_then(Value::as_array)
+        {
+            for (i, check) in checks.iter().enumerate() {
+                for key in ["address", "start_address", "end_address"] {
+                    if let Some(path) = check[key]["row_path"].as_str()
+                        && self.path_text(path) != path
+                        && let Some(address) = report
+                            .pointer_mut(&format!("/profile_validation/expected_results/{i}/{key}"))
+                    {
+                        address["row_path"] = Value::Null;
+                        address["location_redacted"] = json!(true);
+                    }
+                }
+            }
+        }
+    }
+    fn collect_validation_context(&mut self, report: &Value) {
+        for (field, _, value) in validation_contexts(report) {
+            let rendered = value
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| value.to_string());
+            self.collect_identifier(&field, &rendered);
+            self.collect_context_leaves(&field, &value);
+        }
+    }
+    fn redact_validation_context(&mut self, original: &Value, report: &mut Value) {
+        for (field, path, value) in validation_contexts(original) {
+            if let Some(target) = report.pointer_mut(&path) {
+                *target = self.contextual_value(&field, &value);
+            }
+        }
+    }
+    fn restore_validation_metadata(&mut self, original: &Value, redacted: &mut Value, path: &str) {
+        let leaf = path.rsplit('.').next().unwrap_or(path);
+        if matches!(leaf, "expected" | "observed" | "effective_rules") {
+            return;
+        }
+        if matches!(
+            leaf,
+            "classification" | "start_classification" | "end_classification"
+        ) && (original.get("status").is_some() || original.is_null())
+        {
+            *redacted = self.canonical_classification(original);
+            return;
+        }
+        match original {
+            Value::Object(map) => {
+                if !redacted.is_object() {
+                    *redacted = self.value(original);
+                }
+                for (key, value) in map {
+                    let next = format!("{path}.{key}");
+                    self.restore_validation_metadata(value, &mut redacted[key], &next);
+                }
+            }
+            Value::Array(items) => {
+                if !redacted.is_array() {
+                    *redacted = self.value(original);
+                }
+                for (original, redacted) in items.iter().zip(redacted.as_array_mut().unwrap()) {
+                    self.restore_validation_metadata(original, redacted, path);
+                }
+            }
+            Value::Number(_) | Value::Bool(_) | Value::Null => *redacted = original.clone(),
+            Value::String(_)
+                if matches!(
+                    leaf,
+                    "status"
+                        | "reason"
+                        | "purpose"
+                        | "kind"
+                        | "basis"
+                        | "semantic_correctness"
+                        | "scope_origin"
+                        | "timestamp"
+                        | "start_time"
+                        | "end_time"
+                        | "start"
+                        | "end"
+                        | "op_type"
+                        | "timestamp_offset_source"
+                        | "timestamp_year_source"
+                        | "timing_semantics"
+                        | "upstream_export_completeness"
+                        | "sha256"
+                ) =>
+            {
+                *redacted = original.clone()
+            }
+            _ => (),
+        }
+    }
     fn provenance_value(&mut self, original: &Value) -> Value {
         match original {
             Value::String(text) => Value::String(self.text(text)),
@@ -1227,6 +1457,7 @@ impl OutputState {
             value => value.clone(),
         }
     }
+    // Keep generated classification structure; redact source-derived identities.
     fn canonical_classification(&mut self, original: &Value) -> Value {
         let Some(map) = original.as_object() else {
             return original.clone();

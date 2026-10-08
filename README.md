@@ -798,6 +798,30 @@ export LOG_ANALYZER_COMPACT=true
 export LOG_ANALYZER_PRESET="eyes"
 ```
 
+## Validate profile suitability
+
+Parsing records does not establish that a profile recognizes the intended
+lifecycle. Validate an explicitly selected preset or editable TOML candidate
+against representative evidence and optional known facts:
+
+```bash
+log-analyzer --config examples/profile-candidate.toml --report-max-items 4 validate-profile examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
+```
+
+The JSON report separates parsing, global classification, requested-kind pairing,
+rule/source witnesses, missing identities and scope, and expected results.
+`--purpose timing` requires reliable observed pairs; `--purpose recognition`
+checks classification and can support identity-only or intentional start-only
+events. Unsupported, conflicting, and insufficient evidence remain distinct.
+Exit 0 means supported on the observed sample, without asserting general semantic
+correctness from match counts. Candidates are never activated automatically.
+
+Use `generate-config` to save a separate candidate, validate it, and explicitly
+select it for subsequent analysis. All candidates may be unsuitable. See the
+[profile validation workflow and expected-fact contract](docs/design/profile-validation.md)
+for source-addressed positive/negative facts, exact pair assertions, inheritance,
+redaction, bounds, and scope/capture limitations.
+
 ## Profile Configuration
 
 Use profile TOML files to keep the binary generic and push case-specific knowledge into config.

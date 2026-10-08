@@ -713,3 +713,19 @@ Measured pairs retain start/end profile/rule provenance. New fields remain addit
 under report schema 1; the old unknown-command counter is a compatibility alias.
 Explicit session completion hints require a nonfailed end, not merely a command
 name or start. Keep preset/skill templates synchronized with shipped profiles.
+
+## Profile suitability
+
+```sh
+log-analyzer --config candidate.toml --report-max-items 10 validate-profile sample.log --kind request --expected known-facts.json
+log-analyzer --preset service-api --complete-output validate-profile sample.log --kind request --purpose recognition
+```
+
+Inspect `coverage` independently of `profile_validation.global_classification`
+and `requested_coverage`. The suitability verdict describes the observed sample.
+Only `supported` exits 0; unsupported/conflicting/insufficient reports exit 1.
+Recognition ignores timing ambiguity; start-only events never establish elapsed
+lifecycle timing. Expected sources use input ordinal, physical line and normalized
+row pointer; missing/filtered targets and absent semantic fields fail assertions.
+Candidate rules and assertions retain contextual redaction even when unmatched.
+Keep active files separate from proposed TOML; no automatic ranking/activation.

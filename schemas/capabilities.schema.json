@@ -11,7 +11,8 @@
     "presets",
     "event_classification",
     "report_schemas",
-    "bounded_reports"
+    "bounded_reports",
+    "profile_validation"
   ],
   "properties": {
     "schema_version": {
@@ -132,13 +133,22 @@
         },
         "evidence_contract_version": {
           "const": 1
+        },
+        "profile_expectations": {
+          "type": "object",
+          "required": [
+            "$schema",
+            "type",
+            "properties"
+          ]
         }
       },
       "required": [
         "report",
         "capabilities",
         "investigation",
-        "evidence_contract_version"
+        "evidence_contract_version",
+        "profile_expectations"
       ]
     },
     "bounded_reports": {
@@ -181,6 +191,29 @@
         "atomic_oversized_item",
         "complete_flag"
       ]
+    },
+    "profile_validation": {
+      "type": "object",
+      "required": [
+        "version",
+        "command",
+        "purposes",
+        "statuses",
+        "expected_facts_schema",
+        "candidate_activation",
+        "success_exit"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "command": {
+          "const": "validate-profile"
+        },
+        "candidate_activation": {
+          "const": false
+        }
+      }
     }
   }
 }

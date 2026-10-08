@@ -264,6 +264,7 @@ impl Context {
             self.walk(section, None);
         }
         for key in [
+            "profile_validation",
             "search",
             "extract",
             "trace",
