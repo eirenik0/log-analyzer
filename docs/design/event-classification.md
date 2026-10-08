@@ -254,7 +254,9 @@ object/array opener is required, with balanced typed delimiters, quotes/comments
 and maximum nesting depth 128 before JSON5 decoding. Only whitespace and complete
 comments may follow the root. Malformed, too-deep or trailing noncomment content
 stays opaque without decoding inner fragments. Header lifecycle evidence remains
-available; malformed payloads cannot supply IDs. Generic/legacy extraction and
+available; malformed payloads cannot supply IDs. JSON5 `undefined` compatibility
+converts only unquoted value tokens, preserving string identities, property names
+and comments. Generic/legacy extraction and
 upstream normalization retain existing behavior.
 
 Library API: constructors leave `LogEntry.classification` absent. Manually built

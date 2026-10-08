@@ -548,3 +548,75 @@ fn invalid_sibling_evidence_is_visible_for_every_matched_kind() {
     assert_eq!(result.operation_coverage.suppressed_events, 0);
     assert_eq!(result.operation_coverage.classification.invalid_records, 1);
 }
+
+#[test]
+fn undefined_compatibility_never_rewrites_event_identity_or_json5_keys() {
+    let cfg = config::load_builtin_template("service-api").unwrap();
+    let logs = parse(
+        &cfg,
+        &[
+            r#"Consumed event "work" payload {key:'undefined-task', undefined:1, missing:/*comment*/undefined, values:[undefined, /*comment*/undefined, 'undefined']}"#,
+            r#"Published event "work" payload {key:'null-task'}"#,
+        ],
+    );
+    let payload = logs[0].payload().unwrap();
+    assert_eq!(payload["key"], "undefined-task");
+    assert_eq!(payload["undefined"], 1);
+    assert_eq!(payload["missing"], Value::Null);
+    assert_eq!(payload["values"], json!([null, null, "undefined"]));
+    let result = analyze(&cfg, &logs);
+    assert!(result.operations.is_empty());
+    assert_eq!(result.unmatched_events.len(), 2);
+    assert_eq!(
+        result.operation_coverage.classification.classified_records,
+        2
+    );
+}
+
+#[test]
+fn unknown_direction_can_be_included_and_excluded_through_public_cli_filters() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("direction.log");
+    fs::write(
+        &file,
+        concat!(
+            "worker (demo) | 2026-01-01T00:00:00Z [INFO] Request \"identity\"\n",
+            "worker (demo) | 2026-01-01T00:00:01Z [INFO] Request \"lifecycle\" [a] sent\n"
+        ),
+    )
+    .unwrap();
+    for expression in ["d:unknown", "!d:unknown"] {
+        for format in ["text", "json"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+                .args([
+                    "--preset",
+                    "service-api",
+                    "-F",
+                    format,
+                    "search",
+                    file.to_str().unwrap(),
+                    "-f",
+                    expression,
+                ])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let (present, absent) = if expression == "d:unknown" {
+                ("identity", "lifecycle")
+            } else {
+                ("lifecycle", "identity")
+            };
+            assert!(stdout.contains(present), "{stdout}");
+            assert!(!stdout.contains(absent), "{stdout}");
+        }
+    }
+    let error = log_analyzer::filter::FilterExpression::parse("d:nonsense")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("unknown"));
+}

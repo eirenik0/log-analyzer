@@ -11,7 +11,7 @@ pub enum FilterParseError {
     #[error("Empty filter value for type '{0}'")]
     EmptyValue(String),
 
-    #[error("Invalid direction value: '{0}'. Valid values are: incoming, outgoing")]
+    #[error("Invalid direction value: '{0}'. Valid values are: incoming, outgoing, unknown")]
     InvalidDirection(String),
 
     #[error("Invalid filter expression: {0}")]

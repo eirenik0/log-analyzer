@@ -17,7 +17,7 @@
 //! - `component:` / `comp:` / `c:` - Filter by component name
 //! - `level:` / `lvl:` / `l:` - Filter by log level
 //! - `text:` / `t:` - Filter by text in message
-//! - `direction:` / `dir:` / `d:` - Filter by direction (incoming/outgoing)
+//! - `direction:` / `dir:` / `d:` - Filter by direction (incoming/outgoing/unknown)
 //!
 //! # Examples
 //!

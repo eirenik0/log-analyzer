@@ -10,7 +10,7 @@ pub enum FilterType {
     Level,
     /// Filter by text content in message
     Text,
-    /// Filter by direction (incoming/outgoing)
+    /// Filter by direction (incoming/outgoing/unknown)
     Direction,
     /// Filter by any structured field key=value extracted from the log entry
     StructuredField,
@@ -86,7 +86,10 @@ impl FilterTerm {
         // Validate direction values
         if filter_type == FilterType::Direction {
             let lower = value.to_lowercase();
-            if !matches!(lower.as_str(), "incoming" | "outgoing" | "in" | "out") {
+            if !matches!(
+                lower.as_str(),
+                "incoming" | "outgoing" | "in" | "out" | "unknown"
+            ) {
                 return Err(FilterParseError::InvalidDirection(value));
             }
         }

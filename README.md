@@ -345,7 +345,7 @@ Use `-f, --filter` with a unified expression syntax:
 | `component` | `comp`, `c` | Filter by component name |
 | `level` | `lvl`, `l` | Filter by log level (INFO, ERROR, etc.) |
 | `text` | `t` | Filter by text in message |
-| `direction` | `dir`, `d` | Filter by direction (incoming/outgoing) |
+| `direction` | `dir`, `d` | Filter by direction (incoming/outgoing/unknown) |
 
 **Prefix with `!` to exclude.**  
 Different filter types are combined with AND. Multiple values of the same type are OR-ed.

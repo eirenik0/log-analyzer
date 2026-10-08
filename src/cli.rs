@@ -107,7 +107,7 @@ pub enum SearchCountBy {
     component, comp, c    Filter by component name
     level, lvl, l         Filter by log level (INFO, ERROR, etc.)
     text, t               Filter by text in message
-    direction, dir, d     Filter by direction (incoming/outgoing)
+    direction, dir, d     Filter by direction (incoming/outgoing/unknown)
     <field-name>          Filter by structured key=value field (trace_id, actor_kind, ...)
 
   Different filter types are AND-ed. Multiple values of the same type are OR-ed.

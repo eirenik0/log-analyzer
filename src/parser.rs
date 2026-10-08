@@ -975,7 +975,7 @@ fn explicit_payload(message: &str, payload_markers: &[String]) -> (Option<Value>
         let rest = &message[payload_start..];
         if let Some(end) = command_payload_end(rest)
             && command_payload_trivia(&rest[end..])
-            && let Ok(payload) = json5::from_str::<Value>(&rest[..end].replace("undefined", "null"))
+            && let Ok(payload) = json5::from_str::<Value>(&normalize_json5_undefined(&rest[..end]))
         {
             return (
                 Some(payload),
@@ -984,6 +984,81 @@ fn explicit_payload(message: &str, payload_markers: &[String]) -> (Option<Value>
         }
     }
     (None, message.to_string())
+}
+
+// Convert legacy JSON5 undefined values without rewriting string identities or property names.
+fn normalize_json5_undefined(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut copied = 0;
+    let mut containers = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut line_comment = false;
+    let mut block_comment = false;
+    let mut previous = None;
+    let mut chars = input.char_indices().peekable();
+    while let Some((position, ch)) = chars.next() {
+        if line_comment {
+            line_comment = ch != '\n';
+            continue;
+        }
+        if block_comment {
+            if ch == '*' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+                chars.next();
+                block_comment = false;
+            }
+            continue;
+        }
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == delimiter {
+                quote = None;
+                previous = Some(ch);
+            }
+            continue;
+        }
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            '/' if chars.peek().is_some_and(|(_, next)| *next == '/') => {
+                chars.next();
+                line_comment = true;
+                continue;
+            }
+            '/' if chars.peek().is_some_and(|(_, next)| *next == '*') => {
+                chars.next();
+                block_comment = true;
+                continue;
+            }
+            '{' | '[' => containers.push(ch),
+            '}' | ']' => {
+                containers.pop();
+            }
+            'u' if (previous == Some(':')
+                || previous == Some('[')
+                || (previous == Some(',') && containers.last() == Some(&'[')))
+                && input[position..].starts_with("undefined")
+                && input[position + 9..].chars().next().is_none_or(|next| {
+                    next.is_whitespace() || matches!(next, ',' | ']' | '}' | '/')
+                }) =>
+            {
+                output.push_str(&input[copied..position]);
+                output.push_str("null");
+                copied = position + 9;
+                for _ in 0..8 {
+                    chars.next();
+                }
+            }
+            _ => (),
+        }
+        if !ch.is_whitespace() {
+            previous = Some(ch);
+        }
+    }
+    output.push_str(&input[copied..]);
+    output
 }
 
 // Only whitespace and complete JSON5 comments may follow the bounded root value.
