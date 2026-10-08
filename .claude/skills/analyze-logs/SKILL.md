@@ -25,6 +25,13 @@ before interpreting empty timing results. `generate-config` preserves template m
 
 Profiles can also define session hierarchy/lifecycle hints with `[[sessions.levels]]` (for example runner/test/environment prefixes plus create/complete commands). `info` will then report session completion health per level.
 
+For small customizations, create a TOML profile with top-level `extends = "eyes"`
+or another built-in name, then specify only the overrides. File parents resolve
+relative to the child. Tables merge; arrays and scalars replace inherited values.
+Chains allow at most eight profiles including the child and any built-in parent.
+Keep inherited version-2 `event_rules` separate from legacy lifecycle markers.
+See [reference.md](reference.md#profile-templates) for an example and resolution rules.
+
 Create a custom profile from a template:
 
 ```bash

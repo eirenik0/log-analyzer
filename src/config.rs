@@ -655,7 +655,7 @@ fn resolve_extends(
         .filter(|name| !name.is_empty())
         .ok_or_else(|| extends_error("expected a non-empty string".to_string()))?
         .to_string();
-    if chain.len() > MAX_EXTENDS_DEPTH {
+    if chain.len() >= MAX_EXTENDS_DEPTH {
         return Err(extends_error(format!(
             "chain is longer than {MAX_EXTENDS_DEPTH} profiles"
         )));

@@ -173,3 +173,49 @@ fn self_extension_is_a_cycle() {
         "{err}"
     );
 }
+
+#[test]
+fn extends_chain_accepts_eight_profiles_and_rejects_nine() {
+    let dir = tempdir().unwrap();
+    for index in 0..9 {
+        let raw = if index == 8 {
+            "profile_name = \"terminal\"\n".to_string()
+        } else {
+            format!("extends = \"{}.toml\"\n", index + 1)
+        };
+        fs::write(dir.path().join(format!("{index}.toml")), raw).unwrap();
+    }
+
+    let cfg = config::load_config_from_path(&dir.path().join("1.toml")).unwrap();
+    assert_eq!(cfg.profile_name, "terminal");
+
+    let err = config::load_config_from_path(&dir.path().join("0.toml")).unwrap_err();
+    assert!(
+        matches!(&err, ConfigError::Extends { path, reason }
+            if path.ends_with("7.toml") && reason.contains("longer than 8 profiles")),
+        "{err}"
+    );
+}
+
+#[test]
+fn extends_chain_counts_the_builtin_parent_toward_the_limit() {
+    let dir = tempdir().unwrap();
+    for index in 0..8 {
+        let raw = if index == 7 {
+            "extends = \"eyes\"\n".to_string()
+        } else {
+            format!("extends = \"{}.toml\"\n", index + 1)
+        };
+        fs::write(dir.path().join(format!("{index}.toml")), raw).unwrap();
+    }
+
+    let cfg = config::load_config_from_path(&dir.path().join("1.toml")).unwrap();
+    assert_eq!(cfg.profile_name, "eyes");
+
+    let err = config::load_config_from_path(&dir.path().join("0.toml")).unwrap_err();
+    assert!(
+        matches!(&err, ConfigError::Extends { reason, .. }
+            if reason.contains("longer than 8 profiles")),
+        "{err}"
+    );
+}
