@@ -753,3 +753,66 @@ fn deeply_nested_closed_payloads_are_skipped_without_decoding_inner_fragments() 
         matches!(entry.kind, LogEntryKind::Generic { payload: Some(ref value) } if value["following"] == 1)
     );
 }
+
+#[test]
+fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for body in [
+        "inspected status=completed",
+        "inspected status = completed",
+        "inspected status:completed",
+        "inspected completed=false",
+        "inspected phase=started status=completed",
+        "inspected status=(completed)",
+        "inspected uncompleted",
+        "inspected completedReason",
+        "inspected unfinished",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let metadata = parse(&format!("Operation \"work\" {body}"), 1, &config);
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, metadata, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{body}");
+    }
+    for body in [
+        "status=started completed",
+        "status = started completed",
+        "status:'started' completed",
+        "note='with settings' completed",
+        "note='with settings {' completed",
+        "note='with settings' completed with settings {attempt:1}",
+        "status=settings completed",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let end = parse(&format!("Operation \"work\" {body}"), 1, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{body}");
+        assert_eq!(result.operations[0].duration_ms, 1000, "{body}");
+    }
+}
+
+#[test]
+fn embedded_start_words_cannot_replace_a_real_command_start() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let start = parse(r#"Operation "work" started"#, 0, &config);
+    let metadata = parse(r#"Operation "work" restarted"#, 1, &config);
+    let end = parse(r#"Operation "work" completed"#, 2, &config);
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, metadata, end],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert_eq!(result.operations.len(), 1);
+    assert_eq!(result.operations[0].duration_ms, 2000);
+}

@@ -11,8 +11,24 @@ pub use entities::{
 };
 
 use crate::comparator::LogFilter;
-use crate::config::{AnalyzerConfig, PerfRules, contains_any_marker, default_config};
+use crate::config::{AnalyzerConfig, PerfRules, default_config};
 use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
+
+fn contains_command_marker(text: &str, markers: &[String]) -> bool {
+    let word = |ch: char| ch.is_alphanumeric() || ch == '_';
+    markers
+        .iter()
+        .filter(|marker| !marker.is_empty())
+        .any(|marker| {
+            text.match_indices(marker.as_str()).any(|(start, _)| {
+                let end = start + marker.len();
+                (!marker.chars().next().is_some_and(word)
+                    || !text[..start].chars().next_back().is_some_and(word))
+                    && (!marker.chars().next_back().is_some_and(word)
+                        || !text[end..].chars().next().is_some_and(word))
+            })
+        })
+}
 
 /// Extracts the request ID from a log message containing [request_id] pattern
 /// The pattern is: Request "name" [id] where id contains "--" (e.g., "0--uuid" or "0--uuid#2")
@@ -108,7 +124,7 @@ pub fn analyze_performance_with_config(
     }
     let track_commands = filtered.iter().any(|entry| {
         matches!(entry.kind, LogEntryKind::Command { .. })
-            && contains_any_marker(
+            && contains_command_marker(
                 &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
                 &config.perf.command_completion_markers,
             )
@@ -147,11 +163,11 @@ pub fn analyze_performance_with_config(
             LogEntryKind::Command { command, .. } => (
                 command.as_str(),
                 Some(command.clone()),
-                contains_any_marker(
+                contains_command_marker(
                     &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
                     &config.perf.command_start_markers,
                 ),
-                contains_any_marker(
+                contains_command_marker(
                     &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
                     &config.perf.command_completion_markers,
                 ),

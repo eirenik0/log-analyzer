@@ -1028,18 +1028,81 @@ pub(crate) fn command_lifecycle_message<'a>(
         })
         .unwrap_or(body.len());
     let body = &body[..end];
-    if quotes.first().is_none_or(|span| span.start >= end) {
+    let excluded = finish_spans(
+        quotes
+            .iter()
+            .filter(|span| span.start < end)
+            .cloned()
+            .chain(metadata_assignment_spans(body, &quotes))
+            .collect(),
+        true,
+    );
+    if excluded.is_empty() {
         return std::borrow::Cow::Borrowed(body);
     }
     let mut visible = String::with_capacity(end);
     let mut previous = 0;
-    for quote in quotes.iter().take_while(|span| span.start < end) {
+    for quote in &excluded {
         visible.push_str(&body[previous..quote.start]);
         visible.push(' ');
         previous = quote.end.min(end);
     }
     visible.push_str(&body[previous..]);
     std::borrow::Cow::Owned(visible)
+}
+
+// Assignment values are metadata, not evidence of an operation boundary.
+fn metadata_assignment_spans(
+    text: &str,
+    quotes: &[std::ops::Range<usize>],
+) -> Vec<std::ops::Range<usize>> {
+    let mut spans = Vec::new();
+    for (index, ch) in text
+        .char_indices()
+        .filter(|(_, ch)| matches!(ch, '=' | ':'))
+    {
+        let quote = quotes.partition_point(|span| span.end <= index);
+        if quotes.get(quote).is_some_and(|span| span.contains(&index)) {
+            continue;
+        }
+        let before = text[..index].trim_end();
+        let key_start = before
+            .char_indices()
+            .rev()
+            .find_map(|(start, ch)| {
+                (!(ch.is_alphanumeric() || matches!(ch, '_' | '-' | '.')))
+                    .then_some(start + ch.len_utf8())
+            })
+            .unwrap_or(0);
+        let key = &before[key_start..];
+        if !key
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_alphabetic() || ch == '_')
+        {
+            continue;
+        }
+        let value = text[index + ch.len_utf8()..].trim_start();
+        let value_start = text.len() - value.len();
+        let quote = quotes.partition_point(|span| span.end <= value_start);
+        let value_end = quotes
+            .get(quote)
+            .filter(|span| span.contains(&value_start))
+            .map_or_else(
+                || {
+                    value
+                        .char_indices()
+                        .find_map(|(offset, ch)| {
+                            (ch.is_whitespace() || matches!(ch, ',' | ';'))
+                                .then_some(value_start + offset)
+                        })
+                        .unwrap_or(text.len())
+                },
+                |span| span.end.min(text.len()),
+            );
+        spans.push(key_start..value_end);
+    }
+    spans
 }
 
 fn parse_quoted_field_value(input: &str, quote: char) -> Option<(String, usize)> {
@@ -1224,12 +1287,29 @@ fn determine_log_entry_kind(
     } else if let Some((command, name_end)) = extract_command_name(message, parser_rules) {
         let mut settings = None;
         let mut cleaned_message = message.to_string();
+        let (_, quotes) = opaque_spans(message);
         for indicator in &parser_rules.command_payload_markers {
             if indicator.is_empty() {
                 continue;
             }
-            if let Some(relative_start) = message[name_end..].find(indicator.as_str()) {
-                let start_idx = name_end + relative_start;
+            if let Some(start_idx) = message[name_end..]
+                .match_indices(indicator.as_str())
+                .map(|(relative_start, _)| name_end + relative_start)
+                .find(|start| {
+                    let quote = quotes.partition_point(|span| span.end <= *start);
+                    if quotes.get(quote).is_some_and(|span| span.contains(start)) {
+                        return false;
+                    }
+                    // Marker words alone do not justify truncating the body.
+                    // Require an actual payload opener after the marker.
+                    indicator.ends_with(['{', '['])
+                        || message[*start + indicator.len()..]
+                            .trim_start_matches(|ch: char| {
+                                ch.is_whitespace() || matches!(ch, '=' | ':')
+                            })
+                            .starts_with(['{', '['])
+                })
+            {
                 let settings_start =
                     start_idx + indicator.len() - indicator.chars().next_back().unwrap().len_utf8();
                 settings = extract_json(&message[settings_start..], &parser_rules.json_indicators);
