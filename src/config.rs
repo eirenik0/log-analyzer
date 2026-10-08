@@ -41,7 +41,12 @@ pub enum ConfigError {
     },
     #[error("Unknown built-in preset '{name}'. Available built-ins: {available}")]
     UnknownBuiltin { name: String, available: String },
+    #[error("Invalid `extends` in '{path}': {reason}")]
+    Extends { path: String, reason: String },
 }
+
+/// Longest `extends` chain accepted, to keep resolution bounded.
+const MAX_EXTENDS_DEPTH: usize = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -543,7 +548,7 @@ pub fn load_config_from_path(path: &Path) -> Result<AnalyzerConfig, ConfigError>
         source,
     })?;
 
-    parse_config_toml(&raw, &path_display)
+    parse_config_toml_in(&raw, &path_display, path.parent())
 }
 
 pub fn default_config() -> &'static AnalyzerConfig {
@@ -560,7 +565,13 @@ pub fn builtin_template_names() -> &'static [&'static str] {
 
 pub fn load_builtin_template(name: &str) -> Option<AnalyzerConfig> {
     let template_key = normalized_template_key(name)?;
-    let (source_path, raw) = match template_key.as_str() {
+    let (source_path, raw) = builtin_source(&template_key)?;
+    parse_config_toml(raw, source_path).ok()
+}
+
+/// Embedded source for a built-in name: `(display path, TOML text)`.
+fn builtin_source(key: &str) -> Option<(&'static str, &'static str)> {
+    Some(match key {
         "base" => ("embedded:config/profiles/base.toml", EMBEDDED_PROFILE_BASE),
         "eyes" => ("embedded:config/profiles/eyes.toml", EMBEDDED_PROFILE_EYES),
         "custom-start" => (
@@ -576,16 +587,29 @@ pub fn load_builtin_template(name: &str) -> Option<AnalyzerConfig> {
             EMBEDDED_TEMPLATE_EVENT_PIPELINE,
         ),
         _ => return None,
-    };
-
-    parse_config_toml(raw, source_path).ok()
+    })
 }
 
 fn parse_config_toml(raw: &str, path_display: &str) -> Result<AnalyzerConfig, ConfigError> {
-    let config = toml::from_str::<AnalyzerConfig>(raw).map_err(|source| ConfigError::Parse {
-        path: path_display.to_string(),
-        source,
-    })?;
+    parse_config_toml_in(raw, path_display, None)
+}
+
+/// Parses a profile, resolving a top-level `extends` first.
+///
+/// `base_dir` is the directory of the profile file, used for relative parents.
+fn parse_config_toml_in(
+    raw: &str,
+    path_display: &str,
+    base_dir: Option<&Path>,
+) -> Result<AnalyzerConfig, ConfigError> {
+    let mut chain = vec![path_display.to_string()];
+    let value = resolve_extends(raw, path_display, base_dir, &mut chain)?;
+    let config = value
+        .try_into::<AnalyzerConfig>()
+        .map_err(|source| ConfigError::Parse {
+            path: path_display.to_string(),
+            source,
+        })?;
     config
         .validate_event_rules()
         .map_err(|reason| ConfigError::EventRules {
@@ -593,6 +617,95 @@ fn parse_config_toml(raw: &str, path_display: &str) -> Result<AnalyzerConfig, Co
             reason,
         })?;
     Ok(config)
+}
+
+/// Returns the profile as a TOML value with `extends` merged in and removed.
+///
+/// `extends` names a built-in (`base`, `eyes`, ...) or a TOML file path, relative to the
+/// extending file. Tables merge key by key and the child wins; arrays and scalars are
+/// replaced whole.
+fn resolve_extends(
+    raw: &str,
+    path_display: &str,
+    base_dir: Option<&Path>,
+    chain: &mut Vec<String>,
+) -> Result<toml::Value, ConfigError> {
+    let mut value = toml::from_str::<toml::Value>(raw).map_err(|source| ConfigError::Parse {
+        path: path_display.to_string(),
+        source,
+    })?;
+    let extends_error = |reason: String| ConfigError::Extends {
+        path: path_display.to_string(),
+        reason,
+    };
+    let Some(table) = value.as_table_mut() else {
+        return Ok(value);
+    };
+    let Some(parent_ref) = table.remove("extends") else {
+        return Ok(value);
+    };
+    let parent_ref = parent_ref
+        .as_str()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| extends_error("expected a non-empty string".to_string()))?
+        .to_string();
+    if chain.len() > MAX_EXTENDS_DEPTH {
+        return Err(extends_error(format!(
+            "chain is longer than {MAX_EXTENDS_DEPTH} profiles"
+        )));
+    }
+
+    let builtin = builtin_source(&parent_ref.to_ascii_lowercase());
+    let (parent_id, parent_raw, parent_dir) = if let Some((id, text)) = builtin {
+        (id.to_string(), text.to_string(), None)
+    } else {
+        let candidate = Path::new(&parent_ref);
+        let path = match base_dir {
+            Some(dir) if candidate.is_relative() => dir.join(candidate),
+            _ => candidate.to_path_buf(),
+        };
+        let text = fs::read_to_string(&path).map_err(|err| {
+            extends_error(format!(
+                "'{parent_ref}' is not a built-in ({}) and cannot be read as a file: {err}",
+                BUILTIN_TEMPLATE_NAMES.join(", ")
+            ))
+        })?;
+        let id = path.canonicalize().unwrap_or_else(|_| path.clone());
+        (
+            id.display().to_string(),
+            text,
+            path.parent().map(Path::to_path_buf),
+        )
+    };
+    if chain.contains(&parent_id) {
+        return Err(extends_error(format!(
+            "cycle: {} -> {parent_id}",
+            chain.join(" -> ")
+        )));
+    }
+
+    chain.push(parent_id.clone());
+    let mut merged = resolve_extends(&parent_raw, &parent_id, parent_dir.as_deref(), chain)?;
+    chain.pop();
+    merge_toml(&mut merged, value);
+    Ok(merged)
+}
+
+fn merge_toml(parent: &mut toml::Value, child: toml::Value) {
+    match (parent, child) {
+        (toml::Value::Table(parent), toml::Value::Table(child)) => {
+            for (key, child_value) in child {
+                match parent.get_mut(&key) {
+                    Some(parent_value) => merge_toml(parent_value, child_value),
+                    None => {
+                        parent.insert(key, child_value);
+                    }
+                }
+            }
+        }
+        (parent, child) => *parent = child,
+    }
 }
 
 fn normalized_template_key(input: &str) -> Option<String> {

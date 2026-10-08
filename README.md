@@ -256,6 +256,18 @@ log-analyzer --config my-team.toml errors logs/*.log --sessions
 
 If your log directory path contains spaces, quote the directory part but not the wildcard (for example `"/path with spaces"/logs/*.log`).
 
+A profile can start from another profile instead of copying it. Put `extends` at the top of the file and write only the differences:
+
+```toml
+extends = "base"            # a built-in name, or a path relative to this file
+profile_name = "my-team"
+
+[profile]
+known_components = ["api", "worker"]
+```
+
+Tables merge key by key and the child wins. Arrays and scalars are replaced whole, so a child `[[event_rules.rules]]` list replaces the parent's list. An omitted `profile_name` is inherited. Chains are allowed up to 8 profiles; cycles and unknown parents are errors. A built-in name wins over a file with the same name; use `./base.toml` for the file. Version 2 `event_rules` cannot coexist with legacy marker keys, so a profile that extends one with `event_rules` (all built-ins do, even when empty) must not set the legacy keys.
+
 See [Profile Configuration](#profile-configuration) for the full reference and examples. Investing 10 minutes in a good config pays back on every analysis run.
 
 ## 5-Minute First Success
