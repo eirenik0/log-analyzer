@@ -17,6 +17,23 @@ fn parse(message: &str, index: usize, config: &config::AnalyzerConfig) -> parser
 }
 
 #[test]
+fn bracketed_annotations_preserve_command_start_and_completion() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let start = parse(r#"Operation "work" [trace-42] started"#, 0, &config);
+    let end = parse(r#"Operation "work" [trace-42] completed"#, 1, &config);
+    let results = perf_analyzer::analyze_performance_with_config(
+        &[start, end],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert_eq!(results.operations.len(), 1);
+    assert_eq!(results.operations[0].duration_ms, 1000);
+    assert_eq!(results.operation_coverage.status, "observed_pairs");
+    assert!(results.orphans.is_empty());
+}
+
+#[test]
 fn shipped_command_profiles_pair_starts_with_every_configured_completion() {
     for (preset, noun, start) in [
         ("eyes", "Command", "is called"),
@@ -894,6 +911,10 @@ fn negated_markers_cannot_create_command_boundaries() {
         "probably completed",
         "inspected. Cleanup completed",
         "inspected and cleanup completed",
+        "inspected while cleanup completed",
+        "inspected after cleanup completed",
+        "inspected although cleanup completed",
+        "inspected since cleanup completed",
         "inspected but cleanup completed",
         "inspected because cleanup completed",
         "inspected: cleanup completed",
@@ -976,6 +997,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "probably started",
         "inspected. Cleanup started",
         "inspected and cleanup started",
+        "inspected while cleanup started",
         "inspected: cleanup started",
         "inspected; cleanup started",
         "is by no means started",
@@ -1020,6 +1042,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "with no errors completed",
         "completed without errors",
         "completed as expected",
+        "[trace-42] completed",
         "completed because verification was not required",
         "completed because it was not required",
         "completed because no additional work was required",

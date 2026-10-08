@@ -152,6 +152,9 @@ An earlier valid request subject takes precedence over later command-shaped
 context, preserving request classification and pairing.
 Lifecycle markers must belong to the command’s first sentence or semicolon-delimited
 clause; a marker in a later unrelated statement cannot complete the command.
+Subordinate clauses with another subject, such as `while cleanup completed`,
+cannot supply its boundary. Ordinary bracketed annotations such as `[trace-42]`
+preserve a following lifecycle marker.
 A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
 assignment values, quoted context, or balanced payload regions (including invalid JSON) are not commands.

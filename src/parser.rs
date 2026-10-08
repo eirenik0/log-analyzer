@@ -1156,6 +1156,7 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
         .find_map(|(index, ch)| {
             let quote = quotes.partition_point(|span| span.end <= index);
             (matches!(ch, '{' | '[')
+                && looks_like_json_start(&body[index..])
                 && !quotes.get(quote).is_some_and(|span| span.contains(&index)))
             .then_some(index)
         })

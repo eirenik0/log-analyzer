@@ -25,8 +25,9 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
             matches!(ch, '?' | ';') || crate::parser::lifecycle_sentence_boundary(text, index, ch)
         })
         .map_or(text.len(), |(index, _)| index);
-    static COORDINATOR: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(?i)\b(?:and|but|however|instead|because)\s+").unwrap());
+    static COORDINATOR: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)\b(?:and|but|however|instead|because|while|when|whenever|after|before|since|until|once|although|though|whereas|if|unless|as|where)\s+").unwrap()
+    });
     let other_subject = COORDINATOR.find_iter(text).find_map(|coordinator| {
         let after = &text[coordinator.end()..];
         let next = crate::parser::lifecycle_words(after).next()?.to_lowercase();
