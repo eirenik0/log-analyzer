@@ -26,10 +26,28 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
         })
         .map_or(text.len(), |(index, _)| index);
     static COORDINATOR: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)\b(?:and|but|however|instead|because|while|when|whenever|after|before|since|until|once|although|though|whereas|if|unless|as|where)\s+").unwrap()
+        Regex::new(r"(?i)(?:\b(?:and|but|however|instead|because|while|when|whenever|after|before|since|until|once|although|though|whereas|if|unless|as|where)\s+|(?:—|–|--|\s-\s)\s*)").unwrap()
     });
     let other_subject = COORDINATOR.find_iter(text).find_map(|coordinator| {
-        let after = &text[coordinator.end()..];
+        let mut after = &text[coordinator.end()..];
+        while let Some(adverb) = after.split_whitespace().next() {
+            if markers
+                .iter()
+                .any(|marker| !marker.is_empty() && after.starts_with(marker))
+            {
+                break;
+            }
+            let normalized = adverb.to_lowercase();
+            if !matches!(
+                normalized.as_str(),
+                "then" | "afterward" | "afterwards" | "now" | "next"
+            ) && !(normalized.ends_with("ly")
+                && !crate::parser::lifecycle_qualifier(&normalized))
+            {
+                break;
+            }
+            after = after[adverb.len()..].trim_start();
+        }
         let next = crate::parser::lifecycle_words(after).next()?.to_lowercase();
         let modifies_phase = crate::parser::lifecycle_qualifier(&next)
             || matches!(
@@ -48,7 +66,6 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
                     | "be"
                     | "been"
             )
-            || next.ends_with("ly")
             || markers
                 .iter()
                 .any(|marker| !marker.is_empty() && after.starts_with(marker));
