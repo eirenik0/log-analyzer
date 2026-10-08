@@ -182,6 +182,15 @@ fn write_output_file(
         .map_err(|e| format!("Failed to write output file '{}': {}", path.display(), e).into())
 }
 
+fn read_cli_log_file(
+    file: &std::path::Path,
+    config: &config::AnalyzerConfig,
+) -> Result<Vec<LogEntry>, ParseError> {
+    let entries = parser::parse_log_file_with_config(file, config)?;
+    output::observe_entries(&entries);
+    Ok(entries)
+}
+
 fn parse_and_merge_log_files_with_config(
     files: &[std::path::PathBuf],
     analyzer_config: &config::AnalyzerConfig,
@@ -189,7 +198,7 @@ fn parse_and_merge_log_files_with_config(
     let mut logs = Vec::new();
 
     for file in files {
-        let mut parsed = parse_log_file_with_config(file, analyzer_config)
+        let mut parsed = read_cli_log_file(file, analyzer_config)
             .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
         logs.append(&mut parsed);
     }
@@ -223,6 +232,7 @@ fn read_analysis_inputs(
     for file in files {
         let parsed = parser::parse_log_file_report(file, config)
             .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+        output::observe_entries(&parsed.entries);
         logs.extend(parsed.entries);
         coverage.files.push(parsed.coverage);
     }
@@ -383,10 +393,10 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = parse_log_file_with_config(file1, &analyzer_config)
+            let logs1 = read_cli_log_file(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let logs2 = parse_log_file_with_config(file2, &analyzer_config)
+            let logs2 = read_cli_log_file(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Create options
@@ -430,10 +440,10 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = parse_log_file_with_config(file1, &analyzer_config)
+            let logs1 = read_cli_log_file(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let logs2 = parse_log_file_with_config(file2, &analyzer_config)
+            let logs2 = read_cli_log_file(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Create options with diff_only=true
@@ -477,10 +487,10 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log files with proper error handling
-            let mut logs1 = parse_log_file_with_config(file1, &analyzer_config)
+            let mut logs1 = read_cli_log_file(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let mut logs2 = parse_log_file_with_config(file2, &analyzer_config)
+            let mut logs2 = read_cli_log_file(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Apply sanitization if enabled (default behavior unless --no-sanitize is used)
@@ -577,7 +587,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log file with proper error handling
-            let logs = parse_log_file_with_config(file, &analyzer_config)
+            let logs = read_cli_log_file(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
             // Filter logs
@@ -588,6 +598,8 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 .collect();
 
             llm_processor::sort_logs(&mut filtered_logs, *sort_by);
+
+            output::prepare_process_entries(&mut filtered_logs);
 
             // Process logs for LLM consumption (sanitize by default, unless --no-sanitize is used)
             let llm_output = llm_processor::process_logs_for_llm(
@@ -613,7 +625,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             payloads,
             count_by,
         } => {
-            let logs = parse_log_file_with_config(file, &analyzer_config)
+            let logs = read_cli_log_file(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
             let match_indices = collect_match_indices(&logs, &filter);
 
@@ -715,7 +727,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             rows,
             expand_array,
         } => {
-            let logs = parse_log_file_with_config(file, &analyzer_config)
+            let logs = read_cli_log_file(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
             let match_indices = collect_match_indices(&logs, &filter);
 

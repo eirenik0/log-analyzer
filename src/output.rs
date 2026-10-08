@@ -342,3 +342,73 @@ pub fn redact_comparison(results: &mut crate::comparator::ComparisonResults) {
         }
     });
 }
+
+/// Learn configured identifiers without changing entries or analysis keys.
+pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let Some(state) = state
+            .as_mut()
+            .filter(|s| s.redact && !s.mask_ids.is_empty())
+        else {
+            return;
+        };
+        for entry in entries {
+            for payload in [entry.payload(), entry.envelope_payload.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                state.value(payload);
+            }
+            for (key, value) in &entry.structured_fields {
+                state.replacement(key, value);
+            }
+            if let crate::parser::LogEntryKind::Request {
+                request_id: Some(id),
+                ..
+            } = &entry.kind
+            {
+                state.replacement("request_id", id);
+            }
+            state.text(&entry.raw_logline);
+        }
+    });
+}
+
+pub fn identifier(value: &str) -> String {
+    STATE.with(|state| {
+        state
+            .borrow()
+            .as_ref()
+            .and_then(|s| s.masked_values.get(value))
+            .cloned()
+            .unwrap_or_else(|| value.to_string())
+    })
+}
+
+/// Process compaction is presentation too; redact before truncating names/values.
+pub fn prepare_process_entries(entries: &mut [crate::parser::LogEntry]) {
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let Some(state) = state.as_mut().filter(|s| s.redact) else {
+            return;
+        };
+        for entry in entries {
+            entry.message = state.text(&entry.message);
+            match &mut entry.kind {
+                crate::parser::LogEntryKind::Event { payload, .. }
+                | crate::parser::LogEntryKind::Request { payload, .. }
+                | crate::parser::LogEntryKind::Generic { payload } => {
+                    if let Some(payload) = payload {
+                        *payload = state.value(payload);
+                    }
+                }
+                crate::parser::LogEntryKind::Command { settings, .. } => {
+                    if let Some(settings) = settings {
+                        *settings = state.value(settings);
+                    }
+                }
+            }
+        }
+    });
+}

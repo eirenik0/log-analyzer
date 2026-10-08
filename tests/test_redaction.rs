@@ -228,3 +228,35 @@ fn redaction_keeps_filters_on_original_values() {
         String::from_utf8_lossy(&output.stdout)
     );
 }
+
+#[test]
+fn masking_precedes_process_truncation_and_masks_text_trace_selector() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("ids.jsonl");
+    let id = "long-".to_string() + &"x".repeat(250);
+    let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":format!("https://example.test/?trace_id={id}"), "payload":{"trace_id":id}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "trace_id",
+        "process",
+        file.to_str().unwrap(),
+    ]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!text.contains("long-"));
+    assert!(!text.contains("[MASKED_ID:2]"), "{report}");
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "trace_id",
+        "trace",
+        file.to_str().unwrap(),
+        "--id",
+        &id,
+    ]);
+    assert!(output.status.success());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("long-"));
+}

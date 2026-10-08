@@ -81,7 +81,7 @@ pub fn format_trace_text(entries: &[&LogEntry], selector: &TraceSelector) -> Str
         out,
         "TRACE ({}) contains \"{}\"",
         selector.selector_type(),
-        selector.value()
+        crate::output::identifier(selector.value())
     );
 
     let _ = writeln!(
