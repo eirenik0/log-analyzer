@@ -111,6 +111,11 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 Available files:
 - `config/profiles/base.toml` - generic parser/perf/profile baseline
 - `config/profiles/eyes.toml` - Eyes/Applitools-specific preset
+  - Decodes both `with settings` and `with default driver and settings` command payloads.
+  - Accepts scalar request bodies, SDK response status/retry tails, and HTTP version
+    metadata. A `that was sent` message with arbitrary pending prose is not an end
+    boundary; inspect incomplete evidence with `perf --orphans-only`.
+
 - `config/templates/custom-start.toml` - generic starter with placeholders
 - `config/templates/service-api.toml` - service/API oriented wording
 - `config/templates/event-pipeline.toml` - event-driven pipeline wording

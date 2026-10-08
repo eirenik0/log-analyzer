@@ -2,7 +2,7 @@ profile_name = "eyes"
 
 [parser]
 event_payload_separator = "with payload"
-command_payload_markers = ["with settings"]
+command_payload_markers = ["with settings", "with default driver and settings"]
 request_payload_markers = ["with body"]
 request_endpoint_marker = "address \"["
 json_indicators = ["with settings {", "with body [", "with body {", "with body", "with body "]
@@ -167,7 +167,7 @@ endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
 id = "request-end-id"
 [event_rules.rules.adapter]
 type = "text"
-pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?s:.+))?'
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body (?s:\{.*|\[.*)|respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)))?'
 [event_rules.rules.mapping]
 kind = "request"
 name = { from = "capture", capture = "name", decode = "json_string" }
@@ -180,7 +180,7 @@ endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
 id = "request-end-missing-id"
 [event_rules.rules.adapter]
 type = "text"
-pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?s:.+))?'
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body (?s:\{.*|\[.*)|respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)))?'
 [event_rules.rules.mapping]
 kind = "request"
 name = { from = "capture", capture = "name", decode = "json_string" }

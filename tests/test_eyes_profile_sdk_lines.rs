@@ -95,3 +95,63 @@ fn command_start_accepts_the_default_driver_form() {
     names.sort();
     assert_eq!(names, ["check", "openEyes"]);
 }
+
+#[test]
+fn pending_request_suffixes_do_not_supply_an_end_boundary() {
+    let cfg = config::load_builtin_template("eyes").unwrap();
+    for suffix in [
+        " is still pending",
+        " is still pending(200)",
+        " respond with an unknown result",
+        " with body undefined is still pending",
+        " respond with OK(200), still waiting for completion",
+    ] {
+        let messages = request_pair(" with body undefined", suffix);
+        let logs = parse(&cfg, "manager-a/eyes-b/request-c", &messages);
+        let result =
+            perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg);
+        assert!(result.operations.is_empty(), "{suffix}");
+        assert_eq!(result.orphans.len(), 1, "{suffix}");
+        assert_eq!(result.operation_coverage.status, "insufficient_evidence");
+
+        let missing_id = messages[1].replace(" [0--id1]", "");
+        let logs = parse(&cfg, "manager-a/eyes-b/request-c", &[missing_id]);
+        let result =
+            perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg);
+        assert!(result.unmatched_events.is_empty(), "{suffix}");
+        assert_eq!(result.operation_coverage.relevant_events, 0, "{suffix}");
+    }
+}
+
+#[test]
+fn default_driver_settings_are_decoded_like_regular_command_settings() {
+    let cfg = config::load_builtin_template("eyes").unwrap();
+    let messages = vec![
+        r#"Command "openEyes" is called with default driver and settings {"appName":"demo","testName":"sample"}"#.to_string(),
+        r#"Command "check" is called with settings {"appName":"demo","testName":"sample"}"#.to_string(),
+    ];
+    let logs = parse(&cfg, "manager-a/eyes-b", &messages);
+    for log in &logs {
+        let payload = log.payload().expect("command settings must be decoded");
+        assert_eq!(payload["appName"], "demo");
+        assert_eq!(payload["testName"], "sample");
+        assert!(log.message.ends_with("settings [JSON removed]"));
+    }
+    assert_eq!(logs[0].payload(), logs[1].payload());
+}
+
+#[test]
+fn direct_response_status_preserves_duration_and_endpoint() {
+    let cfg = config::load_builtin_template("eyes").unwrap();
+    let mut messages = request_pair(" with body undefined", " respond with OK(200)");
+    messages[1] = r#"Request "openEyes" [0--id1] respond with Internal Server Error(500), dont retry returned true, httpVersion: 1.1"#.to_string();
+    let logs = parse(&cfg, "manager-a/eyes-b/request-c", &messages);
+    let result =
+        perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg);
+    assert_eq!(result.operations.len(), 1);
+    assert_eq!(result.operations[0].duration_ms, 1000);
+    assert_eq!(
+        result.operations[0].endpoint.as_deref(),
+        Some("[POST]https://eyes.example.test/api/sessions")
+    );
+}
