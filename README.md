@@ -573,6 +573,11 @@ Unmatched ends and missing keys are retained in `unmatched_events`; JSON include
 `ambiguous_groups` and start/end source file and line references. Diagnostic
 sections also obey `--top-n`, with full totals and omitted counts; `0` preserves all.
 
+Some producers log only the start of an operation. Mark such a start rule with
+`end_expected = false` in its version-2 `mapping`; `perf` then counts it as
+`start_only_events` instead of an orphan, and session levels can complete on it.
+Other rules keep expecting an end, so a missing end there is still reported.
+
 `perf` reports `operation_coverage` separately from parse coverage in text and JSON.
 Relevant events are parsed request, event, and command candidates; each is paired,
 unmatched, or suppressed. Suppressions identify operation-type filters, missing

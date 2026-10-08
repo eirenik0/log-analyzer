@@ -29,7 +29,7 @@ a deprecated command-only wrapper with legacy request/event compatibility.
 `EventSemantics` contains kind (`command`, `request`, `event`), nonempty name,
 optional phase (`start`, `end`), optional outcome (`success`, `failure`), optional
 correlation ID, transport direction, endpoint and an ordered scope vector. Outcomes are valid only for `end`.
-No phase means identity only, never lifecycle evidence. A configured ID/scope
+No phase means identity only, never lifecycle evidence. Version 2 mappings may set `end_expected = false` on a rule whose phase is `start`: the producer writes no end record for it. Such a start is counted as `start_only_events` in operation coverage, is neither paired nor unmatched, and can create and complete a session (the start is the whole operation). Validation rejects it in version 1 and with a literal `end` or missing phase; a field-mapped phase that resolves to `end` is invalid evidence (`end_expected_requires_start`). A configured ID/scope
 mapping is required to resolve; an absent mapping is explicitly absent evidence,
 not a fabricated ID or global scope. Integration must apply the existing
 correlation completeness/ambiguity safeguards before pairing. No duration is
