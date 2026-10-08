@@ -392,3 +392,55 @@ fn undecodable_payload_words_cannot_complete_an_operation() {
         );
     }
 }
+
+#[test]
+fn invalid_payload_command_keys_cannot_steal_requests_or_pair_with_commands() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let start = parse(r#"Operation "work" started"#, 0, &config);
+    let request = parse(
+        r#"Request "fetch" [0--request] sent with body {"Operation ":"work","note":"completed",,}"#,
+        1,
+        &config,
+    );
+    assert!(
+        matches!(request.kind, LogEntryKind::Request { .. }),
+        "{:?}",
+        request.kind
+    );
+    let other = parse(r#"Operation "other" completed"#, 2, &config);
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, request, other],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert!(result.operations.is_empty());
+    let generic = parse(
+        r#"payload {"Operation ":"work","note":"completed",,}"#,
+        0,
+        &config,
+    );
+    assert!(matches!(generic.kind, LogEntryKind::Generic { .. }));
+}
+
+#[test]
+fn multiple_valid_subjects_cannot_attribute_a_completion_to_the_first_command() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let start = parse(r#"Operation "old" started"#, 0, &config);
+    let ambiguous = parse(
+        r#"previous=Operation "old" Operation "work" completed"#,
+        1,
+        &config,
+    );
+    assert!(matches!(ambiguous.kind, LogEntryKind::Generic { .. }));
+    let other = parse(r#"Operation "other" completed"#, 2, &config);
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, ambiguous, other],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert!(result.operations.is_empty());
+    assert_eq!(result.orphans.len(), 1);
+    assert_eq!(result.orphans[0].name, "old");
+}

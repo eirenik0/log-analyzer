@@ -138,7 +138,8 @@ completion-only command lines too; `[perf]` determines their lifecycle role from
 text after the name and before payload delimiters, including malformed or
 unclosed payloads. Names support escaped quotes and
 Unicode. A missing boundary remains diagnostic rather than producing a duration.
-Empty/unterminated names and prefixes inside JSON payloads are not commands.
+Empty/unterminated names, multiple valid command subjects, and prefixes inside
+balanced payload regions (including invalid JSON) are not commands.
 Custom unquoted names retain the legacy `command_start_marker` delimiter; use
 quoted names to recognize completion lines independently of that delimiter.
 

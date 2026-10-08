@@ -885,14 +885,19 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
     if prefix.is_empty() {
         return None;
     }
-    let spans = valid_json_spans(message);
-    message.match_indices(prefix).find_map(|(start, _)| {
+    let spans = balanced_json_spans(message);
+    let mut candidates = message.match_indices(prefix).filter_map(|(start, _)| {
         let index = spans.partition_point(|span| span.end <= start);
         if spans.get(index).is_some_and(|span| span.contains(&start)) {
             return None;
         }
         parse_command_candidate(message, start + prefix.len(), rules)
-    })
+    });
+    let candidate = candidates.next()?;
+    if candidates.next().is_some() {
+        return None;
+    }
+    Some(candidate)
 }
 
 fn parse_command_candidate(
@@ -1368,15 +1373,6 @@ fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Val
     json5::from_str::<Value>(&json)
         .ok()
         .map(|value| (value, start_pos + span.end))
-}
-
-fn valid_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
-    balanced_json_spans(input)
-        .into_iter()
-        .filter(|span| {
-            json5::from_str::<Value>(&input[span.clone()].replace("undefined", "null")).is_ok()
-        })
-        .collect()
 }
 
 // Scan disjoint outer spans once; unmatched opening delimiters do not trigger
