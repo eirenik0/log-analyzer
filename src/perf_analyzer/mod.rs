@@ -255,15 +255,20 @@ pub fn analyze_performance_with_config(
         let mut bucket_time = None;
         let mut bucket_file = None;
         let mut seen_rows = std::collections::HashSet::new();
-        let tied = events.iter().any(|event| {
+        let mut unordered_timestamps = std::collections::HashSet::new();
+        for event in &events {
             if bucket_time != Some(event.entry.timestamp) {
                 bucket_time = Some(event.entry.timestamp);
                 bucket_file = Some(&event.entry.source_file);
                 seen_rows.clear();
             }
-            bucket_file != Some(&event.entry.source_file)
+            if bucket_file != Some(&event.entry.source_file)
                 || !seen_rows.insert((event.entry.source_line_number, &event.entry.source_row_path))
-        });
+            {
+                unordered_timestamps.insert(event.entry.timestamp);
+            }
+        }
+        let tied = !unordered_timestamps.is_empty();
         if tied {
             // Close established lifecycles before isolating an unordered timestamp bucket.
             let mut segments = Vec::new();
@@ -274,9 +279,10 @@ pub fn analyze_performance_with_config(
                 let timestamp = event.entry.timestamp;
                 outstanding += if event.start { 1 } else { -1 };
                 segment.push(event);
-                if boundaries
-                    .peek()
-                    .is_none_or(|next| next.entry.timestamp != timestamp)
+                if (!unordered_timestamps.contains(&timestamp)
+                    || boundaries
+                        .peek()
+                        .is_none_or(|next| next.entry.timestamp != timestamp))
                     && outstanding <= 0
                 {
                     segments.push(std::mem::take(&mut segment));
