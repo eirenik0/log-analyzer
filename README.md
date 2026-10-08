@@ -143,8 +143,8 @@ in-progress or explicitly uncertain wording does not establish boundaries;
 pre-subject negation, uncertainty, or auxiliary-led questions also suppress lifecycle claims, and
 parenthetical insertions cannot discard preceding negation;
 trailing conditional, uncertainty, or unresolved-alternative wording cannot
-prove a boundary either. Explanatory colons after a
-configured lifecycle phrase preserve that phrase and exclude the explanation. Names support escaped quotes
+prove a boundary either. Explanatory colons exclude later explanatory clauses;
+a configured lifecycle phrase before the colon remains subject to suffix validation. Names support escaped quotes
 and Unicode. Word-like command prefixes require a Unicode token boundary.
 Text attached directly to the closing name quote must begin a configured
 lifecycle marker; separated names remain independent of phase wording.

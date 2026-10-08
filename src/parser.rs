@@ -1178,18 +1178,27 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
             if matches!(value.as_str(), "true" | "false" | "null") || value.parse::<f64>().is_ok() {
                 return None;
             }
-            config
+            let markers = config
                 .perf
                 .command_start_markers
                 .iter()
-                .chain(&config.perf.command_completion_markers)
-                .any(|marker| {
-                    !marker.is_empty()
-                        && before.strip_suffix(marker).is_some_and(|prefix| {
-                            prefix.chars().next_back().is_none_or(char::is_whitespace)
-                        })
+                .chain(&config.perf.command_completion_markers);
+            let after_phase = markers.clone().any(|marker| {
+                !marker.is_empty()
+                    && before.strip_suffix(marker).is_some_and(|prefix| {
+                        prefix.chars().next_back().is_none_or(char::is_whitespace)
+                    })
+            });
+            let after = body[index + 1..].trim_start();
+            let phase_value = markers.filter(|marker| !marker.is_empty()).any(|marker| {
+                after.strip_prefix(marker).is_some_and(|remaining| {
+                    remaining
+                        .chars()
+                        .next()
+                        .is_none_or(|ch| !lifecycle_word_char(ch))
                 })
-                .then_some(index)
+            });
+            (after_phase || (!after.starts_with(['"', '\'']) && !phase_value)).then_some(index)
         })
         .unwrap_or(end);
     let question_tail = end < payload_end && {
