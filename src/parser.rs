@@ -1422,13 +1422,13 @@ fn looks_like_json_start(input: &str) -> bool {
         if rest.starts_with('{') {
             return looks_like_json_start(rest);
         }
-        return rest.starts_with(['"', '\'', '+', '-'])
+        return rest.starts_with(['"', '\'', '+', '-', '.', '/', ']'])
             || rest.chars().next().is_some_and(|ch| ch.is_ascii_digit())
-            || ["null", "true", "false", "undefined"]
+            || ["null", "true", "false", "undefined", "Infinity", "NaN"]
                 .iter()
                 .any(|value| rest.starts_with(value));
     }
-    if rest.starts_with(['"', '\'', '/']) {
+    if rest.starts_with(['"', '\'', '/', '}']) {
         return true;
     }
     let end = rest

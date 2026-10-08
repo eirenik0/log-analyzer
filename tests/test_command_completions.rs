@@ -544,3 +544,44 @@ fn braces_inside_command_names_cannot_hide_another_subject() {
     );
     assert!(result.operations.is_empty());
 }
+
+#[test]
+fn unfinished_arrays_cover_all_json5_value_and_comment_beginnings() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for beginning in [
+        ".5",
+        "-.5",
+        "+.5",
+        "Infinity",
+        "NaN",
+        "-Infinity",
+        "/* choice */ .5",
+        "// user's choice\n.5",
+        "{}",
+        "[]",
+        "[[]]",
+        "true",
+        "null",
+        "undefined",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let generic = parse(
+            &format!("[{beginning}, 'Operation \"work\" completed'"),
+            1,
+            &config,
+        );
+        assert!(
+            matches!(generic.kind, LogEntryKind::Generic { .. }),
+            "{beginning}: {:?}",
+            generic.kind
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, generic, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{beginning}");
+    }
+}
