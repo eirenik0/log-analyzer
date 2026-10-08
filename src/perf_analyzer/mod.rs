@@ -19,7 +19,7 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
     let sentence_end = text
         .char_indices()
         .find(|&(index, ch)| {
-            ch == '?' || crate::parser::lifecycle_sentence_boundary(text, index, ch)
+            matches!(ch, '?' | ';') || crate::parser::lifecycle_sentence_boundary(text, index, ch)
         })
         .map_or(text.len(), |(index, _)| index);
     markers

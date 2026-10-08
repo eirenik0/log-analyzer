@@ -150,8 +150,8 @@ Text attached directly to the closing name quote must begin a configured
 lifecycle marker; separated names remain independent of phase wording.
 An earlier valid request subject takes precedence over later command-shaped
 context, preserving request classification and pairing.
-Lifecycle markers must belong to the command’s first sentence; a marker in a
-later unrelated statement cannot complete the command.
+Lifecycle markers must belong to the command’s first sentence or semicolon-delimited
+clause; a marker in a later unrelated statement cannot complete the command.
 A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
 assignment values, quoted context, or balanced payload regions (including invalid JSON) are not commands.
