@@ -1103,3 +1103,53 @@ fn assignment_subjects_do_not_hide_a_genuine_subject_or_complete_the_assigned_na
         );
     }
 }
+
+#[test]
+fn command_prefixes_require_identifier_boundaries() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for fake in [
+        "FakeOperation",
+        "_Operation",
+        "0Operation",
+        "фOperation",
+        "Fake\u{0301}Operation",
+        "Fake\u{200d}Operation",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let contextual = parse(&format!("{fake} \"work\" completed"), 1, &config);
+        assert!(
+            !matches!(contextual.kind, LogEntryKind::Command { .. }),
+            "{fake}"
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, contextual, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{fake}");
+    }
+    let contextual = parse(
+        r#"FakeOperation "note Operation "work" completed"#,
+        1,
+        &config,
+    );
+    assert!(!matches!(contextual.kind, LogEntryKind::Command { .. }));
+    for context in ["context; ", "context -> ", "context|"] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let end = parse(
+            &format!("{context}Operation \"work\" completed"),
+            1,
+            &config,
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{context}");
+        assert_eq!(result.operations[0].duration_ms, 1000);
+    }
+}

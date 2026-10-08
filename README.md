@@ -142,7 +142,8 @@ markers before or after that context remain visible. Pending, prospective, and
 in-progress or explicitly uncertain wording does not establish boundaries;
 trailing conditional or uncertainty qualifiers cannot prove a boundary either. Explanatory colons after a
 configured lifecycle phrase preserve that phrase and exclude the explanation. Names support escaped quotes
-and Unicode. A missing boundary remains diagnostic rather than producing a duration.
+and Unicode. Word-like command prefixes require a Unicode token boundary.
+A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
 assignment values, quoted context, or balanced payload regions (including invalid JSON) are not commands.
 JSON-like payloads with mismatched delimiters remain opaque through the line end. Configured

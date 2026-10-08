@@ -878,6 +878,27 @@ fn parse_field_value(input: &str) -> Option<(String, usize)> {
     }
 }
 
+pub(crate) fn lifecycle_word_char(ch: char) -> bool {
+    if ch.is_alphanumeric() || ch == '_' {
+        return true;
+    }
+    if ch.is_ascii() {
+        return false;
+    }
+    static WORD: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^\w$").expect("word character regex"));
+    let mut encoded = [0; 4];
+    WORD.is_match(ch.encode_utf8(&mut encoded))
+}
+
+fn command_prefix_boundary(message: &str, start: usize, prefix: &str) -> bool {
+    !prefix.chars().next().is_some_and(lifecycle_word_char)
+        || !message[..start]
+            .chars()
+            .next_back()
+            .is_some_and(lifecycle_word_char)
+}
+
 // Command identity is independent of lifecycle wording. Only quoted names have
 // an unambiguous end on completion lines; retain legacy start-delimited names.
 fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, usize)> {
@@ -890,6 +911,7 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
     // an earlier malformed name. Other quoted context cannot contain subjects.
     let subject_quotes: Vec<_> = message
         .match_indices(prefix)
+        .filter(|(start, _)| command_prefix_boundary(message, *start, prefix))
         .filter_map(|(start, _)| {
             let end = start + prefix.len();
             if prefix.ends_with(['"', '\'']) {
@@ -915,29 +937,32 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
         true,
     );
     let unfinished_payload = unfinished_payload_start(message, rules, &spans, &quotes);
-    let mut candidates = message.match_indices(prefix).filter_map(|(start, _)| {
-        if unfinished_payload.is_some_and(|boundary| start >= boundary) {
-            return None;
-        }
-        let index = spans.partition_point(|span| span.end <= start);
-        if spans.get(index).is_some_and(|span| span.contains(&start)) {
-            return None;
-        }
-        let index = quotes.partition_point(|span| span.end <= start);
-        if quotes.get(index).is_some_and(|span| {
-            span.contains(&start) && subject_quotes.binary_search(&span.start).is_err()
-        }) {
-            return None;
-        }
-        let index = assignments.partition_point(|span| span.end <= start);
-        if assignments
-            .get(index)
-            .is_some_and(|span| span.contains(&start))
-        {
-            return None;
-        }
-        parse_command_candidate(message, start + prefix.len(), rules)
-    });
+    let mut candidates = message
+        .match_indices(prefix)
+        .filter(|(start, _)| command_prefix_boundary(message, *start, prefix))
+        .filter_map(|(start, _)| {
+            if unfinished_payload.is_some_and(|boundary| start >= boundary) {
+                return None;
+            }
+            let index = spans.partition_point(|span| span.end <= start);
+            if spans.get(index).is_some_and(|span| span.contains(&start)) {
+                return None;
+            }
+            let index = quotes.partition_point(|span| span.end <= start);
+            if quotes.get(index).is_some_and(|span| {
+                span.contains(&start) && subject_quotes.binary_search(&span.start).is_err()
+            }) {
+                return None;
+            }
+            let index = assignments.partition_point(|span| span.end <= start);
+            if assignments
+                .get(index)
+                .is_some_and(|span| span.contains(&start))
+            {
+                return None;
+            }
+            parse_command_candidate(message, start + prefix.len(), rules)
+        });
     let candidate = candidates.next()?;
     if candidates.next().is_some() {
         return None;

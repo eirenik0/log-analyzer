@@ -15,7 +15,7 @@ use crate::config::{AnalyzerConfig, PerfRules, default_config};
 use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
 
 fn contains_command_marker(text: &str, markers: &[String]) -> bool {
-    let word = |ch: char| ch.is_alphanumeric() || ch == '_';
+    let word = crate::parser::lifecycle_word_char;
     markers
         .iter()
         .filter(|marker| !marker.is_empty())
