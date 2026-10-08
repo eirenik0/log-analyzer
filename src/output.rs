@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::io::{self, Write};
 use std::sync::LazyLock;
+use unicode_segmentation::UnicodeSegmentation;
 
 const SECRET_FIELDS: &[&str] = &[
     "password",
@@ -908,10 +909,15 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
     });
 }
 
+/// Longest prefix of complete graphemes fitting the byte budget.
 pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
-    let mut end = text.len().min(max_bytes);
-    while !text.is_char_boundary(end) {
-        end -= 1;
+    let mut end = 0;
+    for (start, grapheme) in text.grapheme_indices(true) {
+        let next = start + grapheme.len();
+        if next > max_bytes {
+            break;
+        }
+        end = next;
     }
     &text[..end]
 }

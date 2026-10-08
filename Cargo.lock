@@ -390,6 +390,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+ "unicode-segmentation",
 ]
 
 [[package]]

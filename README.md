@@ -772,6 +772,15 @@ Search and trace expose row paths; event and ID matching use only each normalize
 record, while original source lines remain available as evidence.
 Use `info -j` to inspect coverage before interpreting an investigation report.
 
+### Safe compact text
+
+Compact payload values, messages and field names retain complete Unicode graphemes
+within their byte budgets, including combining accents and emoji sequences.
+Shortened field names use deterministic `...~2`, `...~3` suffixes when needed and
+reserve original short names, so retained values cannot overwrite one another.
+If the input already contains `_truncated_fields`, the omission marker gets a
+unique numbered suffix too. The existing field, array and depth limits still apply.
+
 ### Build identity and capabilities
 
 `log-analyzer --version` includes the package version, short source revision and
