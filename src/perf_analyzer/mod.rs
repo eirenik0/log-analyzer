@@ -192,6 +192,10 @@ fn marker_is_nonaffirmative_inner(prefix: &str, allow_contrast: bool) -> bool {
             let index = start + offset;
             (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
                 || (crate::parser::lifecycle_qualifier(word)
+                    && !(matches!(word.as_str(), "expected" | "planned" | "scheduled")
+                        && index
+                            .checked_sub(1)
+                            .is_some_and(|previous| words[previous] == "as"))
                     && !(word == "without"
                         && words.get(index + 1).is_some_and(|next| {
                             matches!(

@@ -1073,7 +1073,12 @@ fn parse_command_candidate(
         }
     };
     let after_name = &message[name_end..];
-    if quoted && after_name.chars().next().is_some_and(lifecycle_word_char) {
+    if quoted
+        && after_name
+            .chars()
+            .next()
+            .is_some_and(|ch| !ch.is_whitespace())
+    {
         let adjacent_marker = config
             .perf
             .command_start_markers

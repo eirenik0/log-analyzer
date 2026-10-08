@@ -1003,6 +1003,9 @@ fn negated_markers_cannot_create_command_boundaries() {
         "not only completed",
         "with no errors completed",
         "completed without errors",
+        "completed as expected",
+        "completed as planned",
+        "completed as scheduled",
         "completed without error",
         "completed without issue",
         "completed without problem",
@@ -1236,6 +1239,10 @@ fn adjacent_name_text_requires_a_configured_boundary_marker() {
     let config = config::load_builtin_template("service-api").unwrap();
     for suffix in [
         "x completed",
+        ".bak completed",
+        "-backup completed",
+        "/backup completed",
+        ":junk completed",
         "_junk completed",
         "é completed",
         "\u{0301} completed",
