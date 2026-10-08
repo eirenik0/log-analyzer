@@ -16,14 +16,21 @@ use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
 
 fn contains_command_marker(text: &str, markers: &[String]) -> bool {
     let word = crate::parser::lifecycle_word_char;
+    let sentence_end = text
+        .char_indices()
+        .find(|&(index, ch)| {
+            ch == '?' || crate::parser::lifecycle_sentence_boundary(text, index, ch)
+        })
+        .map_or(text.len(), |(index, _)| index);
     markers
         .iter()
         .filter(|marker| !marker.is_empty())
         .any(|marker| {
             text.match_indices(marker.as_str()).any(|(start, _)| {
                 let end = start + marker.len();
-                (!marker.chars().next().is_some_and(word)
-                    || !text[..start].chars().next_back().is_some_and(word))
+                start < sentence_end
+                    && (!marker.chars().next().is_some_and(word)
+                        || !text[..start].chars().next_back().is_some_and(word))
                     && (!marker.chars().next_back().is_some_and(word)
                         || !text[end..].chars().next().is_some_and(word))
                     && !marker_is_nonaffirmative(&text[..start])

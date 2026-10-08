@@ -892,6 +892,11 @@ fn negated_markers_cannot_create_command_boundaries() {
         "completed allegedly",
         "is likely to have completed",
         "probably completed",
+        "inspected. Cleanup completed",
+        "probably failed v1.2. completed",
+        "inspected! Cleanup completed",
+        "inspected? Cleanup completed",
+        "inspected\nCleanup completed",
         "is by no means completed",
         "is in no way completed",
         "is in no sense completed",
@@ -964,6 +969,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is scheduled to be started",
         "is unlikely to have started",
         "probably started",
+        "inspected. Cleanup started",
         "is by no means started",
         "started: if validation passes",
         "was not, however, started",
@@ -996,7 +1002,7 @@ fn negated_markers_cannot_create_command_boundaries() {
     }
     for wording in [
         "not failed, completed",
-        "probably failed v1.2. completed",
+        "probably failed v1.2, completed",
         "not failed but completed",
         "not failed however completed",
         "not failed instead completed",
