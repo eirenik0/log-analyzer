@@ -171,8 +171,9 @@ fn resolve<'a>(
     }
     Ok(matches[0])
 }
-fn same_source(source: &SourceLocation, entry: &LogEntry) -> bool {
-    source.file == entry.source_file
+fn same_source(source: &SourceLocation, entry: &LogEntry, input: usize) -> bool {
+    source.input_ordinal == Some(input)
+        && source.file == entry.source_file
         && source.line == entry.source_line_number
         && source.row_path == entry.source_row_path
 }
@@ -321,7 +322,7 @@ pub fn analyze(
             match resolved {
                 Err(reason) => checks.push(json!({"type":"pair","start_address":fact.start,"end_address":fact.end,"status":"failed","reason":reason})),
                 Ok((start,end)) => {
-                    let matches:Vec<_> = analysis.operations.iter().filter(|op|same_source(&op.start_source,start)&&same_source(&op.end_source,end)).collect();
+                    let matches:Vec<_> = analysis.operations.iter().filter(|op|same_source(&op.start_source,start,fact.start.input)&&same_source(&op.end_source,end,fact.end.input)).collect();
                     let passed = matches.len()==1 && fact.duration_ms.is_none_or(|expected|u64::try_from(matches[0].duration_ms).ok()==Some(expected));
                     checks.push(json!({"type":"pair","start_address":fact.start,"end_address":fact.end,"start_source":crate::evidence::source(start),"end_source":crate::evidence::source(end),"expected_duration_ms":fact.duration_ms,"observed_duration_ms":if matches.len()==1{Some(matches[0].duration_ms)}else{None},"status":if passed{"passed"}else{"failed"},"reason":if passed{"matches_expected_pair"}else{"pair_mismatch_or_unavailable"}}));
                 }
@@ -377,12 +378,66 @@ pub fn analyze(
     {
         suggestions.push(json!({"action":"review_requested_lifecycle_in_separate_candidate","reason":reason,"source":crate::evidence::source(entry),"unknown":"No lifecycle meaning is inferred from wording similarity"}));
     }
+    let source_times: BTreeMap<_, _> = logs
+        .iter()
+        .map(|entry| {
+            (
+                (
+                    entry.source_input_ordinal,
+                    &entry.source_file,
+                    entry.source_line_number,
+                    &entry.source_row_path,
+                ),
+                entry
+                    .source_timestamp
+                    .unwrap_or_else(|| entry.timestamp.fixed_offset()),
+            )
+        })
+        .collect();
+    let operations: Vec<_> = analysis
+        .operations
+        .iter()
+        .map(|operation| {
+            let mut value = serde_json::to_value(operation).expect("operation is serializable");
+            for (field, source) in [
+                ("start_time", &operation.start_source),
+                ("end_time", &operation.end_source),
+            ] {
+                if let Some(timestamp) = source_times.get(&(
+                    source.input_ordinal,
+                    &source.file,
+                    source.line,
+                    &source.row_path,
+                )) {
+                    value[field] = json!(timestamp.to_rfc3339());
+                }
+            }
+            value
+        })
+        .collect();
     json!({"profile_validation":{"version":1,"requested":{"kind":kind,"purpose":purpose},"suitability":{"status":status,"reason":reason,"basis":"observed_sample_only","semantic_correctness":"not_established_by_match_count"},
         "global_classification":global.operation_coverage.classification,"requested_coverage":coverage,
         "totals":{"records":records.len(),"diagnostics":diagnostics.len(),"operations":analysis.operations.len(),"expected_checks":checks.len(),"failed_expected_checks":failed,"scope_alias_groups":scope_aliases},
         "expected_facts":{"sha256":expected_digest,"status":if expectations.is_some(){if failed==0{"passed"}else{"failed"}}else{"not_supplied"}},
         "effective_rules":{"event_rules":config.event_rules,"command_rules":config.command_rules,"inherited_scope_fields":config.perf.correlation_scope_fields,"legacy_marker_compatibility":true},
-        "records":records,"diagnostics":diagnostics,"operations":analysis.operations,"expected_results":checks,
+        "records":records,"diagnostics":diagnostics,"operations":operations,"expected_results":checks,
         "suggestions":suggestions,
         "limitations":["Support describes selected observed sample, not all future logs","Upstream capture completeness and intended domain scope remain unknown","Parsing or rule-match counts alone do not establish semantic correctness"]}})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn expected_pair_source_matching_includes_declared_input_ordinal() {
+        let entry =
+            crate::parser::parse_log_entry("worker (a) | 2026-01-01T00:00:00Z [INFO] context", 1)
+                .unwrap();
+        let mut source = crate::evidence::source(&entry);
+        source.input_ordinal = Some(1);
+        assert!(!same_source(&source, &entry, 0));
+        assert!(same_source(&source, &entry, 1));
+        source.input_ordinal = None;
+        assert!(!same_source(&source, &entry, 1));
+    }
 }

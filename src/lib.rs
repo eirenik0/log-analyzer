@@ -479,7 +479,10 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let (expectations, expected_digest) =
                 profile_validation::load_expectations(expected.as_deref())?;
-            let AnalysisFiles { inputs, coverage } = read_analysis_files_impl(
+            let AnalysisFiles {
+                mut inputs,
+                coverage,
+            } = read_analysis_files_impl(
                 files,
                 &analyzer_config,
                 &filter,
@@ -487,6 +490,11 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 output.as_deref(),
                 true,
             )?;
+            for (ordinal, entries) in inputs.iter_mut().enumerate() {
+                for entry in entries {
+                    entry.source_input_ordinal = Some(ordinal);
+                }
+            }
             let kind = match kind {
                 cli::OperationType::Request => config::OperationKind::Request,
                 cli::OperationType::Command => config::OperationKind::Command,

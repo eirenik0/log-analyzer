@@ -102,6 +102,8 @@ pub struct LogEntry {
     pub kind: LogEntryKind,
     /// Source file when parsed from disk; absent for standalone entries.
     pub source_file: Option<String>,
+    /// Declared input position when the consuming analysis needs ordinal-scoped addresses.
+    pub source_input_ordinal: Option<usize>,
     /// Structured JSON envelope payload, retained separately from embedded message payloads.
     pub envelope_payload: Option<Value>,
     /// Original explicit timestamp offset; absent when the input used local/naive time.
@@ -235,6 +237,7 @@ pub fn create_event_log(params: EventLogParams) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        source_input_ordinal: None,
         envelope_payload: None,
         classification: None,
         source_timestamp: None,
@@ -261,6 +264,7 @@ pub fn create_command_log(params: CommandLogParams) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        source_input_ordinal: None,
         envelope_payload: None,
         classification: None,
         source_timestamp: None,
@@ -286,6 +290,7 @@ pub fn create_request_log(params: RequestLogParams) -> LogEntry {
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        source_input_ordinal: None,
         envelope_payload: None,
         classification: None,
         source_timestamp: None,
@@ -324,6 +329,7 @@ pub fn create_generic_log(
         structured_fields: HashMap::new(),
         module_path: None,
         source_file: None,
+        source_input_ordinal: None,
         envelope_payload: None,
         classification: None,
         source_timestamp: None,

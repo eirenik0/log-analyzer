@@ -312,6 +312,7 @@ mod tests {
             structured_fields,
             module_path: None,
             source_file: None,
+            source_input_ordinal: None,
             envelope_payload: None,
             classification: None,
             source_timestamp: None,

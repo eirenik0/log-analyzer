@@ -138,3 +138,12 @@ Response addresses replace hidden row pointers with null plus
 Array ID masking also learns individual values for consistent raw/structured-field
 masking. Source-location losses remain explicit; masked rule containers can be represented
 by a mask label. Redaction retains the limitations described in the README.
+
+Validation operation boundary times retain each paired source record's explicit
+offset, including mixed-offset pairs; elapsed durations compare their instants.
+Assumed chronology remains insufficient evidence for timing support.
+
+Validation source locations include zero-based `input_ordinal`, so expected pairs
+match the declared input occurrence as well as physical line and normalized row.
+Repeated inputs still participate in shared correlation; duplicate or ambiguous
+boundaries remain diagnostics rather than becoming independent completed pairs.

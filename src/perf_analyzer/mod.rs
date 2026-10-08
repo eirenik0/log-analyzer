@@ -554,6 +554,7 @@ fn source(entry: &LogEntry) -> SourceLocation {
     SourceLocation {
         evidence_ref: None,
         file: entry.source_file.clone(),
+        input_ordinal: entry.source_input_ordinal,
         line: entry.source_line_number,
         row_path: entry.source_row_path.clone(),
     }

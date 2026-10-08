@@ -900,3 +900,176 @@ fn array_masks_without_expected_facts_hide_leaf_ids_and_expected_paths_are_path_
         assert!(!String::from_utf8_lossy(&o.stdout).contains("private-id"));
     }
 }
+
+#[test]
+fn validation_boundaries_preserve_mixed_source_offsets_across_host_timezones() {
+    let dir = tempdir().unwrap();
+    let p = profile(dir.path(), "offset-candidate", rules());
+    let mut input = rows();
+    input[1]["ts"] = json!("2026-01-01T01:00:01+03:00");
+    let file = log(dir.path(), &input);
+    for timezone in ["UTC", "Pacific/Honolulu"] {
+        for extra in [
+            vec![],
+            vec!["--report-max-items", "10"],
+            vec!["--complete-output", "--redact"],
+        ] {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_log-analyzer"));
+            for (key, _) in std::env::vars().filter(|(key, _)| key.starts_with("LOG_ANALYZER_")) {
+                command.env_remove(key);
+            }
+            let output = command
+                .env("TZ", timezone)
+                .args([
+                    "--config",
+                    &p,
+                    "validate-profile",
+                    &file,
+                    "--kind",
+                    "request",
+                ])
+                .args(extra)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+            let validation = &value["profile_validation"];
+            let operation = &validation["operations"][0];
+            assert_eq!(operation["start_time"], "2026-01-01T00:00:00+02:00");
+            assert_eq!(operation["end_time"], "2026-01-01T01:00:01+03:00");
+            assert_eq!(
+                operation["start_time"],
+                validation["records"][0]["timestamp"]
+            );
+            assert_eq!(operation["end_time"], validation["records"][1]["timestamp"]);
+            assert_eq!(operation["duration_ms"], 1000);
+            assert_eq!(
+                operation["start_source"]["evidence_ref"],
+                validation["records"][0]["evidence_ref"]
+            );
+            assert_eq!(
+                operation["end_source"]["evidence_ref"],
+                validation["records"][1]["evidence_ref"]
+            );
+            let schema: Value =
+                serde_json::from_str(include_str!("../schemas/report.schema.json")).unwrap();
+            assert!(jsonschema::validator_for(&schema).unwrap().is_valid(&value));
+        }
+    }
+}
+
+#[test]
+fn ordinal_scoped_facts_and_normalized_duplicate_witnesses_remain_distinct() {
+    let dir = tempdir().unwrap();
+    let p = profile(dir.path(), "ordinal-candidate", rules());
+    let start = dir.path().join("start.jsonl");
+    let end = dir.path().join("end.jsonl");
+    let data = rows();
+    fs::write(&start, data[0].to_string()).unwrap();
+    fs::write(&end, data[1].to_string()).unwrap();
+    let facts = dir.path().join("facts.json");
+    let mut expected = json!({"version":1,"pairs":[{"start":{"input":0,"line":1,"row_path":null},"end":{"input":1,"line":1,"row_path":null},"duration_ms":1000}]});
+    fs::write(&facts, expected.to_string()).unwrap();
+    let args = [
+        "--config",
+        &p,
+        "validate-profile",
+        start.to_str().unwrap(),
+        end.to_str().unwrap(),
+        "--kind",
+        "request",
+        "--expected",
+        facts.to_str().unwrap(),
+    ];
+    let (value, output) = report(&args);
+    assert!(output.status.success());
+    let result = &value["profile_validation"]["expected_results"][0];
+    assert_eq!(result["status"], "passed");
+    assert_eq!(result["start_source"]["input_ordinal"], 0);
+    assert_eq!(result["end_source"]["input_ordinal"], 1);
+    expected["pairs"][0]["start"]["input"] = json!(1);
+    expected["pairs"][0]["end"]["input"] = json!(0);
+    fs::write(&facts, expected.to_string()).unwrap();
+    let (value, output) = report(&args);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        value["profile_validation"]["expected_results"][0]["status"],
+        "failed"
+    );
+
+    let mut cfg = fs::read_to_string(&p).unwrap();
+    cfg.push_str("\n[normalization]\nroot_path = '/rows'\nexpand_rows = true\n");
+    fs::write(&p, cfg).unwrap();
+    let nested = dir.path().join("nested.jsonl");
+    let mut normalized_data = data.clone();
+    for row in &mut normalized_data {
+        row["timestamp"] = row["ts"].clone();
+    }
+    fs::write(&nested, json!({"rows":normalized_data}).to_string()).unwrap();
+    let address = |input, row| json!({"input":input,"line":1,"row_path":format!("/rows/{row}")});
+    fs::write(&facts, json!({"version":1,"records":[{"source":address(1,0),"checks":{"/semantics/phase":"start"}},{"source":address(0,1),"checks":{"/semantics/phase":"end"}}],"pairs":[{"start":address(1,0),"end":address(1,1)},{"start":address(0,0),"end":address(1,1)}]}).to_string()).unwrap();
+    for options in [
+        vec![],
+        vec![
+            "--redact",
+            "--mask-id",
+            "scope",
+            "--report-max-items",
+            "100",
+        ],
+    ] {
+        let mut args = vec!["--config", &p];
+        args.extend(options);
+        args.extend([
+            "validate-profile",
+            nested.to_str().unwrap(),
+            nested.to_str().unwrap(),
+            "--kind",
+            "request",
+            "--expected",
+            facts.to_str().unwrap(),
+        ]);
+        let (value, output) = report(&args);
+        assert_eq!(output.status.code(), Some(1));
+        let validation = &value["profile_validation"];
+        assert_eq!(validation["suitability"]["status"], "conflicting");
+        assert_eq!(validation["totals"]["operations"], 0);
+        assert_eq!(validation["expected_results"][0]["status"], "passed");
+        assert_eq!(
+            validation["expected_results"][0]["source"]["input_ordinal"],
+            1
+        );
+        assert_eq!(
+            validation["expected_results"][1]["source"]["input_ordinal"],
+            0
+        );
+        for result in &validation["expected_results"].as_array().unwrap()[2..] {
+            assert_eq!(result["status"], "failed");
+        }
+        let witnesses = validation["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|diagnostic| diagnostic["reason"] == "ambiguous_pairing")
+            .unwrap()["witnesses"]
+            .as_array()
+            .unwrap();
+        let ordinals: std::collections::BTreeSet<_> = witnesses
+            .iter()
+            .map(|witness| witness["input_ordinal"].as_u64().unwrap())
+            .collect();
+        assert_eq!(ordinals, [0, 1].into_iter().collect());
+        for witness in witnesses {
+            assert!(witness["row_path"].as_str().unwrap().starts_with("/rows/"));
+            assert_eq!(
+                witness["evidence_ref"]["input_id"],
+                value["report_metadata"]["evidence"]["inputs"]
+                    [witness["input_ordinal"].as_u64().unwrap() as usize]["input_id"]
+            );
+        }
+    }
+}
