@@ -128,18 +128,69 @@ log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-t
 **Why this matters:**
 
 - **Session completion tracking** (`info` profile insights, `errors --sessions`) requires `[[sessions.levels]]` to know which `component_id` prefixes map to runners, tests, checks, and environments - and which commands create or complete them. Without this, incomplete/orphaned sessions go undetected.
-- **Performance pairing** (`perf`) uses `command_start_markers` and `command_completion_markers` from `[perf]` to match operation starts with their completions. Wrong markers = wrong latencies and false orphans.
+- **Performance pairing** (`perf`) uses versioned `[command_rules]` to classify shipped-profile command phases before cleanup. Legacy-only custom profiles retain their `[perf]` substring markers; those phases are cached at parsing too. Incomplete evidence is diagnostic even without any completion in the capture.
 - **Payload extraction** (`extract`, `search --payloads`) relies on `json_indicators` and `command_payload_markers` from `[parser]` to locate and parse embedded JSON. If these don't match your log format, payloads are invisible.
 - **Request lifecycle tracing** (`trace`, `perf --orphans-only`) depends on `request_send_markers`, `request_receive_markers`, and `request_endpoint_marker` to pair outgoing requests with their responses.
 
-An optional version-1 `[event_rules]` schema is available for the event
-classification module. Rules compile and validate when a profile loads; text
-patterns match the whole original message and structured conditions preserve
-field types. This is the foundation for upcoming command/request integration:
-loading rules alone does not enable a new CLI analysis path. Legacy profiles keep
-their existing behavior, and explicit rules mixed with active legacy lifecycle
-markers are rejected. See the [event classification contract](docs/design/event-classification.md)
-for the schema, limits, conflict handling and opt-in migration policy.
+The shipped `eyes`, `custom-start`, `service-api` and `event-pipeline` profiles
+now use version-1 `[command_rules]`. Full-message rules recognize command names
+and phases independently, including completion-only records. `base` remains
+generic. Typed JSON-field rules are also supported; string fields are not coerced
+to booleans or numbers. Rules compile once at loading and classification uses the
+original message before payload removal.
+
+Supported shipped command grammar (double-quoted JSON string names, with Unicode
+and JSON escapes):
+
+- `eyes` / `custom-start`: `Command "name" is called`; completions use `finished`,
+  `finished successfully`, `returned`, or `completed`. Optional suffix: `with settings {payload}`
+  or `with settings [payload]`.
+- `service-api`: `Operation "name" started` or `begin`; completions use `completed`,
+  `finished`, or `failed`. Optional payload suffix starts with `with settings` or `settings`.
+- `event-pipeline`: `Stage "name" begin` or `started`; completions use `done`,
+  `completed`, or `failed`. Optional payload suffix starts with `with settings` or `config`.
+- A bare subject such as `Operation "name"` is identity-only diagnostic evidence.
+  Other prose, including `No evidence that Operation "name" completed`, establishes
+  no lifecycle boundary. Payloads occupy the remainder of the original message;
+  lifecycle words inside them or the name cannot supply phases.
+
+**Compatibility and migration:** shipped command profiles now have this strict
+grammar; extra prose/previous incidental substring matches are unsupported.
+Legacy-only custom configurations retain their existing marker semantics; they
+are never automatically translated. To opt in, customize a new shipped template,
+remove `parser.command_prefix`, `parser.command_start_marker`,
+`perf.command_start_markers` and `perf.command_completion_markers`, and write
+explicit rules for your producer's whole messages or typed fields. Mixed command
+modes fail loading with these field names in the diagnostic. Request/event legacy
+markers may coexist with `[command_rules]` until their separate integration.
+`generate-config` preserves its template's explicit/legacy mode and does not
+infer lifecycle wording from observations.
+
+The separate global `[event_rules]` contract still rejects **all** active legacy
+lifecycle markers and cannot coexist with `[command_rules]`. Command-only global
+rules use the command path; full request/event integration is pending #36.
+See the [event classification contract](docs/design/event-classification.md)
+for the schema, resource bounds and conflict policy.
+
+Command names are explicit correlation identities in shipped rules, paired only
+within nonempty `[perf].correlation_scope_fields` (default `component_id`).
+Explicit scope mappings override these inherited fields. Empty command scope is
+now diagnostic in every mode, including legacy profiles; configure real scope
+fields before pairing. Missing IDs/scope,
+overlapping starts, unestablished timestamp ordering and inferred years prevent
+pairing. Failed completions report `status = "failure"`; other documented
+completions report `"success"`. Identity-only, conflicting and invalid matches
+are visible in `perf` diagnostics, including profile/rule identity; unknown
+generic records are counted in `unclassified_command_records` and remain searchable.
+Explicit session completion hints require an end phase that is not failed;
+a command name or a start alone cannot mark a session complete.
+
+For library users, `LogEntry` now has `classification` evidence. Constructors
+leave it absent; caller-constructed command records without evidence are
+reported as diagnostic, rather than having their message interpreted during
+analysis. Legacy callers may explicitly use `attach_legacy_command_evidence`
+before analysis. Changing display text or analysis marker configuration cannot
+change a parsed record's cached phase.
 
 **How to get started:**
 
@@ -461,7 +512,11 @@ sections also obey `--top-n`, with full totals and omitted counts; `0` preserves
 `perf` reports `operation_coverage` separately from parse coverage in text and JSON.
 Relevant events are parsed request, event, and command candidates; each is paired,
 unmatched, or suppressed. Suppressions identify operation-type filters, missing
-recognized boundaries, and command analysis disabled by absent completion evidence.
+recognized boundaries. Command starts no longer depend on finding a completion
+elsewhere; starts, ends and identity-only evidence remain diagnostic when unpaired.
+Conflicting rule interpretations and invalid mappings also remain unmatched.
+Unknown generic records evaluated by command rules are counted separately in
+`unclassified_command_records`, without fabricating command identities.
 `no_applicable_events` means no candidates; `insufficient_evidence` means candidates
 but no measured pairs; `partial_evidence` includes pairs plus unmatched/suppressed
 candidates; `observed_pairs` means all selected candidates paired, without claiming

@@ -81,6 +81,8 @@ pub struct SourceLocation {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnmatchedEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<crate::event_rules::ClassifiedRecord>,
     pub op_type: String,
     pub name: String,
     pub correlation_id: Option<String>,
@@ -107,6 +109,7 @@ pub struct AmbiguousGroup {
 pub struct OperationCoverage {
     pub status: String,
     pub relevant_events: usize,
+    pub unclassified_command_records: usize,
     pub paired_events: usize,
     pub unmatched_events: usize,
     pub ambiguous_groups: usize,
@@ -143,6 +146,7 @@ impl Default for OperationCoverage {
         Self {
             status: "no_applicable_events".into(),
             relevant_events: 0,
+            unclassified_command_records: 0,
             paired_events: 0,
             unmatched_events: 0,
             ambiguous_groups: 0,

@@ -29,6 +29,7 @@ fn request_log(
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,

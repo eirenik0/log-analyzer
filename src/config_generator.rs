@@ -11,6 +11,8 @@ pub fn generate_config(
     base: &AnalyzerConfig,
     options: &GenerateConfigOptions,
 ) -> AnalyzerConfig {
+    // Preserve the template's explicit/legacy mode and shared compiled rules;
+    // observed wording is never converted into inferred lifecycle semantics.
     let mut config = base.clone();
     config.profile_name = options.profile_name.clone();
 

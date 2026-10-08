@@ -11,7 +11,8 @@ pub use entities::{
 };
 
 use crate::comparator::LogFilter;
-use crate::config::{AnalyzerConfig, PerfRules, contains_any_marker, default_config};
+use crate::config::{AnalyzerConfig, PerfRules, default_config};
+use crate::event_rules::{ClassifiedRecord, Phase};
 use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
 
 /// Extracts the request ID from a log message containing [request_id] pattern
@@ -106,15 +107,47 @@ pub fn analyze_performance_with_config(
     } else if !filtered.is_empty() {
         results.operation_coverage.capture_window.limits.push("Timestamp years are inferred; absolute bounds and elapsed capture time are unavailable".into());
     }
-    let track_commands = filtered.iter().any(|entry| {
-        matches!(entry.kind, LogEntryKind::Command { .. })
-            && contains_any_marker(&entry.message, &config.perf.command_completion_markers)
-    });
     let mut groups: std::collections::BTreeMap<CorrelationKey, Vec<BoundaryEvent<'_>>> =
         std::collections::BTreeMap::new();
     let mut suppressions: std::collections::BTreeMap<(String, String), usize> =
         std::collections::BTreeMap::new();
     for entry in filtered {
+        if op_type_filter.is_none_or(|selected| selected == "Command") {
+            match &entry.classification {
+                Some(ClassifiedRecord::Unclassified)
+                    if matches!(entry.kind, LogEntryKind::Generic { .. }) =>
+                {
+                    results.operation_coverage.unclassified_command_records += 1
+                }
+                Some(ClassifiedRecord::Conflict { .. } | ClassifiedRecord::Invalid { .. }) => {
+                    results.operation_coverage.relevant_events += 1;
+                    let conflict = matches!(
+                        entry.classification,
+                        Some(ClassifiedRecord::Conflict { .. })
+                    );
+                    results.unmatched_events.push(UnmatchedEvent {
+                        classification: entry.classification.clone(),
+                        op_type: "Command".into(),
+                        name: "<unknown>".into(),
+                        correlation_id: None,
+                        scope: Vec::new(),
+                        boundary: if conflict { "conflicting" } else { "invalid" }.into(),
+                        reason: if conflict {
+                            "conflicting_event_rules"
+                        } else {
+                            "invalid_event_data"
+                        }
+                        .into(),
+                        timestamp: entry.timestamp,
+                        component: entry.component.clone(),
+                        source: source(entry),
+                        context: entry.raw_logline.clone(),
+                    });
+                    continue;
+                }
+                _ => (),
+            }
+        }
         let (name, id, start, end) = match &entry.kind {
             LogEntryKind::Request {
                 request,
@@ -141,20 +174,49 @@ pub fn analyze_performance_with_config(
                 *direction == EventDirection::Receive,
                 *direction == EventDirection::Emit,
             ),
-            LogEntryKind::Command { command, .. } => (
-                command.as_str(),
-                Some(command.clone()),
-                contains_any_marker(&entry.message, &config.perf.command_start_markers),
-                contains_any_marker(&entry.message, &config.perf.command_completion_markers),
-            ),
+            LogEntryKind::Command { command, .. } => {
+                if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification {
+                    (
+                        semantics.name.as_str(),
+                        semantics.correlation_id.clone(),
+                        semantics.phase == Some(Phase::Start),
+                        semantics.phase == Some(Phase::End),
+                    )
+                } else {
+                    (command.as_str(), None, false, false)
+                }
+            }
             _ => continue,
         };
         let op_type = entry.entry_type();
         results.operation_coverage.relevant_events += 1;
+        if op_type == "Command"
+            && !start
+            && !end
+            && op_type_filter.is_none_or(|selected| selected == op_type)
+        {
+            results.unmatched_events.push(UnmatchedEvent {
+                classification: entry.classification.clone(),
+                op_type: op_type.into(),
+                name: name.into(),
+                correlation_id: id,
+                scope: Vec::new(),
+                boundary: "identity".into(),
+                reason: if entry.classification.is_some() {
+                    "identity_only"
+                } else {
+                    "unclassified_command_record"
+                }
+                .into(),
+                timestamp: entry.timestamp,
+                component: entry.component.clone(),
+                source: source(entry),
+                context: entry.raw_logline.clone(),
+            });
+            continue;
+        }
         let suppression = if op_type_filter.is_some_and(|selected| selected != op_type) {
             Some("operation_type_filter")
-        } else if op_type == "Command" && !track_commands {
-            Some("no_recognized_command_completion")
         } else if !start && !end {
             Some("no_recognized_boundary")
         } else {
@@ -184,35 +246,48 @@ pub fn analyze_performance_with_config(
                 .push(event.unmatched(Vec::new(), "missing_correlation_key"));
             continue;
         };
-        let scope = config
-            .perf
-            .correlation_scope_fields
-            .iter()
-            .map(|field| match field.as_str() {
-                "component_id" => {
-                    (!entry.component_id.trim().is_empty()).then(|| entry.component_id.clone())
-                }
-                "component" => Some(entry.component.clone()),
-                _ => entry
-                    .structured_field(field)
-                    .map(str::to_owned)
-                    .or_else(|| {
-                        entry
-                            .envelope_payload
-                            .as_ref()
-                            .and_then(|p| p.get(field))
-                            .or_else(|| entry.payload().and_then(|p| p.get(field)))
-                            .filter(|value| !value.is_null())
-                            .map(|value| {
-                                value
-                                    .as_str()
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| value.to_string())
-                            })
-                    }),
-            })
-            .map(|value| value.filter(|value| !value.trim().is_empty() && value != "null"))
-            .collect::<Option<Vec<_>>>();
+        let scope = if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification
+            && !semantics.scope.is_empty()
+        {
+            Some(semantics.scope.clone())
+        } else {
+            config
+                .perf
+                .correlation_scope_fields
+                .iter()
+                .map(|field| match field.as_str() {
+                    "component_id" => {
+                        (!entry.component_id.trim().is_empty()).then(|| entry.component_id.clone())
+                    }
+                    "component" => Some(entry.component.clone()),
+                    _ => entry
+                        .structured_field(field)
+                        .map(str::to_owned)
+                        .or_else(|| {
+                            entry
+                                .envelope_payload
+                                .as_ref()
+                                .and_then(|p| p.get(field))
+                                .or_else(|| entry.payload().and_then(|p| p.get(field)))
+                                .filter(|value| !value.is_null())
+                                .map(|value| {
+                                    value
+                                        .as_str()
+                                        .map(str::to_owned)
+                                        .unwrap_or_else(|| value.to_string())
+                                })
+                        }),
+                })
+                .map(|value| value.filter(|value| !value.trim().is_empty() && value != "null"))
+                .collect::<Option<Vec<_>>>()
+        };
+        let scope = scope.filter(|scope| {
+            op_type != "Command"
+                || (!scope.is_empty()
+                    && scope
+                        .iter()
+                        .all(|value| value.len() <= crate::event_rules::MAX_VALUE_BYTES))
+        });
         let Some(scope) = scope else {
             results
                 .unmatched_events
@@ -367,11 +442,24 @@ pub fn analyze_performance_with_config(
                         LogEntryKind::Request { endpoint, .. } => endpoint.clone(),
                         _ => None,
                     },
-                    status: entry
-                        .payload()
-                        .and_then(|p| p.get("statusCode"))
-                        .and_then(|v| v.as_i64())
-                        .map(|v| v.to_string()),
+                    status: if let Some(ClassifiedRecord::Event { semantics, .. }) =
+                        &entry.classification
+                        && let Some(outcome) = semantics.outcome
+                    {
+                        Some(
+                            match outcome {
+                                crate::event_rules::Outcome::Success => "success",
+                                crate::event_rules::Outcome::Failure => "failure",
+                            }
+                            .into(),
+                        )
+                    } else {
+                        entry
+                            .payload()
+                            .and_then(|p| p.get("statusCode"))
+                            .and_then(|v| v.as_i64())
+                            .map(|v| v.to_string())
+                    },
                 });
             } else {
                 results
@@ -409,7 +497,10 @@ pub fn analyze_performance_with_config(
         .filter(|e| {
             matches!(
                 e.reason.as_str(),
-                "overlapping_starts" | "ambiguous_timestamp_order" | "ambiguous_boundary"
+                "overlapping_starts"
+                    | "ambiguous_timestamp_order"
+                    | "ambiguous_boundary"
+                    | "conflicting_event_rules"
             )
         })
         .count();
@@ -424,7 +515,10 @@ pub fn analyze_performance_with_config(
         .filter(|e| {
             matches!(
                 e.reason.as_str(),
-                "missing_correlation_key" | "missing_scope_field" | "incomplete_timestamp_year"
+                "missing_correlation_key"
+                    | "missing_scope_field"
+                    | "incomplete_timestamp_year"
+                    | "invalid_event_data"
             )
         })
         .count();
@@ -468,6 +562,7 @@ fn source(entry: &LogEntry) -> SourceLocation {
 impl BoundaryEvent<'_> {
     fn unmatched(&self, scope: Vec<String>, reason: &str) -> UnmatchedEvent {
         UnmatchedEvent {
+            classification: self.entry.classification.clone(),
             op_type: self.entry.entry_type().to_string(),
             name: self.name.to_string(),
             correlation_id: self.id.clone(),

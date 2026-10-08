@@ -84,7 +84,7 @@ fn test_perf_markers_can_be_overridden_by_config() {
         .parse::<DateTime<Local>>()
         .unwrap();
 
-    let start = LogEntry {
+    let mut start = LogEntry {
         component: "svc".to_string(),
         component_id: "session-1".to_string(),
         timestamp: start_time,
@@ -95,6 +95,7 @@ fn test_perf_markers_can_be_overridden_by_config() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,
@@ -106,7 +107,7 @@ fn test_perf_markers_can_be_overridden_by_config() {
         source_line_number: 1,
     };
 
-    let end = LogEntry {
+    let mut end = LogEntry {
         component: "svc".to_string(),
         component_id: "session-1".to_string(),
         timestamp: end_time,
@@ -117,6 +118,7 @@ fn test_perf_markers_can_be_overridden_by_config() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,
@@ -128,6 +130,8 @@ fn test_perf_markers_can_be_overridden_by_config() {
         source_line_number: 2,
     };
 
+    log_analyzer::parser::attach_legacy_command_evidence(&mut start, &config);
+    log_analyzer::parser::attach_legacy_command_evidence(&mut end, &config);
     let logs = vec![start, end];
     let results =
         analyze_performance_with_config(&logs, &LogFilter::new(), Some("Command"), &config);
@@ -193,6 +197,7 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,
@@ -217,6 +222,7 @@ fn test_profile_insights_can_be_configured_without_external_profile_file() {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,

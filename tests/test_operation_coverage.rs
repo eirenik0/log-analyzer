@@ -75,12 +75,11 @@ fn evidence_counts_partition_candidates_without_claiming_completeness() {
     assert_eq!(c.ambiguous_events, 3);
     assert_eq!(c.ambiguous_pairs, None);
     assert_eq!(c.paired_events, 0);
-    let c = analyze(&[r#"Operation "work" started"#]).operation_coverage;
-    assert_eq!(c.suppressed_events, 1);
-    assert_eq!(
-        c.suppressed_operation_types[0].reason,
-        "no_recognized_command_completion"
-    );
+    let result = analyze(&[r#"Operation "work" started"#]);
+    assert_eq!(result.operation_coverage.suppressed_events, 0);
+    assert_eq!(result.operation_coverage.unmatched_events, 1);
+    assert_eq!(result.unmatched_events[0].reason, "missing_end");
+    assert_eq!(result.orphans.len(), 1);
 }
 
 #[test]

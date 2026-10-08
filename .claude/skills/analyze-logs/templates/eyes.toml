@@ -4,8 +4,6 @@ profile_name = "eyes"
 event_emit_markers = ["Emit event of type"]
 event_receive_markers = ["Received event of type"]
 event_payload_separator = "with payload"
-command_prefix = "Command \""
-command_start_marker = "\" is called"
 command_payload_markers = ["with settings"]
 request_prefix = "Request \""
 request_send_markers = ["will be sent"]
@@ -15,8 +13,6 @@ request_endpoint_marker = "address \"["
 json_indicators = ["with settings {", "with body [", "with body {", "with body", "with body "]
 
 [perf]
-command_start_markers = ["is called"]
-command_completion_markers = ["finished", "returned", "completed"]
 event_correlation_keys = ["key"]
 
 [profile]
@@ -109,3 +105,40 @@ complete_commands = ["close", "abort"]
 [[sessions.levels]]
 name = "environment"
 segment_prefix = "environment-"
+
+# Whole-message command grammar. Correlation also requires [perf] scope fields.
+[command_rules]
+version = 1
+
+[[command_rules.rules]]
+id = "command-start"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:is called)(?: (?:with settings) (?s:\{.*|\[.*))?'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[command_rules.rules]]
+id = "command-end"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:finished|finished successfully|returned|completed)(?: (?:with settings) (?s:\{.*|\[.*))?'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "success" }
+
+[[command_rules.rules]]
+id = "command-identity"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*")'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }

@@ -385,7 +385,10 @@ pub enum Commands {
         no_sanitize: bool,
     },
 
-    /// Analyze operation timing and identify performance bottlenecks
+    /// Analyze operation timing and report incomplete lifecycle evidence
+    #[command(
+        long_about = "Analyze operation timing and report incomplete lifecycle evidence. Shipped command profiles use whole-message command_rules, classified once before payload cleanup. Start-only, end-only, identity-only, conflicting and invalid evidence remains diagnostic; no completion elsewhere is required to report a start. Legacy custom marker profiles retain their semantics. See README for the supported command grammar and migration."
+    )]
     Perf {
         /// One or more log files to analyze
         #[arg(required = true, num_args = 1..)]
