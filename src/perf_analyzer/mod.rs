@@ -142,6 +142,25 @@ pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
             || (matches!(pair[0].as_str(), "anything" | "all") && pair[1] == "but")
             || (pair[0] == "far" && pair[1] == "from")
             || (pair[0] == "nowhere" && pair[1] == "near")
+    }) || words[start..].windows(3).any(|phrase| {
+        matches!(
+            phrase[0].as_str(),
+            "failed" | "fails" | "failing" | "failure" | "fail"
+        ) && phrase[1] == "to"
+            && matches!(
+                phrase[2].as_str(),
+                "observe"
+                    | "confirm"
+                    | "detect"
+                    | "verify"
+                    | "establish"
+                    | "find"
+                    | "see"
+                    | "notice"
+                    | "prove"
+                    | "validate"
+                    | "record"
+            )
     }) || words[start..].iter().enumerate().any(|(offset, word)| {
         let index = start + offset;
         (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
