@@ -10,6 +10,9 @@ pub use entities::{
     PerfAnalysisResults, SourceLocation, SuppressedOperationType, TimedOperation, UnmatchedEvent,
 };
 
+use regex::Regex;
+use std::sync::LazyLock;
+
 use crate::comparator::LogFilter;
 use crate::config::{AnalyzerConfig, PerfRules, default_config};
 use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
@@ -22,6 +25,35 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
             matches!(ch, '?' | ';') || crate::parser::lifecycle_sentence_boundary(text, index, ch)
         })
         .map_or(text.len(), |(index, _)| index);
+    static COORDINATOR: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)\b(?:and|but|however|instead|because)\s+").unwrap());
+    let other_subject = COORDINATOR.find_iter(text).find_map(|coordinator| {
+        let after = &text[coordinator.end()..];
+        let next = crate::parser::lifecycle_words(after).next()?.to_lowercase();
+        let modifies_phase = crate::parser::lifecycle_qualifier(&next)
+            || matches!(
+                next.as_str(),
+                "not"
+                    | "no"
+                    | "only"
+                    | "to"
+                    | "is"
+                    | "are"
+                    | "was"
+                    | "were"
+                    | "has"
+                    | "have"
+                    | "had"
+                    | "be"
+                    | "been"
+            )
+            || next.ends_with("ly")
+            || markers
+                .iter()
+                .any(|marker| !marker.is_empty() && after.starts_with(marker));
+        (!modifies_phase).then_some(coordinator.start())
+    });
+    let sentence_end = sentence_end.min(other_subject.unwrap_or(text.len()));
     markers
         .iter()
         .filter(|marker| !marker.is_empty())
@@ -48,6 +80,15 @@ pub(crate) fn marker_has_trailing_condition(suffix: &str) -> bool {
         })
         .map_or(suffix.len(), |(index, _)| index);
     let clause = &suffix[..end];
+    let explanation = clause.match_indices(" because ").find_map(|(index, _)| {
+        let next = crate::parser::lifecycle_words(&clause[index + 9..])
+            .next()?
+            .to_lowercase();
+        (!crate::parser::lifecycle_qualifier(&next)
+            && !matches!(next.as_str(), "not" | "no" | "only" | "to"))
+        .then_some(index)
+    });
+    let clause = &clause[..explanation.unwrap_or(clause.len())];
     let followup = clause.match_indices(" and ").find_map(|(index, _)| {
         let mut words = crate::parser::lifecycle_words(&clause[index + 5..]);
         let modal = words.next()?.to_lowercase();
