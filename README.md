@@ -140,9 +140,12 @@ unclosed payloads. Quoted context and `key=value`/`key:value` metadata are
 excluded from lifecycle matching; marker words must have word boundaries and affirmative wording, while
 markers before or after that context remain visible. Pending, prospective, and
 in-progress or explicitly uncertain wording does not establish boundaries;
-trailing conditional or uncertainty qualifiers cannot prove a boundary either. Explanatory colons after a
+trailing conditional, uncertainty, or unresolved-alternative wording cannot
+prove a boundary either. Explanatory colons after a
 configured lifecycle phrase preserve that phrase and exclude the explanation. Names support escaped quotes
 and Unicode. Word-like command prefixes require a Unicode token boundary.
+Text attached directly to the closing name quote must begin a configured
+lifecycle marker; separated names remain independent of phase wording.
 A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
 assignment values, quoted context, or balanced payload regions (including invalid JSON) are not commands.

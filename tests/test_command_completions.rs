@@ -870,6 +870,9 @@ fn negated_markers_cannot_create_command_boundaries() {
         "completed; if validation passes",
         "completed, probably",
         "completed probably",
+        "completed or not",
+        "completed or pending",
+        "completed versus pending",
         "completed allegedly",
         "is likely to have completed",
         "probably completed",
@@ -919,6 +922,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "can be started",
         "shall be started",
         "started if validation passes",
+        "started or not",
     ] {
         let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
         let end = parse(r#"Operation "work" completed"#, 1, &config);
@@ -1151,5 +1155,53 @@ fn command_prefixes_require_identifier_boundaries() {
         );
         assert_eq!(result.operations.len(), 1, "{context}");
         assert_eq!(result.operations[0].duration_ms, 1000);
+    }
+}
+
+#[test]
+fn adjacent_name_text_requires_a_configured_boundary_marker() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for suffix in [
+        "x completed",
+        "_junk completed",
+        "é completed",
+        "\u{0301} completed",
+        "completedX",
+        "completed\"",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let malformed = parse(&format!("Operation \"work\"{suffix}"), 1, &config);
+        assert!(
+            !matches!(malformed.kind, LogEntryKind::Command { .. }),
+            "{suffix}"
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, malformed, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{suffix}");
+    }
+    for profile in ["service-api", "event-pipeline", "eyes", "custom-start"] {
+        let config = config::load_builtin_template(profile).unwrap();
+        let prefix = &config.parser.command_prefix;
+        let start = parse(
+            &format!("{prefix}work\"{}", config.perf.command_start_markers[0]),
+            0,
+            &config,
+        );
+        for marker in &config.perf.command_completion_markers {
+            let end = parse(&format!("{prefix}work\"{marker}"), 1, &config);
+            let result = perf_analyzer::analyze_performance_with_config(
+                &[start.clone(), end],
+                &LogFilter::new(),
+                None,
+                &config,
+            );
+            assert_eq!(result.operations.len(), 1, "{profile}/{marker}");
+            assert_eq!(result.operations[0].duration_ms, 1000);
+        }
     }
 }

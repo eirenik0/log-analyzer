@@ -461,7 +461,7 @@ fn parse_classic_log_entry(
         message.to_string(),
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
         None,
         None,
@@ -506,7 +506,7 @@ fn parse_rust_tracing_log_entry(
         message,
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
         Some(module_path.to_string()),
         None,
@@ -556,7 +556,7 @@ fn parse_syslog_log_entry(
         message,
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
         None,
         None,
@@ -645,7 +645,7 @@ fn parse_json_line_entry(
         message,
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
         module_path,
         payload,
@@ -662,7 +662,7 @@ fn build_log_entry(
     message: String,
     raw_logline: String,
     source_line_number: usize,
-    parser_rules: &ParserRules,
+    config: &AnalyzerConfig,
     structured_fields: HashMap<String, String>,
     module_path: Option<String>,
     payload_override: Option<Value>,
@@ -676,7 +676,7 @@ fn build_log_entry(
         raw_logline,
         &message,
         source_line_number,
-        parser_rules,
+        config,
     )?;
 
     entry.source_timestamp = DateTime::parse_from_rfc3339(source_timestamp).ok();
@@ -901,7 +901,8 @@ fn command_prefix_boundary(message: &str, start: usize, prefix: &str) -> bool {
 
 // Command identity is independent of lifecycle wording. Only quoted names have
 // an unambiguous end on completion lines; retain legacy start-delimited names.
-fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, usize)> {
+fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<(String, usize)> {
+    let rules = &config.parser;
     let prefix = rules.command_prefix.as_str();
     if prefix.is_empty() {
         return None;
@@ -961,7 +962,7 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
             {
                 return None;
             }
-            parse_command_candidate(message, start + prefix.len(), rules)
+            parse_command_candidate(message, start + prefix.len(), config)
         });
     let candidate = candidates.next()?;
     if candidates.next().is_some() {
@@ -1018,8 +1019,9 @@ fn unfinished_payload_start(
 fn parse_command_candidate(
     message: &str,
     name_start: usize,
-    rules: &ParserRules,
+    config: &AnalyzerConfig,
 ) -> Option<(String, usize)> {
+    let rules = &config.parser;
     let prefix = rules.command_prefix.as_str();
     let (command, name_end, quoted) = if let Some(quote @ ('"' | '\'')) = prefix.chars().next_back()
     {
@@ -1041,17 +1043,29 @@ fn parse_command_candidate(
         }
     };
     let after_name = &message[name_end..];
-    if quoted
-        && after_name
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_alphanumeric())
-        && after_name
-            .split_whitespace()
-            .next()
-            .is_some_and(|word| word.contains(['"', '\'']))
-    {
-        return None;
+    if quoted && after_name.chars().next().is_some_and(lifecycle_word_char) {
+        let adjacent_marker = config
+            .perf
+            .command_start_markers
+            .iter()
+            .chain(&config.perf.command_completion_markers)
+            .map(String::as_str)
+            .chain(std::iter::once(rules.command_start_marker.as_str()))
+            .filter(|marker| !marker.is_empty())
+            .any(|marker| {
+                after_name.strip_prefix(marker).is_some_and(|remaining| {
+                    !marker.chars().next_back().is_some_and(lifecycle_word_char)
+                        || !remaining.chars().next().is_some_and(lifecycle_word_char)
+                })
+            });
+        if !adjacent_marker
+            || after_name
+                .split_whitespace()
+                .next()
+                .is_some_and(|word| word.contains(['"', '\'']))
+        {
+            return None;
+        }
     }
     (!command.trim().is_empty()).then_some((command, name_end))
 }
@@ -1060,7 +1074,7 @@ pub(crate) fn command_lifecycle_message<'a>(
     message: &'a str,
     config: &AnalyzerConfig,
 ) -> std::borrow::Cow<'a, str> {
-    let body = extract_command_name(message, &config.parser)
+    let body = extract_command_name(message, config)
         .map(|(_, end)| &message[end..])
         .unwrap_or(message);
     // Payload syntax is opaque even when malformed: its words cannot prove a
@@ -1466,8 +1480,9 @@ fn determine_log_entry_kind(
     raw_logline: String,
     message: &str,
     source_line_number: usize,
-    parser_rules: &ParserRules,
+    config: &AnalyzerConfig,
 ) -> Result<LogEntry, ParseError> {
+    let parser_rules = &config.parser;
     if !parser_rules.event_payload_separator.is_empty()
         && contains_any_marker(message, &parser_rules.event_emit_markers)
     {
@@ -1536,7 +1551,7 @@ fn determine_log_entry_kind(
                 payload,
             }));
         }
-    } else if let Some((command, name_end)) = extract_command_name(message, parser_rules) {
+    } else if let Some((command, name_end)) = extract_command_name(message, config) {
         let mut settings = None;
         let mut cleaned_message = message.to_string();
         let (_, quotes) = opaque_spans(message);

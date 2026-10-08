@@ -41,7 +41,11 @@ fn marker_has_trailing_condition(suffix: &str) -> bool {
     words.iter().any(|word| {
         matches!(
             word.as_str(),
-            "if" | "unless"
+            "or" | "versus"
+                | "vs"
+                | "alternatively"
+                | "if"
+                | "unless"
                 | "when"
                 | "whenever"
                 | "once"
