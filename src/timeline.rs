@@ -234,11 +234,11 @@ pub fn analyze(
             });
         }
     }
-    if report
+    let ordering_known = report
         .events
         .iter()
-        .all(|event| event.timestamp_year_source == "source")
-    {
+        .all(|event| event.timestamp_year_source == "source");
+    if ordering_known {
         report.events.sort_by_key(|e| e.timestamp);
     } else {
         report.events.sort_by(|a, b| {
@@ -250,24 +250,22 @@ pub fn analyze(
     }
     let mut previous = None;
     for event in &mut report.events {
-        event.gap_since_previous_match_ms = previous
-            .filter(|_| event.timestamp_year_source == "source")
-            .map(|time| {
-                event
-                    .timestamp
-                    .signed_duration_since(time)
-                    .num_milliseconds()
-            });
+        event.gap_since_previous_match_ms = previous.filter(|_| ordering_known).map(|time| {
+            event
+                .timestamp
+                .signed_duration_since(time)
+                .num_milliseconds()
+        });
         previous = (event.timestamp_year_source == "source").then_some(event.timestamp);
     }
     for pair in &rules.pairs {
-        let mut groups: BTreeMap<Vec<String>, Vec<&TimelineEvent>> = BTreeMap::new();
+        let mut groups: BTreeMap<Vec<String>, Vec<TimelineEvent>> = BTreeMap::new();
         for event in &report.events {
             if event.event_type != pair.start_event && event.event_type != pair.end_event {
                 continue;
             }
             if let Some(key) = &event.key {
-                groups.entry(key.clone()).or_default().push(event);
+                groups.entry(key.clone()).or_default().push(event.clone());
             } else {
                 report.incomplete.push(IncompleteInterval {
                     pair: pair.name.clone(),
@@ -291,73 +289,71 @@ pub fn analyze(
                 continue;
             }
             events.sort_by_key(|event| event.timestamp);
-            let mut active = false;
-            let shared_boundary = events.windows(2).any(|pair| {
-                pair[0].timestamp == pair[1].timestamp
-                    && (pair[0].source.file != pair[1].source.file
-                        || pair[0].source.line == pair[1].source.line)
-            });
-            if shared_boundary
-                || events.iter().any(|event| {
-                    let start = event.event_type == pair.start_event;
-                    let overlap = start && active;
-                    active = start;
-                    overlap
-                })
-            {
-                report
-                    .ambiguous_groups
-                    .push(events.iter().map(|e| (*e).clone()).collect());
-                for event in events {
-                    report.incomplete.push(IncompleteInterval {
-                        pair: pair.name.clone(),
-                        event: event.clone(),
-                        reason: if shared_boundary {
-                            "ambiguous_boundary"
-                        } else {
-                            "ambiguous_overlap"
-                        }
-                        .into(),
-                    });
+            let mut segment = Vec::new();
+            let mut outstanding = 0i64;
+            let mut reason = None;
+            let mut index = 0;
+            while index < events.len() {
+                let mut end = index + 1;
+                while end < events.len() && events[end].timestamp == events[index].timestamp {
+                    end += 1;
                 }
-                continue;
-            }
-            let mut pending: Option<&TimelineEvent> = None;
-            for event in events {
-                if event.event_type == pair.start_event {
-                    pending = Some(event);
-                } else if let Some(start) = pending.take() {
-                    let gap = event
-                        .timestamp
-                        .signed_duration_since(start.timestamp)
-                        .num_milliseconds();
-                    let measured = (pair.timing == Timing::Measured).then_some(gap);
-                    if let Some(ms) = measured {
-                        *report.measured_work_sum_ms.get_or_insert(0) += ms;
-                    }
-                    report.intervals.push(TimelineInterval {
-                        pair: pair.name.clone(),
-                        key: key.clone(),
-                        timing: pair.timing,
-                        start: start.clone(),
-                        end: event.clone(),
-                        observed_gap_ms: gap,
-                        measured_duration_ms: measured,
-                    });
-                } else {
-                    report.incomplete.push(IncompleteInterval {
-                        pair: pair.name.clone(),
-                        event: event.clone(),
-                        reason: "capture_started_after_start_or_missing_start".into(),
-                    });
-                }
-            }
-            if let Some(event) = pending {
-                report.incomplete.push(IncompleteInterval {
-                    pair: pair.name.clone(),
-                    event: event.clone(),
-                    reason: "capture_ended_before_end_or_missing_end".into(),
+                let bucket = &events[index..end];
+                let unordered = bucket.iter().enumerate().any(|(i, a)| {
+                    bucket[i + 1..]
+                        .iter()
+                        .any(|b| a.source.file != b.source.file || a.source.line == b.source.line)
                 });
+                if unordered {
+                    reason = Some("ambiguous_boundary");
+                    outstanding += bucket
+                        .iter()
+                        .map(|event| {
+                            if event.event_type == pair.start_event {
+                                1
+                            } else {
+                                -1
+                            }
+                        })
+                        .sum::<i64>();
+                    segment.extend(bucket.iter().cloned());
+                    if outstanding <= 0 {
+                        emit_segment(&mut report, pair, &key, &segment, reason);
+                        segment.clear();
+                        outstanding = 0;
+                        reason = None;
+                    }
+                } else {
+                    for event in bucket {
+                        if event.event_type == pair.start_event {
+                            if outstanding > 0 {
+                                reason = Some("ambiguous_overlap");
+                            }
+                            outstanding += 1;
+                            segment.push(event.clone());
+                        } else if outstanding == 0 {
+                            emit_segment(
+                                &mut report,
+                                pair,
+                                &key,
+                                std::slice::from_ref(event),
+                                None,
+                            );
+                        } else {
+                            outstanding -= 1;
+                            segment.push(event.clone());
+                            if outstanding == 0 {
+                                emit_segment(&mut report, pair, &key, &segment, reason);
+                                segment.clear();
+                                reason = None;
+                            }
+                        }
+                    }
+                }
+                index = end;
+            }
+            if !segment.is_empty() {
+                emit_segment(&mut report, pair, &key, &segment, reason);
             }
         }
     }
@@ -403,6 +399,56 @@ pub fn analyze(
         .into();
     }
     Ok(Some(report))
+}
+
+fn emit_segment(
+    report: &mut TimelineReport,
+    pair: &PairRule,
+    key: &[String],
+    events: &[TimelineEvent],
+    reason: Option<&str>,
+) {
+    if let Some(reason) = reason {
+        report.ambiguous_groups.push(events.to_vec());
+        for event in events {
+            report.incomplete.push(IncompleteInterval {
+                pair: pair.name.clone(),
+                event: event.clone(),
+                reason: reason.into(),
+            });
+        }
+    } else if events.len() == 2 {
+        let gap = events[1]
+            .timestamp
+            .signed_duration_since(events[0].timestamp)
+            .num_milliseconds();
+        let measured = (pair.timing == Timing::Measured).then_some(gap);
+        if let Some(ms) = measured {
+            *report.measured_work_sum_ms.get_or_insert(0) += ms;
+        }
+        report.intervals.push(TimelineInterval {
+            pair: pair.name.clone(),
+            key: key.to_vec(),
+            timing: pair.timing,
+            start: events[0].clone(),
+            end: events[1].clone(),
+            observed_gap_ms: gap,
+            measured_duration_ms: measured,
+        });
+    } else {
+        for event in events {
+            report.incomplete.push(IncompleteInterval {
+                pair: pair.name.clone(),
+                event: event.clone(),
+                reason: if event.event_type == pair.start_event {
+                    "capture_ended_before_end_or_missing_end"
+                } else {
+                    "capture_started_after_start_or_missing_start"
+                }
+                .into(),
+            });
+        }
+    }
 }
 
 pub fn format_text(report: &TimelineReport) -> String {

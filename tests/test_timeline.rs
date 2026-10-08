@@ -317,3 +317,47 @@ fn yearless_syslog_cannot_produce_measured_or_capture_durations() {
     );
     assert!(timeline::format_text(&report).contains("year: inferred_year"));
 }
+
+#[test]
+fn mixed_year_provenance_suppresses_all_cross_event_gaps() {
+    let mut logs = entries(&["begin id=a", "response id=a", "begin id=b"]);
+    logs[0].source_file = Some("z.log".into());
+    logs[1].source_file = Some("a.log".into());
+    logs[2].timestamp_year_inferred = true;
+    let report = timeline::analyze(&logs.iter().collect::<Vec<_>>(), &rules())
+        .unwrap()
+        .unwrap();
+    assert!(
+        report
+            .events
+            .iter()
+            .all(|event| event.gap_since_previous_match_ms.is_none())
+    );
+    assert!(report.elapsed_capture_ms.is_none());
+}
+
+#[test]
+fn completed_lifecycles_survive_a_later_ambiguous_segment() {
+    let logs = entries(&[
+        "begin id=a",
+        "response id=a",
+        "begin id=a",
+        "begin id=a",
+        "response id=a",
+        "response id=a",
+        "begin id=a",
+        "response id=a",
+    ]);
+    let mut configured = rules();
+    configured.pairs.truncate(1);
+    let report = timeline::analyze(&logs.iter().collect::<Vec<_>>(), &configured)
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.intervals.len(), 2);
+    assert_eq!(report.intervals[0].start.source.line, 1);
+    assert_eq!(report.intervals[1].start.source.line, 7);
+    assert_eq!(report.measured_work_sum_ms, Some(2000));
+    assert_eq!(report.ambiguous_groups.len(), 1);
+    assert_eq!(report.ambiguous_groups[0].len(), 4);
+    assert_eq!(report.incomplete.len(), 4);
+}
