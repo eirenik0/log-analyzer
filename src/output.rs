@@ -132,12 +132,14 @@ fn percent_decode(text: &str) -> String {
 
 impl OutputState {
     fn replacement(&mut self, key: &str, value: &str) -> Option<String> {
-        if let Some(replacement) = self.masked_values.get(value) {
-            return Some(replacement.clone());
-        }
         let decoded = percent_decode(key);
         let key = canonical(&decoded);
         let leaf = canonical(decoded.rsplit('.').next().unwrap_or(&decoded));
+        if (leaf == "id" || leaf == "correlationid")
+            && let Some(replacement) = self.masked_values.get(value)
+        {
+            return Some(replacement.clone());
+        }
         if self
             .mask_ids
             .iter()
@@ -190,35 +192,39 @@ impl OutputState {
         if let Some(replacement) = self.masked_values.get(text) {
             return replacement.clone();
         }
-        // Redact embedded JSON, including JSON stored inside a message or raw evidence string.
+        // Keep parsed JSON separate from plain fragments so ID masking never changes keys.
         let mut out = String::new();
-        let mut position = 0;
-        while position < text.len() {
-            let Some((relative, _)) = text[position..]
+        let mut raw_start = 0;
+        let mut search = 0;
+        while search < text.len() {
+            let Some((relative, ch)) = text[search..]
                 .char_indices()
                 .find(|(_, c)| *c == '{' || *c == '[')
             else {
-                out.push_str(&text[position..]);
                 break;
             };
-            let start = position + relative;
-            out.push_str(&text[position..start]);
+            let start = search + relative;
             let mut stream =
                 serde_json::Deserializer::from_str(&text[start..]).into_iter::<Value>();
             if let Some(Ok(value)) = stream.next() {
                 let end = start + stream.byte_offset();
+                out.push_str(&self.fragment(&text[raw_start..start]));
                 out.push_str(&self.value(&value).to_string());
-                position = end;
+                search = end;
+                raw_start = end;
             } else {
-                let ch = text[start..].chars().next().unwrap();
-                out.push(ch);
-                position = start + ch.len_utf8();
+                search = start + ch.len_utf8();
             }
         }
+        out.push_str(&self.fragment(&text[raw_start..]));
+        out
+    }
+
+    fn fragment(&mut self, text: &str) -> String {
         static QUERY: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r#"([?&])([^&=\s#]+)=([^&\s#"'<>}]*)"#).unwrap());
         let query = &*QUERY;
-        let out = query.replace_all(&out, |captures: &regex::Captures<'_>| {
+        let out = query.replace_all(text, |captures: &regex::Captures<'_>| {
             if let Some(replacement) = self.replacement(&captures[2], &percent_decode(&captures[3]))
             {
                 format!("{}{}={}", &captures[1], &captures[2], replacement)
@@ -240,7 +246,7 @@ impl OutputState {
             format!("{}{}[REDACTED]", &captures[1], &captures[2])
         });
         let assignment = &*ASSIGNMENT;
-        assignment
+        let text = assignment
             .replace_all(&out, |captures: &regex::Captures<'_>| {
                 let raw = &captures[3];
                 if raw.starts_with("[REDACTED") || raw.starts_with("[MASKED_ID:") {
@@ -261,7 +267,46 @@ impl OutputState {
                     captures[0].to_string()
                 }
             })
-            .into_owned()
+            .into_owned();
+        self.mask_plain(&text)
+    }
+
+    fn mask_plain(&self, text: &str) -> String {
+        static PLACEHOLDER: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\[(?:MASKED_ID:\d+|REDACTED)\]").unwrap());
+        let mut text = text.to_string();
+        for (original, replacement) in &self.masked_values {
+            // Bare numeric values are also report measurements; only mask those with field context.
+            if original.is_empty() {
+                continue;
+            }
+            let mut out = String::new();
+            let mut cursor = 0;
+            let placeholders: Vec<_> = PLACEHOLDER.find_iter(&text).map(|m| m.range()).collect();
+            for (start, _) in text.match_indices(original) {
+                let end = start + original.len();
+                let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+                let before = text[..start].chars().next_back();
+                let after = text[end..].chars().next();
+                if original.chars().all(|c| c.is_ascii_digit())
+                    && !(before == Some('(') && after == Some(')'))
+                {
+                    continue;
+                }
+                if before.is_some_and(is_word)
+                    || after.is_some_and(is_word)
+                    || placeholders.iter().any(|p| p.contains(&start))
+                {
+                    continue;
+                }
+                out.push_str(&text[cursor..start]);
+                out.push_str(replacement);
+                cursor = end;
+            }
+            out.push_str(&text[cursor..]);
+            text = out;
+        }
+        text
     }
 
     fn report(&mut self, text: &str) -> String {
@@ -354,6 +399,7 @@ pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
             return;
         };
         for entry in entries {
+            state.replacement("component_id", &entry.component_id);
             for payload in [entry.payload(), entry.envelope_payload.as_ref()]
                 .into_iter()
                 .flatten()

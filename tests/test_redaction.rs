@@ -260,3 +260,48 @@ fn masking_precedes_process_truncation_and_masks_text_trace_selector() {
     assert!(output.status.success());
     assert!(!String::from_utf8_lossy(&output.stdout).contains("long-"));
 }
+
+#[test]
+fn known_ids_are_masked_in_bare_text_and_source_components() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("components.log");
+    fs::write(&file, "core (scope-123) | 2026-01-01T00:00:00.000Z [INFO ] Request \"run\" [0--request-123] will be sent with body {\"trace_id\":\"trace-123\"}\ncore (scope-123) | 2026-01-01T00:00:01.000Z [INFO ] received answer for 0--request-123 and trace-123\n").unwrap();
+    let target = dir.path().join("out.txt");
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "component_id",
+        "--mask-id",
+        "request_id",
+        "--mask-id",
+        "trace_id",
+        "-o",
+        target.to_str().unwrap(),
+        "trace",
+        file.to_str().unwrap(),
+        "--id",
+        "0--request-123",
+    ]);
+    assert!(output.status.success());
+    for text in [
+        String::from_utf8(output.stdout).unwrap(),
+        fs::read_to_string(target).unwrap(),
+    ] {
+        for id in ["scope-123", "0--request-123", "trace-123"] {
+            assert!(!text.contains(id), "{text}");
+        }
+        assert!(text.contains("[MASKED_ID:"));
+    }
+}
+
+#[test]
+fn object_identifier_values_still_obey_compaction_limits() {
+    let items = (0..30)
+        .map(|_| json!({"nested":{"deeper":{"text":"x".repeat(500)}}}))
+        .collect::<Vec<_>>();
+    let compact =
+        log_analyzer::llm_processor::compact_json_value(&json!({"request_id":items}), 3, 0);
+    assert_eq!(compact["request_id"].as_array().unwrap().len(), 11);
+    assert!(compact.to_string().contains("TRUNCATED"));
+    assert!(compact.to_string().len() < 1000);
+}
