@@ -154,3 +154,10 @@ JSON stdout is a single structured document; diagnostics go to stderr. Nonempty
 unparsed analysis emits a coverage-only JSON report and exits 1. Other runtime
 errors exit 1 and may have no report; argument errors exit 2. Empty input and no
 matches succeed. Saved JSON via `-o` follows the same report contract as stdout.
+
+Nonempty unparsed inputs produce a coverage-only document and exit 1 across
+JSON report commands, including command-implied JSON for `process` and `llm-diff`.
+All declared inputs are parsed before this rejection, so mixed-input coverage
+and snapshot manifests include both the parsed and unparsed sides. `--output`
+receives the same document as stdout. Filesystem/configuration errors retain
+their diagnostics and are distinct from recognized unparsed-input reports.

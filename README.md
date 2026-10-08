@@ -74,6 +74,8 @@ citation resolution, measurement boundaries, changed-input behavior and limits.
 Source IDs survive selection and presentation. Recheck input/profile identities
 before reusing citations. Keep observed facts, measurements, hypotheses,
 contrary evidence and unknowns distinct using the investigation-result schema.
+Nonempty unparsed input returns a coverage-only JSON document with exit status 1,
+including all declared inputs and the same document in `--output`.
 Aggregate inventories require record retrieval before citing an occurrence;
 legacy error blocking spans are explicitly estimates.
 

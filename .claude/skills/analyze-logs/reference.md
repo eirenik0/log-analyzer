@@ -4,6 +4,10 @@ Complete documentation of all log-analyzer commands and options.
 
 ## Shared evidence contract
 
+On exit 1 with `coverage.status = "unparsed_input"`, inspect the coverage-only
+report and stop analysis until the input/profile is suitable. Mixed-input reports
+include every declared source; `--output` matches stdout.
+
 Before interpreting JSON, check `capabilities.report_schemas` and the existing
 `report_metadata.evidence` contract. The canonical specification is
 [`docs/design/evidence-contract.md`](../../../docs/design/evidence-contract.md)

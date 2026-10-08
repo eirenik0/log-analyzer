@@ -10,3 +10,6 @@ regressions for redaction, nested rows, partial input and ambiguous timing.
 
 Embed schemas in capability discovery for installed clients. Preserve non-UTF-8
 input path identity and exclude output destinations from query serialization.
+
+Emit coverage-only JSON on unparsed-input failures across report commands,
+including full mixed-input scope and saved-output parity.

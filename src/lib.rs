@@ -185,45 +185,6 @@ fn write_output_file(
         .map_err(|e| format!("Failed to write output file '{}': {}", path.display(), e).into())
 }
 
-fn read_cli_log_file(
-    file: &std::path::Path,
-    config: &config::AnalyzerConfig,
-) -> Result<Vec<LogEntry>, ParseError> {
-    let parsed = parser::parse_log_file_report(file, config)?;
-    output::observe_input(&parsed.coverage, &parsed.entries);
-    if parsed.coverage.is_unparsed() {
-        return Err(ParseError::NoRecognizedEntries(Box::new(parsed.coverage)));
-    }
-    for diagnostic in &parsed.coverage.normalization_diagnostics {
-        report_eprintln!(
-            "Normalization skipped {}:{} row {} field {}: {}",
-            file.display(),
-            diagnostic.line,
-            diagnostic.row_path,
-            diagnostic.field,
-            diagnostic.reason
-        );
-    }
-    output::observe_entries(&parsed.entries);
-    Ok(parsed.entries)
-}
-
-fn parse_and_merge_log_files_with_config(
-    files: &[std::path::PathBuf],
-    analyzer_config: &config::AnalyzerConfig,
-) -> Result<Vec<LogEntry>, Box<dyn std::error::Error>> {
-    let mut logs = Vec::new();
-
-    for file in files {
-        let mut parsed = read_cli_log_file(file, analyzer_config)
-            .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
-        logs.append(&mut parsed);
-    }
-
-    logs.sort_by_key(|a| a.timestamp);
-    Ok(logs)
-}
-
 #[derive(serde::Serialize)]
 struct AnalysisCoverage {
     files: Vec<parser::ParseCoverage>,
@@ -232,14 +193,21 @@ struct AnalysisCoverage {
     status: &'static str,
 }
 
-fn read_analysis_inputs(
+struct AnalysisFiles {
+    inputs: Vec<Vec<LogEntry>>,
+    coverage: AnalysisCoverage,
+}
+
+/// Parse every declared input before rejecting unavailable analysis. Keep per-file
+/// vectors so comparisons never pair records from the wrong side.
+fn read_analysis_files(
     files: &[std::path::PathBuf],
     config: &config::AnalyzerConfig,
     filter: &LogFilter,
     format: OutputFormat,
     output: Option<&std::path::Path>,
-) -> Result<(Vec<LogEntry>, AnalysisCoverage), Box<dyn std::error::Error>> {
-    let mut logs = Vec::new();
+) -> Result<AnalysisFiles, Box<dyn std::error::Error>> {
+    let mut inputs = Vec::new();
     let mut coverage = AnalysisCoverage {
         files: Vec::new(),
         parsed_entries: 0,
@@ -251,12 +219,27 @@ fn read_analysis_inputs(
             .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
         output::observe_input(&parsed.coverage, &parsed.entries);
         output::observe_entries(&parsed.entries);
-        logs.extend(parsed.entries);
+        coverage.parsed_entries += parsed.entries.len();
+        coverage.filter_matches += parsed
+            .entries
+            .iter()
+            .filter(|entry| filter.matches(entry))
+            .count();
+        inputs.push(parsed.entries);
         coverage.files.push(parsed.coverage);
     }
-    logs.sort_by_key(|entry| entry.timestamp);
-    coverage.parsed_entries = logs.len();
-    coverage.filter_matches = logs.iter().filter(|entry| filter.matches(entry)).count();
+    for file in &coverage.files {
+        for diagnostic in &file.normalization_diagnostics {
+            report_eprintln!(
+                "Normalization skipped {}:{} row {} field {}: {}",
+                output::source_path(&file.file),
+                diagnostic.line,
+                output::source_path(&diagnostic.row_path),
+                diagnostic.field,
+                diagnostic.reason
+            );
+        }
+    }
     coverage.status = if coverage
         .files
         .iter()
@@ -278,6 +261,32 @@ fn read_analysis_inputs(
         }
         return Err("Nonempty input has no recognized log entries; inspect the selected parser/profile and rejected candidates".into());
     }
+    Ok(AnalysisFiles { inputs, coverage })
+}
+
+fn read_cli_log_file(
+    file: &std::path::Path,
+    config: &config::AnalyzerConfig,
+    filter: &LogFilter,
+    format: OutputFormat,
+    output: Option<&std::path::Path>,
+) -> Result<Vec<LogEntry>, Box<dyn std::error::Error>> {
+    let AnalysisFiles { mut inputs, .. } =
+        read_analysis_files(&[file.to_path_buf()], config, filter, format, output)?;
+    Ok(inputs.pop().unwrap())
+}
+
+fn read_analysis_inputs(
+    files: &[std::path::PathBuf],
+    config: &config::AnalyzerConfig,
+    filter: &LogFilter,
+    format: OutputFormat,
+    output: Option<&std::path::Path>,
+) -> Result<(Vec<LogEntry>, AnalysisCoverage), Box<dyn std::error::Error>> {
+    let AnalysisFiles { inputs, coverage } =
+        read_analysis_files(files, config, filter, format, output)?;
+    let mut logs: Vec<_> = inputs.into_iter().flatten().collect();
+    logs.sort_by_key(|entry| entry.timestamp);
     Ok((logs, coverage))
 }
 
@@ -380,7 +389,14 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
         matches!(&cli.command, Commands::GenerateConfig { .. }),
     );
     output::set_evidence(evidence::Context::new(cli, &analyzer_config)?);
-    let format = cli.effective_format();
+    let format = if matches!(
+        &cli.command,
+        Commands::Process { .. } | Commands::LlmDiff { .. } | Commands::Schema { .. }
+    ) {
+        OutputFormat::Json
+    } else {
+        cli.effective_format()
+    };
     let compact = cli.effective_compact();
     let output = &cli.output;
     let color_mode = cli.color;
@@ -447,11 +463,15 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = read_cli_log_file(file1, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
-
-            let logs2 = read_cli_log_file(file2, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
+            let AnalysisFiles { mut inputs, .. } = read_analysis_files(
+                &[file1.clone(), file2.clone()],
+                &analyzer_config,
+                &filter,
+                format,
+                output.as_deref(),
+            )?;
+            let logs2 = inputs.pop().unwrap();
+            let logs1 = inputs.pop().unwrap();
 
             // Create options
             let options = ComparisonOptions::new()
@@ -494,11 +514,15 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = read_cli_log_file(file1, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
-
-            let logs2 = read_cli_log_file(file2, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
+            let AnalysisFiles { mut inputs, .. } = read_analysis_files(
+                &[file1.clone(), file2.clone()],
+                &analyzer_config,
+                &filter,
+                format,
+                output.as_deref(),
+            )?;
+            let logs2 = inputs.pop().unwrap();
+            let logs1 = inputs.pop().unwrap();
 
             // Create options with diff_only=true
             let options = ComparisonOptions::new()
@@ -541,11 +565,15 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log files with proper error handling
-            let mut logs1 = read_cli_log_file(file1, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
-
-            let mut logs2 = read_cli_log_file(file2, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
+            let AnalysisFiles { mut inputs, .. } = read_analysis_files(
+                &[file1.clone(), file2.clone()],
+                &analyzer_config,
+                &filter,
+                format,
+                output.as_deref(),
+            )?;
+            let mut logs2 = inputs.pop().unwrap();
+            let mut logs1 = inputs.pop().unwrap();
 
             // Apply sanitization if enabled (default behavior unless --no-sanitize is used)
             if !no_sanitize && !cli.redact {
@@ -641,8 +669,11 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log file with proper error handling
-            let logs = read_cli_log_file(file, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+            let logs =
+                read_cli_log_file(file, &analyzer_config, &filter, format, output.as_deref())
+                    .map_err(|e| {
+                        format!("Failed to parse log file '{}': {:?}", file.display(), e)
+                    })?;
 
             // Filter logs
             let mut filtered_logs: Vec<_> = logs
@@ -679,8 +710,11 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             payloads,
             count_by,
         } => {
-            let logs = read_cli_log_file(file, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+            let logs =
+                read_cli_log_file(file, &analyzer_config, &filter, format, output.as_deref())
+                    .map_err(|e| {
+                        format!("Failed to parse log file '{}': {:?}", file.display(), e)
+                    })?;
             let match_indices = collect_match_indices(&logs, &filter);
 
             let rendered = if let Some(count_by) = count_by {
@@ -788,8 +822,11 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             rows,
             expand_array,
         } => {
-            let logs = read_cli_log_file(file, &analyzer_config)
-                .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+            let logs =
+                read_cli_log_file(file, &analyzer_config, &filter, format, output.as_deref())
+                    .map_err(|e| {
+                        format!("Failed to parse log file '{}': {:?}", file.display(), e)
+                    })?;
             let match_indices = collect_match_indices(&logs, &filter);
 
             let rendered = if *rows || field.len() > 1 || expand_array.is_some() {
@@ -881,7 +918,8 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Trace { files, id, session } => {
-            let logs = parse_and_merge_log_files_with_config(files, &analyzer_config)?;
+            let (logs, _) =
+                read_analysis_inputs(files, &analyzer_config, &filter, format, output.as_deref())?;
 
             let selector = if let Some(id) = id {
                 TraceSelector::Id(id.clone())
@@ -954,7 +992,13 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 .iter()
                 .filter_map(|file| detect_log_format(file, &base_config).ok())
                 .collect();
-            let logs = parse_and_merge_log_files_with_config(files, &base_config)?;
+            let (logs, _) = read_analysis_inputs(
+                files,
+                &base_config,
+                &filter,
+                OutputFormat::Text,
+                output.as_deref(),
+            )?;
 
             let profile_name = profile_name.clone().unwrap_or_else(|| {
                 if files.len() == 1 {

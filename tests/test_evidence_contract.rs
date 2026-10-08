@@ -811,3 +811,154 @@ fn non_utf8_cli_paths_serialize_without_filesystem_support() {
     assert!(value["command"]["GenerateConfig"]["files"][0]["os_bytes_sha256"].is_string());
     assert!(value["command"]["GenerateConfig"]["template"]["os_bytes_sha256"].is_string());
 }
+
+#[test]
+fn unparsed_cli_inputs_emit_one_coverage_document_to_stdout_and_saved_output() {
+    let dir = tempdir().unwrap();
+    let bad = dir.path().join("bad.log");
+    fs::write(&bad, "unsupported arbitrary input\n").unwrap();
+    let bad = bad.to_str().unwrap();
+    let good = fixture();
+    let variants = vec![
+        vec!["search", bad],
+        vec!["process", bad],
+        vec!["extract", bad, "--field", "name"],
+        vec!["trace", bad, "--id", "demo"],
+        vec!["compare", bad, &good],
+        vec!["compare", &good, bad],
+        vec!["diff", bad, &good],
+        vec!["diff", &good, bad],
+        vec!["llm-diff", bad, &good],
+        vec!["llm-diff", &good, bad],
+        vec!["info", bad],
+        vec!["errors", bad],
+        vec!["perf", bad],
+        vec!["trace", bad, &good, "--id", "demo"],
+    ];
+    for variant in variants {
+        for presentation in [vec!["-j"], vec!["-F", "json"], vec!["-j", "--redact"]] {
+            let saved = dir.path().join("failure.json");
+            let mut args = presentation;
+            args.extend(["--output", saved.to_str().unwrap()]);
+            args.extend(&variant);
+            let output = invoke(&args);
+            assert_eq!(output.status.code(), Some(1), "{args:?}");
+            assert!(String::from_utf8_lossy(&output.stderr).contains("Nonempty input"));
+            let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+            validate(&value);
+            let saved: Value = serde_json::from_slice(&fs::read(saved).unwrap()).unwrap();
+            assert_eq!(value, saved);
+            assert_eq!(value["coverage"]["status"], "unparsed_input");
+            assert_eq!(evidence(&value)["scope"]["status"], "unparsed_input");
+            let input_count = if variant.contains(&good.as_str()) {
+                2
+            } else {
+                1
+            };
+            assert_eq!(
+                value["coverage"]["files"].as_array().unwrap().len(),
+                input_count
+            );
+            assert_eq!(
+                evidence(&value)["inputs"].as_array().unwrap().len(),
+                input_count
+            );
+            if input_count == 2 {
+                assert!(value["coverage"]["parsed_entries"].as_u64().unwrap() > 0);
+            }
+            assert!(value.get("logs").is_none());
+            assert!(value.get("operations").is_none());
+        }
+    }
+    for command in ["process", "llm-diff"] {
+        for presentation in [vec![], vec!["-F", "text"]] {
+            let mut args = presentation;
+            args.extend([command, bad]);
+            if command == "llm-diff" {
+                args.push(&good);
+            }
+            let output = invoke(&args);
+            assert_eq!(output.status.code(), Some(1));
+            let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+            validate(&value);
+            assert_eq!(value["coverage"]["status"], "unparsed_input");
+        }
+    }
+}
+
+#[test]
+fn mixed_unparsed_coverage_reserves_sibling_ids_before_redaction() {
+    let dir = tempdir().unwrap();
+    let bad = dir.path().join("private-session.log");
+    let good = dir.path().join("parsed.log");
+    fs::write(&bad, "unsupported arbitrary input\n").unwrap();
+    fs::write(
+        &good,
+        "core (private-session) | 2026-01-01T00:00:00Z [INFO] alive\n",
+    )
+    .unwrap();
+    for paths in [[&bad, &good], [&good, &bad]] {
+        let output = invoke(&[
+            "-j",
+            "--redact",
+            "--mask-id",
+            "component_id",
+            "compare",
+            paths[0].to_str().unwrap(),
+            paths[1].to_str().unwrap(),
+        ]);
+        assert_eq!(output.status.code(), Some(1));
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        validate(&value);
+        assert_eq!(value["coverage"]["parsed_entries"], 1);
+        assert!(
+            !String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("private-session")
+        );
+        assert!(
+            !String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("private-session")
+        );
+    }
+}
+
+#[test]
+fn unparsed_normalization_diagnostics_use_all_declared_redaction_sources() {
+    let dir = tempdir().unwrap();
+    let cfg = dir.path().join("profile.toml");
+    let bad = dir.path().join("prefixprivate-session.jsonl");
+    let good = dir.path().join("good.jsonl");
+    fs::write(&cfg, "extends = 'base'\n[normalization]\nroot_path = '/prefixprivate-session'\nexpand_rows = true\n[normalization.fields]\ntimestamp = '/ts'\nmessage = '/message'\ncomponent_id = '/sid'\n").unwrap();
+    fs::write(
+        &bad,
+        json!({"prefixprivate-session":[{"ts":"invalid","message":"alive","sid":"private-session"}]})
+            .to_string(),
+    )
+    .unwrap();
+    fs::write(&good, json!({"prefixprivate-session":[{"ts":"2026-01-01T00:00:00+02:00","message":"alive","sid":"private-session"}]}).to_string()).unwrap();
+    let output = invoke(&[
+        "-j",
+        "--redact",
+        "--mask-id",
+        "component_id",
+        "--config",
+        cfg.to_str().unwrap(),
+        "compare",
+        bad.to_str().unwrap(),
+        good.to_str().unwrap(),
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    validate(&report);
+    assert_eq!(report["coverage"]["parsed_entries"], 1);
+    assert!(
+        !String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("private-session")
+    );
+    let diagnostic = String::from_utf8(output.stderr).unwrap();
+    assert!(diagnostic.contains("Normalization skipped"));
+    assert!(!diagnostic.contains("private-session"), "{diagnostic}");
+}
