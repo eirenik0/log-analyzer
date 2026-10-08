@@ -487,3 +487,64 @@ fn sensitive_assignments_redact_whole_embedded_structures_and_cookie_headers() {
         }
     }
 }
+
+#[test]
+fn literal_dotted_sensitive_keys_are_redacted() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("dotted.jsonl");
+    let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":"values", "payload":{"api.key":"api-secret","private.key":"private-secret","request.id":"allowed"}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    for format in ["text", "json"] {
+        let output = run(&[
+            "--redact",
+            "-F",
+            format,
+            "search",
+            file.to_str().unwrap(),
+            "--payloads",
+        ]);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            !text.contains("api-secret") && !text.contains("private-secret"),
+            "{text}"
+        );
+        assert!(text.contains("allowed"));
+    }
+}
+
+#[test]
+fn redaction_preserves_compact_compare_and_llm_output() {
+    let dir = tempdir().unwrap();
+    let left = dir.path().join("left.log");
+    let right = dir.path().join("right.log");
+    for (file, secret) in [(&left, "left-secret"), (&right, "right-secret")] {
+        fs::write(
+            file,
+            format!("core | 2026-01-01T00:00:00.000Z [INFO ] body {{\"token\":\"{secret}\"}}\n"),
+        )
+        .unwrap();
+    }
+    for options in [
+        vec!["compare", "-j"],
+        vec!["compare", "-c", "-F", "json"],
+        vec!["llm-diff"],
+    ] {
+        let target = dir.path().join("out.json");
+        let mut args = vec!["--redact", "-o", target.to_str().unwrap()];
+        args.extend(options);
+        args.extend([left.to_str().unwrap(), right.to_str().unwrap()]);
+        let output = run(&args);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(text.lines().count(), 1, "{text}");
+        assert_eq!(text, fs::read_to_string(target).unwrap());
+        let report: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(report["redaction"]["applied"], true);
+        assert!(!text.contains("left-secret") && !text.contains("right-secret"));
+    }
+}

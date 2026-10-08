@@ -315,7 +315,11 @@ fn render_analysis_report(
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
-    let _output_guard = output::OutputGuard::new(cli.redact, &cli.mask_id);
+    let _output_guard = output::OutputGuard::new(
+        cli.redact,
+        &cli.mask_id,
+        cli.effective_compact() || matches!(&cli.command, Commands::LlmDiff { .. }),
+    );
     let result = run_with_cli(&cli);
     if cli.redact {
         result.map_err(|error| output::diagnostic(&error.to_string()).into())

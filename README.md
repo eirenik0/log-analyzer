@@ -356,7 +356,8 @@ log-analyzer trace file.log --id request-123 --redact --mask-id request_id
 Recognized sensitive fields are password/passwd/pwd, secret, token, access_token,
 refresh_token, api_key/apikey, client_secret, authorization/auth, cookie/set_cookie,
 credential/credentials, signature, and private_key. Matching ignores case and separators, including
-camelCase. Nested objects, JSON embedded in strings, quoted or unquoted log
+camelCase. Compact JSON (`-j`, `-c -F json`, and `llm-diff`) stays compact after redaction.
+Nested objects, JSON embedded in strings, quoted or unquoted log
 assignments, and URL query names/values (including percent encoding) are handled.
 Authorization and Cookie header values (including folded continuations) are fully redacted
 for every scheme. Redacted text retains actual message line breaks so separate

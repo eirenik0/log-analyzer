@@ -142,13 +142,7 @@ pub struct Cli {
     pub json: bool,
 
     /// Use compact mode for output (shorter keys, optimized structure)
-    #[arg(
-        short = 'c',
-        long,
-        global = true,
-        group = "output_options",
-        env = "LOG_ANALYZER_COMPACT"
-    )]
+    #[arg(short = 'c', long, global = true, env = "LOG_ANALYZER_COMPACT")]
     pub compact: bool,
 
     /// Filter expression (e.g., "c:core l:ERROR !t:timeout")

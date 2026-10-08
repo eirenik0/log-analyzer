@@ -35,6 +35,7 @@ struct OutputState {
     masked_values: BTreeMap<String, String>,
     stdout: String,
     prepared: bool,
+    compact: bool,
 }
 
 thread_local! {
@@ -44,10 +45,11 @@ thread_local! {
 /// CLI-scoped buffering lets JSON receive metadata once and text redact across fragments.
 pub struct OutputGuard;
 impl OutputGuard {
-    pub fn new(redact: bool, mask_ids: &[String]) -> Self {
+    pub fn new(redact: bool, mask_ids: &[String], compact: bool) -> Self {
         STATE.with(|state| {
             *state.borrow_mut() = Some(OutputState {
                 redact,
+                compact,
                 mask_ids: mask_ids.to_vec(),
                 ..OutputState::default()
             });
@@ -164,7 +166,7 @@ impl OutputState {
         }
         SECRET_FIELDS
             .iter()
-            .any(|field| canonical(field) == leaf)
+            .any(|field| canonical(field) == key || canonical(field) == leaf)
             .then(|| "[REDACTED]".into())
     }
 
@@ -363,7 +365,13 @@ impl OutputState {
                     json!({"applied":true,"masked_id_fields":self.mask_ids,"scope":"report"}),
                 );
             }
-            return format!("{}\n", serde_json::to_string_pretty(&value).unwrap());
+            let serialized = if self.compact {
+                serde_json::to_string(&value)
+            } else {
+                serde_json::to_string_pretty(&value)
+            }
+            .unwrap();
+            return format!("{serialized}\n");
         }
         if self.prepared {
             return text.to_string();
