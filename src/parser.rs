@@ -961,6 +961,10 @@ fn unfinished_payload_start(
         .filter(|marker| !marker.is_empty())
     {
         for (start, _) in message.match_indices(marker) {
+            let payload = spans.partition_point(|span| span.end <= start);
+            if spans.get(payload).is_some_and(|span| span.contains(&start)) {
+                continue;
+            }
             let quote = quotes.partition_point(|span| span.end <= start);
             if quotes.get(quote).is_some_and(|span| span.contains(&start)) {
                 continue;
@@ -1211,6 +1215,8 @@ pub(crate) fn lifecycle_qualifier(word: &str) -> bool {
             | "may"
             | "might"
             | "could"
+            | "can"
+            | "shall"
             | "must"
             | "yet"
             | "pending"

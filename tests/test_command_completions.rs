@@ -846,6 +846,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "cannot be completed",
         "no longer completed",
         "will be completed",
+        "can be completed",
+        "shall be completed",
         "is yet to be completed",
         "awaiting completed",
         "is scheduled to be completed",
@@ -906,6 +908,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is scheduled to be started",
         "is unlikely to have started",
         "probably started",
+        "can be started",
+        "shall be started",
         "started if validation passes",
     ] {
         let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
@@ -1027,4 +1031,33 @@ fn assignment_values_cannot_supply_command_subjects() {
     );
     assert_eq!(result.operations.len(), 1);
     assert_eq!(result.operations[0].duration_ms, 1000);
+}
+
+#[test]
+fn markers_inside_known_payload_spans_cannot_hide_real_commands() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for context in [
+        "context {payload:1} [tag",
+        "context {settings:1} [tag",
+        "context {payload:1} {tag",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let end = parse(
+            &format!("{context} Operation \"work\" completed"),
+            1,
+            &config,
+        );
+        assert!(
+            matches!(end.kind, LogEntryKind::Command { .. }),
+            "{context}"
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{context}");
+        assert_eq!(result.operations[0].duration_ms, 1000);
+    }
 }
