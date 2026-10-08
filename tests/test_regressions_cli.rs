@@ -1796,6 +1796,32 @@ fn perf_scopes_reused_ids_and_preserves_ambiguous_events_with_sources() {
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(report["operations"].as_array().unwrap().is_empty());
     assert!(report["stats"].as_array().unwrap().is_empty());
+    assert!(report["orphans"].as_array().unwrap().is_empty());
+    assert_eq!(report["unmatched_events"].as_array().unwrap().len(), 5);
+    assert!(
+        report["unmatched_events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event["reason"] == "missing_scope_field")
+    );
+    // Preserve the overlap regression within an explicitly declared real component scope.
+    profile.perf.correlation_scope_fields = vec!["component".into()];
+    write_file(&config, &toml::to_string(&profile).unwrap());
+    let output = command()
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "-j",
+            "perf",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report["operations"].as_array().unwrap().is_empty());
     assert_eq!(report["orphans"].as_array().unwrap().len(), 2);
     assert_eq!(report["ambiguous_groups"].as_array().unwrap().len(), 1);
     assert_eq!(

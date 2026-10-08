@@ -983,8 +983,13 @@ pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
 // typed measurements/provenance intact, including when an opaque ID equals a label.
 fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &str) {
     let leaf = path.rsplit('.').next().unwrap_or(path);
-    if path.contains(".classification.")
-        && matches!(leaf, "status" | "kind" | "phase" | "outcome" | "target")
+    if (path.contains(".classification.")
+        || path.contains(".start_classification.")
+        || path.contains(".end_classification."))
+        && matches!(
+            leaf,
+            "status" | "kind" | "kinds" | "phase" | "outcome" | "target" | "direction"
+        )
     {
         *redacted = original.clone();
         return;

@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 /// Represents a completed timed operation (paired start/end)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimedOperation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_classification: Option<crate::event_rules::ClassifiedRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_classification: Option<crate::event_rules::ClassifiedRecord>,
     /// Type of operation: "Request", "Event", "Command"
     pub op_type: String,
     /// Name of the operation (e.g., "openEyes", "Core.makeManager", "close")
@@ -32,6 +36,8 @@ pub struct TimedOperation {
 /// Represents an operation that was started but never completed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrphanOperation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<crate::event_rules::ClassifiedRecord>,
     /// Type of operation: "Request", "Event", "Command"
     pub op_type: String,
     /// Name of the operation
@@ -107,6 +113,8 @@ pub struct AmbiguousGroup {
 /// Evidence coverage for the selected, parsed input, independent of display limits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationCoverage {
+    #[serde(default)]
+    pub classification: ClassificationCoverage,
     pub status: String,
     pub relevant_events: usize,
     pub unclassified_command_records: usize,
@@ -122,6 +130,19 @@ pub struct OperationCoverage {
     pub suppressed_operation_types: Vec<SuppressedOperationType>,
     pub capture_window: CaptureWindow,
     pub upstream_export_completeness: String,
+}
+
+/// Counts selected parsed records before operation-type selection or display limits.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ClassificationCoverage {
+    pub selected_records: usize,
+    pub classified_records: usize,
+    pub identity_only_records: usize,
+    pub unclassified_records: usize,
+    pub conflicting_records: usize,
+    pub invalid_records: usize,
+    pub unavailable_records: usize,
+    pub legacy_records: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +165,7 @@ pub struct CaptureWindow {
 impl Default for OperationCoverage {
     fn default() -> Self {
         Self {
+            classification: ClassificationCoverage::default(),
             status: "no_applicable_events".into(),
             relevant_events: 0,
             unclassified_command_records: 0,

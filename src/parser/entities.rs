@@ -6,6 +6,7 @@ use std::fmt;
 /// Direction of an event (emitted or received)
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventDirection {
+    Unknown,
     Emit,
     Receive,
 }
@@ -13,6 +14,7 @@ pub enum EventDirection {
 /// Direction of a request (sending or receiving a response)
 #[derive(Debug, Clone, PartialEq)]
 pub enum RequestDirection {
+    Unknown,
     Send,
     Receive,
 }
@@ -20,6 +22,7 @@ pub enum RequestDirection {
 impl fmt::Display for EventDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            EventDirection::Unknown => write!(f, "Unknown"),
             EventDirection::Emit => write!(f, "Emit"),
             EventDirection::Receive => write!(f, "Receive"),
         }
@@ -29,6 +32,7 @@ impl fmt::Display for EventDirection {
 impl fmt::Display for RequestDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            RequestDirection::Unknown => write!(f, "Unknown"),
             RequestDirection::Send => write!(f, "Send"),
             RequestDirection::Receive => write!(f, "Receive"),
         }
@@ -110,6 +114,15 @@ pub struct LogEntry {
 }
 
 impl LogEntry {
+    pub fn operation_name(&self) -> Option<&str> {
+        match &self.kind {
+            LogEntryKind::Command { command, .. } => Some(command),
+            LogEntryKind::Request { request, .. } => Some(request),
+            LogEntryKind::Event { event_type, .. } => Some(event_type),
+            _ => None,
+        }
+    }
+
     /// Get the payload regardless of the kind of log entry
     pub fn payload(&self) -> Option<&Value> {
         match &self.kind {

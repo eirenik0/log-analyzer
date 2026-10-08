@@ -115,6 +115,19 @@ fn select_results(
 }
 
 fn write_operation_coverage(out: &mut String, coverage: &super::OperationCoverage) {
+    let c = &coverage.classification;
+    let _ = writeln!(
+        out,
+        "Event classification: selected={} classified={} identity-only={} unclassified={} conflicting={} invalid={} unavailable={} legacy={}",
+        c.selected_records,
+        c.classified_records,
+        c.identity_only_records,
+        c.unclassified_records,
+        c.conflicting_records,
+        c.invalid_records,
+        c.unavailable_records,
+        c.legacy_records
+    );
     let _ = writeln!(out, "Operation coverage: {}", coverage.status);
     let _ = writeln!(
         out,
@@ -145,7 +158,7 @@ fn write_operation_coverage(out: &mut String, coverage: &super::OperationCoverag
     }
     let _ = writeln!(
         out,
-        "Unclassified command records: {}",
+        "Unclassified records (compatibility count): {}",
         coverage.unclassified_command_records
     );
     let window = &coverage.capture_window;
@@ -255,7 +268,9 @@ pub fn format_perf_results_text(
                 crate::event_rules::ClassifiedRecord::Event {
                     profile, rule_ids, ..
                 }
-                | crate::event_rules::ClassifiedRecord::Conflict { profile, rule_ids } => {
+                | crate::event_rules::ClassifiedRecord::Conflict {
+                    profile, rule_ids, ..
+                } => {
                     let _ = writeln!(
                         out,
                         "    Profile: {profile}; rules: {}",
@@ -265,6 +280,7 @@ pub fn format_perf_results_text(
                 crate::event_rules::ClassifiedRecord::Invalid {
                     profile,
                     diagnostics,
+                    ..
                 } => {
                     for diagnostic in diagnostics {
                         let _ = writeln!(
@@ -546,6 +562,21 @@ fn write_timed_operation(out: &mut String, index: usize, op: &TimedOperation) {
         op.end_source.file.as_deref().unwrap_or("<unknown>"),
         op.end_source.line
     );
+    for (boundary, evidence) in [
+        ("start", &op.start_classification),
+        ("end", &op.end_classification),
+    ] {
+        if let Some(crate::event_rules::ClassifiedRecord::Event {
+            profile, rule_ids, ..
+        }) = evidence
+        {
+            let _ = writeln!(
+                out,
+                "   {boundary} profile: {profile}; rules: {}",
+                rule_ids.join(", ")
+            );
+        }
+    }
     if !op.scope.is_empty() {
         let _ = writeln!(out, "   Scope: {:?}", op.scope);
     }

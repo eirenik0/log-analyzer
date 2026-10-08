@@ -50,7 +50,7 @@ pub struct AnalyzerConfig {
     pub profile_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_rules: Option<CompiledEventRules>,
-    /// Command-only integration; legacy request/event recognition remains available.
+    /// Deprecated command-only compatibility wrapper; legacy request/events remain available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command_rules: Option<CompiledEventRules>,
     pub parser: ParserRules,
@@ -79,6 +79,11 @@ impl Default for AnalyzerConfig {
 }
 
 impl AnalyzerConfig {
+    /// Global rules are preferred; command_rules remains a compatibility wrapper.
+    pub fn event_classifier(&self) -> Option<&CompiledEventRules> {
+        self.event_rules.as_ref().or(self.command_rules.as_ref())
+    }
+
     pub fn command_classifier(&self) -> Option<&CompiledEventRules> {
         self.command_rules.as_ref().or_else(|| {
             self.event_rules.as_ref().filter(|rules| {
@@ -93,7 +98,20 @@ impl AnalyzerConfig {
 
     /// Required after assembling a configuration programmatically; file loaders call this.
     pub fn validate_event_rules(&self) -> Result<(), String> {
-        if self.command_classifier().is_some()
+        if self.event_classifier().is_some()
+            && (self.perf.correlation_scope_fields.len() > crate::event_rules::MAX_SCOPE_FIELDS
+                || self
+                    .perf
+                    .correlation_scope_fields
+                    .iter()
+                    .any(|s| s.len() > crate::event_rules::MAX_VALUE_BYTES))
+        {
+            return Err(
+                "explicit correlation supports at most 16 scope field names of at most 4096 bytes"
+                    .into(),
+            );
+        }
+        if self.event_classifier().is_some()
             && (self.parser.command_payload_markers.len() > 16
                 || self
                     .parser
@@ -102,6 +120,17 @@ impl AnalyzerConfig {
                     .any(|marker| marker.len() > crate::event_rules::MAX_VALUE_BYTES))
         {
             return Err("explicit command decoding supports at most 16 command_payload_markers of at most 4096 bytes each".into());
+        }
+        if self.event_rules.is_some()
+            && (self.parser.request_payload_markers.len() > 16
+                || self
+                    .parser
+                    .request_payload_markers
+                    .iter()
+                    .any(|s| s.len() > crate::event_rules::MAX_VALUE_BYTES)
+                || self.parser.event_payload_separator.len() > crate::event_rules::MAX_VALUE_BYTES)
+        {
+            return Err("explicit event decoding supports at most 16 request_payload_markers and payload markers of at most 4096 bytes each".into());
         }
         if let Some(rules) = &self.command_rules {
             if self.event_rules.is_some() {
@@ -217,6 +246,8 @@ pub struct EventMapping {
     pub phase: Option<ValueMapping>,
     pub outcome: Option<ValueMapping>,
     pub correlation_id: Option<ValueMapping>,
+    pub direction: Option<ValueMapping>,
+    pub endpoint: Option<ValueMapping>,
     #[serde(default)]
     pub scope: Vec<ValueMapping>,
 }
@@ -229,6 +260,10 @@ pub enum ValueMapping {
     },
     Field {
         field: String,
+    },
+    /// Explicit ordered alternatives; absence is allowed only for correlation identity.
+    FirstField {
+        fields: Vec<String>,
     },
     Capture {
         capture: String,
@@ -251,6 +286,16 @@ pub enum OperationKind {
     Command,
     Request,
     Event,
+}
+
+impl OperationKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Command => "Command",
+            Self::Request => "Request",
+            Self::Event => "Event",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

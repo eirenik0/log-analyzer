@@ -13,7 +13,7 @@ pub use entities::{
 use crate::comparator::LogFilter;
 use crate::config::{AnalyzerConfig, PerfRules, default_config};
 use crate::event_rules::{ClassifiedRecord, Phase};
-use crate::parser::{EventDirection, LogEntry, LogEntryKind, RequestDirection};
+use crate::parser::{LogEntry, LogEntryKind};
 
 /// Extracts the request ID from a log message containing [request_id] pattern
 /// The pattern is: Request "name" [id] where id contains "--" (e.g., "0--uuid" or "0--uuid#2")
@@ -112,100 +112,103 @@ pub fn analyze_performance_with_config(
     let mut suppressions: std::collections::BTreeMap<(String, String), usize> =
         std::collections::BTreeMap::new();
     for entry in filtered {
-        if op_type_filter.is_none_or(|selected| selected == "Command") {
-            match &entry.classification {
-                Some(ClassifiedRecord::Unclassified)
-                    if matches!(entry.kind, LogEntryKind::Generic { .. }) =>
-                {
-                    results.operation_coverage.unclassified_command_records += 1
+        let evidence = &entry.classification;
+        let counts = &mut results.operation_coverage.classification;
+        counts.selected_records += 1;
+        match evidence {
+            Some(ClassifiedRecord::Event {
+                semantics, legacy, ..
+            }) => {
+                counts.classified_records += 1;
+                if semantics.phase.is_none() {
+                    counts.identity_only_records += 1;
                 }
-                Some(ClassifiedRecord::Conflict { .. } | ClassifiedRecord::Invalid { .. }) => {
-                    results.operation_coverage.relevant_events += 1;
-                    let conflict = matches!(
-                        entry.classification,
-                        Some(ClassifiedRecord::Conflict { .. })
-                    );
-                    results.unmatched_events.push(UnmatchedEvent {
-                        classification: entry.classification.clone(),
-                        op_type: "Command".into(),
-                        name: "<unknown>".into(),
-                        correlation_id: None,
-                        scope: Vec::new(),
-                        boundary: if conflict { "conflicting" } else { "invalid" }.into(),
-                        reason: if conflict {
-                            "conflicting_event_rules"
-                        } else {
-                            "invalid_event_data"
-                        }
-                        .into(),
-                        timestamp: entry.timestamp,
-                        component: entry.component.clone(),
-                        source: source(entry),
-                        context: entry.raw_logline.clone(),
-                    });
-                    continue;
+                if *legacy {
+                    counts.legacy_records += 1;
                 }
-                _ => (),
             }
+            Some(ClassifiedRecord::Unclassified) => {
+                counts.unclassified_records += 1;
+                results.operation_coverage.unclassified_command_records += 1;
+            }
+            Some(ClassifiedRecord::Conflict { .. }) => counts.conflicting_records += 1,
+            Some(ClassifiedRecord::Invalid { .. }) => counts.invalid_records += 1,
+            None => counts.unavailable_records += 1,
         }
-        let (name, id, start, end) = match &entry.kind {
-            LogEntryKind::Request {
-                request,
-                request_id,
-                direction,
-                ..
-            } => (
-                request.as_str(),
-                request_id
-                    .clone()
-                    .or_else(|| extract_request_id(&entry.message)),
-                *direction == RequestDirection::Send,
-                *direction == RequestDirection::Receive,
-            ),
-            LogEntryKind::Event {
-                event_type,
-                payload,
-                direction,
-            } => (
-                event_type.as_str(),
-                payload
-                    .as_ref()
-                    .and_then(|p| extract_event_key_with_rules(p, &config.perf)),
-                *direction == EventDirection::Receive,
-                *direction == EventDirection::Emit,
-            ),
-            LogEntryKind::Command { command, .. } => {
-                if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification {
-                    (
-                        semantics.name.as_str(),
-                        semantics.correlation_id.clone(),
-                        semantics.phase == Some(Phase::Start),
-                        semantics.phase == Some(Phase::End),
-                    )
-                } else {
-                    (command.as_str(), None, false, false)
-                }
-            }
-            _ => continue,
-        };
-        let op_type = entry.entry_type();
-        results.operation_coverage.relevant_events += 1;
-        if op_type == "Command"
-            && !start
-            && !end
-            && op_type_filter.is_none_or(|selected| selected == op_type)
+        if let Some(
+            ClassifiedRecord::Conflict { kinds, .. } | ClassifiedRecord::Invalid { kinds, .. },
+        ) = evidence
         {
+            let conflict = matches!(evidence, Some(ClassifiedRecord::Conflict { .. }));
+            let applicable = op_type_filter.is_none_or(|selected| {
+                kinds.is_empty() || kinds.iter().any(|kind| kind.label() == selected)
+            });
+            results.operation_coverage.relevant_events += 1;
+            if !applicable {
+                *suppressions
+                    .entry(("Unknown".into(), "operation_type_filter".into()))
+                    .or_default() += 1;
+                continue;
+            }
             results.unmatched_events.push(UnmatchedEvent {
-                classification: entry.classification.clone(),
+                classification: evidence.clone(),
+                op_type: if kinds.len() == 1 {
+                    kinds[0].label()
+                } else {
+                    "Unknown"
+                }
+                .into(),
+                name: "<unknown>".into(),
+                correlation_id: None,
+                scope: Vec::new(),
+                boundary: if conflict { "conflicting" } else { "invalid" }.into(),
+                reason: if conflict {
+                    "conflicting_event_rules"
+                } else {
+                    "invalid_event_data"
+                }
+                .into(),
+                timestamp: entry.timestamp,
+                component: entry.component.clone(),
+                source: source(entry),
+                context: entry.raw_logline.clone(),
+            });
+            continue;
+        }
+        let (op_type, name, id, start, end) =
+            if let Some(ClassifiedRecord::Event { semantics, .. }) = evidence {
+                (
+                    semantics.kind.label(),
+                    semantics.name.as_str(),
+                    semantics.correlation_id.clone(),
+                    semantics.phase == Some(Phase::Start),
+                    semantics.phase == Some(Phase::End),
+                )
+            } else if !matches!(entry.kind, LogEntryKind::Generic { .. }) {
+                // Manually assembled library records must attach explicit or legacy evidence.
+                (
+                    entry.entry_type(),
+                    entry.operation_name().unwrap_or("<unknown>"),
+                    None,
+                    false,
+                    false,
+                )
+            } else {
+                continue;
+            };
+        results.operation_coverage.relevant_events += 1;
+        if !start && !end && op_type_filter.is_none_or(|selected| selected == op_type) {
+            results.unmatched_events.push(UnmatchedEvent {
+                classification: evidence.clone(),
                 op_type: op_type.into(),
                 name: name.into(),
                 correlation_id: id,
                 scope: correlation_scope(entry, config).unwrap_or_default(),
                 boundary: "identity".into(),
-                reason: if entry.classification.is_some() {
+                reason: if matches!(evidence, Some(ClassifiedRecord::Event { .. })) {
                     "identity_only"
                 } else {
-                    "unclassified_command_record"
+                    "unclassified_operation_record"
                 }
                 .into(),
                 timestamp: entry.timestamp,
@@ -233,6 +236,7 @@ pub fn analyze_performance_with_config(
             name,
             id,
             start,
+            op_type,
         };
         if start && end {
             results
@@ -394,11 +398,21 @@ pub fn analyze_performance_with_config(
                         .num_milliseconds(),
                     start_component: start.entry.component.clone(),
                     end_component: entry.component.clone(),
+                    start_classification: start.entry.classification.clone(),
+                    end_classification: entry.classification.clone(),
                     start_source: source(start.entry),
                     end_source: source(entry),
                     scope: key.scope.clone(),
-                    endpoint: match &entry.kind {
-                        LogEntryKind::Request { endpoint, .. } => endpoint.clone(),
+                    endpoint: match &entry.classification {
+                        Some(ClassifiedRecord::Event { semantics, .. }) => semantics
+                            .endpoint
+                            .clone()
+                            .or_else(|| match &start.entry.classification {
+                                Some(ClassifiedRecord::Event { semantics, .. }) => {
+                                    semantics.endpoint.clone()
+                                }
+                                _ => None,
+                            }),
                         _ => None,
                     },
                     status: if let Some(ClassifiedRecord::Event { semantics, .. }) =
@@ -504,6 +518,7 @@ struct CorrelationKey {
 }
 
 struct BoundaryEvent<'a> {
+    op_type: &'static str,
     entry: &'a LogEntry,
     name: &'a str,
     id: Option<String>,
@@ -511,47 +526,20 @@ struct BoundaryEvent<'a> {
 }
 
 fn correlation_scope(entry: &LogEntry, config: &AnalyzerConfig) -> Option<Vec<String>> {
-    let scope = if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification
-        && !semantics.scope.is_empty()
+    let scope = if let Some(ClassifiedRecord::Event {
+        semantics, legacy, ..
+    }) = &entry.classification
+        && (!legacy || !semantics.scope.is_empty())
     {
         Some(semantics.scope.clone())
     } else {
-        config
-            .perf
-            .correlation_scope_fields
-            .iter()
-            .map(|field| match field.as_str() {
-                "component_id" => {
-                    (!entry.component_id.trim().is_empty()).then(|| entry.component_id.clone())
-                }
-                "component" => Some(entry.component.clone()),
-                _ => entry
-                    .structured_field(field)
-                    .map(str::to_owned)
-                    .or_else(|| {
-                        entry
-                            .envelope_payload
-                            .as_ref()
-                            .and_then(|p| p.get(field))
-                            .or_else(|| entry.payload().and_then(|p| p.get(field)))
-                            .filter(|value| !value.is_null())
-                            .map(|value| {
-                                value
-                                    .as_str()
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| value.to_string())
-                            })
-                    }),
-            })
-            .map(|value| value.filter(|value| !value.trim().is_empty() && value != "null"))
-            .collect::<Option<Vec<_>>>()
+        crate::parser::record_correlation_scope(entry, config)
     };
     scope.filter(|scope| {
-        entry.entry_type() != "Command"
-            || (!scope.is_empty()
-                && scope
-                    .iter()
-                    .all(|value| value.len() <= crate::event_rules::MAX_VALUE_BYTES))
+        !scope.is_empty()
+            && scope
+                .iter()
+                .all(|v| v.len() <= crate::event_rules::MAX_VALUE_BYTES)
     })
 }
 
@@ -567,7 +555,7 @@ impl BoundaryEvent<'_> {
     fn unmatched(&self, scope: Vec<String>, reason: &str) -> UnmatchedEvent {
         UnmatchedEvent {
             classification: self.entry.classification.clone(),
-            op_type: self.entry.entry_type().to_string(),
+            op_type: self.op_type.to_string(),
             name: self.name.to_string(),
             correlation_id: self.id.clone(),
             scope,
@@ -588,7 +576,8 @@ impl BoundaryEvent<'_> {
     }
     fn orphan(&self) -> OrphanOperation {
         OrphanOperation {
-            op_type: self.entry.entry_type().to_string(),
+            classification: self.entry.classification.clone(),
+            op_type: self.op_type.to_string(),
             name: self.name.to_string(),
             correlation_id: self.id.clone(),
             start_time: self.entry.timestamp,

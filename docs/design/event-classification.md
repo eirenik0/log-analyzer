@@ -1,4 +1,4 @@
-# Event classification contract (version 1)
+# Event classification contract (versions 1 and 2)
 
 Delivery owner: #33. Module/configuration: #34; commands: #35; requests/events
 and shared reporting: #36. This document owns the technical contract.
@@ -19,16 +19,16 @@ There is no mutable schema/cache pair that can drift out of sync.
 `LogEntry`, the **original message before payload/display cleanup**, and either a
 JSON field map or the parser's flat string field map. Callers must supply that
 original message at the parsing seam; passing `entry.message` after cleanup is
-not equivalent. The parser now caches owned `ClassifiedRecord` command evidence
-before cleanup. Performance analysis consumes the cached phase; it never searches
-command messages for lifecycle words. The command-only integration (#35) is active
-for `command_rules` and command-only global `event_rules`. Global schemas including
-request/event kinds remain module-only until #36. Shipped command profiles use the
-scoped setting; legacy-only custom profiles retain their marker grammar.
+not equivalent. The parser caches owned `ClassifiedRecord` evidence for all three
+kinds before cleanup. Performance consumes normalized kind/name/phase/ID/scope
+only; it never derives phases or identities from raw text, payload keys or parser
+direction. Shipped profiles use global version-2 `event_rules`. Version-1 rules
+remain supported without changing their mapping grammar. `command_rules` remains
+a deprecated command-only wrapper with legacy request/event compatibility.
 
 `EventSemantics` contains kind (`command`, `request`, `event`), nonempty name,
 optional phase (`start`, `end`), optional outcome (`success`, `failure`), optional
-correlation ID and an ordered scope vector. Outcomes are valid only for `end`.
+correlation ID, transport direction, endpoint and an ordered scope vector. Outcomes are valid only for `end`.
 No phase means identity only, never lifecycle evidence. A configured ID/scope
 mapping is required to resolve; an absent mapping is explicitly absent evidence,
 not a fabricated ID or global scope. Integration must apply the existing
@@ -44,7 +44,7 @@ log record or making an invented completion claim.
 
 ## Grammar and adapters
 
-The optional `[event_rules]` table requires `version = 1` and a `rules` array.
+The optional `[event_rules]` table requires `version = 1` or `2` and a `rules` array.
 Each rule requires unique `id`, `adapter`, and `mapping`. Unknown keys in this
 schema are errors. Rule IDs are 1..128 ASCII letters, digits, `_`, `-`, or `.`.
 
@@ -63,7 +63,12 @@ ANDed; field names are case-sensitive literal keys, not JSON pointers. Typed JSO
 strings, booleans and numbers match by `serde_json::Value` equality; missing,
 null, array, object or wrong-type fields do not match. Flat parser fields match
 only string conditions: `"true"` is not boolean `true`. No implicit coercion or
-payload fallback occurs.
+payload fallback occurs in version 1. Version 2 additionally reserves `payload.KEY`
+for an exact top-level key in the explicitly decoded embedded payload, or the
+normalized envelope payload when no embedded payload was decoded. This namespace
+never overrides a direct field silently in version 1; the parser supplies the
+original field map to version-1 classification. Dotted keys otherwise remain
+literal, with no recursive traversal or JSON-string decoding.
 
 Mappings use one of:
 
@@ -71,14 +76,25 @@ Mappings use one of:
 - `{ from = "field", field = "operation" }` (requires a string field)
 - `{ from = "capture", capture = "name", decode = "raw" }`
 - `{ from = "capture", capture = "name", decode = "json_string" }`
+- Version 2: `{ from = "first_field", fields = ["payload.key", "payload.traceId"] }`
+  tries the first **present** field in the declared order. Wrong types, empty or
+  oversized values are invalid; they cannot fall through to another key. At most
+  16 bounded field names are allowed. For correlation identity only, absence of
+  every alternative means no ID, so correlation reports missing identity.`
 
 Capture mappings require a named capture present in the compiled text regex.
-Optional groups must actually participate at runtime. `raw` is the default;
+Optional groups must actually participate at runtime, except the version-2 optional endpoint capture: an absent group means no endpoint. `raw` is the default;
 `json_string` explicitly decodes a complete JSON string token, including its
 quotes and escapes. Empty, whitespace-only and oversized results are invalid.
 Names, IDs and scopes are preserved exactly, without trimming/case folding.
 `kind` is static; name, phase, outcome, ID and scope may use mappings. Phase and
-outcome string mappings must yield their exact enum spellings.
+outcome string mappings must yield their exact enum spellings. Version 2 adds
+optional `direction` and `endpoint` mappings. Directions are `send`/`receive` for
+requests and `emit`/`receive` for events; commands cannot have a direction. Absent
+direction remains `Unknown` in the record and never establishes a phase. Profiles
+must map phase independently; direction is transport metadata only. Version 1
+rejects these new fields and `first_field` rather than accepting new grammar under
+an old contract.
 
 Payload decoding remains separate. The classifier neither searches embedded
 JSON nor recursively parses arbitrary message contents. Existing normalization
@@ -129,15 +145,22 @@ can hide malformed matching evidence. Static enum values are checked at compile
 time; dynamic values are checked per record. Condition mismatch is unclassified,
 not malformed mapped data, because the rule has not asserted an event identity.
 
-Command integration retains outcomes in both text and JSON. Identity-only commands
-appear as unmatched `identity_only` records; conflicts appear as
-`conflicting_event_rules`; malformed mappings/limits appear as `invalid_event_data`
-with bounded rule/target diagnostics. These records contain the owned classification
-and source location. Unknown generic records evaluated by command rules remain
-searchable and contribute to `unclassified_command_records`; legacy requests/events
-recognized independently are not counted as unknown commands. Diagnostic rows use
-the existing selection/omission policy. Shared request/event classification and
-reporting remains #36 work.
+All integrations retain classifications and outcomes in text/JSON. Identity-only
+records report `identity_only`; conflicts `conflicting_event_rules`; malformed
+mappings/limits `invalid_event_data`. Conflicts/invalid data retain possible kinds
+and rule/profile provenance. Operation type filtering suppresses evidence only
+when its declared kinds exclude the requested kind; evidence of unknown kind
+remains visible. Measured pairs include `start_classification` and
+`end_classification`; unmatched/orphan records retain classification and sources.
+
+`operation_coverage.classification` partitions selected parsed records into
+classified, unclassified, conflicting, invalid and unavailable evidence; identity
+only and legacy are subsets of classified. Counts precede operation type filtering
+and display limits. Record filters define the selected set, while pre-filter parse
+coverage is unchanged. Unknown records remain searchable. The additive report
+fields retain report schema version 1; `unclassified_command_records` remains a
+deprecated compatibility count of unclassified records. No duration/statistic is
+fabricated for unavailable classification or incomplete pairing.
 
 ## Bounds and performance
 
@@ -188,69 +211,59 @@ endpoint/payload separators, normalization, correlation keys/scopes, session hin
 and known-name lists are orthogonal and may coexist. Loading does not select a
 winner. Programmatic configurations must run the same mixed-mode validation.
 
-### Scoped command integration
+### Final integration and migration
 
-`command_rules` is an additive AnalyzerConfig setting reusing the unchanged
-version-1 schema. It explicitly enables only command classification while retaining
-legacy request/event parsing during the staged delivery. It cannot coexist with
-`event_rules`, and every rule must have `kind = "command"`. It rejects active
-`parser.command_prefix`, `parser.command_start_marker`,
-`perf.command_start_markers` and `perf.command_completion_markers`. Request/event
-legacy markers remain permitted. This does not weaken the global `event_rules`
-mixed-mode prohibition or reinterpret version-1 rule grammar.
+Shipped `eyes`, `custom-start`, `service-api`, `event-pipeline` and synchronized
+skill templates use global version-2 `event_rules`; `base` declares an empty rule
+set and retains generic parsing. `generate-config` shares compiled rules and
+preserves explicit/legacy mode. It does not mine wording or translate directions.
+Exact text grammar and canonical structured-field forms are documented in README.
+Request directions/phases and event receive/start, emit/end mappings are declared
+by each profile; they are application contracts, not universal defaults.
 
-Shipped `eyes`, `custom-start`, `service-api`, and `event-pipeline` profiles and
-skill templates now use scoped command rules. Exact message forms are enumerated
-in README. Names use JSON-string captures; recognized start/end forms and the
-bare-subject identity-only form are disjoint. Payloads have explicit configured
-positions and occupy the remaining text; they never determine the phase. Failed
-end forms map failure explicitly; other shipped end forms map success.
+Version-1 custom rules remain supported. Legacy custom marker configurations keep
+their parsing semantics through `attach_legacy_event_evidence` at the parsing seam.
+The old command helper remains an alias. The deprecated `command_rules` wrapper
+continues to reject request/event rules, active legacy command fields and global
+`event_rules`, but may retain legacy request/event markers. Migrating to global
+rules requires removing **all** legacy lifecycle fields named in validation errors,
+authoring exact phase/identity mappings and using version 2 for new mapping forms.
+No silent reinterpretation or removal of legacy mode occurs.
 
-Shipped rules explicitly map the command name to correlation identity. The
-existing scope lookup applies when normalized scope mappings are absent; nonempty
-mapped scope takes precedence. All command pairing requires nonempty scope,
-including legacy commands, so the name alone cannot imply a globally unique
-execution. Inherited command scope values obey the 4096-byte semantic limit.
-The existing overlap, timestamp ordering, inferred-year and missing-field guards
-remain in the correlation engine. Completion status comes from normalized outcome
-when supplied. Explicit session creation hints require a start; completion hints
-require an end that is not failed. Identity-only records cannot complete sessions.
-Legacy hint semantics remain unchanged.
+Commands map their names as IDs explicitly. Requests map an immediately following
+bracketed ID (no whitespace or closing bracket); missing-ID forms retain recognized
+phase evidence with no fabricated ID. Event rules declare ordered top-level
+payload key alternatives; missing keys remain missing evidence. Empty scopes never
+establish global correlation. Explicit mapped scope takes precedence; otherwise
+configured scope fields (at most 16 names, each at most 4096 bytes) are resolved
+and cached during parsing. Missing fields
+leave empty scope. All kind/scope values remain bounded and perf cannot substitute
+new analysis configuration, display text, directions or payload keys for cached
+semantics. Legacy scope lookup retains its established compatibility behavior.
+ID reuse, overlap, source ordering, offsets and inferred-year safeguards remain
+in the existing correlation engine. Explicit session creation requires a start;
+completion requires a nonfailed end. Legacy session hints keep their semantics.
 
-Legacy custom marker profiles are not silently converted: their old command
-identity parser and substring phase matching remain, with phases cached once at
-parsing. The capture-wide completion gate is removed in both modes: a start alone
-now produces an orphan/missing-end diagnostic. Empty command scopes are now
-missing-scope diagnostics instead of global name-based pairing. Custom users may
-opt in by removing the four legacy command fields above and authoring explicit
-whole-message/structured rules. `generate-config` shares immutable compiled rules
-and preserves its input template's explicit/legacy mode. No wording is inferred.
-Removing legacy mode remains a separately announced breaking change.
+The explicit payload decoder considers at most 16 command markers, 16 request
+markers and one event separator, each at most 4096 bytes. Message size is bounded
+at 1 MiB; a contiguous Aho-Corasick NFA bounds marker construction memory and scans
+linearly plus reported matches (at most 33 per position). Quoted-name eligibility
+uses one byte per message byte; cached whitespace runs avoid repeated suffix
+scans. Earliest-position/configured-marker priority remains deterministic. A real
+object/array opener is required, with balanced typed delimiters, quotes/comments
+and maximum nesting depth 128 before JSON5 decoding. Only whitespace and complete
+comments may follow the root. Malformed, too-deep or trailing noncomment content
+stays opaque without decoding inner fragments. Header lifecycle evidence remains
+available; malformed payloads cannot supply IDs. Generic/legacy extraction and
+upstream normalization retain existing behavior.
 
-The new explicit command payload decoder locates configured markers outside
-quoted names and requires a real JSON-like opener. It checks balanced typed
-delimiters and a maximum depth of 128 before JSON5 decoding, accounting for quotes,
-escapes and comments. Malformed/deeper payloads stay opaque without decoding inner
-fragments; the original message and header phase remain available. Upstream
-normalization and legacy payload extraction are unchanged; no global parser
-hardening from #32 is carried into this PR. Explicit decoding permits at most
-16 `command_payload_markers`, each at most 4096 bytes, validated on loading.
-A contiguous Aho-Corasick NFA searches all markers with bounded construction memory
-and linear scanning plus reported matches (at most 16 per message position).
-Quoted-name eligibility uses one byte per message byte; overlapping candidates
-retain earliest-position/configured-marker priority. After the bounded root value,
-only whitespace and complete JSON5 comments are accepted; trailing values, prose,
-and incomplete comments keep the entire payload opaque.
-
-Library API change: `LogEntry.classification` caches owned evidence and provenance.
-Constructors leave it absent. Caller-constructed commands without evidence produce
-`unclassified_command_record` diagnostics; legacy callers can explicitly attach
-compatibility evidence with `attach_legacy_command_evidence`. Text changes or new
-analysis marker settings cannot reinterpret parsed phases. Cache provenance marks
-legacy evidence explicitly rather than inferring its origin from rule IDs.
-Redaction preserves typed classification discriminants/enums while masking source
-identities, names, profile strings and rule provenance through the existing
-presentation layer.
+Library API: constructors leave `LogEntry.classification` absent. Manually built
+operations must attach explicit normalized evidence or use the legacy adapter.
+Uncached records produce `unclassified_operation_record` diagnostics; directions
+alone cannot create a duration. Pair/orphan provenance and new Unknown directions
+are additive pre-1.0 API changes. Redaction preserves analytic counts and typed
+classification labels, while source IDs/names/scopes/endpoints and rule/profile
+provenance pass through normal redaction in both text and JSON.
 
 ## Validation and review
 
@@ -261,7 +274,9 @@ precedence, config round trips and shared compilation, validation errors and
 resource limits. Regression wording from the superseded PR #32 is tested as
 unclassified under a precise grammar; no heuristic implementation is copied.
 Run repository formatting, locked check, Clippy with denied warnings and locked
-full tests. Private-corpus evaluation is unavailable in a clean checkout.
+full tests. Private-corpus evaluation is unavailable in a clean checkout. The local synthetic
+evaluation corpus is compared against the previous build; stale known-failure
+markers and ordering assertions are recorded separately from required checks.
 
 Review findings are triaged as supported-behavior bugs, regressions, design
 problems or extensions. After two unsuccessful hosted review rounds, reassess this

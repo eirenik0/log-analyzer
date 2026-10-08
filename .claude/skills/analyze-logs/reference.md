@@ -616,19 +616,27 @@ Compact text preserves Unicode graphemes and disambiguates shortened field names
 
 Check `perf` operation coverage separately from parse coverage before interpreting empty results. README “perf” describes evidence statuses, suppressions, ambiguous/rejected events, and capture limits.
 
-Shipped command profiles now use version-1 `command_rules`: whole-message command
-start/end grammar, JSON-escaped names and explicit payload positions. A decoded
-command payload consumes the remainder: only whitespace/complete JSON5 comments
-may follow its root value. Malformed/deep payloads and trailing prose stay opaque.
-Legacy custom
-marker profiles retain their original semantics. Do not mix legacy command markers
-with explicit command rules; load errors name the fields to remove. Request/event
-markers may coexist with `command_rules` until their separate integration.
-`generate-config` preserves template mode. See README “Configuration is Essential”
-and `docs/design/event-classification.md` for supported forms and migration.
+Shipped profiles use version-2 global `event_rules`: whole-message command/request/
+event grammar, JSON-escaped names, explicit payload positions and declared ordered
+correlation keys. Canonical structured fields are `operation_kind`, `operation_name`,
+`operation_phase`, optional `correlation_id`, and request/event `operation_direction`.
+Phase mappings are independent of transport direction. Payloads consume the remainder;
+only whitespace and complete comments may follow the root. Malformed/deep payloads
+stay opaque. Missing IDs/scope, invalid fields and conflicting rules never create
+measurements. Generic extraction is preserved.
+
+Version-1 custom rules and legacy-only marker profiles retain their contracts.
+Global rules reject all active legacy lifecycle markers; `command_rules` remains
+an explicit deprecated command-only wrapper. `generate-config` preserves template
+rules/mode; it never infers wording. See README and the design contract for exact
+profile forms, version-2 mappings and migration.
 
 In `perf`, start-only, end-only and identity-only commands remain diagnostic;
 conflicting/invalid matches include rule provenance and cannot create durations.
-Check `unclassified_command_records` alongside parse and operation coverage.
+Check `operation_coverage.classification` alongside pre-filter parse coverage and
+pair coverage. Classified, unknown, conflicting, invalid and unavailable counts
+cover selected parsed records before operation-type selection/display limits.
+Measured pairs retain start/end profile/rule provenance. New fields remain additive
+under report schema 1; the old unknown-command counter is a compatibility alias.
 Explicit session completion hints require a nonfailed end, not merely a command
 name or start. Keep preset/skill templates synchronized with shipped profiles.

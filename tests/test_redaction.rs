@@ -856,12 +856,12 @@ fn redacted_performance_contexts_truncate_unicode_safely() {
     let file = dir.path().join("orphan.log");
     // Use the 100-byte orphan-only display path with an emoji across byte 97.
     let prefix =
-        "core (demo) | 2026-01-01T00:00:00Z [INFO] Request \"a\" [0--id] will be sent token=x ";
+        "s (d) | 2026-01-01T00:00:00Z [INFO] Command \"a\" is called with settings {token=x ";
     let expanded_prefix_len = prefix.len() + "[REDACTED]".len() - 1;
     assert!(expanded_prefix_len < 97);
     fs::write(
         &file,
-        format!("{prefix}{}🙂tail\n", "a".repeat(96 - expanded_prefix_len)),
+        format!("{prefix}{}🙂tail}}\n", "a".repeat(96 - expanded_prefix_len)),
     )
     .unwrap();
     let output = run(&[
@@ -887,7 +887,7 @@ fn redacted_performance_contexts_truncate_unicode_safely() {
 fn numeric_masks_preserve_nested_error_and_performance_timestamps() {
     let dir = tempdir().unwrap();
     let file = dir.path().join("time.log");
-    fs::write(&file, "core (demo) | 2026-01-01T00:00:01.000Z [ERROR] Request \"a\" [0--id] will be sent request_id=01 failure for 01\n").unwrap();
+    fs::write(&file, "core (demo) | 2026-01-01T00:00:01.000Z [ERROR] Request \"a\" [0--id] will be sent with body {request_id:'01', failure:'failure for 01'}\n").unwrap();
     let output = run(&[
         "--redact",
         "--mask-id",

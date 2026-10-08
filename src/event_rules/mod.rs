@@ -1,4 +1,4 @@
-//! Deterministic, opt-in classification; command evidence is cached by the parser.
+//! Deterministic, opt-in classification; all lifecycle evidence is cached by the parser.
 pub use crate::config::{
     Adapter, CaptureDecode, EventMapping, EventRule, EventRuleConfig, FieldCondition,
     OperationKind, Outcome, Phase, ValueMapping,
@@ -59,6 +59,10 @@ impl<'de> Deserialize<'de> for CompiledEventRules {
 pub enum StructuredFields<'a> {
     Json(&'a serde_json::Map<String, Value>),
     Flat(&'a HashMap<String, String>),
+    WithPayload {
+        fields: &'a StructuredFields<'a>,
+        payload: Option<&'a Value>,
+    },
 }
 
 /// Call at the record-parsing seam with the message BEFORE display cleanup.
@@ -77,6 +81,10 @@ pub struct EventSemantics {
     pub phase: Option<Phase>,
     pub outcome: Option<Outcome>,
     pub correlation_id: Option<String>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
     pub scope: Vec<String>,
 }
 
@@ -102,8 +110,13 @@ pub enum Classification<'a> {
     Recognized(NormalizedEvent<'a>),
     IdentityOnly(NormalizedEvent<'a>),
     Unclassified,
-    Conflict { rule_ids: Vec<&'a str> },
-    Invalid { diagnostics: Vec<Diagnostic<'a>> },
+    Conflict {
+        rule_ids: Vec<&'a str>,
+    },
+    Invalid {
+        diagnostics: Vec<Diagnostic<'a>>,
+        kinds: Vec<OperationKind>,
+    },
 }
 
 /// Owned evidence cached once on a parsed record; no self-referential record copy.
@@ -119,10 +132,14 @@ pub enum ClassifiedRecord {
     },
     Unclassified,
     Conflict {
+        #[serde(default)]
+        kinds: Vec<OperationKind>,
         profile: String,
         rule_ids: Vec<String>,
     },
     Invalid {
+        #[serde(default)]
+        kinds: Vec<OperationKind>,
         profile: String,
         diagnostics: Vec<RecordDiagnostic>,
     },
@@ -146,10 +163,12 @@ impl Classification<'_> {
             },
             Self::Unclassified => ClassifiedRecord::Unclassified,
             Self::Conflict { rule_ids } => ClassifiedRecord::Conflict {
+                kinds: Vec::new(),
                 profile: profile.into(),
                 rule_ids: rule_ids.into_iter().map(str::to_owned).collect(),
             },
-            Self::Invalid { diagnostics } => ClassifiedRecord::Invalid {
+            Self::Invalid { diagnostics, kinds } => ClassifiedRecord::Invalid {
+                kinds,
                 profile: profile.into(),
                 diagnostics: diagnostics
                     .into_iter()
@@ -190,9 +209,9 @@ impl CompiledEventRules {
     }
 
     pub fn compile(schema: EventRuleConfig) -> Result<Self, RuleError> {
-        if schema.version != 1 {
+        if !matches!(schema.version, 1 | 2) {
             return Err(RuleError(
-                "unsupported version; expected version = 1".into(),
+                "unsupported version; expected version = 1 or 2".into(),
             ));
         }
         if schema.rules.len() > MAX_RULES {
@@ -269,15 +288,29 @@ impl CompiledEventRules {
                 return Err(fail("at most 16 scope mappings are supported"));
             }
             let mapping = &rule.mapping;
+            if schema.version == 1 && (mapping.direction.is_some() || mapping.endpoint.is_some()) {
+                return Err(fail(
+                    "direction and endpoint mappings require event-rule version 2",
+                ));
+            }
             let mappings = std::iter::once(&mapping.name)
                 .chain(mapping.phase.iter())
                 .chain(mapping.outcome.iter())
                 .chain(mapping.correlation_id.iter())
+                .chain(mapping.direction.iter())
+                .chain(mapping.endpoint.iter())
                 .chain(mapping.scope.iter());
             for source in mappings {
+                if schema.version == 1 && matches!(source, ValueMapping::FirstField { .. }) {
+                    return Err(fail("first_field mappings require event-rule version 2"));
+                }
                 match source {
                     ValueMapping::Literal { value } if bounded_nonempty(value) => (),
                     ValueMapping::Field { field } if bounded_nonempty(field) => (),
+                    ValueMapping::FirstField { fields }
+                        if !fields.is_empty()
+                            && fields.len() <= 16
+                            && fields.iter().all(|f| bounded_nonempty(f)) => {}
                     ValueMapping::Capture { capture, .. } if bounded_nonempty(capture) => {
                         if !regex
                             .as_ref()
@@ -305,6 +338,13 @@ impl CompiledEventRules {
             {
                 return Err(fail("outcome must be success or failure"));
             }
+            if let Some(ValueMapping::Literal { value }) = &mapping.direction
+                && !valid_direction(mapping.kind, value)
+            {
+                return Err(fail(
+                    "direction must be send/receive for requests or emit/receive for events",
+                ));
+            }
             if mapping.outcome.is_some()
                 && (mapping.phase.is_none()
                     || matches!(&mapping.phase, Some(ValueMapping::Literal { value }) if value != "end"))
@@ -319,9 +359,33 @@ impl CompiledEventRules {
         Ok(Self(Arc::new(CompiledProfile { schema, rules })))
     }
 
+    pub fn classify_owned(&self, profile: &str, input: RecordInput<'_>) -> ClassifiedRecord {
+        let mut result = self.classify(profile, input).into_owned(profile);
+        if let ClassifiedRecord::Conflict {
+            rule_ids, kinds, ..
+        } = &mut result
+        {
+            for rule in &self.schema().rules {
+                if rule_ids.contains(&rule.id) && !kinds.contains(&rule.mapping.kind) {
+                    kinds.push(rule.mapping.kind);
+                }
+            }
+        }
+        result
+    }
+
     pub fn classify<'a>(&'a self, profile: &'a str, input: RecordInput<'a>) -> Classification<'a> {
         if input.original_message.len() > MAX_MESSAGE_BYTES {
             return Classification::Invalid {
+                kinds: self.schema().rules.iter().map(|r| r.mapping.kind).fold(
+                    Vec::new(),
+                    |mut kinds, kind| {
+                        if !kinds.contains(&kind) {
+                            kinds.push(kind);
+                        }
+                        kinds
+                    },
+                ),
                 diagnostics: vec![Diagnostic {
                     rule_id: None,
                     reason: "message_limit_exceeded",
@@ -331,6 +395,7 @@ impl CompiledEventRules {
         }
         let mut matches = Vec::new();
         let mut diagnostics = Vec::new();
+        let mut matched_kinds = Vec::new();
         for compiled in &self.0.rules {
             let captures = match &compiled.rule.adapter {
                 Adapter::Text { .. } => {
@@ -354,6 +419,9 @@ impl CompiledEventRules {
                     None
                 }
             };
+            if !matched_kinds.contains(&compiled.rule.mapping.kind) {
+                matched_kinds.push(compiled.rule.mapping.kind);
+            }
             match map_event(&compiled.rule.mapping, input.fields, captures.as_ref()) {
                 Ok(event) => matches.push((compiled.rule.id.as_str(), event)),
                 Err((reason, target)) => diagnostics.push(Diagnostic {
@@ -365,7 +433,10 @@ impl CompiledEventRules {
         }
         // Malformed matching evidence cannot be hidden by a valid sibling rule.
         if !diagnostics.is_empty() {
-            return Classification::Invalid { diagnostics };
+            return Classification::Invalid {
+                diagnostics,
+                kinds: matched_kinds,
+            };
         }
         let Some((_, first)) = matches.first() else {
             return Classification::Unclassified;
@@ -392,6 +463,15 @@ impl CompiledEventRules {
 impl<'a> StructuredFields<'a> {
     fn equals(self, key: &str, expected: &Value) -> bool {
         match self {
+            Self::WithPayload { fields, payload } => {
+                if let Some(key) = key.strip_prefix("payload.") {
+                    payload
+                        .and_then(|p| p.get(key))
+                        .is_some_and(|v| v == expected)
+                } else {
+                    fields.equals(key, expected)
+                }
+            }
             Self::Json(fields) => fields.get(key).is_some_and(|value| value == expected),
             Self::Flat(fields) => expected
                 .as_str()
@@ -399,8 +479,29 @@ impl<'a> StructuredFields<'a> {
         }
     }
 
+    fn present(self, key: &str) -> bool {
+        match self {
+            Self::Json(fields) => fields.contains_key(key),
+            Self::Flat(fields) => fields.contains_key(key),
+            Self::WithPayload { fields, payload } => {
+                if let Some(key) = key.strip_prefix("payload.") {
+                    payload.is_some_and(|p| p.get(key).is_some())
+                } else {
+                    fields.present(key)
+                }
+            }
+        }
+    }
+
     fn string(self, key: &str) -> Option<&'a str> {
         match self {
+            Self::WithPayload { fields, payload } => {
+                if let Some(key) = key.strip_prefix("payload.") {
+                    payload?.get(key)?.as_str()
+                } else {
+                    fields.string(key)
+                }
+            }
             Self::Json(fields) => fields.get(key)?.as_str(),
             Self::Flat(fields) => fields.get(key).map(String::as_str),
         }
@@ -416,6 +517,13 @@ fn resolve(
 ) -> Result<String, &'static str> {
     let value = match mapping {
         ValueMapping::Literal { value } => value.as_str(),
+        ValueMapping::FirstField {
+            fields: alternatives,
+        } => alternatives
+            .iter()
+            .find(|key| fields.present(key))
+            .and_then(|key| fields.string(key))
+            .ok_or("missing_or_non_string_field")?,
         ValueMapping::Field { field } => {
             fields.string(field).ok_or("missing_or_non_string_field")?
         }
@@ -483,12 +591,55 @@ fn map_event(
         correlation_id: mapping
             .correlation_id
             .as_ref()
-            .map(|source| get(source, "correlation_id"))
+            .map(|source| {
+                if let ValueMapping::FirstField {
+                    fields: alternatives,
+                } = source
+                    && alternatives.iter().all(|key| !fields.present(key))
+                {
+                    return Ok(None);
+                }
+                get(source, "correlation_id").map(Some)
+            })
+            .transpose()?
+            .flatten(),
+        direction: mapping
+            .direction
+            .as_ref()
+            .map(|source| {
+                let value = get(source, "direction")?;
+                if valid_direction(mapping.kind, &value) {
+                    Ok(value)
+                } else {
+                    Err(("invalid_direction", "direction"))
+                }
+            })
             .transpose()?,
+        endpoint: mapping
+            .endpoint
+            .as_ref()
+            .map(|source| {
+                if let ValueMapping::Capture { capture, .. } = source
+                    && captures.and_then(|c| c.name(capture)).is_none()
+                {
+                    return Ok(None);
+                }
+                get(source, "endpoint").map(Some)
+            })
+            .transpose()?
+            .flatten(),
         scope: mapping
             .scope
             .iter()
             .map(|source| get(source, "scope"))
             .collect::<Result<_, _>>()?,
     })
+}
+
+fn valid_direction(kind: OperationKind, direction: &str) -> bool {
+    match kind {
+        OperationKind::Command => false,
+        OperationKind::Request => matches!(direction, "send" | "receive"),
+        OperationKind::Event => matches!(direction, "emit" | "receive"),
+    }
 }

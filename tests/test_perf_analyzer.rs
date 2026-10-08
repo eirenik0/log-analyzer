@@ -136,6 +136,11 @@ fn events_and_commands_preserve_overlapping_starts_instead_of_overwriting() {
                     payload: Some(serde_json::json!({"id": "same"})),
                 }
             };
+            if !command {
+                let mut legacy = log_analyzer::config::AnalyzerConfig::default();
+                legacy.perf.event_correlation_keys = vec!["id".into()];
+                log_analyzer::parser::attach_legacy_event_evidence(&mut entry, &legacy);
+            }
             logs.push(entry);
         }
         let results = perf_analyzer::analyze_performance_with_config(
