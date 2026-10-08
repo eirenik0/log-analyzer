@@ -1,3 +1,4 @@
+pub use crate::event_rules::CompiledEventRules;
 use crate::parser::{LogEntry, LogEntryKind};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ const BUILTIN_TEMPLATE_NAMES: &[&str] = &[
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
+    #[error("Invalid event-rule configuration in '{path}': {reason}")]
+    EventRules { path: String, reason: String },
     #[error("Failed to read config file '{path}': {source}")]
     Read {
         path: String,
@@ -45,6 +48,8 @@ pub enum ConfigError {
 pub struct AnalyzerConfig {
     /// Free-form label for the loaded profile.
     pub profile_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_rules: Option<CompiledEventRules>,
     pub parser: ParserRules,
     pub perf: PerfRules,
     pub timeline: crate::timeline::TimelineRules,
@@ -58,6 +63,7 @@ impl Default for AnalyzerConfig {
     fn default() -> Self {
         Self {
             profile_name: "base".to_string(),
+            event_rules: None,
             parser: ParserRules::default(),
             perf: PerfRules::default(),
             timeline: crate::timeline::TimelineRules::default(),
@@ -69,6 +75,44 @@ impl Default for AnalyzerConfig {
 }
 
 impl AnalyzerConfig {
+    /// Required after assembling a configuration programmatically; file loaders call this.
+    pub fn validate_event_rules(&self) -> Result<(), String> {
+        if self.event_rules.is_some()
+            && (!self.parser.command_prefix.is_empty()
+                || !self.parser.command_start_marker.is_empty()
+                || !self.parser.request_prefix.is_empty()
+                || self.parser.event_emit_markers.iter().any(|s| !s.is_empty())
+                || self
+                    .parser
+                    .event_receive_markers
+                    .iter()
+                    .any(|s| !s.is_empty())
+                || self
+                    .parser
+                    .request_send_markers
+                    .iter()
+                    .any(|s| !s.is_empty())
+                || self
+                    .parser
+                    .request_receive_markers
+                    .iter()
+                    .any(|s| !s.is_empty())
+                || self
+                    .perf
+                    .command_start_markers
+                    .iter()
+                    .any(|s| !s.is_empty())
+                || self
+                    .perf
+                    .command_completion_markers
+                    .iter()
+                    .any(|s| !s.is_empty()))
+        {
+            return Err("explicit event_rules cannot coexist with legacy lifecycle markers; remove the parser event/command/request identity and phase markers and perf command phase markers, or omit event_rules".into());
+        }
+        Ok(())
+    }
+
     pub fn has_profile_hints(&self) -> bool {
         !self.profile.known_components.is_empty()
             || !self.profile.known_commands.is_empty()
@@ -79,6 +123,94 @@ impl AnalyzerConfig {
     pub fn effective_session_levels(&self) -> Vec<SessionLevelConfig> {
         self.sessions.levels.clone()
     }
+}
+
+/// Version 1 has no implicit defaults for lifecycle semantics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventRuleConfig {
+    pub version: u32,
+    pub rules: Vec<EventRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventRule {
+    pub id: String,
+    pub adapter: Adapter,
+    pub mapping: EventMapping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Adapter {
+    Text { pattern: String },
+    Structured { conditions: Vec<FieldCondition> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FieldCondition {
+    pub field: String,
+    pub equals: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventMapping {
+    pub kind: OperationKind,
+    pub name: ValueMapping,
+    pub phase: Option<ValueMapping>,
+    pub outcome: Option<ValueMapping>,
+    pub correlation_id: Option<ValueMapping>,
+    #[serde(default)]
+    pub scope: Vec<ValueMapping>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "from", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ValueMapping {
+    Literal {
+        value: String,
+    },
+    Field {
+        field: String,
+    },
+    Capture {
+        capture: String,
+        #[serde(default)]
+        decode: CaptureDecode,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureDecode {
+    #[default]
+    Raw,
+    JsonString,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationKind {
+    Command,
+    Request,
+    Event,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    Start,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    Success,
+    Failure,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -351,10 +483,17 @@ pub fn load_builtin_template(name: &str) -> Option<AnalyzerConfig> {
 }
 
 fn parse_config_toml(raw: &str, path_display: &str) -> Result<AnalyzerConfig, ConfigError> {
-    toml::from_str::<AnalyzerConfig>(raw).map_err(|source| ConfigError::Parse {
+    let config = toml::from_str::<AnalyzerConfig>(raw).map_err(|source| ConfigError::Parse {
         path: path_display.to_string(),
         source,
-    })
+    })?;
+    config
+        .validate_event_rules()
+        .map_err(|reason| ConfigError::EventRules {
+            path: path_display.to_string(),
+            reason,
+        })?;
+    Ok(config)
 }
 
 fn normalized_template_key(input: &str) -> Option<String> {

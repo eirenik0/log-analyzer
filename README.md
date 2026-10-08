@@ -132,6 +132,15 @@ log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-t
 - **Payload extraction** (`extract`, `search --payloads`) relies on `json_indicators` and `command_payload_markers` from `[parser]` to locate and parse embedded JSON. If these don't match your log format, payloads are invisible.
 - **Request lifecycle tracing** (`trace`, `perf --orphans-only`) depends on `request_send_markers`, `request_receive_markers`, and `request_endpoint_marker` to pair outgoing requests with their responses.
 
+An optional version-1 `[event_rules]` schema is available for the event
+classification module. Rules compile and validate when a profile loads; text
+patterns match the whole original message and structured conditions preserve
+field types. This is the foundation for upcoming command/request integration:
+loading rules alone does not enable a new CLI analysis path. Legacy profiles keep
+their existing behavior, and explicit rules mixed with active legacy lifecycle
+markers are rejected. See the [event classification contract](docs/design/event-classification.md)
+for the schema, limits, conflict handling and opt-in migration policy.
+
 **How to get started:**
 
 ```bash
