@@ -942,3 +942,37 @@ fn numeric_masks_preserve_nested_error_and_performance_timestamps() {
         .to_rfc3339();
     assert!(text.contains(&expected), "{text}");
 }
+
+#[test]
+fn numeric_ids_in_unique_comparison_messages_are_masked_before_formatting() {
+    let dir = tempdir().unwrap();
+    let left = dir.path().join("left.jsonl");
+    let right = dir.path().join("right.jsonl");
+    for (file, id) in [(&left, "1"), (&right, "01")] {
+        let row = json!({"ts":"2026-01-01T00:00:01Z","level":"INFO","component":"core", "message":format!("answer for {id}"), "payload":{"request_id":id}});
+        fs::write(file, format!("{row}\n")).unwrap();
+    }
+    let output = run(&[
+        "-v",
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "-F",
+        "text",
+        "compare",
+        left.to_str().unwrap(),
+        right.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !text.contains("answer for 1") && !text.contains("answer for 01"),
+        "{text}"
+    );
+    assert!(text.contains("answer for [MASKED_ID:"), "{text}");
+    assert!(text.contains("1 unique log types"), "{text}");
+}

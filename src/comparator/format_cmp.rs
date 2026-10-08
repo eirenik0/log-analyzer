@@ -81,6 +81,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
             formatter.write_divider("=", 80)?;
 
             for (index, key) in results.unique_to_log1.iter().enumerate() {
+                let key = crate::output::diagnostic(key);
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
                     let details = if parts.len() > 3 {
@@ -109,6 +110,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
             formatter.write_divider("=", 80)?;
 
             for (index, key) in results.unique_to_log2.iter().enumerate() {
+                let key = crate::output::diagnostic(key);
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
                     let details = if parts.len() > 3 {
@@ -178,7 +180,8 @@ pub fn format_comparison_results<F: OutputFormatter>(
                 }
             }
 
-            let parts: Vec<&str> = key.split('|').collect();
+            let displayed_key = crate::output::diagnostic(key);
+            let parts: Vec<&str> = displayed_key.split('|').collect();
 
             // Print formatted key header with clearer structure
             formatter.write_line("")?;
@@ -209,7 +212,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
                 formatter.write_highlight(&format!(
                     "[K{}] {} ({} instances)",
                     key_idx + 1,
-                    key,
+                    displayed_key,
                     comparisons.len()
                 ))?;
             }
