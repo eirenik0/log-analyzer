@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- add top-level `extends` to profile files: a built-in name or a relative file path, merged table by table with the child winning
+
 ## 0.2.0 (2026-02-25)
 
 ### Breaking Changes

@@ -78,6 +78,26 @@ Path/glob note:
 
 ## Profile Templates
 
+For small customizations, use a top-level `extends` instead of copying a template:
+
+```toml
+extends = "eyes"
+profile_name = "my-team"
+
+[profile]
+known_components = ["api", "worker"]
+```
+
+`extends` accepts a built-in name or a file path relative to the child profile.
+Built-in names take precedence; use `./base.toml` to select a file explicitly.
+Tables merge key by key with the child winning; arrays and scalars replace the
+parent's values. An omitted `profile_name` is inherited. Chains allow at most
+eight profiles, counting the child and every parent including built-ins. Cycles,
+unknown/unreadable parents, and empty or non-string references fail loading.
+An inherited `event_rules.rules` array is replaced whole when overridden.
+All built-ins use version-2 `event_rules`, so children must not introduce legacy
+lifecycle markers alongside those inherited rules.
+
 Start from a template and customize your log format:
 
 ```bash
