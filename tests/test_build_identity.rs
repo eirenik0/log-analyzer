@@ -190,3 +190,62 @@ fn compact_capabilities_and_bounded_metadata_preserve_output_contracts() {
     assert!(text.contains("Mandatory metadata exceeds budget"));
     assert!(text.contains("profile=eyes schema=1"));
 }
+
+#[test]
+fn multiline_profile_metadata_keeps_generated_toml_valid() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("profile.toml");
+    let mut profile = log_analyzer::config::load_builtin_template("eyes").unwrap();
+    profile.profile_name = "first\nsecond\r\t\0".into();
+    fs::write(&config, toml::to_string(&profile).unwrap()).unwrap();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/synthetic.jsonl");
+    for redact in [false, true] {
+        let saved = dir.path().join("generated.toml");
+        let mut command = Command::new(env!("CARGO_BIN_EXE_log-analyzer"));
+        command.env_remove("LOG_ANALYZER_PRESET").args([
+            "--config",
+            config.to_str().unwrap(),
+            "-o",
+            saved.to_str().unwrap(),
+            "generate-config",
+            fixture.to_str().unwrap(),
+            "--profile-name",
+            "created-profile",
+        ]);
+        if redact {
+            command.arg("--redact");
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(text, fs::read_to_string(saved).unwrap());
+        let generated: toml::Value = toml::from_str(&text).unwrap();
+        assert_eq!(generated["profile_name"].as_str(), Some("created-profile"));
+        assert!(
+            text.contains("profile=first\\nsecond\\r\\t\\u{0}"),
+            "{text}"
+        );
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "-F",
+            "json",
+            "search",
+            fixture.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        report["report_metadata"]["active_profile"],
+        profile.profile_name
+    );
+}

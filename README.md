@@ -782,7 +782,8 @@ profile is unavailable.
 
 JSON reports include `report_metadata` with `schema_version`, `build` and
 `active_profile`. Text reports end with a `Build:` line; generated TOML uses a
-comment. Bounded error reports count build metadata against the text budget and
+comment. Control characters in profile names are escaped in text/comments; JSON
+retains the full profile name. Bounded error reports count build metadata against the text budget and
 retain it when details cannot fit. Text match-count output therefore includes
 metadata; use JSON for machine-readable counts.
 

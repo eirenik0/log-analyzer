@@ -556,13 +556,24 @@ impl OutputState {
             return String::new();
         };
         let build = &metadata["build"];
+        let profile = metadata["active_profile"].as_str().unwrap().chars().fold(
+            String::new(),
+            |mut out, ch| {
+                if ch.is_control() {
+                    out.extend(ch.escape_default());
+                } else {
+                    out.push(ch);
+                }
+                out
+            },
+        );
         format!(
             "{}Build: log-analyzer {} revision={} state={} profile={} schema={}\n",
             if comment { "# " } else { "" },
             build["package_version"].as_str().unwrap(),
             build["source_revision"].as_str().unwrap_or("unknown"),
             build["source_state"].as_str().unwrap(),
-            metadata["active_profile"].as_str().unwrap(),
+            profile,
             crate::build_info::SCHEMA_VERSION
         )
     }
