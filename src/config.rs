@@ -93,17 +93,17 @@ impl AnalyzerConfig {
 
     /// Required after assembling a configuration programmatically; file loaders call this.
     pub fn validate_event_rules(&self) -> Result<(), String> {
+        if self.command_classifier().is_some()
+            && (self.parser.command_payload_markers.len() > 16
+                || self
+                    .parser
+                    .command_payload_markers
+                    .iter()
+                    .any(|marker| marker.len() > crate::event_rules::MAX_VALUE_BYTES))
+        {
+            return Err("explicit command decoding supports at most 16 command_payload_markers of at most 4096 bytes each".into());
+        }
         if let Some(rules) = &self.command_rules {
-            if self.command_classifier().is_some()
-                && (self.parser.command_payload_markers.len() > 16
-                    || self
-                        .parser
-                        .command_payload_markers
-                        .iter()
-                        .any(|marker| marker.len() > crate::event_rules::MAX_VALUE_BYTES))
-            {
-                return Err("explicit command decoding supports at most 16 command_payload_markers of at most 4096 bytes each".into());
-            }
             if self.event_rules.is_some() {
                 return Err("choose command_rules for staged command integration or event_rules for the global contract; both cannot coexist".into());
             }

@@ -200,7 +200,7 @@ pub fn analyze_performance_with_config(
                 op_type: op_type.into(),
                 name: name.into(),
                 correlation_id: id,
-                scope: Vec::new(),
+                scope: correlation_scope(entry, config).unwrap_or_default(),
                 boundary: "identity".into(),
                 reason: if entry.classification.is_some() {
                     "identity_only"
@@ -246,48 +246,7 @@ pub fn analyze_performance_with_config(
                 .push(event.unmatched(Vec::new(), "missing_correlation_key"));
             continue;
         };
-        let scope = if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification
-            && !semantics.scope.is_empty()
-        {
-            Some(semantics.scope.clone())
-        } else {
-            config
-                .perf
-                .correlation_scope_fields
-                .iter()
-                .map(|field| match field.as_str() {
-                    "component_id" => {
-                        (!entry.component_id.trim().is_empty()).then(|| entry.component_id.clone())
-                    }
-                    "component" => Some(entry.component.clone()),
-                    _ => entry
-                        .structured_field(field)
-                        .map(str::to_owned)
-                        .or_else(|| {
-                            entry
-                                .envelope_payload
-                                .as_ref()
-                                .and_then(|p| p.get(field))
-                                .or_else(|| entry.payload().and_then(|p| p.get(field)))
-                                .filter(|value| !value.is_null())
-                                .map(|value| {
-                                    value
-                                        .as_str()
-                                        .map(str::to_owned)
-                                        .unwrap_or_else(|| value.to_string())
-                                })
-                        }),
-                })
-                .map(|value| value.filter(|value| !value.trim().is_empty() && value != "null"))
-                .collect::<Option<Vec<_>>>()
-        };
-        let scope = scope.filter(|scope| {
-            op_type != "Command"
-                || (!scope.is_empty()
-                    && scope
-                        .iter()
-                        .all(|value| value.len() <= crate::event_rules::MAX_VALUE_BYTES))
-        });
+        let scope = correlation_scope(entry, config);
         let Some(scope) = scope else {
             results
                 .unmatched_events
@@ -549,6 +508,51 @@ struct BoundaryEvent<'a> {
     name: &'a str,
     id: Option<String>,
     start: bool,
+}
+
+fn correlation_scope(entry: &LogEntry, config: &AnalyzerConfig) -> Option<Vec<String>> {
+    let scope = if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification
+        && !semantics.scope.is_empty()
+    {
+        Some(semantics.scope.clone())
+    } else {
+        config
+            .perf
+            .correlation_scope_fields
+            .iter()
+            .map(|field| match field.as_str() {
+                "component_id" => {
+                    (!entry.component_id.trim().is_empty()).then(|| entry.component_id.clone())
+                }
+                "component" => Some(entry.component.clone()),
+                _ => entry
+                    .structured_field(field)
+                    .map(str::to_owned)
+                    .or_else(|| {
+                        entry
+                            .envelope_payload
+                            .as_ref()
+                            .and_then(|p| p.get(field))
+                            .or_else(|| entry.payload().and_then(|p| p.get(field)))
+                            .filter(|value| !value.is_null())
+                            .map(|value| {
+                                value
+                                    .as_str()
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| value.to_string())
+                            })
+                    }),
+            })
+            .map(|value| value.filter(|value| !value.trim().is_empty() && value != "null"))
+            .collect::<Option<Vec<_>>>()
+    };
+    scope.filter(|scope| {
+        entry.entry_type() != "Command"
+            || (!scope.is_empty()
+                && scope
+                    .iter()
+                    .all(|value| value.len() <= crate::event_rules::MAX_VALUE_BYTES))
+    })
 }
 
 fn source(entry: &LogEntry) -> SourceLocation {

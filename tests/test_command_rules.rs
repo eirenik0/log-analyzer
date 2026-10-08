@@ -598,3 +598,70 @@ fn cli_command_selection_preserves_full_coverage_and_diagnostic_omissions() {
         }
     }
 }
+
+#[test]
+fn payload_marker_limits_apply_to_both_explicit_command_entry_points() {
+    let schema = config::load_builtin_template("service-api")
+        .unwrap()
+        .command_rules
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("limits.toml");
+    for global in [false, true] {
+        let mut cfg = AnalyzerConfig::default();
+        if global {
+            cfg.event_rules = Some(schema.clone());
+        } else {
+            cfg.command_rules = Some(schema.clone());
+        }
+        for markers in [vec!["with settings".into(); 17], vec!["x".repeat(4097)]] {
+            cfg.parser.command_payload_markers = markers;
+            fs::write(&file, toml::to_string_pretty(&cfg).unwrap()).unwrap();
+            assert!(
+                config::load_config_from_path(&file)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("command_payload_markers")
+            );
+            assert!(
+                parser::parse_log_entry_with_config(
+                    "worker | 2026-01-01T00:00:00Z [INFO] alive",
+                    1,
+                    &cfg
+                )
+                .is_err()
+            );
+        }
+        cfg.parser.command_payload_markers = vec!["x".repeat(4096); 16];
+        assert!(cfg.validate_event_rules().is_ok());
+    }
+}
+
+#[test]
+fn identity_only_diagnostics_preserve_inherited_and_mapped_scope() {
+    let cfg = config::load_builtin_template("service-api").unwrap();
+    let logs = parse(&cfg, &[r#"Operation "work""#]);
+    let result = analyze(&cfg, &logs);
+    assert_eq!(result.unmatched_events[0].scope, ["job-demo"]);
+    let text = perf_analyzer::format_perf_results_text(
+        &result,
+        0,
+        0,
+        false,
+        log_analyzer::cli::PerfSortOrder::Duration,
+    );
+    assert!(text.contains("Scope: job-demo"));
+    assert!(result.operations.is_empty());
+    assert_eq!(result.unmatched_events[0].reason, "identity_only");
+    let report: Value =
+        serde_json::from_str(&perf_analyzer::format_perf_results_json(&result)).unwrap();
+    assert_eq!(report["unmatched_events"][0]["scope"], json!(["job-demo"]));
+    let definition = json!({"id":"identity","adapter":{"type":"text","pattern":"work"},"mapping":{"kind":"command","name":{"from":"literal","value":"work"},"scope":[{"from":"literal","value":"mapped-session"}]}});
+    let cfg = AnalyzerConfig {
+        command_rules: Some(rules(json!([definition]))),
+        ..AnalyzerConfig::default()
+    };
+    let result = analyze(&cfg, &parse(&cfg, &["work"]));
+    assert_eq!(result.unmatched_events[0].scope, ["mapped-session"]);
+    assert!(result.operations.is_empty());
+}

@@ -247,6 +247,9 @@ pub fn format_perf_results_text(
             event.source.line,
             event.timestamp.to_rfc3339()
         );
+        if !event.scope.is_empty() {
+            let _ = writeln!(out, "    Scope: {}", event.scope.join(", "));
+        }
         if let Some(classification) = &event.classification {
             match classification {
                 crate::event_rules::ClassifiedRecord::Event {
