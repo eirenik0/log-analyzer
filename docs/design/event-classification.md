@@ -134,7 +134,12 @@ unavailable analysis as measured zero. Those reporting changes belong to #35/#36
 
 Version 1 fixes these limits: 128 rules; 16 conditions per structured rule;
 16 scope mappings; 8192 UTF-8 bytes per regex; 4096 UTF-8 bytes per mapping source,
-condition key/string and resolved value; 1 MiB per original message. IDs have the
+condition key/string and **decoded** resolved value; 1 MiB per original message.
+JSON-string capture tokens have a separate 24,578-byte pre-decoding limit
+(`6 * 4096 + 2`), accommodating the worst-case six-byte Unicode escape for every
+ASCII byte plus quotes. The 4096-byte semantic limit is enforced after decoding,
+so raw and escaped representations of a valid boundary-sized name agree. Any
+extra token whitespace also counts against the encoded-input bound. IDs have the
 separate 128-byte limit. Regex compiled size and DFA cache size are each limited
 to 1 MiB per rule. Invalid syntax or compiled-size failure rejects the profile.
 There is no truncation of semantic values or partial matching of oversized input.

@@ -17,6 +17,8 @@ pub const MAX_CONDITIONS: usize = 16;
 pub const MAX_SCOPE_FIELDS: usize = 16;
 pub const MAX_PATTERN_BYTES: usize = 8192;
 pub const MAX_VALUE_BYTES: usize = 4096;
+/// A byte may be encoded as six ASCII bytes (\\uXXXX), plus two quotes.
+pub const MAX_ENCODED_CAPTURE_BYTES: usize = 6 * MAX_VALUE_BYTES + 2;
 pub const MAX_MESSAGE_BYTES: usize = 1_048_576;
 const REGEX_SIZE_LIMIT: usize = 1_048_576;
 
@@ -105,7 +107,7 @@ pub enum Classification<'a> {
 }
 
 fn bounded_nonempty(value: &str) -> bool {
-    !value.trim().is_empty() && value.len() <= MAX_VALUE_BYTES
+    value.len() <= MAX_VALUE_BYTES && !value.trim().is_empty()
 }
 
 fn phase(value: &str) -> Option<Phase> {
@@ -364,15 +366,22 @@ fn resolve(
             .map(|c| c.as_str())
             .ok_or("missing_capture")?,
     };
-    if !bounded_nonempty(value) {
-        return Err("empty_or_oversized_value");
-    }
     let decoded = match mapping {
         ValueMapping::Capture {
             decode: CaptureDecode::JsonString,
             ..
-        } => serde_json::from_str::<String>(value).map_err(|_| "invalid_json_string_capture")?,
-        _ => value.to_string(),
+        } => {
+            if value.len() > MAX_ENCODED_CAPTURE_BYTES {
+                return Err("encoded_capture_limit_exceeded");
+            }
+            serde_json::from_str::<String>(value).map_err(|_| "invalid_json_string_capture")?
+        }
+        _ => {
+            if !bounded_nonempty(value) {
+                return Err("empty_or_oversized_value");
+            }
+            value.to_string()
+        }
     };
     if !bounded_nonempty(&decoded) {
         return Err("empty_or_oversized_value");

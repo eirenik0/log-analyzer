@@ -512,3 +512,36 @@ fn absolute_anchors_hold_under_inline_multiline_flags() {
         ));
     }
 }
+
+#[test]
+fn decoded_value_limit_is_independent_of_json_string_encoding() {
+    let rules = compile(json!([text_rule(), structured_rule()]));
+    let entry = record();
+    let name = "a".repeat(MAX_VALUE_BYTES);
+    let structured = json!({"phase":"end", "ok":true, "code":200, "operation":name, "id":"trace-1", "session":"session-1"});
+    let expected = recognized(classify(&rules, &entry, "structured", &structured));
+    for encoded in [
+        serde_json::to_string(&name).unwrap(),
+        format!("\"{}\"", r"\u0061".repeat(MAX_VALUE_BYTES)),
+    ] {
+        let message = format!("Operation {encoded} completed");
+        assert_eq!(
+            recognized(classify(&rules, &entry, &message, &basic_fields())),
+            expected
+        );
+    }
+    let message = format!(
+        "Operation \"{}\" completed",
+        "a".repeat(MAX_VALUE_BYTES + 1)
+    );
+    assert!(
+        matches!(classify(&rules, &entry, &message, &basic_fields()), Classification::Invalid { diagnostics } if diagnostics[0].reason == "empty_or_oversized_value")
+    );
+    let message = format!(
+        "Operation \"{}\" completed",
+        r"\u0061".repeat(MAX_VALUE_BYTES + 1)
+    );
+    assert!(
+        matches!(classify(&rules, &entry, &message, &basic_fields()), Classification::Invalid { diagnostics } if diagnostics[0].reason == "encoded_capture_limit_exceeded")
+    );
+}
