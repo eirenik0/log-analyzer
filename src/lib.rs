@@ -16,6 +16,7 @@ pub mod comparator;
 pub mod config;
 pub mod config_generator;
 pub mod errors;
+pub mod event_rules;
 pub mod extract;
 pub mod filter;
 pub mod llm_processor;

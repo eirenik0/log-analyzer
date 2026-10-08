@@ -615,3 +615,9 @@ Use `log-analyzer capabilities` to inspect the installed build and supported com
 Compact text preserves Unicode graphemes and disambiguates shortened field names. See README “Safe compact text” for omission-marker collisions and existing limits.
 
 Check `perf` operation coverage separately from parse coverage before interpreting empty results. README “perf” describes evidence statuses, suppressions, ambiguous/rejected events, and capture limits.
+
+The version-1 `event_rules` configuration is a module contract pending production
+integration. Do not replace working marker profiles merely by adding rules:
+explicit rules mixed with active legacy lifecycle markers fail loading, and rules
+alone do not yet enable command/request pairing. See the repository's
+`docs/design/event-classification.md` for grammar, limits and migration policy.
