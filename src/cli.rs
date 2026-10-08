@@ -393,7 +393,7 @@ pub enum Commands {
 
     /// Analyze operation timing and report incomplete lifecycle evidence
     #[command(
-        long_about = "Analyze operation timing and report incomplete lifecycle evidence. Shipped profiles use versioned event_rules for commands, requests and events, classified once before payload cleanup. Phases, identities and scopes are cached; transport direction does not imply a phase. Classification coverage counts selected parsed records before operation-type selection and display limits. Start-only, end-only, identity-only, conflicting and invalid evidence remains diagnostic; no completion elsewhere is required to report a start. Legacy custom marker profiles retain their semantics. See README for the supported lifecycle grammar and migration."
+        long_about = "Analyze operation timing and report incomplete lifecycle evidence. Shipped profiles use versioned event_rules for commands, requests and events, classified once before payload cleanup. Phases, identities and scopes are cached; transport direction does not imply a phase. Classification coverage counts selected parsed records before operation-type selection and display limits. Start-only, end-only, identity-only, conflicting and invalid evidence remains diagnostic; no completion elsewhere is required to report a start. Legacy custom marker profiles retain their semantics. Record-field scopes over 4096 bytes use bounded prefix/length/digest keys; short values containing the reserved digest marker are encoded too. Digest collisions remain possible. Explicit event-rule scope mappings retain their value limit. See README for the supported lifecycle grammar and migration."
     )]
     Perf {
         /// One or more log files to analyze

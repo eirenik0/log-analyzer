@@ -61,6 +61,52 @@ fn different_long_scopes_do_not_pair() {
 }
 
 #[test]
+fn a_short_scope_cannot_impersonate_a_long_scope_summary() {
+    let long = long_scope("x");
+    let summary = bounded_scope_value(&long);
+    let result = analyze(&[
+        (&long, r#"Request "work" [r1] sent"#),
+        (&summary, r#"Request "work" [r1] completed"#),
+    ]);
+    assert!(
+        result.operations.is_empty(),
+        "a raw summary impersonated a long scope"
+    );
+}
+
+#[test]
+fn long_scopes_with_identical_prefix_and_length_remain_separate() {
+    let a = format!("{}a", "x".repeat(MAX_VALUE_BYTES));
+    let b = format!("{}b", "x".repeat(MAX_VALUE_BYTES));
+    let result = analyze(&[
+        (&a, r#"Request "work" [r1] sent"#),
+        (&b, r#"Request "work" [r1] completed"#),
+    ]);
+    assert!(result.operations.is_empty());
+}
+
+#[test]
+fn reserved_marker_values_are_encoded_even_when_short() {
+    let raw = " bytes, fnv1a128:";
+    let key = bounded_scope_value(raw);
+    assert_ne!(raw, key);
+    assert_ne!(key, bounded_scope_value(&key));
+    assert!(key.len() <= MAX_VALUE_BYTES);
+}
+
+#[test]
+fn prefix_truncation_preserves_utf8_boundaries() {
+    let value = format!("a{}", "😀".repeat(MAX_VALUE_BYTES));
+    let key = bounded_scope_value(&value);
+    assert!(key.starts_with(&format!("a{}…[", "😀".repeat(15))));
+    assert!(key.len() <= MAX_VALUE_BYTES);
+    assert_eq!(
+        bounded_scope_value(&"x".repeat(MAX_VALUE_BYTES)).len(),
+        MAX_VALUE_BYTES
+    );
+}
+
+#[test]
 fn bounded_value_keeps_short_values_and_limits_long_ones() {
     assert_eq!(bounded_scope_value("short"), "short");
     let long = "é".repeat(MAX_VALUE_BYTES);

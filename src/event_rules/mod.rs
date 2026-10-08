@@ -183,17 +183,19 @@ impl Classification<'_> {
     }
 }
 
-/// Keeps a record-field scope value within `MAX_VALUE_BYTES` without losing identity.
+/// Keeps a record-field scope key within `MAX_VALUE_BYTES`.
 ///
 /// Values over the limit become a readable prefix plus the byte length and a 128-bit
 /// FNV-1a digest of the full value. Equal values give equal keys, so long scopes still
-/// correlate; values that differ anywhere give different keys.
+/// correlate. Short values containing the digest marker are also encoded, preventing
+/// a raw value from impersonating a generated key. Digest collisions remain possible.
 pub fn bounded_scope_value(value: &str) -> String {
-    if value.len() <= MAX_VALUE_BYTES {
+    const DIGEST_MARKER: &str = " bytes, fnv1a128:";
+    if value.len() <= MAX_VALUE_BYTES && !value.contains(DIGEST_MARKER) {
         return value.to_string();
     }
     const PREFIX_BYTES: usize = 64;
-    let mut cut = PREFIX_BYTES;
+    let mut cut = PREFIX_BYTES.min(value.len());
     while !value.is_char_boundary(cut) {
         cut -= 1;
     }
@@ -203,7 +205,7 @@ pub fn bounded_scope_value(value: &str) -> String {
         hash = hash.wrapping_mul(0x0000000001000000000000000000013B);
     }
     format!(
-        "{}…[{} bytes, fnv1a128:{hash:032x}]",
+        "{}…[{}{DIGEST_MARKER}{hash:032x}]",
         &value[..cut],
         value.len()
     )
