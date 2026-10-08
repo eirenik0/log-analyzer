@@ -1,0 +1,146 @@
+[
+  {
+    "args": [
+      "capabilities"
+    ],
+    "pointer": "/commands"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "search",
+      "{fixture}"
+    ],
+    "pointer": "/search/entries"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "process",
+      "{fixture}"
+    ],
+    "pointer": "/logs"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "perf",
+      "{fixture}"
+    ],
+    "pointer": "/operations"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "errors",
+      "{fixture}"
+    ],
+    "pointer": "/errors/clusters"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "extract",
+      "{fixture}",
+      "--field",
+      "request_id"
+    ],
+    "pointer": "/extract/groups"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "trace",
+      "{fixture}",
+      "--id",
+      "demo-123"
+    ],
+    "pointer": "/trace/entries"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "info",
+      "{fixture}"
+    ],
+    "pointer": "/info/total_entries"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "compare",
+      "{fixture}",
+      "{fixture}"
+    ],
+    "pointer": "/summary"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "-F",
+      "json",
+      "diff",
+      "{fixture}",
+      "{fixture}"
+    ],
+    "pointer": "/summary"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "llm-diff",
+      "{fixture}",
+      "{fixture}"
+    ],
+    "pointer": "/summary"
+  },
+  {
+    "args": [
+      "schema",
+      "{fixture}"
+    ],
+    "pointer": "/schema_preview"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "generate-config",
+      "{fixture}",
+      "--profile-name",
+      "example-profile"
+    ],
+    "type": "toml",
+    "pointer": "/profile_name"
+  },
+  {
+    "args": [
+      "--version"
+    ],
+    "type": "version"
+  }
+]

@@ -1,0 +1,2 @@
+{"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"worker","component_id":"demo","message":"worker alive","payload":{"request_id":"demo-123","items":[{"id":"a"}]}}
+{"ts":"2026-01-01T00:00:01Z","level":"ERROR","component":"worker","component_id":"demo","message":"worker failed","payload":{"request_id":"demo-123","items":[{"id":"b"}]}}
