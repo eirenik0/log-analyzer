@@ -105,6 +105,8 @@ fn marker_is_nonaffirmative(prefix: &str) -> bool {
     words[start..].windows(2).any(|pair| {
         (pair[0] == "to" && pair[1] == "be")
             || (matches!(pair[0].as_str(), "anything" | "all") && pair[1] == "but")
+            || (pair[0] == "far" && pair[1] == "from")
+            || (pair[0] == "nowhere" && pair[1] == "near")
     }) || words[start..].iter().enumerate().any(|(offset, word)| {
         let index = start + offset;
         (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))

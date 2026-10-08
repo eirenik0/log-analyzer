@@ -883,6 +883,9 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is likely to have completed",
         "probably completed",
         "is anything but completed",
+        "is far from completed",
+        "is nowhere near completed",
+        "status=far from completed",
         "is all but completed",
         "status=anything but completed",
         "probably v1.2 completed",
@@ -901,6 +904,10 @@ fn negated_markers_cannot_create_command_boundaries() {
         "if completed",
         "completed?",
         "completed v1.2?",
+        "completed approx. yesterday?",
+        "completed e.g. yesterday?",
+        "completed approx. yesterday if validation passes",
+        "probably approx. yesterday completed",
         "completed 1.5 seconds ago?",
         "completed host.example?",
         "completed v1.2 if validation passes",
@@ -936,6 +943,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is unlikely to have started",
         "probably started",
         "is anything but started",
+        "is far from started",
+        "is nowhere near started",
         "is all but started",
         "status=anything but started",
         "probably v1.2 started",
@@ -945,6 +954,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "started if validation passes",
         "started or not",
         "started v1.2?",
+        "started approx. yesterday?",
     ] {
         let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
         let end = parse(r#"Operation "work" completed"#, 1, &config);

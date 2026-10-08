@@ -1268,6 +1268,8 @@ fn metadata_assignment_spans(
                         | "only"
                         | "anything"
                         | "all"
+                        | "far"
+                        | "nowhere"
                         | "is"
                         | "was"
                         | "were"
@@ -1307,8 +1309,39 @@ fn metadata_assignment_spans(
 }
 
 pub(crate) fn lifecycle_sentence_boundary(text: &str, index: usize, ch: char) -> bool {
+    let abbreviation = ch == '.' && {
+        let token = text[..index]
+            .split_whitespace()
+            .next_back()
+            .unwrap_or("")
+            .trim_start_matches(|ch: char| !ch.is_alphanumeric())
+            .to_lowercase();
+        matches!(
+            token.as_str(),
+            "approx"
+                | "e.g"
+                | "i.e"
+                | "etc"
+                | "vs"
+                | "cf"
+                | "viz"
+                | "incl"
+                | "excl"
+                | "resp"
+                | "fig"
+                | "no"
+                | "dr"
+                | "mr"
+                | "mrs"
+                | "ms"
+                | "prof"
+                | "dept"
+                | "est"
+        ) || (token.chars().count() == 1 && token.chars().all(char::is_alphabetic))
+    };
     matches!(ch, '!' | '\n')
         || (ch == '.'
+            && !abbreviation
             && text[index + ch.len_utf8()..]
                 .chars()
                 .next()
