@@ -367,7 +367,9 @@ Use repeatable `--mask-id <field>` with `--redact` to mask selected identifier f
 as `[MASKED_ID:N]`; equal values share a replacement within one invocation across
 stdout and files, including known ID occurrences in prose. Trace selectors are
 masked even when no named input field or matching entry exists. Replacements are
-local to each invocation. Bounded errors are redacted before sample/output budgets
+local to each invocation. Numeric IDs in source prose are masked while report counts,
+physical line numbers, and timestamps retain their original meaning. ID collection
+and masking use a shared multi-pattern index for logs with many distinct IDs. Bounded errors are redacted before sample/output budgets
 are applied; the redaction marker counts against the text budget. Omission counts
 for strings describe the redacted presentation; numeric analysis totals retain
 their original values.

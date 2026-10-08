@@ -727,3 +727,85 @@ fn overlapping_known_ids_use_the_complete_stable_mask() {
     );
     assert_eq!(entry["payload"]["trace_id"], "[MASKED_ID:2]");
 }
+
+#[test]
+fn expanding_secret_redaction_keeps_unicode_process_messages_valid() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("unicode.jsonl");
+    let message = format!("token=x {}🙂tail", "a".repeat(179));
+    let row =
+        json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core","message":message});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    let output = run(&["--redact", "process", file.to_str().unwrap()]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report.to_string().contains("[REDACTED]"));
+    assert!(!report.to_string().contains("token=x"));
+}
+
+#[test]
+fn numeric_masks_preserve_physical_lines_counts_and_timestamps() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("numbers.jsonl");
+    let row = json!({"ts":"2026-01-01T00:00:01Z","level":"INFO","component":"core","componentId":"1", "message":"answer for 1 and 01", "payload":{"request_id":"1","trace_id":"01"}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    for format in ["text", "json"] {
+        let output = run(&[
+            "--redact",
+            "--mask-id",
+            "request_id",
+            "--mask-id",
+            "trace_id",
+            "--mask-id",
+            "component_id",
+            "-F",
+            format,
+            "search",
+            file.to_str().unwrap(),
+        ]);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.contains("2026-01-01T00:00:01.000Z"), "{text}");
+        assert!(!text.contains("answer for 1"), "{text}");
+        if format == "text" {
+            assert!(text.contains(">     1:"), "{text}");
+        } else {
+            let value: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(value["search"]["entries"][0]["source_line_number"], 1);
+        }
+    }
+}
+
+#[test]
+fn many_identifiers_keep_all_entries_and_stable_masks() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("many.jsonl");
+    let rows: String = (0..2000).map(|index| {
+        let id = format!("request-{index:05}");
+        format!("{}\n", json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":format!("answer for {id}"), "payload":{"request_id":id}}))
+    }).collect();
+    fs::write(&file, rows).unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "-F",
+        "json",
+        "search",
+        file.to_str().unwrap(),
+    ]);
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    let report: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(report["search"]["entries"].as_array().unwrap().len(), 2000);
+    assert!(!text.contains("request-00000"));
+    assert!(!text.contains("request-01999"));
+    assert_eq!(
+        report["search"]["entries"][1999]["message"],
+        "answer for [MASKED_ID:2000]"
+    );
+}

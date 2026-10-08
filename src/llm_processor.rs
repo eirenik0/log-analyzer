@@ -351,7 +351,7 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
 
             // Compact message text
             let compact_message = if log.message.len() > 200 {
-                format!("{}...", &log.message[0..197])
+                format!("{}...", crate::output::byte_prefix(&log.message, 197))
             } else {
                 log.message.clone()
             };

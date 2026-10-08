@@ -260,10 +260,11 @@ pub fn display_log_summary(
             );
 
             for (i, sample) in samples.iter().enumerate() {
-                let short_msg = if sample.message.len() > 100 {
-                    format!("{}...", &sample.message[..97])
+                let message = crate::output::diagnostic(&sample.message);
+                let short_msg = if message.len() > 100 {
+                    format!("{}...", crate::output::byte_prefix(&message, 97))
                 } else {
-                    sample.message.clone()
+                    message
                 };
 
                 report_println!(

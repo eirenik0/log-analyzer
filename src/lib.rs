@@ -696,9 +696,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
 
             let mut report =
                 analyze_errors_with_config(&logs, &filter, &analyzer_config, &error_options);
-            if error_options.limits.is_some() {
-                output::prepare_errors(&mut report);
-            }
+            output::prepare_errors(&mut report);
             let rendered = match format {
                 OutputFormat::Text => {
                     if let Some(limits) = error_options.limits {
@@ -796,6 +794,8 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
 
             let selected: Vec<_> = logs.iter().filter(|entry| filter.matches(entry)).collect();
             results.event_timeline = timeline::analyze(&selected, &analyzer_config.timeline)?;
+
+            output::prepare_performance(&mut results);
 
             // Display results based on format
             match format {

@@ -69,7 +69,11 @@ pub fn format_search_text(
         let component_label = if entry.component_id.is_empty() {
             entry.component.as_str().to_string()
         } else {
-            format!("{} ({})", entry.component, entry.component_id)
+            format!(
+                "{} ({})",
+                entry.component,
+                crate::output::identifier(&entry.component_id)
+            )
         };
         let message = if crate::output::redaction_enabled() {
             // Preserve header boundaries through the final presentation pass.

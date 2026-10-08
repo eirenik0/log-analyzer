@@ -1,8 +1,9 @@
 //! Presentation-only redaction. Analysis always sees original entries.
+use aho_corasick::{AhoCorasick, MatchKind};
 use regex::Regex;
 use serde_json::{Value, json};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::io::{self, Write};
 use std::sync::LazyLock;
@@ -33,6 +34,10 @@ struct OutputState {
     redact: bool,
     mask_ids: Vec<String>,
     masked_values: BTreeMap<String, String>,
+    generated: HashSet<String>,
+    next_id: usize,
+    matcher: Option<(AhoCorasick, Vec<String>)>,
+    preserve_numeric_metadata: bool,
     stdout: String,
     prepared: bool,
     compact: bool,
@@ -155,28 +160,21 @@ impl OutputState {
             if value == "null" || value.is_empty() {
                 return None;
             }
-            if self
-                .masked_values
-                .values()
-                .any(|generated| generated == value)
-            {
+            if self.generated.contains(value) {
                 return Some(value.to_string());
             }
-            let mut next = self.masked_values.len() + 1;
-            while format!("[MASKED_ID:{next}]") == value
-                || self
-                    .masked_values
-                    .values()
-                    .any(|generated| generated == &format!("[MASKED_ID:{next}]"))
-            {
-                next += 1;
+            if let Some(mask) = self.masked_values.get(value) {
+                return Some(mask.clone());
             }
-            return Some(
-                self.masked_values
-                    .entry(value.to_string())
-                    .or_insert_with(|| format!("[MASKED_ID:{next}]"))
-                    .clone(),
-            );
+            self.next_id += 1;
+            while format!("[MASKED_ID:{}]", self.next_id) == value {
+                self.next_id += 1;
+            }
+            let mask = format!("[MASKED_ID:{}]", self.next_id);
+            self.generated.insert(mask.clone());
+            self.masked_values.insert(value.to_string(), mask.clone());
+            self.matcher = None;
+            return Some(mask);
         }
         SECRET_FIELDS
             .iter()
@@ -213,13 +211,46 @@ impl OutputState {
             Value::Array(items) => {
                 Value::Array(items.iter().map(|v| self.value_at(v, path)).collect())
             }
-            Value::String(text) => Value::String(self.text(text)),
+            Value::String(text) => {
+                let leaf = path.rsplit('.').next().unwrap_or(path);
+                let metadata = matches!(
+                    leaf,
+                    "timestamp"
+                        | "ts"
+                        | "start"
+                        | "end"
+                        | "time_range"
+                        | "capture_window"
+                        | "start_time"
+                        | "end_time"
+                        | "first_timestamp"
+                        | "last_timestamp"
+                        | "file"
+                        | "source_file"
+                        | "source_row_path"
+                        | "row_path"
+                        | "parser"
+                        | "format"
+                        | "field"
+                        | "op_type"
+                        | "boundary"
+                        | "severity"
+                        | "level"
+                );
+                let previous = self.preserve_numeric_metadata;
+                self.preserve_numeric_metadata = metadata;
+                let rendered = self.text(text);
+                self.preserve_numeric_metadata = previous;
+                Value::String(rendered)
+            }
             value => value.clone(),
         }
     }
 
     fn text(&mut self, text: &str) -> String {
-        if let Some(replacement) = self.masked_values.get(text) {
+        if !(self.preserve_numeric_metadata && text.chars().all(|c| c.is_ascii_digit()))
+            && let Some(replacement) = self.masked_values.get(text)
+        {
             return replacement.clone();
         }
         // Keep parsed JSON separate from plain fragments so ID masking never changes keys.
@@ -320,10 +351,7 @@ impl OutputState {
                 // URL query values were already handled with their own delimiters.
                 if matches!(previous, Some('?') | Some('&'))
                     || raw == "[REDACTED]"
-                    || self
-                        .masked_values
-                        .values()
-                        .any(|generated| generated == raw)
+                    || self.generated.contains(raw)
                 {
                     return captures[0].to_string();
                 }
@@ -346,39 +374,113 @@ impl OutputState {
         self.mask_plain(&text)
     }
 
-    fn mask_plain(&self, text: &str) -> String {
+    fn mask_plain(&mut self, text: &str) -> String {
+        if self.masked_values.is_empty() {
+            return text.to_string();
+        }
+        if self.matcher.is_none() {
+            let originals: Vec<_> = self.masked_values.keys().cloned().collect();
+            let matcher = AhoCorasick::builder()
+                .match_kind(MatchKind::LeftmostLongest)
+                .build(&originals)
+                .expect("identifier patterns are valid");
+            self.matcher = Some((matcher, originals));
+        }
         static PLACEHOLDER: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"\[(?:MASKED_ID:\d+|REDACTED)\]").unwrap());
-        let mut text = text.to_string();
-        let mut values: Vec<_> = self.masked_values.iter().collect();
-        values.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then_with(|| a.0.cmp(b.0)));
-        for (original, replacement) in values {
-            // Preserve existing placeholders while masking known identifiers in prose.
-            if original.is_empty() {
+        let placeholders: Vec<_> = PLACEHOLDER.find_iter(text).map(|m| m.range()).collect();
+        let (matcher, originals) = self.matcher.as_ref().unwrap();
+        let mut out = String::new();
+        let mut cursor = 0;
+        let mut placeholder_index = 0;
+        for found in matcher.find_iter(text) {
+            let start = found.start();
+            let end = found.end();
+            while placeholder_index < placeholders.len()
+                && placeholders[placeholder_index].end <= start
+            {
+                placeholder_index += 1;
+            }
+            let original = &originals[found.pattern().as_usize()];
+            let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+            if text[..start].chars().next_back().is_some_and(is_word)
+                || text[end..].chars().next().is_some_and(is_word)
+                || placeholders
+                    .get(placeholder_index)
+                    .is_some_and(|p| p.contains(&start))
+                || (self.preserve_numeric_metadata && original.chars().all(|c| c.is_ascii_digit()))
+            {
                 continue;
             }
-            let mut out = String::new();
-            let mut cursor = 0;
-            let placeholders: Vec<_> = PLACEHOLDER.find_iter(&text).map(|m| m.range()).collect();
-            for (start, _) in text.match_indices(original) {
-                let end = start + original.len();
-                let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
-                let before = text[..start].chars().next_back();
-                let after = text[end..].chars().next();
-                if before.is_some_and(is_word)
-                    || after.is_some_and(is_word)
-                    || placeholders.iter().any(|p| p.contains(&start))
-                {
-                    continue;
-                }
-                out.push_str(&text[cursor..start]);
-                out.push_str(replacement);
-                cursor = end;
-            }
-            out.push_str(&text[cursor..]);
-            text = out;
+            out.push_str(&text[cursor..start]);
+            out.push_str(&self.masked_values[original]);
+            cursor = end;
         }
-        text
+        out.push_str(&text[cursor..]);
+        out
+    }
+
+    // Collection deliberately does not redact prose or scan previously collected IDs.
+    fn collect_value(&mut self, value: &Value, path: &str) {
+        match value {
+            Value::Object(map) => {
+                for (key, value) in map {
+                    let path = if path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    if self
+                        .mask_ids
+                        .iter()
+                        .any(|field| field_matches(&path, field))
+                    {
+                        let rendered = value
+                            .as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| value.to_string());
+                        self.replacement(&path, &rendered);
+                    }
+                    self.collect_value(value, &path);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    self.collect_value(item, path);
+                }
+            }
+            Value::String(text) => self.collect_text(text),
+            _ => (),
+        }
+    }
+
+    fn collect_text(&mut self, text: &str) {
+        static NAMED: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r#"([A-Za-z_][A-Za-z0-9_.%-]*)(?:["']?\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s&]+)"#).unwrap()
+        });
+        for captures in NAMED.captures_iter(text) {
+            if self
+                .mask_ids
+                .iter()
+                .any(|field| field_matches(&captures[1], field))
+            {
+                let raw = &captures[2];
+                let value = serde_json::from_str::<String>(raw)
+                    .unwrap_or_else(|_| percent_decode(raw.trim_matches('\'')));
+                self.replacement(&captures[1], &value);
+            }
+        }
+        for (start, ch) in text
+            .char_indices()
+            .filter(|(_, ch)| *ch == '{' || *ch == '[')
+        {
+            let mut stream =
+                serde_json::Deserializer::from_str(&text[start..]).into_iter::<Value>();
+            if let Some(Ok(value)) = stream.next() {
+                self.collect_value(&value, "");
+            }
+            let _ = ch;
+        }
     }
 
     fn report(&mut self, text: &str) -> String {
@@ -444,8 +546,11 @@ impl OutputState {
         if serde_json::from_str::<Value>(text).is_ok_and(|value| value.is_number()) {
             return format!("{marker}\n{text}");
         }
+        self.preserve_numeric_metadata = true;
         let text = self.text(text);
-        format!("{marker}\n{}", self.text(&text))
+        let rendered = format!("{marker}\n{}", self.text(&text));
+        self.preserve_numeric_metadata = false;
+        rendered
     }
 }
 
@@ -458,6 +563,12 @@ pub fn redact_comparison(results: &mut crate::comparator::ComparisonResults) {
             return;
         };
         for comparison in &mut results.shared_comparisons {
+            for text in [&mut comparison.text1, &mut comparison.text2]
+                .into_iter()
+                .flatten()
+            {
+                *text = state.text(text);
+            }
             for diff in &mut comparison.json_differences {
                 for value in [&mut diff.value1, &mut diff.value2] {
                     let rendered = value
@@ -500,7 +611,7 @@ pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
                 .into_iter()
                 .flatten()
             {
-                state.value(payload);
+                state.collect_value(payload, "");
             }
             for (key, value) in &entry.structured_fields {
                 state.replacement(key, value);
@@ -512,7 +623,7 @@ pub fn observe_entries(entries: &[crate::parser::LogEntry]) {
             {
                 state.replacement("request_id", id);
             }
-            state.text(&entry.raw_logline);
+            state.collect_text(&entry.raw_logline);
         }
     });
 }
@@ -626,4 +737,24 @@ pub fn prepare_bounded_output(text: &str, json_output: bool) -> String {
 
 pub fn redaction_enabled() -> bool {
     STATE.with(|state| state.borrow().as_ref().is_some_and(|s| s.redact))
+}
+
+/// Preserve typed counts/timestamps while preparing source strings for text rendering.
+pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResults) {
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut().filter(|s| s.redact) {
+            let value = serde_json::to_value(&*results).expect("performance results serialize");
+            *results = serde_json::from_value(state.value(&value))
+                .expect("redaction preserves typed performance fields");
+        }
+    });
+}
+
+pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
+    let mut end = text.len().min(max_bytes);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
