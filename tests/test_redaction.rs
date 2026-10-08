@@ -1065,3 +1065,42 @@ fn a_generated_mask_prefix_does_not_hide_a_raw_longer_identifier() {
     );
     assert!(!report.to_string().contains("customer-42"));
 }
+
+#[test]
+fn derived_correlation_ids_reserve_generated_looking_source_values() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("events.log");
+    let mut rows = String::new();
+    for (index, id) in ["ordinary", "[MASKED_ID:1]"].iter().enumerate() {
+        let payload = json!({"key":id});
+        rows.push_str(&format!("core (demo) | 2026-01-01T00:00:0{}Z [INFO] Received event of type {{\"name\":\"work\"}} with payload {payload}\n",index*2));
+        rows.push_str(&format!("core (demo) | 2026-01-01T00:00:0{}Z [INFO] Emit event of type \"work\" with payload {payload}\n",index*2+1));
+    }
+    fs::write(&file, rows).unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "correlation_id",
+        "-F",
+        "json",
+        "perf",
+        file.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let operations = report["operations"].as_array().unwrap();
+    assert_eq!(operations.len(), 2, "{report}");
+    assert_ne!(
+        operations[0]["correlation_id"],
+        operations[1]["correlation_id"]
+    );
+    assert!(
+        operations
+            .iter()
+            .all(|op| op["correlation_id"] != "[MASKED_ID:1]")
+    );
+}

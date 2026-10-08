@@ -807,6 +807,7 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
         let mut state = state.borrow_mut();
         if let Some(state) = state.as_mut().filter(|s| s.redact) {
             let value = serde_json::to_value(&*results).expect("performance results serialize");
+            state.collect_value(&value, "");
             *results = serde_json::from_value(state.value(&value))
                 .expect("redaction preserves typed performance fields");
         }
