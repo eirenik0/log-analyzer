@@ -95,7 +95,7 @@ pub fn format_extract_rows(
         });
         let payload = entry.payload().or(entry.envelope_payload.as_ref());
         let items: Vec<(Option<usize>, Option<&Value>)> = if let Some(path) = expand_array {
-            match payload.and_then(|value| extract_field_value(value, path)) {
+            match extract_payload_field(entry, path) {
                 Some(Value::Array(items)) => items
                     .iter()
                     .enumerate()
@@ -123,6 +123,15 @@ pub fn format_extract_rows(
             correlation_ids.insert("request_id".to_string(), Value::String(id.clone()));
         }
         for (array_index, item) in items {
+            let mut correlation_ids = correlation_ids.clone();
+            if expand_array.is_some() {
+                for name in ["correlation_id", "request_id", "trace_id", "span_id"] {
+                    if let Some(value) = item.and_then(|v| v.get(name)) {
+                        // Explicit item-local null overrides an unrelated parent identifier too.
+                        correlation_ids.insert(name.to_string(), value.clone());
+                    }
+                }
+            }
             let mut values = BTreeMap::new();
             let mut missing_fields = Vec::new();
             for field in fields {
@@ -243,13 +252,24 @@ fn extract_field_value<'a>(value: &'a Value, field_path: &str) -> Option<&'a Val
     Some(current)
 }
 
+fn extract_payload_field<'a>(entry: &'a LogEntry, field_path: &str) -> Option<&'a Value> {
+    entry
+        .payload()
+        .and_then(|value| extract_field_value(value, field_path))
+        .or_else(|| {
+            entry
+                .envelope_payload
+                .as_ref()
+                .and_then(|value| extract_field_value(value, field_path))
+        })
+}
+
 fn extract_entry_field_value(entry: &LogEntry, field_path: &str) -> Option<Value> {
     if let Some(value) = entry.structured_fields.get(field_path) {
         return Some(Value::String(value.clone()));
     }
 
-    let payload = entry.payload().or(entry.envelope_payload.as_ref())?;
-    extract_field_value(payload, field_path).cloned()
+    extract_payload_field(entry, field_path).cloned()
 }
 
 #[cfg(test)]

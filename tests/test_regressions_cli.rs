@@ -2246,3 +2246,62 @@ fn extract_expands_only_selected_array_and_reports_invalid_expansions() {
     assert_eq!(rejected[0]["reason"], "not_an_array");
     assert_eq!(rejected[1]["reason"], "missing_array");
 }
+
+#[test]
+fn extract_checks_envelope_paths_and_item_local_ids() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("envelope.jsonl");
+    let row = serde_json::json!({
+        "ts": "2026-01-01T00:00:00Z", "level": "INFO", "component": "core",
+        "message": "embedded {\"debug\":true}",
+        "payload": {"name":"envelope", "request_id":"parent", "cases":[
+            {"name":"a", "request_id":"item-a"},
+            {"name":"b", "request_id":"item-b", "trace_id":"trace-b"},
+            {"name":"c", "request_id":null}
+        ]}
+    });
+    write_file(&file, &format!("{row}\n"));
+    let output = command()
+        .args([
+            "-F",
+            "json",
+            "extract",
+            file.to_str().unwrap(),
+            "--field",
+            "name",
+            "--rows",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["extract"]["rows"][0]["values"]["name"], "envelope");
+    let output = command()
+        .args([
+            "-F",
+            "json",
+            "extract",
+            file.to_str().unwrap(),
+            "--field",
+            "name",
+            "--expand-array",
+            "cases",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let rows = report["extract"]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0]["correlation_ids"]["request_id"], "item-a");
+    assert_eq!(rows[1]["correlation_ids"]["request_id"], "item-b");
+    assert_eq!(rows[1]["correlation_ids"]["trace_id"], "trace-b");
+    assert_eq!(
+        rows[2]["correlation_ids"]["request_id"],
+        serde_json::Value::Null
+    );
+}
