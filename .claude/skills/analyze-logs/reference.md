@@ -616,8 +616,19 @@ Compact text preserves Unicode graphemes and disambiguates shortened field names
 
 Check `perf` operation coverage separately from parse coverage before interpreting empty results. README “perf” describes evidence statuses, suppressions, ambiguous/rejected events, and capture limits.
 
-The version-1 `event_rules` configuration is a module contract pending production
-integration. Do not replace working marker profiles merely by adding rules:
-explicit rules mixed with active legacy lifecycle markers fail loading, and rules
-alone do not yet enable command/request pairing. See the repository's
-`docs/design/event-classification.md` for grammar, limits and migration policy.
+Shipped command profiles now use version-1 `command_rules`: whole-message command
+start/end grammar, JSON-escaped names and explicit payload positions. A decoded
+command payload consumes the remainder: only whitespace/complete JSON5 comments
+may follow its root value. Malformed/deep payloads and trailing prose stay opaque.
+Legacy custom
+marker profiles retain their original semantics. Do not mix legacy command markers
+with explicit command rules; load errors name the fields to remove. Request/event
+markers may coexist with `command_rules` until their separate integration.
+`generate-config` preserves template mode. See README “Configuration is Essential”
+and `docs/design/event-classification.md` for supported forms and migration.
+
+In `perf`, start-only, end-only and identity-only commands remain diagnostic;
+conflicting/invalid matches include rule provenance and cannot create durations.
+Check `unclassified_command_records` alongside parse and operation coverage.
+Explicit session completion hints require a nonfailed end, not merely a command
+name or start. Keep preset/skill templates synchronized with shipped profiles.

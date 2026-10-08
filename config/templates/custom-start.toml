@@ -1,7 +1,7 @@
 # Template: custom-start
 #
 # 1) Copy this file to config/profiles/<your-team>.toml
-# 2) Replace marker strings with your log message patterns
+# 2) Customize whole-message command_rules and request/event marker strings
 # 3) Add known components/commands/requests for profile insights
 
 profile_name = "custom-start"
@@ -13,8 +13,6 @@ event_receive_markers = ["Received event of type"]
 event_payload_separator = "with payload"
 
 # Command pattern (example: Command "sync" is called with settings {...})
-command_prefix = "Command \""
-command_start_marker = "\" is called"
 command_payload_markers = ["with settings"]
 
 # Request pattern (example: Request "fetchUser" will be sent ... with body {...})
@@ -34,9 +32,7 @@ json_indicators = [
 ]
 
 [perf]
-# Command pairing markers for perf analysis
-command_start_markers = ["is called"]
-command_completion_markers = ["finished", "returned", "completed"]
+# Legacy command pairing markers are replaced by command_rules below.
 
 # Key(s) used to correlate request/response-like event pairs
 event_correlation_keys = ["key"]
@@ -55,3 +51,40 @@ segment_prefix = "trace-"
 [[sessions.levels]]
 name = "level-2"
 segment_prefix = "span-"
+
+# Whole-message command grammar. Correlation also requires [perf] scope fields.
+[command_rules]
+version = 1
+
+[[command_rules.rules]]
+id = "command-start"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:is called)(?: (?:with settings) (?s:\{.*|\[.*))?'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[command_rules.rules]]
+id = "command-end"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:finished|finished successfully|returned|completed)(?: (?:with settings) (?s:\{.*|\[.*))?'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "success" }
+
+[[command_rules.rules]]
+id = "command-identity"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*")'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }

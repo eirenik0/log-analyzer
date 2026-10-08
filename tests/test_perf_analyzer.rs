@@ -108,7 +108,15 @@ fn events_and_commands_preserve_overlapping_starts_instead_of_overwriting() {
         for (i, start) in [true, true, false, false].iter().enumerate() {
             let line = format!(
                 "core (demo) | 2026-01-01T00:00:0{i}.000Z [INFO] {}",
-                if *start { "started" } else { "completed" }
+                if command {
+                    if *start {
+                        r#"Operation "work" started"#
+                    } else {
+                        r#"Operation "work" completed"#
+                    }
+                } else {
+                    if *start { "started" } else { "completed" }
+                }
             );
             let mut entry =
                 log_analyzer::parser::parse_log_entry_with_config(&line, i + 1, &config).unwrap();

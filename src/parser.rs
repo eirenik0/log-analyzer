@@ -155,6 +155,9 @@ pub fn parse_log_file_report(
     path: impl AsRef<Path>,
     config: &AnalyzerConfig,
 ) -> Result<ParsedLogFile, ParseError> {
+    config.validate_event_rules().map_err(|reason| {
+        ParseError::InvalidLogFormat(format!("invalid analyzer configuration: {reason}"))
+    })?;
     let path = path.as_ref();
     let format = if config.normalization.is_some() {
         LogFormat::JsonLines
@@ -305,6 +308,9 @@ pub fn parse_log_entry_with_config(
     source_line_number: usize,
     config: &AnalyzerConfig,
 ) -> Result<LogEntry, ParseError> {
+    config.validate_event_rules().map_err(|reason| {
+        ParseError::InvalidLogFormat(format!("invalid analyzer configuration: {reason}"))
+    })?;
     let format = detect_format_from_lines(log_text.lines(), config.parser.format);
     parse_log_entry_in_format(log_text, source_line_number, config, format)
 }
@@ -461,8 +467,9 @@ fn parse_classic_log_entry(
         message.to_string(),
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
+        None,
         None,
         None,
     )
@@ -506,9 +513,10 @@ fn parse_rust_tracing_log_entry(
         message,
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
         Some(module_path.to_string()),
+        None,
         None,
     )
 }
@@ -556,8 +564,9 @@ fn parse_syslog_log_entry(
         message,
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
+        None,
         None,
         None,
     )
@@ -645,10 +654,11 @@ fn parse_json_line_entry(
         message,
         log_text.to_string(),
         source_line_number,
-        &config.parser,
+        config,
         structured_fields,
         module_path,
         payload,
+        Some(object),
     )
 }
 
@@ -662,22 +672,77 @@ fn build_log_entry(
     message: String,
     raw_logline: String,
     source_line_number: usize,
-    parser_rules: &ParserRules,
+    config: &AnalyzerConfig,
     structured_fields: HashMap<String, String>,
     module_path: Option<String>,
     payload_override: Option<Value>,
+    typed_fields: Option<&serde_json::Map<String, Value>>,
 ) -> Result<LogEntry, ParseError> {
-    let mut entry = determine_log_entry_kind(
-        component,
-        component_id,
-        timestamp,
-        level,
-        message.clone(),
-        raw_logline,
-        &message,
-        source_line_number,
-        parser_rules,
-    )?;
+    use crate::event_rules::{ClassifiedRecord, RecordInput, StructuredFields};
+    let mut entry = if config.command_classifier().is_some() {
+        create_generic_log(
+            component,
+            component_id,
+            timestamp,
+            level,
+            message.clone(),
+            raw_logline,
+            None,
+            source_line_number,
+        )
+    } else {
+        determine_log_entry_kind(
+            component,
+            component_id,
+            timestamp,
+            level,
+            message.clone(),
+            raw_logline,
+            &message,
+            source_line_number,
+            &config.parser,
+        )?
+    };
+    let classification = config.command_classifier().map(|rules| {
+        rules
+            .classify(
+                &config.profile_name,
+                RecordInput {
+                    record: &entry,
+                    original_message: &message,
+                    fields: typed_fields
+                        .map(StructuredFields::Json)
+                        .unwrap_or(StructuredFields::Flat(&structured_fields)),
+                },
+            )
+            .into_owned(&config.profile_name)
+    });
+    match &classification {
+        Some(ClassifiedRecord::Event { semantics, .. }) => {
+            let (settings, cleaned) = explicit_command_payload(&message, &config.parser);
+            entry.message = cleaned;
+            entry.kind = LogEntryKind::Command {
+                command: semantics.name.clone(),
+                settings,
+            };
+        }
+        Some(ClassifiedRecord::Conflict { .. } | ClassifiedRecord::Invalid { .. }) => (),
+        Some(ClassifiedRecord::Unclassified) => {
+            entry = determine_log_entry_kind(
+                entry.component,
+                entry.component_id,
+                timestamp,
+                entry.level,
+                message.clone(),
+                entry.raw_logline,
+                &message,
+                source_line_number,
+                &config.parser,
+            )?;
+        }
+        None => (),
+    }
+    entry.classification = classification;
 
     entry.source_timestamp = DateTime::parse_from_rfc3339(source_timestamp).ok();
     entry.timestamp_year_inferred = !source_timestamp
@@ -700,7 +765,206 @@ fn build_log_entry(
 
     entry.structured_fields = structured_fields;
     entry.module_path = module_path;
+    if config.command_classifier().is_none() {
+        attach_legacy_command_evidence(&mut entry, config);
+    }
     Ok(entry)
+}
+
+/// Legacy-only compatibility adapter. Phase searches happen once at parsing, never in perf.
+/// Library callers assembling legacy Command records may attach the same evidence explicitly.
+pub fn attach_legacy_command_evidence(entry: &mut LogEntry, config: &AnalyzerConfig) {
+    if config.command_classifier().is_some() {
+        return;
+    }
+    use crate::event_rules::{ClassifiedRecord, EventSemantics, OperationKind, Phase};
+    let LogEntryKind::Command { command, .. } = &entry.kind else {
+        return;
+    };
+    let start = contains_any_marker(&entry.message, &config.perf.command_start_markers);
+    let end = contains_any_marker(&entry.message, &config.perf.command_completion_markers);
+    entry.classification = Some(if start && end {
+        ClassifiedRecord::Conflict {
+            profile: config.profile_name.clone(),
+            rule_ids: vec!["legacy-start".into(), "legacy-end".into()],
+        }
+    } else {
+        ClassifiedRecord::Event {
+            legacy: true,
+            semantics: EventSemantics {
+                kind: OperationKind::Command,
+                name: command.clone(),
+                phase: if start {
+                    Some(Phase::Start)
+                } else if end {
+                    Some(Phase::End)
+                } else {
+                    None
+                },
+                outcome: None,
+                correlation_id: Some(command.clone()),
+                scope: Vec::new(),
+            },
+            profile: config.profile_name.clone(),
+            rule_ids: vec!["legacy-markers".into()],
+        }
+    });
+}
+
+fn explicit_command_payload(message: &str, rules: &ParserRules) -> (Option<Value>, String) {
+    // Record marker-eligible starts once; matching is independent of quoted command names.
+    let mut eligible = vec![false; message.len()];
+    let mut quote = None;
+    let mut escaped = false;
+    for (position, ch) in message.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if let Some(delimiter) = quote {
+            if ch == '\\' {
+                escaped = true;
+            } else if ch == delimiter {
+                quote = None;
+            }
+            continue;
+        }
+        if matches!(ch, '"' | '\'') {
+            quote = Some(ch);
+        } else {
+            eligible[position] = true;
+        }
+    }
+    let markers: Vec<_> = rules
+        .command_payload_markers
+        .iter()
+        .filter(|s| !s.is_empty())
+        .collect();
+    if markers.is_empty() {
+        return (None, message.to_string());
+    }
+    // A contiguous NFA bounds construction memory; overlapping search preserves marker priority
+    // even when markers share prefixes or one eligible occurrence overlaps another.
+    let Ok(matcher) = aho_corasick::AhoCorasickBuilder::new()
+        .kind(Some(aho_corasick::AhoCorasickKind::ContiguousNFA))
+        .build(markers)
+    else {
+        return (None, message.to_string());
+    };
+    let mut whitespace_range = (0, 0);
+    let candidate = matcher
+        .find_overlapping_iter(message)
+        .filter_map(|matched| {
+            if !eligible[matched.start()] {
+                return None;
+            }
+            // Overlapping matches arrive in end-position order. Reuse whitespace runs so
+            // space-only markers cannot repeatedly scan the same long suffix.
+            if !(whitespace_range.0..=whitespace_range.1).contains(&matched.end()) {
+                let rest = message[matched.end()..].trim_start();
+                whitespace_range = (matched.end(), message.len() - rest.len());
+            }
+            let payload_start = whitespace_range.1;
+            message[payload_start..].starts_with(['{', '[']).then_some((
+                matched.start(),
+                matched.pattern(),
+                payload_start,
+            ))
+        })
+        .min_by_key(|(start, pattern, _)| (*start, *pattern));
+    if let Some((_, _, payload_start)) = candidate {
+        let rest = &message[payload_start..];
+        if let Some(end) = command_payload_end(rest)
+            && command_payload_trivia(&rest[end..])
+            && let Ok(payload) = json5::from_str::<Value>(&rest[..end].replace("undefined", "null"))
+        {
+            return (
+                Some(payload),
+                format!("{}[JSON removed]", &message[..payload_start]),
+            );
+        }
+    }
+    (None, message.to_string())
+}
+
+// Only whitespace and complete JSON5 comments may follow the bounded root value.
+fn command_payload_trivia(mut input: &str) -> bool {
+    loop {
+        input = input.trim_start();
+        if input.is_empty() {
+            return true;
+        }
+        if let Some(comment) = input.strip_prefix("//") {
+            input = comment.find('\n').map_or("", |end| &comment[end + 1..]);
+        } else if let Some(comment) = input.strip_prefix("/*") {
+            let Some(end) = comment.find("*/") else {
+                return false;
+            };
+            input = &comment[end + 2..];
+        } else {
+            return false;
+        }
+    }
+}
+
+// Bound the new command decoding path without changing legacy payload extraction.
+fn command_payload_end(input: &str) -> Option<usize> {
+    let mut stack = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut line_comment = false;
+    let mut block_comment = false;
+    let mut chars = input.char_indices().peekable();
+    while let Some((position, ch)) = chars.next() {
+        if line_comment {
+            line_comment = ch != '\n';
+            continue;
+        }
+        if block_comment {
+            if ch == '*' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+                chars.next();
+                block_comment = false;
+            }
+            continue;
+        }
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == delimiter {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            '/' if chars.peek().is_some_and(|(_, next)| *next == '/') => {
+                chars.next();
+                line_comment = true;
+            }
+            '/' if chars.peek().is_some_and(|(_, next)| *next == '*') => {
+                chars.next();
+                block_comment = true;
+            }
+            '{' | '[' => {
+                if stack.len() == 128 {
+                    return None;
+                }
+                stack.push(ch);
+            }
+            '}' | ']' => {
+                if stack.pop()? != if ch == '}' { '{' } else { '[' } {
+                    return None;
+                }
+                if stack.is_empty() {
+                    return Some(position + ch.len_utf8());
+                }
+            }
+            _ => (),
+        }
+    }
+    None
 }
 
 fn extract_component_info(component_part: &str) -> (&str, &str) {

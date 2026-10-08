@@ -50,6 +50,9 @@ pub struct AnalyzerConfig {
     pub profile_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_rules: Option<CompiledEventRules>,
+    /// Command-only integration; legacy request/event recognition remains available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command_rules: Option<CompiledEventRules>,
     pub parser: ParserRules,
     pub perf: PerfRules,
     pub timeline: crate::timeline::TimelineRules,
@@ -64,6 +67,7 @@ impl Default for AnalyzerConfig {
         Self {
             profile_name: "base".to_string(),
             event_rules: None,
+            command_rules: None,
             parser: ParserRules::default(),
             perf: PerfRules::default(),
             timeline: crate::timeline::TimelineRules::default(),
@@ -75,8 +79,58 @@ impl Default for AnalyzerConfig {
 }
 
 impl AnalyzerConfig {
+    pub fn command_classifier(&self) -> Option<&CompiledEventRules> {
+        self.command_rules.as_ref().or_else(|| {
+            self.event_rules.as_ref().filter(|rules| {
+                rules
+                    .schema()
+                    .rules
+                    .iter()
+                    .all(|rule| rule.mapping.kind == OperationKind::Command)
+            })
+        })
+    }
+
     /// Required after assembling a configuration programmatically; file loaders call this.
     pub fn validate_event_rules(&self) -> Result<(), String> {
+        if self.command_classifier().is_some()
+            && (self.parser.command_payload_markers.len() > 16
+                || self
+                    .parser
+                    .command_payload_markers
+                    .iter()
+                    .any(|marker| marker.len() > crate::event_rules::MAX_VALUE_BYTES))
+        {
+            return Err("explicit command decoding supports at most 16 command_payload_markers of at most 4096 bytes each".into());
+        }
+        if let Some(rules) = &self.command_rules {
+            if self.event_rules.is_some() {
+                return Err("choose command_rules for staged command integration or event_rules for the global contract; both cannot coexist".into());
+            }
+            if rules
+                .schema()
+                .rules
+                .iter()
+                .any(|rule| rule.mapping.kind != OperationKind::Command)
+            {
+                return Err("command_rules accepts only kind = command; request/event integration is separate".into());
+            }
+            if !self.parser.command_prefix.is_empty()
+                || !self.parser.command_start_marker.is_empty()
+                || self
+                    .perf
+                    .command_start_markers
+                    .iter()
+                    .any(|s| !s.is_empty())
+                || self
+                    .perf
+                    .command_completion_markers
+                    .iter()
+                    .any(|s| !s.is_empty())
+            {
+                return Err("command_rules cannot coexist with legacy command markers; remove parser.command_prefix, parser.command_start_marker, perf.command_start_markers and perf.command_completion_markers, or omit command_rules to retain legacy semantics".into());
+            }
+        }
         if self.event_rules.is_some()
             && (!self.parser.command_prefix.is_empty()
                 || !self.parser.command_start_marker.is_empty()
@@ -672,19 +726,37 @@ fn analyze_session_path(entry: &LogEntry, sessions: &mut SessionInsights) {
         return;
     };
 
+    let (can_create, can_complete) = match &entry.classification {
+        Some(crate::event_rules::ClassifiedRecord::Event {
+            semantics,
+            legacy: false,
+            ..
+        }) => (
+            semantics.phase == Some(Phase::Start),
+            semantics.phase == Some(Phase::End) && semantics.outcome != Some(Outcome::Failure),
+        ),
+        Some(
+            crate::event_rules::ClassifiedRecord::Conflict { .. }
+            | crate::event_rules::ClassifiedRecord::Invalid { .. },
+        ) => (false, false),
+        _ => (true, true), // Preserve legacy hint semantics and caller-constructed records.
+    };
+
     for matched in &matched_segments {
         let is_direct_session_target = matched.path_index == target_path_index;
-        let is_create = is_direct_session_target
+        let is_create = can_create
+            && is_direct_session_target
             && sessions.levels[matched.level_index]
                 .config
                 .create_command
                 .as_deref()
                 == Some(command.as_str());
-        let is_complete = sessions.levels[matched.level_index]
-            .config
-            .complete_commands
-            .iter()
-            .any(|candidate| candidate == command);
+        let is_complete = can_complete
+            && sessions.levels[matched.level_index]
+                .config
+                .complete_commands
+                .iter()
+                .any(|candidate| candidate == command);
 
         if !is_create && !is_complete {
             continue;
@@ -808,6 +880,7 @@ mod tests {
             module_path: None,
             source_file: None,
             envelope_payload: None,
+            classification: None,
             source_timestamp: None,
             timestamp_year_inferred: false,
             source_row_path: None,
@@ -832,6 +905,7 @@ mod tests {
             module_path: None,
             source_file: None,
             envelope_payload: None,
+            classification: None,
             source_timestamp: None,
             timestamp_year_inferred: false,
             source_row_path: None,

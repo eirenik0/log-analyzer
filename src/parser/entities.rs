@@ -77,6 +77,7 @@ pub enum LogEntryKind {
 /// Main log entry structure with integrated base fields
 #[derive(Debug, Clone)]
 pub struct LogEntry {
+    pub classification: Option<crate::event_rules::ClassifiedRecord>,
     /// Component that generated the log (e.g., "core-universal", "socket", "driver")
     pub component: String,
     /// Optional component ID (e.g., "manager-ufg-43w/eyes-ufg-oer/check-ufg-jdx")
@@ -222,6 +223,7 @@ pub fn create_event_log(params: EventLogParams) -> LogEntry {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,
@@ -247,6 +249,7 @@ pub fn create_command_log(params: CommandLogParams) -> LogEntry {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,
@@ -271,6 +274,7 @@ pub fn create_request_log(params: RequestLogParams) -> LogEntry {
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,
@@ -308,6 +312,7 @@ pub fn create_generic_log(
         module_path: None,
         source_file: None,
         envelope_payload: None,
+        classification: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,

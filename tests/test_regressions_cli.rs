@@ -833,7 +833,7 @@ fn test_extract_aggregates_payload_field_values() {
         stdout
     );
     assert!(
-        !stdout.contains("999"),
+        !stdout.contains("concurrency=999"),
         "expected non-matching entry to be excluded, got:\n{}",
         stdout
     );

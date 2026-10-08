@@ -14,8 +14,6 @@ event_emit_markers = ["Published event"]
 event_receive_markers = ["Consumed event", "Received event"]
 event_payload_separator = "payload"
 
-command_prefix = "Operation \""
-command_start_marker = "\" started"
 command_payload_markers = ["with settings", "settings"]
 
 request_prefix = "Request \""
@@ -36,8 +34,6 @@ json_indicators = [
 ]
 
 [perf]
-command_start_markers = ["started", "begin"]
-command_completion_markers = ["completed", "finished", "failed"]
 event_correlation_keys = ["key", "traceId", "requestId"]
 
 [profile]
@@ -52,3 +48,52 @@ segment_prefix = "trace-"
 [[sessions.levels]]
 name = "level-2"
 segment_prefix = "request-"
+
+# Whole-message command grammar. Correlation also requires [perf] scope fields.
+[command_rules]
+version = 1
+
+[[command_rules.rules]]
+id = "command-start"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*") (?:started|begin)(?: (?:with settings|settings) (?s:\{.*|\[.*))?'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[command_rules.rules]]
+id = "command-end"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*") (?:completed|finished)(?: (?:with settings|settings) (?s:\{.*|\[.*))?'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "success" }
+
+[[command_rules.rules]]
+id = "command-failure"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*") (?:failed)(?: (?:with settings|settings) (?s:\{.*|\[.*))?'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "failure" }
+
+[[command_rules.rules]]
+id = "command-identity"
+[command_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*")'
+[command_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }

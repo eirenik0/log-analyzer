@@ -1,4 +1,4 @@
-//! Deterministic, opt-in classification; production integration is separate.
+//! Deterministic, opt-in classification; command evidence is cached by the parser.
 pub use crate::config::{
     Adapter, CaptureDecode, EventMapping, EventRule, EventRuleConfig, FieldCondition,
     OperationKind, Outcome, Phase, ValueMapping,
@@ -70,7 +70,7 @@ pub struct RecordInput<'a> {
     pub fields: StructuredFields<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventSemantics {
     pub kind: OperationKind,
     pub name: String,
@@ -104,6 +104,64 @@ pub enum Classification<'a> {
     Unclassified,
     Conflict { rule_ids: Vec<&'a str> },
     Invalid { diagnostics: Vec<Diagnostic<'a>> },
+}
+
+/// Owned evidence cached once on a parsed record; no self-referential record copy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ClassifiedRecord {
+    Event {
+        #[serde(default)]
+        legacy: bool,
+        semantics: EventSemantics,
+        profile: String,
+        rule_ids: Vec<String>,
+    },
+    Unclassified,
+    Conflict {
+        profile: String,
+        rule_ids: Vec<String>,
+    },
+    Invalid {
+        profile: String,
+        diagnostics: Vec<RecordDiagnostic>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordDiagnostic {
+    pub rule_id: Option<String>,
+    pub reason: String,
+    pub target: String,
+}
+
+impl Classification<'_> {
+    pub fn into_owned(self, profile: &str) -> ClassifiedRecord {
+        match self {
+            Self::Recognized(event) | Self::IdentityOnly(event) => ClassifiedRecord::Event {
+                legacy: false,
+                semantics: event.semantics,
+                profile: event.profile.into(),
+                rule_ids: event.rule_ids.into_iter().map(str::to_owned).collect(),
+            },
+            Self::Unclassified => ClassifiedRecord::Unclassified,
+            Self::Conflict { rule_ids } => ClassifiedRecord::Conflict {
+                profile: profile.into(),
+                rule_ids: rule_ids.into_iter().map(str::to_owned).collect(),
+            },
+            Self::Invalid { diagnostics } => ClassifiedRecord::Invalid {
+                profile: profile.into(),
+                diagnostics: diagnostics
+                    .into_iter()
+                    .map(|diagnostic| RecordDiagnostic {
+                        rule_id: diagnostic.rule_id.map(str::to_owned),
+                        reason: diagnostic.reason.into(),
+                        target: diagnostic.target.into(),
+                    })
+                    .collect(),
+            },
+        }
+    }
 }
 
 fn bounded_nonempty(value: &str) -> bool {

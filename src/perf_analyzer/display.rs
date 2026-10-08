@@ -143,6 +143,11 @@ fn write_operation_coverage(out: &mut String, coverage: &super::OperationCoverag
             suppressed.op_type, suppressed.events, suppressed.reason
         );
     }
+    let _ = writeln!(
+        out,
+        "Unclassified command records: {}",
+        coverage.unclassified_command_records
+    );
     let window = &coverage.capture_window;
     if let Some((start, end)) = window.start.zip(window.end) {
         let _ = writeln!(
@@ -242,6 +247,38 @@ pub fn format_perf_results_text(
             event.source.line,
             event.timestamp.to_rfc3339()
         );
+        if !event.scope.is_empty() {
+            let _ = writeln!(out, "    Scope: {}", event.scope.join(", "));
+        }
+        if let Some(classification) = &event.classification {
+            match classification {
+                crate::event_rules::ClassifiedRecord::Event {
+                    profile, rule_ids, ..
+                }
+                | crate::event_rules::ClassifiedRecord::Conflict { profile, rule_ids } => {
+                    let _ = writeln!(
+                        out,
+                        "    Profile: {profile}; rules: {}",
+                        rule_ids.join(", ")
+                    );
+                }
+                crate::event_rules::ClassifiedRecord::Invalid {
+                    profile,
+                    diagnostics,
+                } => {
+                    for diagnostic in diagnostics {
+                        let _ = writeln!(
+                            out,
+                            "    Profile: {profile}; rule: {}; {}: {}",
+                            diagnostic.rule_id.as_deref().unwrap_or("<input>"),
+                            diagnostic.target,
+                            diagnostic.reason
+                        );
+                    }
+                }
+                _ => (),
+            }
+        }
     }
 
     if orphans_only {
