@@ -882,6 +882,9 @@ fn negated_markers_cannot_create_command_boundaries() {
         "completed allegedly",
         "is likely to have completed",
         "probably completed",
+        "probably v1.2 completed",
+        "not v1.2 completed",
+        "unlikely host.example completed",
         "perhaps completed",
         "possibly completed",
         "appears completed",
@@ -929,6 +932,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is scheduled to be started",
         "is unlikely to have started",
         "probably started",
+        "probably v1.2 started",
+        "not v1.2 started",
         "can be started",
         "shall be started",
         "started if validation passes",
@@ -947,6 +952,7 @@ fn negated_markers_cannot_create_command_boundaries() {
     }
     for wording in [
         "not failed, completed",
+        "probably failed v1.2. completed",
         "not failed but completed",
         "not only completed",
         "with no errors completed",

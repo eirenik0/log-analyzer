@@ -76,10 +76,15 @@ fn marker_has_trailing_condition(suffix: &str) -> bool {
 }
 
 fn marker_is_nonaffirmative(prefix: &str) -> bool {
-    let clause = prefix
-        .rsplit([',', ';', '.', '!', '?', '\n'])
-        .next()
-        .unwrap_or(prefix);
+    let start = prefix
+        .char_indices()
+        .rev()
+        .find(|&(index, ch)| {
+            matches!(ch, ',' | ';' | '?')
+                || crate::parser::lifecycle_sentence_boundary(prefix, index, ch)
+        })
+        .map_or(0, |(index, ch)| index + ch.len_utf8());
+    let clause = &prefix[start..];
     let words: Vec<_> = crate::parser::lifecycle_words(clause)
         .map(|word| {
             word.trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
