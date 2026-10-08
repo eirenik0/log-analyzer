@@ -3,7 +3,6 @@ use crate::comparator::ComparisonResults;
 use crate::comparator::JsonDifference;
 use crate::comparator::LogComparison;
 use serde_json::{Value, json};
-use std::collections::HashMap;
 
 /// JSON output formatter for LLM consumption
 pub struct JsonFormatter {
@@ -205,7 +204,10 @@ impl JsonFormatter {
         };
 
         // Group differences by path
-        let mut path_groups: HashMap<String, Vec<(&JsonDifference, usize, usize)>> = HashMap::new();
+        let mut path_groups: std::collections::BTreeMap<
+            String,
+            Vec<(&JsonDifference, usize, usize)>,
+        > = std::collections::BTreeMap::new();
 
         // Collect all differences by path
         for comparison in comparisons {
@@ -555,7 +557,10 @@ impl JsonFormatter {
         };
 
         // Group differences by path
-        let mut path_groups: HashMap<String, Vec<(&JsonDifference, usize, usize)>> = HashMap::new();
+        let mut path_groups: std::collections::BTreeMap<
+            String,
+            Vec<(&JsonDifference, usize, usize)>,
+        > = std::collections::BTreeMap::new();
 
         // Collect all differences by path
         for comparison in comparisons.iter() {

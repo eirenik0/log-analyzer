@@ -1472,6 +1472,276 @@
           }
         }
       ]
+    },
+    "retrieval": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "page",
+            "mandatory_metadata_over_budget",
+            "oversized_item",
+            "item_limit_zero",
+            "invalid_cursor"
+          ]
+        },
+        "metadata_over_budget": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "page",
+            "complete"
+          ]
+        },
+        "budgets": {
+          "type": "object",
+          "properties": {
+            "bytes": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "characters": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "items": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          "required": [
+            "bytes",
+            "characters",
+            "items"
+          ]
+        },
+        "total_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "prior_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "displayed_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remaining_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}:[0-9]+$"
+        },
+        "report_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^/"
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "prior": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "displayed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "remaining": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "path",
+              "total",
+              "prior",
+              "displayed",
+              "remaining"
+            ]
+          }
+        },
+        "source_records": {
+          "type": "object",
+          "required": [
+            "path",
+            "ordering",
+            "selection"
+          ]
+        },
+        "units": {
+          "type": "object",
+          "required": [
+            "bytes",
+            "characters",
+            "items"
+          ]
+        },
+        "retrieve": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "status",
+        "total_items",
+        "next_cursor",
+        "report_sha256"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "invalid_cursor"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          },
+          "else": {
+            "required": [
+              "metadata_over_budget",
+              "mode",
+              "budgets",
+              "prior_items",
+              "displayed_items",
+              "remaining_items",
+              "collections",
+              "source_records",
+              "units",
+              "retrieve"
+            ]
+          }
+        }
+      ]
+    },
+    "evidence_record": {
+      "type": "object",
+      "properties": {
+        "evidence_ref": {
+          "$ref": "#/$defs/reference"
+        },
+        "source_file": {
+          "type": "string"
+        },
+        "source_line_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_row_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([+-]\\d{2}:\\d{2}|Z)$"
+        },
+        "timestamp_year_inferred": {
+          "type": "boolean"
+        },
+        "timestamp_offset_source": {
+          "enum": [
+            "source",
+            "local_assumption"
+          ]
+        },
+        "component": {
+          "type": "string"
+        },
+        "component_id": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "raw_logline": {
+          "type": "string"
+        },
+        "structured_fields": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "string",
+              "pattern": "^\\[MASKED_ID:[0-9]+\\]$"
+            }
+          ]
+        },
+        "input_ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "classification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/classification"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "evidence_ref",
+        "source_file",
+        "source_line_number",
+        "source_row_path",
+        "timestamp",
+        "timestamp_year_inferred",
+        "timestamp_offset_source",
+        "component",
+        "component_id",
+        "level",
+        "message",
+        "raw_logline",
+        "payload",
+        "structured_fields",
+        "classification",
+        "input_ordinal"
+      ]
     }
   },
   "type": "object",
@@ -1481,6 +1751,15 @@
   "properties": {
     "report_metadata": {
       "$ref": "#/$defs/metadata"
+    },
+    "retrieval": {
+      "$ref": "#/$defs/retrieval"
+    },
+    "evidence_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence_record"
+      }
     }
   },
   "oneOf": [

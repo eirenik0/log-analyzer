@@ -7,7 +7,7 @@ use chrono::{DateTime, Local, SecondsFormat, Utc};
 use regex::Regex;
 use serde::Serialize;
 use serde_json::json;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::sync::LazyLock;
 
@@ -174,7 +174,7 @@ pub fn analyze_errors_with_config(
     let session_states = build_session_lifecycle_states(&filtered_logs, &perf_results.orphans);
     let level_filter = build_error_level_filter(options.include_warn);
 
-    let mut clusters: HashMap<(String, String), ClusterAccum> = HashMap::new();
+    let mut clusters: BTreeMap<(String, String), ClusterAccum> = BTreeMap::new();
     let mut error_count = 0usize;
     let mut warn_count = 0usize;
     let mut affected_sessions: HashSet<String> = HashSet::new();
@@ -807,10 +807,12 @@ fn finalize_cluster(
 
         if let Some(ms) = session_blocking_ms {
             blocking_ms = Some(blocking_ms.map_or(ms, |current: i64| current.max(ms)));
-            if longest_blocking
-                .as_ref()
-                .is_none_or(|current| ms > current.duration_ms)
-            {
+            if longest_blocking.as_ref().is_none_or(|current| {
+                ms > current.duration_ms
+                    || (ms == current.duration_ms
+                        && (&accum.severity, &accum.pattern, &session_path)
+                            < (&current.severity, &current.pattern, &current.session_path))
+            }) {
                 *longest_blocking = Some(LongestBlockingError {
                     severity: accum.severity.clone(),
                     pattern: accum.pattern.clone(),

@@ -79,6 +79,23 @@ including all declared inputs and the same document in `--output`.
 Aggregate inventories require record retrieval before citing an occurrence;
 legacy error blocking spans are explicitly estimates.
 
+## Bounded investigation output
+
+Use `--report-max-chars`, `--report-max-bytes`, or `--report-max-items` for compact
+JSON pages across investigation commands. Limits include the final serialized
+metadata and newline; character counts are not model-token counts. Keep input,
+profile, selection and redaction unchanged and pass `retrieval.next_cursor` to
+`--report-cursor` for the next page. Use `--complete-output` for every collection.
+
+Coverage, totals, applicability, ambiguity and omission counts remain visible.
+`retrieval.collections` separates prior, displayed and remaining items;
+`evidence_records` returns each selected source record once. Tiny budgets or an
+atomic oversized item produce an explicit stop state. Increase the budget or
+use complete output instead of truncating JSON. Changed-input cursors return a
+structured error and exit 1. Returned output is bounded; parsing memory/CPU are
+not. See [the common budget and retrieval contract](docs/design/bounded-reports.md)
+for exact units, ordering, compatibility and measured synthetic resource behavior.
+
 ## Installation
 
 ```bash

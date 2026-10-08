@@ -24,7 +24,7 @@ impl TraceSelector {
         }
     }
 
-    fn matches(&self, entry: &LogEntry) -> bool {
+    pub(crate) fn matches(&self, entry: &LogEntry) -> bool {
         match self {
             Self::Id(needle) => matches_id(entry, needle),
             Self::Session(needle) => {

@@ -25,6 +25,7 @@ pub mod normalize;
 mod output;
 pub mod parser;
 pub mod perf_analyzer;
+mod report_budget;
 pub mod search;
 pub mod timeline;
 pub mod trace;
@@ -181,6 +182,9 @@ fn write_output_file(
     path: &std::path::Path,
     content: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if output::defer_output_file() {
+        return Ok(());
+    }
     std::fs::write(path, output::format_report(content))
         .map_err(|e| format!("Failed to write output file '{}': {}", path.display(), e).into())
 }
@@ -344,9 +348,10 @@ fn render_analysis_report(
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = cli_parse();
+    let mut cli = cli_parse();
+    cli.prepare_common_reports()?;
     // Capability schemas are static binary content, never user log data.
-    let _output_guard = output::OutputGuard::new(
+    let mut output_guard = output::OutputGuard::new(
         cli.redact && !matches!(&cli.command, Commands::Capabilities),
         &cli.mask_id,
         cli.effective_compact() || matches!(&cli.command, Commands::LlmDiff { .. }),
@@ -360,12 +365,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     | Commands::Capabilities
             ),
     );
+    if cli.common_reports() {
+        output::set_budget(report_budget::Policy::from_cli(&cli), cli.output.clone());
+    }
     let result = run_with_cli(&cli);
-    if cli.redact {
+    let result = if cli.redact {
         result.map_err(|error| output::diagnostic(&error.to_string()).into())
     } else {
         result
-    }
+    };
+    output_guard.finish().and(result)
 }
 
 fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -687,10 +696,11 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             output::prepare_process_entries(&mut filtered_logs);
 
             // Process logs for LLM consumption (sanitize by default, unless --no-sanitize is used)
-            let llm_output = llm_processor::process_logs_for_llm(
+            let llm_output = llm_processor::process_logs_for_llm_complete(
                 &filtered_logs,
                 *limit,
                 !no_sanitize && !cli.redact,
+                cli.common_reports(),
             );
 
             // Output as JSON

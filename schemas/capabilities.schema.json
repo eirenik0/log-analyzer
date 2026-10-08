@@ -10,7 +10,8 @@
     "parser_formats",
     "presets",
     "event_classification",
-    "report_schemas"
+    "report_schemas",
+    "bounded_reports"
   ],
   "properties": {
     "schema_version": {
@@ -138,6 +139,47 @@
         "capabilities",
         "investigation",
         "evidence_contract_version"
+      ]
+    },
+    "bounded_reports": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "format": {
+          "const": "compact_json"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "budget_units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default_page_items": {
+          "const": 100
+        },
+        "complete_flag": {
+          "const": "--complete-output"
+        }
+      },
+      "required": [
+        "version",
+        "format",
+        "commands",
+        "budget_units",
+        "default_page_items",
+        "cursor_binding",
+        "source_records",
+        "metadata_over_budget",
+        "atomic_oversized_item",
+        "complete_flag"
       ]
     }
   }

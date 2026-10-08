@@ -89,6 +89,10 @@ pub fn compare_logs(
         .cloned()
         .collect();
 
+    keys.sort();
+    unique_to_log1.sort();
+    unique_to_log2.sort();
+
     // Sort the keys based on the specified sort order
     match options.sort_order {
         SortOrder::Time => keys.sort_by(|a, b| {
@@ -100,7 +104,7 @@ pub fn compare_logs(
             keys.sort_by(|a, b| {
                 let (component_a, _, _) = split_key_parts(a);
                 let (component_b, _, _) = split_key_parts(b);
-                component_a.cmp(component_b)
+                component_a.cmp(component_b).then_with(|| a.cmp(b))
             });
         }
         SortOrder::Level => {
@@ -120,7 +124,9 @@ pub fn compare_logs(
             keys.sort_by(|a, b| {
                 let (_, level_a, _) = split_key_parts(a);
                 let (_, level_b, _) = split_key_parts(b);
-                level_priority(level_b).cmp(&level_priority(level_a)) // Higher priority first
+                level_priority(level_b)
+                    .cmp(&level_priority(level_a))
+                    .then_with(|| a.cmp(b)) // Higher priority first
             });
         }
         SortOrder::Type => {
@@ -128,7 +134,7 @@ pub fn compare_logs(
             keys.sort_by(|a, b| {
                 let (_, _, type_a) = split_key_parts(a);
                 let (_, _, type_b) = split_key_parts(b);
-                type_a.cmp(type_b)
+                type_a.cmp(type_b).then_with(|| a.cmp(b))
             });
         }
         SortOrder::DiffCount => {

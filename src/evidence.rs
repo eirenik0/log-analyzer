@@ -127,14 +127,32 @@ pub(crate) struct Context {
     query: Value,
     inputs: Vec<Value>,
     filter: crate::comparator::LogFilter,
+    records: Vec<(chrono::DateTime<chrono::Local>, usize, usize, Value)>,
+    collect_records: bool,
+    trace_selector: Option<crate::trace::TraceSelector>,
+    legacy_sanitize_records: bool,
 }
 impl Context {
     pub fn new(cli: &Cli, config: &AnalyzerConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let mut query = serde_json::to_value(cli)?;
         // Rendering and destination do not change the selected evidence.
         for key in [
-            "output", "color", "verbose", "quiet", "format", "json", "compact", "config", "preset",
-            "redact", "mask_id",
+            "output",
+            "color",
+            "verbose",
+            "quiet",
+            "format",
+            "json",
+            "compact",
+            "config",
+            "preset",
+            "redact",
+            "mask_id",
+            "report_max_chars",
+            "report_max_bytes",
+            "report_max_items",
+            "report_cursor",
+            "complete_output",
         ] {
             query.as_object_mut().unwrap().remove(key);
         }
@@ -147,6 +165,28 @@ impl Context {
             profile_digest: digest(&serde_json::to_vec(&serde_json::to_value(config)?)?),
             query,
             filter,
+            collect_records: cli.common_reports(),
+            legacy_sanitize_records: !cli.redact
+                && matches!(
+                    &cli.command,
+                    crate::cli::Commands::Process {
+                        no_sanitize: false,
+                        ..
+                    } | crate::cli::Commands::LlmDiff {
+                        no_sanitize: false,
+                        ..
+                    }
+                ),
+            trace_selector: match &cli.command {
+                crate::cli::Commands::Trace { id: Some(id), .. } => {
+                    Some(crate::trace::TraceSelector::Id(id.clone()))
+                }
+                crate::cli::Commands::Trace {
+                    session: Some(session),
+                    ..
+                } => Some(crate::trace::TraceSelector::Session(session.clone())),
+                _ => None,
+            },
             ..Self::default()
         })
     }
@@ -154,6 +194,49 @@ impl Context {
         let input_id =
             digest(&serde_json::to_vec(&json!([coverage.file, coverage.snapshot_sha256])).unwrap());
         self.inputs.push(json!({"input_id": input_id, "file": coverage.file, "sha256": coverage.snapshot_sha256, "bytes": coverage.input_bytes, "coverage": coverage, "selected_entries": entries.iter().filter(|entry| self.filter.matches(entry)).count()}));
+        if self.collect_records {
+            let input_ordinal = self.inputs.len() - 1;
+            for entry in entries.iter().filter(|entry| {
+                self.filter.matches(entry)
+                    && self
+                        .trace_selector
+                        .as_ref()
+                        .is_none_or(|selector| selector.matches(entry))
+            }) {
+                let row = json!(entry.source_row_path);
+                let reference = self
+                    .reference(&coverage.file, &json!(entry.source_line_number), &row)
+                    .unwrap();
+                let mut record = json!({"evidence_ref":reference,"source_file":entry.source_file,
+                    "source_line_number":entry.source_line_number,"source_row_path":entry.source_row_path,
+                    "timestamp":entry.source_timestamp.map(|t|t.to_rfc3339()).unwrap_or_else(||entry.timestamp.to_rfc3339()),
+                    "timestamp_year_inferred":entry.timestamp_year_inferred,"timestamp_offset_source":if entry.source_timestamp.is_some(){"source"}else{"local_assumption"},
+                    "component":entry.component,"component_id":entry.component_id,"level":entry.level,
+                    "message":entry.message,"raw_logline":entry.raw_logline,
+                    "payload":entry.payload().or(entry.envelope_payload.as_ref()),"structured_fields":entry.structured_fields,
+                    "classification":entry.classification,"input_ordinal":input_ordinal});
+                if self.legacy_sanitize_records {
+                    record["payload"] =
+                        crate::llm_processor::sanitize_json_value(&record["payload"]);
+                    record["structured_fields"] =
+                        crate::llm_processor::sanitize_json_value(&record["structured_fields"]);
+                    record["raw_logline"] = json!("[OMITTED LEGACY SANITIZATION]");
+                    record["raw_logline_omitted"] = json!(true);
+                }
+                self.records
+                    .push((entry.timestamp, input_ordinal, self.records.len(), record));
+            }
+        }
+    }
+    pub fn records(&self) -> Value {
+        let mut records: Vec<_> = self.records.iter().collect();
+        records.sort_by_key(|(timestamp, input, ordinal, _)| (*timestamp, *input, *ordinal));
+        Value::Array(
+            records
+                .into_iter()
+                .map(|(_, _, _, value)| value.clone())
+                .collect(),
+        )
     }
     fn reference(&self, file: &str, line: &Value, row: &Value) -> Option<Value> {
         if line.as_u64()? == 0 {
@@ -323,7 +406,11 @@ impl Context {
             omissions["records"] = json!(
                 selected.saturating_sub(report["logs"].as_array().map_or(0, |a| a.len()) as u64)
             );
-            omissions["details"] = json!("process_payload_compaction");
+            omissions["details"] = json!(if self.collect_records {
+                "none"
+            } else {
+                "process_payload_compaction"
+            });
         }
         if let Some(errors) = report.get("errors") {
             omissions["records"] = errors["omitted"]["clusters"].clone();
