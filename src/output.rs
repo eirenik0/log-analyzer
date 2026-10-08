@@ -996,7 +996,6 @@ fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &s
                 "op_type"
                     | "boundary"
                     | "reason"
-                    | "status"
                     | "timing"
                     | "timestamp"
                     | "start"

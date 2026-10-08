@@ -367,3 +367,41 @@ fn redacted_performance_masks_ids_in_late_appended_parse_coverage_filenames() {
         assert!(text.contains("[MASKED_ID:"), "{text}");
     }
 }
+
+#[test]
+fn explicitly_selected_input_status_is_masked_without_changing_coverage_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("status.log");
+    fs::write(&file, "core (demo) | 2026-01-01T00:00:00Z [INFO] Received event of type {\"name\":\"work\"} with payload {\"key\":\"a\"}\ncore (demo) | 2026-01-01T00:00:01Z [INFO] Emit event of type \"work\" with payload {\"key\":\"a\",\"statusCode\":701}\n").unwrap();
+    for format in ["text", "json"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+            .args([
+                "--preset",
+                "eyes",
+                "--redact",
+                "--mask-id",
+                "status",
+                "-F",
+                format,
+                "perf",
+            ])
+            .arg(&file)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(!text.contains("701"), "{text}");
+        if format == "json" {
+            let value: Value = serde_json::from_str(&text).unwrap();
+            assert!(
+                value["operations"][0]["status"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("[MASKED_ID:")
+            );
+            assert_eq!(value["operation_coverage"]["status"], "observed_pairs");
+        } else {
+            assert!(text.contains("Operation coverage: observed_pairs"));
+        }
+    }
+}
