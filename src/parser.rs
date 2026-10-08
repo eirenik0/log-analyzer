@@ -902,6 +902,18 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
             }
         })
         .collect();
+    let assignments = finish_spans(
+        metadata_assignment_spans(message, &quotes)
+            .into_iter()
+            .filter_map(|span| {
+                let field = &message[span.clone()];
+                let separator = field.find(['=', ':'])?;
+                let value = field[separator + 1..].trim_start();
+                Some(span.end - value.len()..span.end)
+            })
+            .collect(),
+        true,
+    );
     let unfinished_payload = unfinished_payload_start(message, rules, &spans, &quotes);
     let mut candidates = message.match_indices(prefix).filter_map(|(start, _)| {
         if unfinished_payload.is_some_and(|boundary| start >= boundary) {
@@ -917,22 +929,17 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
         }) {
             return None;
         }
+        let index = assignments.partition_point(|span| span.end <= start);
+        if assignments
+            .get(index)
+            .is_some_and(|span| span.contains(&start))
+        {
+            return None;
+        }
         parse_command_candidate(message, start + prefix.len(), rules)
-            .map(|candidate| (candidate, start))
     });
-    let (candidate, start) = candidates.next()?;
+    let candidate = candidates.next()?;
     if candidates.next().is_some() {
-        return None;
-    }
-    let assignments = metadata_assignment_spans(message, &quotes);
-    if assignments.iter().any(|span| {
-        let field = &message[span.clone()];
-        field.find(['=', ':']).is_some_and(|separator| {
-            let value = field[separator + 1..].trim_start();
-            let value_start = span.end - value.len();
-            (value_start..span.end).contains(&start)
-        })
-    }) {
         return None;
     }
     Some(candidate)

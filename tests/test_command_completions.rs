@@ -427,11 +427,7 @@ fn invalid_payload_command_keys_cannot_steal_requests_or_pair_with_commands() {
 fn multiple_valid_subjects_cannot_attribute_a_completion_to_the_first_command() {
     let config = config::load_builtin_template("service-api").unwrap();
     let start = parse(r#"Operation "old" started"#, 0, &config);
-    let ambiguous = parse(
-        r#"previous=Operation "old" Operation "work" completed"#,
-        1,
-        &config,
-    );
+    let ambiguous = parse(r#"Operation "old" Operation "work" completed"#, 1, &config);
     assert!(matches!(ambiguous.kind, LogEntryKind::Generic { .. }));
     let other = parse(r#"Operation "other" completed"#, 2, &config);
     let result = perf_analyzer::analyze_performance_with_config(
@@ -529,11 +525,7 @@ fn braces_inside_command_names_cannot_hide_another_subject() {
     let config = config::load_builtin_template("service-api").unwrap();
     let start = parse(r#"Operation "{" started"#, 0, &config);
     assert!(matches!(&start.kind,LogEntryKind::Command {command,..} if command=="{"));
-    let ambiguous = parse(
-        r#"previous=Operation "{" Operation "work" completed"#,
-        1,
-        &config,
-    );
+    let ambiguous = parse(r#"Operation "{" Operation "work" completed"#, 1, &config);
     assert!(matches!(ambiguous.kind, LogEntryKind::Generic { .. }));
     let other = parse(r#"Operation "other" completed"#, 2, &config);
     let result = perf_analyzer::analyze_performance_with_config(
@@ -1066,5 +1058,39 @@ fn markers_inside_known_payload_spans_cannot_hide_real_commands() {
         );
         assert_eq!(result.operations.len(), 1, "{context}");
         assert_eq!(result.operations[0].duration_ms, 1000);
+    }
+}
+
+#[test]
+fn assignment_subjects_do_not_hide_a_genuine_subject_or_complete_the_assigned_name() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for assigned_name in ["old", "{", "completed"] {
+        let old_start = parse(
+            &format!("Operation \"{assigned_name}\" started"),
+            0,
+            &config,
+        );
+        let start = parse(r#"Operation "work" started"#, 1, &config);
+        let end = parse(
+            &format!("note=Operation \"{assigned_name}\" Operation \"work\" completed"),
+            2,
+            &config,
+        );
+        assert!(matches!(&end.kind, LogEntryKind::Command { command, .. } if command == "work"));
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[old_start, start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1);
+        assert_eq!(result.operations[0].name, "work");
+        assert_eq!(result.operations[0].duration_ms, 1000);
+        assert!(
+            result
+                .orphans
+                .iter()
+                .any(|orphan| orphan.name == assigned_name)
+        );
     }
 }
