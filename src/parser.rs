@@ -1010,9 +1010,9 @@ fn parse_command_candidate(
 
 pub(crate) fn command_lifecycle_message<'a>(
     message: &'a str,
-    rules: &ParserRules,
+    config: &AnalyzerConfig,
 ) -> std::borrow::Cow<'a, str> {
-    let body = extract_command_name(message, rules)
+    let body = extract_command_name(message, &config.parser)
         .map(|(_, end)| &message[end..])
         .unwrap_or(message);
     // Payload syntax is opaque even when malformed: its words cannot prove a
@@ -1027,6 +1027,39 @@ pub(crate) fn command_lifecycle_message<'a>(
             .then_some(index)
         })
         .unwrap_or(body.len());
+    let payload_end = end;
+    let end = body[..end]
+        .char_indices()
+        .find_map(|(index, ch)| {
+            let quote = quotes.partition_point(|span| span.end <= index);
+            if ch != ':' || quotes.get(quote).is_some_and(|span| span.contains(&index)) {
+                return None;
+            }
+            let before = body[..index].trim_end();
+            let value = body[index + 1..].split_whitespace().next().unwrap_or("");
+            let value = value
+                .trim_matches(|ch: char| {
+                    !ch.is_alphanumeric() && !matches!(ch, '.' | '-' | '+' | '_')
+                })
+                .to_ascii_lowercase();
+            if matches!(value.as_str(), "true" | "false" | "null") || value.parse::<f64>().is_ok() {
+                return None;
+            }
+            config
+                .perf
+                .command_start_markers
+                .iter()
+                .chain(&config.perf.command_completion_markers)
+                .any(|marker| {
+                    !marker.is_empty()
+                        && before.strip_suffix(marker).is_some_and(|prefix| {
+                            prefix.chars().next_back().is_none_or(char::is_whitespace)
+                        })
+                })
+                .then_some(index)
+        })
+        .unwrap_or(end);
+    let question_tail = end < payload_end && lifecycle_question(&body[end..payload_end]);
     let body = &body[..end];
     let excluded = finish_spans(
         quotes
@@ -1038,7 +1071,11 @@ pub(crate) fn command_lifecycle_message<'a>(
         true,
     );
     if excluded.is_empty() {
-        return std::borrow::Cow::Borrowed(body);
+        return if question_tail {
+            std::borrow::Cow::Owned(format!("{body} ?"))
+        } else {
+            std::borrow::Cow::Borrowed(body)
+        };
     }
     let mut visible = String::with_capacity(end);
     let mut previous = 0;
@@ -1048,6 +1085,9 @@ pub(crate) fn command_lifecycle_message<'a>(
         previous = quote.end.min(end);
     }
     visible.push_str(&body[previous..]);
+    if question_tail {
+        visible.push_str(" ?");
+    }
     std::borrow::Cow::Owned(visible)
 }
 
@@ -1104,7 +1144,7 @@ fn metadata_assignment_spans(
             .trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
             .to_lowercase();
         let value_end = if lifecycle_words(&first_word)
-            .any(|word| matches!(word, "not" | "no") || lifecycle_qualifier(word))
+            .any(|word| matches!(word, "not" | "no" | "to") || lifecycle_qualifier(word))
             || value.starts_with('(')
         {
             // A qualified multiword value cannot expose a later phase word.
@@ -1117,6 +1157,23 @@ fn metadata_assignment_spans(
         spans.push(key_start..value_end);
     }
     spans
+}
+
+pub(crate) fn lifecycle_question(suffix: &str) -> bool {
+    let (_, quotes) = opaque_spans(suffix);
+    for (index, ch) in suffix.char_indices() {
+        let quote = quotes.partition_point(|span| span.end <= index);
+        if quotes.get(quote).is_some_and(|span| span.contains(&index)) {
+            continue;
+        }
+        if ch == '?' {
+            return true;
+        }
+        if matches!(ch, '.' | '!' | '\n') {
+            break;
+        }
+    }
+    false
 }
 
 pub(crate) fn lifecycle_words(text: &str) -> impl Iterator<Item = &str> {
@@ -1143,6 +1200,20 @@ pub(crate) fn lifecycle_qualifier(word: &str) -> bool {
             | "might"
             | "could"
             | "must"
+            | "yet"
+            | "pending"
+            | "awaiting"
+            | "scheduled"
+            | "planned"
+            | "expected"
+            | "being"
+            | "almost"
+            | "nearly"
+            | "partially"
+            | "partly"
+            | "awaits"
+            | "needs"
+            | "requires"
     ) || word.ends_with("n't")
         || word.ends_with("n’t")
 }

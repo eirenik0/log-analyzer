@@ -138,7 +138,9 @@ completion-only command lines too; `[perf]` determines their lifecycle role from
 text after the name and before payload delimiters, including malformed or
 unclosed payloads. Quoted context and `key=value`/`key:value` metadata are
 excluded from lifecycle matching; marker words must have word boundaries and affirmative wording, while
-markers before or after that context remain visible. Names support escaped quotes
+markers before or after that context remain visible. Pending, prospective, and
+in-progress wording does not establish boundaries. Explanatory colons after a
+configured lifecycle phrase preserve that phrase and exclude the explanation. Names support escaped quotes
 and Unicode. A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
 quoted context or balanced payload regions (including invalid JSON) are not commands.

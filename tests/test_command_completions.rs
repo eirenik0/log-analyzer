@@ -769,6 +769,7 @@ fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
         "inspected status=not-yet completed",
         "inspected status=never-successfully completed",
         "inspected status=will be completed",
+        "inspected status=to be completed",
         "inspected status=(not completed)",
         "inspected status=not only completed",
         "inspected uncompleted",
@@ -794,6 +795,8 @@ fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
         "note='with settings {' completed",
         "note='with settings' completed with settings {attempt:1}",
         "status=settings completed",
+        "completed: note='started?'",
+        "completed: 'did it start?'",
     ] {
         let start = parse(r#"Operation "work" started"#, 0, &config);
         let end = parse(&format!("Operation \"work\" {body}"), 1, &config);
@@ -842,9 +845,19 @@ fn negated_markers_cannot_create_command_boundaries() {
         "cannot be completed",
         "no longer completed",
         "will be completed",
+        "is yet to be completed",
+        "awaiting completed",
+        "is scheduled to be completed",
+        "is being completed",
+        "needs to be completed",
+        "remains to be completed",
+        "is almost completed",
+        "is partially completed",
         "would have completed",
         "if completed",
         "completed?",
+        "completed: cache flushed?",
+        "completed:false?",
         "has completed successfully?",
         "has completed successfully or failed?",
         "has completed, successfully?",
@@ -869,6 +882,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "never started",
         "did not begin",
         "status = not started",
+        "is yet to be started",
+        "is scheduled to be started",
     ] {
         let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
         let end = parse(r#"Operation "work" completed"#, 1, &config);
@@ -898,5 +913,60 @@ fn negated_markers_cannot_create_command_boundaries() {
         );
         assert_eq!(result.operations.len(), 1, "{wording}");
         assert_eq!(result.operations[0].duration_ms, 1000, "{wording}");
+    }
+}
+
+#[test]
+fn explanatory_colons_preserve_boundary_phrases_without_matching_the_explanation() {
+    for profile in ["service-api", "event-pipeline", "eyes"] {
+        let config = config::load_builtin_template(profile).unwrap();
+        let prefix = &config.parser.command_prefix;
+        let start = parse(
+            &format!(
+                "{prefix}work\" {}: details",
+                config.perf.command_start_markers[0]
+            ),
+            0,
+            &config,
+        );
+        for marker in &config.perf.command_completion_markers {
+            let end = parse(
+                &format!("{prefix}work\" {marker}: child started with no errors"),
+                1,
+                &config,
+            );
+            let result = perf_analyzer::analyze_performance_with_config(
+                &[start.clone(), end],
+                &LogFilter::new(),
+                None,
+                &config,
+            );
+            assert_eq!(result.operations.len(), 1, "{profile}/{marker}");
+            assert_eq!(result.operations[0].duration_ms, 1000);
+        }
+    }
+    let config = config::load_builtin_template("service-api").unwrap();
+    for metadata in [
+        "completed:false",
+        "completed: true",
+        "completed: null",
+        "completed: 0",
+        "completed: TRUE",
+        "completed:false?",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let flag = parse(
+            &format!("Operation \"work\" inspected {metadata}"),
+            1,
+            &config,
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, flag, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{metadata}");
     }
 }

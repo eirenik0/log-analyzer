@@ -27,16 +27,9 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
                     && (!marker.chars().next_back().is_some_and(word)
                         || !text[end..].chars().next().is_some_and(word))
                     && !marker_is_nonaffirmative(&text[..start])
-                    && !marker_is_questioned(&text[end..])
+                    && !crate::parser::lifecycle_question(&text[end..])
             })
         })
-}
-
-fn marker_is_questioned(suffix: &str) -> bool {
-    suffix
-        .split(['.', '!', '\n'])
-        .next()
-        .is_some_and(|clause| clause.contains('?'))
 }
 
 fn marker_is_nonaffirmative(prefix: &str) -> bool {
@@ -54,14 +47,17 @@ fn marker_is_nonaffirmative(prefix: &str) -> bool {
         .iter()
         .rposition(|word| matches!(word.as_str(), "but" | "however" | "instead"))
         .map_or(0, |index| index + 1);
-    words[start..].iter().enumerate().any(|(offset, word)| {
-        let index = start + offset;
-        (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
-            || crate::parser::lifecycle_qualifier(word)
-            || (word == "no"
-                && (index + 1 == words.len()
-                    || words.get(index + 1).is_some_and(|next| next == "longer")))
-    })
+    words[start..]
+        .windows(2)
+        .any(|pair| pair[0] == "to" && pair[1] == "be")
+        || words[start..].iter().enumerate().any(|(offset, word)| {
+            let index = start + offset;
+            (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
+                || crate::parser::lifecycle_qualifier(word)
+                || (word == "no"
+                    && (index + 1 == words.len()
+                        || words.get(index + 1).is_some_and(|next| next == "longer")))
+        })
 }
 
 /// Extracts the request ID from a log message containing [request_id] pattern
@@ -159,7 +155,7 @@ pub fn analyze_performance_with_config(
     let track_commands = filtered.iter().any(|entry| {
         matches!(entry.kind, LogEntryKind::Command { .. })
             && contains_command_marker(
-                &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
+                &crate::parser::command_lifecycle_message(&entry.message, config),
                 &config.perf.command_completion_markers,
             )
     });
@@ -198,11 +194,11 @@ pub fn analyze_performance_with_config(
                 command.as_str(),
                 Some(command.clone()),
                 contains_command_marker(
-                    &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
+                    &crate::parser::command_lifecycle_message(&entry.message, config),
                     &config.perf.command_start_markers,
                 ),
                 contains_command_marker(
-                    &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
+                    &crate::parser::command_lifecycle_message(&entry.message, config),
                     &config.perf.command_completion_markers,
                 ),
             ),
