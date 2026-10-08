@@ -812,7 +812,8 @@ pub fn attach_legacy_command_evidence(entry: &mut LogEntry, config: &AnalyzerCon
 }
 
 fn explicit_command_payload(message: &str, rules: &ParserRules) -> (Option<Value>, String) {
-    // Locate configured payload positions outside quoted names; decoding is separate from phase.
+    // Record marker-eligible starts once; matching is independent of quoted command names.
+    let mut eligible = vec![false; message.len()];
     let mut quote = None;
     let mut escaped = false;
     for (position, ch) in message.char_indices() {
@@ -830,33 +831,80 @@ fn explicit_command_payload(message: &str, rules: &ParserRules) -> (Option<Value
         }
         if matches!(ch, '"' | '\'') {
             quote = Some(ch);
-            continue;
+        } else {
+            eligible[position] = true;
         }
-        for marker in rules
-            .command_payload_markers
-            .iter()
-            .filter(|s| !s.is_empty())
-        {
-            if message[position..].starts_with(marker) {
-                let rest = message[position + marker.len()..].trim_start();
-                if !rest.starts_with(['{', '[']) {
-                    continue;
-                }
-                let payload_start = message.len() - rest.len();
-                if let Some(end) = command_payload_end(rest)
-                    && let Ok(payload) =
-                        json5::from_str::<Value>(&rest[..end].replace("undefined", "null"))
-                {
-                    return (
-                        Some(payload),
-                        format!("{}[JSON removed]", &message[..payload_start]),
-                    );
-                }
-                return (None, message.to_string());
+    }
+    let markers: Vec<_> = rules
+        .command_payload_markers
+        .iter()
+        .filter(|s| !s.is_empty())
+        .collect();
+    if markers.is_empty() {
+        return (None, message.to_string());
+    }
+    // A contiguous NFA bounds construction memory; overlapping search preserves marker priority
+    // even when markers share prefixes or one eligible occurrence overlaps another.
+    let Ok(matcher) = aho_corasick::AhoCorasickBuilder::new()
+        .kind(Some(aho_corasick::AhoCorasickKind::ContiguousNFA))
+        .build(markers)
+    else {
+        return (None, message.to_string());
+    };
+    let mut whitespace_range = (0, 0);
+    let candidate = matcher
+        .find_overlapping_iter(message)
+        .filter_map(|matched| {
+            if !eligible[matched.start()] {
+                return None;
             }
+            // Overlapping matches arrive in end-position order. Reuse whitespace runs so
+            // space-only markers cannot repeatedly scan the same long suffix.
+            if !(whitespace_range.0..=whitespace_range.1).contains(&matched.end()) {
+                let rest = message[matched.end()..].trim_start();
+                whitespace_range = (matched.end(), message.len() - rest.len());
+            }
+            let payload_start = whitespace_range.1;
+            message[payload_start..].starts_with(['{', '[']).then_some((
+                matched.start(),
+                matched.pattern(),
+                payload_start,
+            ))
+        })
+        .min_by_key(|(start, pattern, _)| (*start, *pattern));
+    if let Some((_, _, payload_start)) = candidate {
+        let rest = &message[payload_start..];
+        if let Some(end) = command_payload_end(rest)
+            && command_payload_trivia(&rest[end..])
+            && let Ok(payload) = json5::from_str::<Value>(&rest[..end].replace("undefined", "null"))
+        {
+            return (
+                Some(payload),
+                format!("{}[JSON removed]", &message[..payload_start]),
+            );
         }
     }
     (None, message.to_string())
+}
+
+// Only whitespace and complete JSON5 comments may follow the bounded root value.
+fn command_payload_trivia(mut input: &str) -> bool {
+    loop {
+        input = input.trim_start();
+        if input.is_empty() {
+            return true;
+        }
+        if let Some(comment) = input.strip_prefix("//") {
+            input = comment.find('\n').map_or("", |end| &comment[end + 1..]);
+        } else if let Some(comment) = input.strip_prefix("/*") {
+            let Some(end) = comment.find("*/") else {
+                return false;
+            };
+            input = &comment[end + 2..];
+        } else {
+            return false;
+        }
+    }
 }
 
 // Bound the new command decoding path without changing legacy payload extraction.

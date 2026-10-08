@@ -503,6 +503,11 @@ fn explicit_command_payload_decoding_is_bounded_and_keeps_malformed_payloads_opa
     for body in [
         "{\"nested\":[}",
         "{\"nested\":",
+        "{a: 1} not-json",
+        "{a: 1} {b: 2}",
+        "[1] /* unfinished",
+        "[1] /* valid */ trailing",
+        &format!("{{a: 1}} {}0{}", "[".repeat(50000), "]".repeat(50000)),
         &format!("{}0{}", "[".repeat(50000), "]".repeat(50000)),
     ] {
         let message = format!("Operation \"work\" started with settings {body}");
@@ -664,4 +669,66 @@ fn identity_only_diagnostics_preserve_inherited_and_mapped_scope() {
     let result = analyze(&cfg, &parse(&cfg, &["work"]));
     assert_eq!(result.unmatched_events[0].scope, ["mapped-session"]);
     assert!(result.operations.is_empty());
+}
+
+#[test]
+fn explicit_payload_accepts_only_trailing_trivia_and_searches_overlapping_markers() {
+    let mut cfg = config::load_builtin_template("service-api").unwrap();
+    for tail in [
+        " \t",
+        " /* trailing []{} */ ",
+        " // trailing\n /* another */ ",
+    ] {
+        let message = format!("Operation \"work\" started with settings {{a: 1}}{tail}");
+        let logs = parse(&cfg, &[&message]);
+        assert_eq!(logs[0].payload().unwrap()["a"], 1);
+        assert!(logs[0].message.ends_with("[JSON removed]"));
+    }
+    cfg.parser.command_payload_markers = vec!["aaa".into(), "aaaa".into()];
+    let message = "Operation \"aaa {name}\" started with settings aaaa {a: 2}";
+    let logs = parse(&cfg, &[message]);
+    assert_eq!(logs[0].payload().unwrap()["a"], 2);
+    assert_eq!(
+        logs[0].message,
+        "Operation \"aaa {name}\" started with settings aaaa [JSON removed]"
+    );
+}
+
+#[test]
+fn maximum_marker_configuration_handles_repeated_prefixes_in_a_large_message() {
+    let mut cfg = config::load_builtin_template("service-api").unwrap();
+    cfg.command_rules = Some(rules(json!([{
+        "id":"large-command", "adapter":{"type":"text","pattern":".*"},
+        "mapping":{"kind":"command","name":{"from":"literal","value":"work"},
+        "phase":{"from":"literal","value":"start"},
+        "correlation_id":{"from":"literal","value":"work"}}
+    }])));
+    cfg.parser.command_payload_markers = (0..16)
+        .map(|i| format!("{}{}", "a".repeat(4095), char::from(b'b' + i)))
+        .collect();
+    let message = format!(
+        "Operation \"work\" started with settings {}",
+        "a".repeat(1_000_000)
+    );
+    let logs = parse(&cfg, &[&message]);
+    assert!(matches!(logs[0].kind, LogEntryKind::Command { .. }));
+    assert!(logs[0].payload().is_none());
+    assert_eq!(logs[0].message, message);
+    assert_eq!(analyze(&cfg, &logs).orphans.len(), 1);
+}
+
+#[test]
+fn whitespace_markers_do_not_repeatedly_scan_a_large_suffix() {
+    let mut cfg = config::load_builtin_template("service-api").unwrap();
+    cfg.command_rules = Some(rules(json!([{
+        "id":"large-command", "adapter":{"type":"text","pattern":".*"},
+        "mapping":{"kind":"command","name":{"from":"literal","value":"work"},
+        "phase":{"from":"literal","value":"start"},
+        "correlation_id":{"from":"literal","value":"work"}}
+    }])));
+    cfg.parser.command_payload_markers = vec![" ".into(); 16];
+    let message = format!("work{}{{a: 1}}", " ".repeat(100_000));
+    let logs = parse(&cfg, &[&message]);
+    assert_eq!(logs[0].payload().unwrap()["a"], 1);
+    assert_eq!(analyze(&cfg, &logs).orphans.len(), 1);
 }

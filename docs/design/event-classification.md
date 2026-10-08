@@ -235,6 +235,12 @@ fragments; the original message and header phase remain available. Upstream
 normalization and legacy payload extraction are unchanged; no global parser
 hardening from #32 is carried into this PR. Explicit decoding permits at most
 16 `command_payload_markers`, each at most 4096 bytes, validated on loading.
+A contiguous Aho-Corasick NFA searches all markers with bounded construction memory
+and linear scanning plus reported matches (at most 16 per message position).
+Quoted-name eligibility uses one byte per message byte; overlapping candidates
+retain earliest-position/configured-marker priority. After the bounded root value,
+only whitespace and complete JSON5 comments are accepted; trailing values, prose,
+and incomplete comments keep the entire payload opaque.
 
 Library API change: `LogEntry.classification` caches owned evidence and provenance.
 Constructors leave it absent. Caller-constructed commands without evidence produce

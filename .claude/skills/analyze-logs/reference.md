@@ -617,7 +617,10 @@ Compact text preserves Unicode graphemes and disambiguates shortened field names
 Check `perf` operation coverage separately from parse coverage before interpreting empty results. README “perf” describes evidence statuses, suppressions, ambiguous/rejected events, and capture limits.
 
 Shipped command profiles now use version-1 `command_rules`: whole-message command
-start/end grammar, JSON-escaped names and explicit payload positions. Legacy custom
+start/end grammar, JSON-escaped names and explicit payload positions. A decoded
+command payload consumes the remainder: only whitespace/complete JSON5 comments
+may follow its root value. Malformed/deep payloads and trailing prose stay opaque.
+Legacy custom
 marker profiles retain their original semantics. Do not mix legacy command markers
 with explicit command rules; load errors name the fields to remove. Request/event
 markers may coexist with `command_rules` until their separate integration.

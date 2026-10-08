@@ -152,7 +152,9 @@ and JSON escapes):
 - A bare subject such as `Operation "name"` is identity-only diagnostic evidence.
   Other prose, including `No evidence that Operation "name" completed`, establishes
   no lifecycle boundary. Payloads occupy the remainder of the original message;
-  lifecycle words inside them or the name cannot supply phases.
+  lifecycle words inside them or the name cannot supply phases. After the root
+  JSON5 value, only whitespace and complete comments are accepted; malformed,
+  too-deep or trailing noncomment content stays visible with no decoded settings.
 
 **Compatibility and migration:** shipped command profiles now have this strict
 grammar; extra prose/previous incidental substring matches are unsupported.
