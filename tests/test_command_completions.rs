@@ -585,3 +585,46 @@ fn unfinished_arrays_cover_all_json5_value_and_comment_beginnings() {
         assert!(result.operations.is_empty(), "{beginning}");
     }
 }
+
+#[test]
+fn quoted_context_and_crossed_json_payloads_cannot_complete_commands() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for message in [
+        r#"note='Operation "work" completed'"#,
+        r#"note='Operation "work" completed"#,
+        r#"note="Operation \"work\" completed""#,
+        r#"{foo:[} Operation "work" completed"#,
+        r#"[{} } Operation "work" completed"#,
+        r#"Request "fetch" [0--request] sent {foo:[} Operation "work" completed"#,
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let contextual = parse(message, 1, &config);
+        assert!(
+            !matches!(contextual.kind, LogEntryKind::Command { .. }),
+            "{message}"
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, contextual, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{message}");
+    }
+    for context in [
+        r#"note='Operation "old" completed'"#,
+        "worker's note",
+        "{foo:[}",
+    ] {
+        let command = parse(
+            &format!("Operation \"work\" completed {context}"),
+            1,
+            &config,
+        );
+        assert!(
+            matches!(command.kind, LogEntryKind::Command { .. }),
+            "{context}"
+        );
+    }
+}

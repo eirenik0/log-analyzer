@@ -885,7 +885,23 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
     if prefix.is_empty() {
         return None;
     }
-    let spans = balanced_json_spans(message);
+    let (spans, quotes) = opaque_spans(message);
+    // Subject quotes are parsed by the candidate parser, which can recover from
+    // an earlier malformed name. Other quoted context cannot contain subjects.
+    let subject_quotes: Vec<_> = message
+        .match_indices(prefix)
+        .filter_map(|(start, _)| {
+            let end = start + prefix.len();
+            if prefix.ends_with(['"', '\'']) {
+                Some(end - 1)
+            } else {
+                let remaining = message[end..].trim_start();
+                remaining
+                    .starts_with(['"', '\''])
+                    .then_some(message.len() - remaining.len())
+            }
+        })
+        .collect();
     let unfinished_payload = unfinished_payload_start(message, rules, &spans);
     let mut candidates = message.match_indices(prefix).filter_map(|(start, _)| {
         if unfinished_payload.is_some_and(|boundary| start >= boundary) {
@@ -893,6 +909,12 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
         }
         let index = spans.partition_point(|span| span.end <= start);
         if spans.get(index).is_some_and(|span| span.contains(&start)) {
+            return None;
+        }
+        let index = quotes.partition_point(|span| span.end <= start);
+        if quotes.get(index).is_some_and(|span| {
+            span.contains(&start) && subject_quotes.binary_search(&span.start).is_err()
+        }) {
             return None;
         }
         parse_command_candidate(message, start + prefix.len(), rules)
@@ -1442,9 +1464,15 @@ fn looks_like_json_start(input: &str) -> bool {
 
 // Scan disjoint outer spans once, retaining unfinished JSON-like payloads.
 // Unmatched contextual opening delimiters do not trigger
-// repeated suffix scans. Quotes/comments are significant only inside a span.
+// repeated suffix scans. Contextual quotes are retained separately from JSON.
 fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
+    opaque_spans(input).0
+}
+
+fn opaque_spans(input: &str) -> (Vec<std::ops::Range<usize>>, Vec<std::ops::Range<usize>>) {
     let mut spans = Vec::new();
+    let mut quotes = Vec::new();
+    let mut quote_start = 0;
     let mut delimiters = Vec::new();
     let mut root_start = 0;
     let mut outside_quote = None;
@@ -1462,6 +1490,7 @@ fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
                 } else if ch == '\\' {
                     outside_escape = true;
                 } else if ch == quote {
+                    quotes.push(quote_start..index + ch.len_utf8());
                     outside_quote = None;
                 }
                 continue;
@@ -1473,6 +1502,7 @@ fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
                         .next_back()
                         .is_some_and(|previous| previous.is_alphanumeric()))
             {
+                quote_start = index;
                 outside_quote = Some(ch);
                 continue;
             }
@@ -1519,6 +1549,10 @@ fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
             '}' | ']' => {
                 let expected = if ch == '}' { '{' } else { '[' };
                 if delimiters.pop() != Some(expected) {
+                    if looks_like_json_start(&input[root_start..]) {
+                        spans.push(root_start..input.len());
+                        return (spans, quotes);
+                    }
                     delimiters.clear();
                 } else if delimiters.is_empty() {
                     spans.push(root_start..index + ch.len_utf8());
@@ -1530,5 +1564,8 @@ fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
     if !delimiters.is_empty() && looks_like_json_start(&input[root_start..]) {
         spans.push(root_start..input.len());
     }
-    spans
+    if outside_quote.is_some() {
+        quotes.push(quote_start..input.len());
+    }
+    (spans, quotes)
 }
