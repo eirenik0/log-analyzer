@@ -142,7 +142,7 @@ pub fn display_perf_results(
     sort_by: PerfSortOrder,
 ) {
     let output = format_perf_results_text(results, threshold_ms, top_n, orphans_only, sort_by);
-    print!("{output}");
+    report_print!("{output}");
 }
 
 /// Format performance analysis results as text.

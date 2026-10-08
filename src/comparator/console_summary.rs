@@ -154,10 +154,10 @@ pub fn display_log_summary(
     let total_entries = logs.len();
 
     // Display header
-    println!("{}", "=".repeat(80).bright_white());
-    println!("{}", "LOG SUMMARY REPORT".bold().bright_white());
-    println!("{}", "=".repeat(80).bright_white());
-    println!(
+    report_println!("{}", "=".repeat(80).bright_white());
+    report_println!("{}", "LOG SUMMARY REPORT".bold().bright_white());
+    report_println!("{}", "=".repeat(80).bright_white());
+    report_println!(
         "Total log entries: {}",
         total_entries.to_string().green().bold()
     );
@@ -174,8 +174,8 @@ pub fn display_log_summary(
             let mut items: Vec<(&str, usize)> = counts.into_iter().collect();
             items.sort_by_key(|a| std::cmp::Reverse(a.1));
 
-            println!("\n{}", title.bold());
-            println!("{}", "-".repeat(80).bright_black());
+            report_println!("\n{}", title.bold());
+            report_println!("{}", "-".repeat(80).bright_black());
 
             let mut table = create_styled_table(&["Name", "Count", "Percent", "Distribution"]);
 
@@ -193,7 +193,7 @@ pub fn display_log_summary(
                 ]);
             }
 
-            println!("{table}");
+            report_println!("{table}");
         };
 
     // Display components with counts and percentages
@@ -222,14 +222,14 @@ pub fn display_log_summary(
 
     // Display timeline summary if we have timestamps in the logs
     if let Some((earliest, latest)) = get_time_range(logs) {
-        println!("\n{}", "TIME RANGE".bold());
-        println!("{}", "-".repeat(80).bright_black());
-        println!("  Earliest: {}", earliest.to_string().cyan());
-        println!("  Latest:   {}", latest.to_string().cyan());
+        report_println!("\n{}", "TIME RANGE".bold());
+        report_println!("{}", "-".repeat(80).bright_black());
+        report_println!("  Earliest: {}", earliest.to_string().cyan());
+        report_println!("  Latest:   {}", latest.to_string().cyan());
 
         if let Ok(duration) = latest.signed_duration_since(earliest).to_std() {
             let duration_str = format_duration(duration);
-            println!("  Span:     {}", duration_str.green());
+            report_println!("  Span:     {}", duration_str.green());
         }
 
         // Enhanced timeline analysis if requested
@@ -240,8 +240,8 @@ pub fn display_log_summary(
 
     // Display component samples if requested
     if show_samples && !component_samples.is_empty() {
-        println!("\n{}", "SAMPLE MESSAGES".bold());
-        println!("{}", "-".repeat(80).bright_black());
+        report_println!("\n{}", "SAMPLE MESSAGES".bold());
+        report_println!("{}", "-".repeat(80).bright_black());
 
         // Convert to vec and sort by count (using component_counts for ordering)
         let mut components: Vec<(&str, &Vec<&LogEntry>)> =
@@ -253,7 +253,7 @@ pub fn display_log_summary(
         });
 
         for (component, samples) in components {
-            println!(
+            report_println!(
                 "\n  {} ({} entries):",
                 component.cyan().bold(),
                 component_counts.get(component).unwrap_or(&0)
@@ -266,7 +266,7 @@ pub fn display_log_summary(
                     sample.message.clone()
                 };
 
-                println!(
+                report_println!(
                     "    {}. [{}] {}",
                     (i + 1).to_string().bright_white(),
                     sample.level.as_str().color(get_level_color(&sample.level)),
@@ -282,8 +282,8 @@ pub fn display_log_summary(
             || !command_payload_sizes.is_empty()
             || !request_payload_sizes.is_empty())
     {
-        println!("\n{}", "PAYLOAD STATISTICS".bold());
-        println!("{}", "-".repeat(80).bright_black());
+        report_println!("\n{}", "PAYLOAD STATISTICS".bold());
+        report_println!("{}", "-".repeat(80).bright_black());
 
         // Helper function to display payload stats for a specific type
         let display_payload_stats = |title: &str, stats_map: &HashMap<&str, Vec<usize>>| {
@@ -291,7 +291,7 @@ pub fn display_log_summary(
                 return;
             }
 
-            println!("\n  {}:", title.bright_white().bold());
+            report_println!("\n  {}:", title.bright_white().bold());
 
             let mut table = create_styled_table(&["Name", "Count", "Avg (bytes)", "Min", "Max"]);
 
@@ -317,7 +317,7 @@ pub fn display_log_summary(
                 ]);
             }
 
-            println!("{table}");
+            report_println!("{table}");
         };
 
         display_payload_stats("EVENT PAYLOADS", &event_payload_sizes);
@@ -331,8 +331,8 @@ pub fn display_log_summary(
             || !command_payload_keys.is_empty()
             || !request_payload_keys.is_empty())
     {
-        println!("\n{}", "JSON SCHEMA ANALYSIS".bold());
-        println!("{}", "-".repeat(80).bright_black());
+        report_println!("\n{}", "JSON SCHEMA ANALYSIS".bold());
+        report_println!("{}", "-".repeat(80).bright_black());
 
         // Helper function to display schema for a specific type
         let display_schema = |title: &str,
@@ -343,7 +343,7 @@ pub fn display_log_summary(
                 return;
             }
 
-            println!("\n  {}:", title.bright_white().bold());
+            report_println!("\n  {}:", title.bright_white().bold());
 
             // Convert to vec and sort by frequency
             let mut items: Vec<(&str, &HashMap<String, usize>)> =
@@ -355,7 +355,7 @@ pub fn display_log_summary(
             });
 
             for (name, keys) in items {
-                println!(
+                report_println!(
                     "\n    {} ({} occurrences):",
                     name_color(name).bold(),
                     occurrence_counts.get(name).unwrap_or(&0)
@@ -368,7 +368,7 @@ pub fn display_log_summary(
                 // Display top fields (max 10)
                 let display_count = sorted_keys.len().min(10);
                 for (i, (key, count)) in sorted_keys.iter().take(display_count).enumerate() {
-                    println!(
+                    report_println!(
                         "      {}. {} ({}/{})",
                         (i + 1).to_string().bright_white(),
                         key,
@@ -379,7 +379,7 @@ pub fn display_log_summary(
 
                 // If there are more fields than we displayed
                 if sorted_keys.len() > display_count {
-                    println!(
+                    report_println!(
                         "      ... and {} more fields",
                         sorted_keys.len() - display_count
                     );
@@ -457,12 +457,12 @@ fn display_timeline_analysis(
     let max_count = *timeline_buckets.iter().max().unwrap_or(&1);
 
     // Display timeline header
-    println!(
+    report_println!(
         "\n  {}",
         "EVENT DISTRIBUTION OVER TIME".bright_white().bold()
     );
-    println!("  (each bucket represents {})", bucket_unit.bright_black());
-    println!("  {}", "-".repeat(70).bright_black());
+    report_println!("  (each bucket represents {})", bucket_unit.bright_black());
+    report_println!("  {}", "-".repeat(70).bright_black());
 
     // Display overall timeline histogram
     for (i, count) in timeline_buckets.iter().enumerate() {
@@ -474,7 +474,7 @@ fn display_timeline_analysis(
             *earliest + chrono::Duration::from_std(bucket_size.mul_f64(i as f64)).unwrap();
         let time_str = bucket_time.format("%H:%M:%S").to_string();
 
-        println!(
+        report_println!(
             "  {}: {:4} events |{}",
             time_str.bright_blue(),
             count.to_string().bright_white(),
@@ -483,11 +483,11 @@ fn display_timeline_analysis(
     }
 
     // Display component distribution
-    println!(
+    report_println!(
         "\n  {}",
         "COMPONENT ACTIVITY DISTRIBUTION".bright_white().bold()
     );
-    println!("  {}", "-".repeat(70).bright_black());
+    report_println!("  {}", "-".repeat(70).bright_black());
 
     // Sort components by total count
     let mut components: Vec<(&str, &Vec<DateTime<Local>>)> =
@@ -496,7 +496,7 @@ fn display_timeline_analysis(
 
     // Display top 5 components
     for (name, timestamps) in components.iter().take(5) {
-        println!("  {}: {} events", name.cyan(), timestamps.len());
+        report_println!("  {}: {} events", name.cyan(), timestamps.len());
 
         // Calculate component buckets
         let mut comp_buckets = vec![0; num_buckets];
@@ -532,7 +532,7 @@ fn display_timeline_analysis(
                 let time_str = bucket_time.format("%H:%M:%S").to_string();
 
                 if count > 0 {
-                    println!(
+                    report_println!(
                         "    {}: {:3} |{}",
                         time_str.bright_blue(),
                         count.to_string().bright_white(),
@@ -541,7 +541,7 @@ fn display_timeline_analysis(
                 }
             }
         }
-        println!();
+        report_println!();
     }
 }
 

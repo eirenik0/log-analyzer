@@ -143,7 +143,11 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
 
                 compacted_map.insert(
                     compact_key,
-                    compact_json_value(val, max_depth, current_depth + 1),
+                    if key == "id" || key.ends_with("_id") {
+                        val.clone()
+                    } else {
+                        compact_json_value(val, max_depth, current_depth + 1)
+                    },
                 );
             }
             Value::Object(compacted_map)

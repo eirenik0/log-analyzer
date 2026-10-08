@@ -604,3 +604,8 @@ limits and conflicts with bounded/limit flags.
 Preview unknown JSON exports with `schema <file> --samples 3` before mapping fields.
 Use explicit paths and timestamp units from [README](../../../README.md#structured-export-normalization),
 then check normalization diagnostics in `info -j` coverage before investigating.
+
+For reports intended for sharing, use global `--redact`; selected ID fields can
+use stable invocation-local masks via `--mask-id`. See README report redaction for
+the shared text/JSON policy and raw-output behavior. Redaction does not change
+filtering or correlation.
