@@ -108,11 +108,30 @@ pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
         .iter()
         .enumerate()
         .rposition(|(index, word)| {
-            matches!(word.as_str(), "however" | "instead")
-                || (word == "but"
-                    && !index.checked_sub(1).is_some_and(|previous| {
-                        matches!(words[previous].as_str(), "anything" | "all")
-                    }))
+            matches!(word.as_str(), "but" | "however" | "instead")
+                && !index.checked_sub(1).is_some_and(|previous| {
+                    let previous = words[previous].as_str();
+                    crate::parser::lifecycle_qualifier(previous)
+                        || matches!(
+                            previous,
+                            "not"
+                                | "anything"
+                                | "all"
+                                | "only"
+                                | "is"
+                                | "was"
+                                | "were"
+                                | "are"
+                                | "am"
+                                | "has"
+                                | "have"
+                                | "had"
+                                | "really"
+                                | "actually"
+                                | "indeed"
+                                | "genuinely"
+                        )
+                })
         })
         .map_or(0, |index| index + 1);
     words[start..].windows(2).any(|pair| {
