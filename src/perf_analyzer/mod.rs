@@ -196,7 +196,15 @@ fn marker_is_nonaffirmative_inner(prefix: &str, allow_contrast: bool) -> bool {
                         && words.get(index + 1).is_some_and(|next| {
                             matches!(
                                 next.as_str(),
-                                "errors" | "issues" | "problems" | "failures" | "delay"
+                                "error"
+                                    | "errors"
+                                    | "issue"
+                                    | "issues"
+                                    | "problem"
+                                    | "problems"
+                                    | "failure"
+                                    | "failures"
+                                    | "delay"
                             )
                         })))
                 || (word == "no"

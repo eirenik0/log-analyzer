@@ -1206,7 +1206,8 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
             previous = span.end;
         }
         visible.push_str(&tail[previous..]);
-        lifecycle_question(tail) || crate::perf_analyzer::marker_has_trailing_condition(&visible)
+        lifecycle_question(&visible)
+            || crate::perf_analyzer::marker_has_trailing_condition(&visible)
     };
     let body = &body[..end];
     let excluded = finish_spans(
@@ -1531,6 +1532,9 @@ pub(crate) fn lifecycle_uncertainty(word: &str) -> bool {
             | "unclear"
             | "unverified"
             | "unproven"
+            | "insufficient"
+            | "inadequate"
+            | "inconclusive"
     )
 }
 
