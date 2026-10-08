@@ -121,6 +121,7 @@ pub fn format_search_json(
             let entry = &logs[row.idx];
             json!({
                 "is_match": row.is_match,
+                "source_file": entry.source_file,
                 "source_line_number": entry.source_line_number,
                 "source_row_path": entry.source_row_path,
                 "timestamp": entry

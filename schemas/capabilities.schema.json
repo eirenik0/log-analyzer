@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Log Analyzer capabilities",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "build",
+    "commands",
+    "output_formats",
+    "parser_formats",
+    "presets",
+    "event_classification",
+    "report_schemas"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "package_version": {
+          "type": "string"
+        },
+        "source_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_state": {
+          "enum": [
+            "clean",
+            "dirty",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "package_version",
+        "source_revision",
+        "source_state"
+      ]
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output_formats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "parser_formats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "presets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "event_classification": {
+      "type": "object"
+    },
+    "report_schemas": {
+      "type": "object",
+      "properties": {
+        "report": {
+          "const": "schemas/report.schema.json"
+        },
+        "capabilities": {
+          "const": "schemas/capabilities.schema.json"
+        },
+        "investigation": {
+          "const": "schemas/investigation.schema.json"
+        },
+        "evidence_contract_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "report",
+        "capabilities",
+        "investigation",
+        "evidence_contract_version"
+      ]
+    }
+  }
+}

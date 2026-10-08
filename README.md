@@ -62,6 +62,21 @@ to their entry and do not count as separate rejections. Partially recognized
 files succeed but expose rejected candidates; review coverage before trusting
 a diagnosis. Format auto-detection samples the first ten nonempty lines.
 
+## Evidence contract for agents
+
+JSON reports add snapshot-scoped `evidence_ref` citations and shared input,
+profile, query, coverage, redaction and omission semantics under the existing
+`report_metadata.evidence`. Inspect `log-analyzer capabilities` for schema paths
+and contract versions. Published [JSON Schemas](schemas/) and the
+[evidence contract](docs/design/evidence-contract.md) document report variants,
+citation resolution, measurement boundaries, changed-input behavior and limits.
+
+Source IDs survive selection and presentation. Recheck input/profile identities
+before reusing citations. Keep observed facts, measurements, hypotheses,
+contrary evidence and unknowns distinct using the investigation-result schema.
+Aggregate inventories require record retrieval before citing an occurrence;
+legacy error blocking spans are explicitly estimates.
+
 ## Installation
 
 ```bash

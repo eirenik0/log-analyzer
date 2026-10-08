@@ -2,6 +2,18 @@
 
 Complete documentation of all log-analyzer commands and options.
 
+## Shared evidence contract
+
+Before interpreting JSON, check `capabilities.report_schemas` and the existing
+`report_metadata.evidence` contract. The canonical specification is
+[`docs/design/evidence-contract.md`](../../../docs/design/evidence-contract.md)
+with machine-readable schemas under `schemas/`. Cite snapshot-scoped references,
+verify effective profile/input identity, and retrieve individual records when
+an aggregate lacks citations. Keep measurements and hypotheses distinct. Error
+blocking spans are estimates to the last observed session record, not proof of
+completion or blocking work. `process --limit 0` still compacts payloads; use
+`search --payloads` for original parsed payload evidence.
+
 ## Installation
 
 ### Using Installation Script (Recommended)

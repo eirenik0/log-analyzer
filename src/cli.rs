@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 pub use direction::Direction;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(serde::Serialize, Debug, Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
     /// Human-readable text output (default)
     Text,
@@ -12,7 +12,7 @@ pub enum OutputFormat {
     Json,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(serde::Serialize, Debug, Clone, Copy, ValueEnum)]
 pub enum ColorMode {
     /// Auto-detect color support (default)
     Auto,
@@ -22,7 +22,7 @@ pub enum ColorMode {
     Never,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
+#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
 pub enum SortOrder {
     /// Sort by timestamp (default)
     #[default]
@@ -37,7 +37,7 @@ pub enum SortOrder {
     DiffCount,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
+#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
 pub enum ProcessSortOrder {
     /// Sort by timestamp (earliest first)
     #[default]
@@ -50,7 +50,7 @@ pub enum ProcessSortOrder {
     Type,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
+#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, ValueEnum)]
 pub enum OperationType {
     /// Request operations (send/receive)
     Request,
@@ -60,7 +60,7 @@ pub enum OperationType {
     Command,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
+#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
 pub enum PerfSortOrder {
     /// Sort by duration (slowest first, default)
     #[default]
@@ -71,7 +71,7 @@ pub enum PerfSortOrder {
     Name,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
 pub enum ErrorsSortBy {
     /// Sort by cluster count (highest first, default)
     #[default]
@@ -82,7 +82,7 @@ pub enum ErrorsSortBy {
     Impact,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum SearchCountBy {
     /// Total number of matching entries (grep -c style)
     Matches,
@@ -97,7 +97,7 @@ pub enum SearchCountBy {
 }
 
 /// Analyze, search, compare, and diagnose structured logs
-#[derive(Parser)]
+#[derive(serde::Serialize, Parser)]
 #[command(author, version = env!("LOG_ANALYZER_BUILD_VERSION"), about, long_about = None)]
 #[command(name = "log-analyzer")]
 #[command(after_help = "FILTER EXPRESSION SYNTAX:
@@ -194,9 +194,9 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
-    /// Print build identity and supported commands, formats, presets and schema as JSON
+    /// Print build identity, commands, formats, presets and report schema locations as JSON
     Capabilities,
     /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
     Schema {

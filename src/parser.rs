@@ -80,7 +80,7 @@ pub enum ParseError {
     IoError(std::io::Error),
     InvalidLogFormat(String),
     JsonParseError(String),
-    NoRecognizedEntries(ParseCoverage),
+    NoRecognizedEntries(Box<ParseCoverage>),
 }
 
 impl From<std::io::Error> for ParseError {
@@ -132,6 +132,7 @@ pub struct ParseCoverage {
     pub configured_parser: LogFormat,
     pub selected_parser: LogFormat,
     pub input_bytes: u64,
+    pub snapshot_sha256: String,
     pub nonempty_lines: usize,
     pub parsed_entries: usize,
     pub rejected_candidates: usize,
@@ -170,13 +171,14 @@ pub fn parse_log_file_report(
         profile: config.profile_name.clone(),
         configured_parser: config.parser.format,
         selected_parser: format,
-        input_bytes: file.metadata()?.len(),
+        input_bytes: 0,
+        snapshot_sha256: String::new(),
         nonempty_lines: 0,
         parsed_entries: 0,
         rejected_candidates: 0,
         normalization_diagnostics: Vec::new(),
     };
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(crate::evidence::SnapshotReader::new(file));
     let mut entries = Vec::new();
     let mut current_log: Option<String> = None;
     let mut current_line_number = 0;
@@ -224,7 +226,7 @@ pub fn parse_log_file_report(
         }
     };
 
-    for (index, line) in reader.lines().enumerate() {
+    for (index, line) in std::io::Read::by_ref(&mut reader).lines().enumerate() {
         let line = line?;
         if !line.trim().is_empty() {
             coverage.nonempty_lines += 1;
@@ -251,6 +253,9 @@ pub fn parse_log_file_report(
     if let Some(text) = current_log {
         finish(&text, current_line_number);
     }
+    let (digest, bytes) = reader.into_inner().finish();
+    coverage.snapshot_sha256 = digest;
+    coverage.input_bytes = bytes;
     coverage.parsed_entries = entries.len();
     Ok(ParsedLogFile { entries, coverage })
 }
@@ -262,7 +267,7 @@ pub fn parse_log_file_with_config(
 ) -> Result<Vec<LogEntry>, ParseError> {
     let parsed = parse_log_file_report(path.as_ref(), config)?;
     if parsed.coverage.is_unparsed() {
-        return Err(ParseError::NoRecognizedEntries(parsed.coverage));
+        return Err(ParseError::NoRecognizedEntries(Box::new(parsed.coverage)));
     }
     for diagnostic in &parsed.coverage.normalization_diagnostics {
         report_eprintln!(

@@ -224,6 +224,8 @@ impl JsonFormatter {
                     "log2_index": comparison.log2_index,
                     "text1": comparison.text1,
                     "text2": comparison.text2,
+                    "log1_source": comparison.log1_source,
+                    "log2_source": comparison.log2_source,
                     "log1_line": comparison.log1_line_number,
                     "log2_line": comparison.log2_line_number,
                     "diff_count": comparison.json_differences.len()
@@ -411,6 +413,8 @@ impl JsonFormatter {
                     "json_differences": diffs,
                     "text1": comparison.text1,
                     "text2": comparison.text2,
+                    "log1_source": comparison.log1_source,
+                    "log2_source": comparison.log2_source,
                     "log1_line": comparison.log1_line_number,
                     "log2_line": comparison.log2_line_number,
                     "diff_count": comparison.json_differences.len()
@@ -570,6 +574,8 @@ impl JsonFormatter {
                     "l2": comparison.log2_index, // log2_index
                     "t1": comparison.text1,  // text1
                     "t2": comparison.text2,  // text2
+                    "log1_source": comparison.log1_source,
+                    "log2_source": comparison.log2_source,
                     "ln1": comparison.log1_line_number, // log1_line_number
                     "ln2": comparison.log2_line_number, // log2_line_number
                     "dc": comparison.json_differences.len() // diff_count

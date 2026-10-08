@@ -44,6 +44,7 @@ struct OutputState {
     performance_text: Option<String>,
     path_substring_ids: bool,
     metadata: Option<Value>,
+    evidence: Option<crate::evidence::Context>,
     metadata_comments: bool,
     structured: bool,
     wrote: bool,
@@ -182,6 +183,23 @@ fn field_matches(key: &str, field: &str) -> bool {
 }
 
 impl OutputState {
+    fn prepare_source(&mut self, source: &mut crate::perf_analyzer::SourceLocation) {
+        if let Some(context) = &self.evidence {
+            context.attach_source(source);
+        }
+        if let Some(reference) = &mut source.evidence_ref {
+            *reference = serde_json::from_value(
+                self.redact_reference(&serde_json::to_value(&*reference).unwrap()),
+            )
+            .unwrap();
+        }
+        if let Some(file) = &mut source.file {
+            *file = self.path_text(file);
+        }
+        if let Some(path) = &mut source.row_path {
+            *path = self.path_text(path);
+        }
+    }
     fn reserve_id(&mut self, value: &str) {
         if value.is_empty() || value == "null" || !self.reserved.insert(value.to_string()) {
             return;
@@ -282,7 +300,19 @@ impl OutputState {
             }
             Value::String(text) => {
                 let leaf = path.rsplit('.').next().unwrap_or(path);
-                if matches!(leaf, "file" | "source_file") {
+                if matches!(
+                    leaf,
+                    "file"
+                        | "source_file"
+                        | "files"
+                        | "file1"
+                        | "file2"
+                        | "template"
+                        | "row_path"
+                        | "source_row_path"
+                        | "array_path"
+                        | "expand_array"
+                ) {
                     return Value::String(self.path_text(text));
                 }
                 let metadata = matches!(
@@ -618,7 +648,17 @@ impl OutputState {
     }
 
     fn report(&mut self, text: &str) -> String {
-        let rendered = self.redact_report(text);
+        let mut original = serde_json::from_str::<Value>(text)
+            .ok()
+            .filter(Value::is_object);
+        if let (Some(context), Some(value)) = (&self.evidence, &mut original) {
+            context.annotate(value);
+        }
+        let annotated = self
+            .evidence
+            .as_ref()
+            .and_then(|_| original.as_ref().map(Value::to_string));
+        let rendered = self.redact_report(annotated.as_deref().unwrap_or(text));
         let Some(mut metadata) = self.metadata.clone() else {
             return rendered;
         };
@@ -628,6 +668,22 @@ impl OutputState {
             if self.redact {
                 metadata["active_profile"] =
                     Value::String(self.text(metadata["active_profile"].as_str().unwrap()));
+            }
+            if let (Some(context), Some(original)) = (&self.evidence, &original) {
+                let mut contract = context.metadata(original, self.redact, &self.mask_ids);
+                if self.redact {
+                    for input in contract["inputs"].as_array_mut().unwrap() {
+                        input["file"] = json!(self.path_text(input["file"].as_str().unwrap()));
+                        let original = input["coverage"].clone();
+                        input["coverage"] = self.value(&original);
+                        restore_coverage_metadata(&original, &mut input["coverage"]);
+                    }
+                    contract["query"] = self.value(&contract["query"]);
+                    if !contract["query"]["filter"].is_null() {
+                        contract["query"]["filter"] = json!("[REDACTED FILTER]");
+                    }
+                }
+                metadata["evidence"] = contract;
             }
             value["report_metadata"] = metadata;
             return format!(
@@ -666,6 +722,10 @@ impl OutputState {
             // A second pass covers generic ID labels encountered before their named fields.
             if !self.prepared {
                 value = self.value(&value);
+            }
+            self.restore_evidence_refs(&original, &mut value, false);
+            if let Some(coverage) = original.get("coverage") {
+                restore_coverage_metadata(coverage, &mut value["coverage"]);
             }
             if original.get("operation_coverage").is_some() {
                 restore_performance_metadata(&original, &mut value, "");
@@ -907,6 +967,7 @@ pub fn prepare_errors(report: &mut crate::errors::ErrorAnalysisReport) {
             return;
         };
         for cluster in &mut report.clusters {
+            state.prepare_source(&mut cluster.sample_source);
             cluster.severity = state.text(&cluster.severity);
             cluster.pattern = state.text(&cluster.pattern);
             cluster.sample_message = state.text(&cluster.sample_message);
@@ -914,10 +975,22 @@ pub fn prepare_errors(report: &mut crate::errors::ErrorAnalysisReport) {
                 *component = state.text(component);
             }
             for session in &mut cluster.affected_sessions {
+                for source in [&mut session.start_source, &mut session.end_source]
+                    .into_iter()
+                    .flatten()
+                {
+                    state.prepare_source(source);
+                }
                 session.session_path = state.text(&session.session_path);
             }
         }
         if let Some(longest) = &mut report.longest_blocking {
+            for source in [&mut longest.start_source, &mut longest.end_source]
+                .into_iter()
+                .flatten()
+            {
+                state.prepare_source(source);
+            }
             longest.severity = state.text(&longest.severity);
             longest.pattern = state.text(&longest.pattern);
             longest.session_path = state.text(&longest.session_path);
@@ -956,10 +1029,14 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
     STATE.with(|state| {
         let mut state = state.borrow_mut();
         if let Some(state) = state.as_mut().filter(|s| s.redact) {
-            let value = serde_json::to_value(&*results).expect("performance results serialize");
+            let mut value = serde_json::to_value(&*results).expect("performance results serialize");
+            if let Some(context) = &state.evidence {
+                context.annotate(&mut value);
+            }
             state.collect_value(&value, "");
             let mut redacted = state.value(&value);
             restore_performance_metadata(&value, &mut redacted, "");
+            state.restore_evidence_refs(&value, &mut redacted, false);
             *results = serde_json::from_value(redacted)
                 .expect("source redaction preserves typed performance metadata");
         }
@@ -1049,5 +1126,155 @@ fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &s
             *redacted = original.clone()
         }
         _ => (),
+    }
+}
+
+impl OutputState {
+    fn redact_reference(&mut self, original: &Value) -> Value {
+        let mut reference = original.clone();
+        if let Some(path) = original["row_path"].as_str()
+            && self.path_text(path) != path
+        {
+            reference["row_path"] = Value::Null;
+            reference["location_redacted"] = json!(true);
+        }
+        if let Some(path) = original.pointer("/expansion/path").and_then(Value::as_str)
+            && self.path_text(path) != path
+        {
+            reference["expansion"]["path"] = json!("[REDACTED]");
+            reference["location_redacted"] = json!(true);
+        }
+        reference
+    }
+    fn restore_evidence_refs(&mut self, original: &Value, redacted: &mut Value, payload: bool) {
+        if !payload && original.get("evidence_ref").is_some() && !redacted.is_object() {
+            *redacted = self.value(original);
+        }
+        match (original, redacted) {
+            (Value::Object(map), Value::Object(out)) => {
+                if !payload && map.contains_key("evidence_ref") {
+                    for key in ["line", "source_line", "source_line_number"] {
+                        if let Some(value) = map.get(key) {
+                            out.insert(key.into(), value.clone());
+                        }
+                    }
+                }
+                if !payload {
+                    for key in [
+                        "timing_semantics",
+                        "correlation_established",
+                        "timestamp_year_source",
+                        "timestamp_offset_source",
+                    ] {
+                        if let Some(value) = map.get(key) {
+                            out.insert(key.into(), value.clone());
+                        }
+                    }
+                }
+                for (key, value) in map {
+                    let payload = payload
+                        || matches!(
+                            key.as_str(),
+                            "payload"
+                                | "data"
+                                | "values"
+                                | "structured_fields"
+                                | "differences"
+                                | "correlation_ids"
+                        );
+                    if key == "evidence_ref" && !payload {
+                        let reference = self.redact_reference(value);
+                        if reference["location_redacted"] == true && out.contains_key("raw_logline")
+                        {
+                            out.insert("raw_logline".into(), json!("[REDACTED SOURCE LOCATION]"));
+                            out.insert("raw_logline_omitted".into(), json!(true));
+                        }
+                        if reference["location_redacted"] == true {
+                            for key in ["data", "payload"] {
+                                if out.get(key).is_some_and(|value| !value.is_null()) {
+                                    out.insert(key.into(), Value::Null);
+                                    out.insert(format!("{key}_omitted"), json!(true));
+                                }
+                            }
+                        }
+                        out.insert(key.clone(), reference);
+                    } else if key == "span_boundaries" && !payload {
+                        let mut boundaries = value.clone();
+                        for key in ["start", "end"] {
+                            boundaries[key] = self.redact_reference(&value[key]);
+                        }
+                        out.insert(key.clone(), boundaries);
+                    } else if let Some(out) = out.get_mut(key) {
+                        self.restore_evidence_refs(value, out, payload);
+                    }
+                }
+                let location_lost = !payload
+                    && ["evidence_ref", "source", "start_source", "end_source"]
+                        .iter()
+                        .any(|key| {
+                            let value = out.get(*key);
+                            value.is_some_and(|v| {
+                                v["location_redacted"] == true
+                                    || v.pointer("/evidence_ref/location_redacted")
+                                        .is_some_and(|v| v == true)
+                            })
+                        });
+                if location_lost {
+                    for key in ["raw", "raw_logline", "context"] {
+                        if out.get(key).is_some_and(Value::is_string) {
+                            out.insert(key.into(), json!("[REDACTED SOURCE LOCATION]"));
+                            out.insert(format!("{key}_omitted"), json!(true));
+                        }
+                    }
+                }
+            }
+            (Value::Array(items), Value::Array(out)) => {
+                for (value, out) in items.iter().zip(out) {
+                    self.restore_evidence_refs(value, out, payload);
+                }
+            }
+            _ => (),
+        }
+    }
+}
+pub(crate) fn set_evidence(context: crate::evidence::Context) {
+    STATE.with(|state| {
+        if let Some(state) = state.borrow_mut().as_mut() {
+            state.evidence = Some(context);
+        }
+    });
+}
+pub(crate) fn observe_input(
+    coverage: &crate::parser::ParseCoverage,
+    entries: &[crate::parser::LogEntry],
+) {
+    STATE.with(|state| {
+        if let Some(context) = state
+            .borrow_mut()
+            .as_mut()
+            .and_then(|state| state.evidence.as_mut())
+        {
+            context.observe(coverage, entries);
+        }
+    });
+}
+
+fn restore_coverage_metadata(original: &Value, redacted: &mut Value) {
+    if let (Some(map), Some(out)) = (original.as_object(), redacted.as_object_mut()) {
+        for (key, value) in map {
+            if !matches!(
+                key.as_str(),
+                "file" | "profile" | "normalization_diagnostics" | "files"
+            ) {
+                out.insert(key.clone(), value.clone());
+            }
+            if key == "files"
+                && let Some(items) = out.get_mut(key).and_then(Value::as_array_mut)
+            {
+                for (value, out) in value.as_array().unwrap().iter().zip(items) {
+                    restore_coverage_metadata(value, out);
+                }
+            }
+        }
     }
 }

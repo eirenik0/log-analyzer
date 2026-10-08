@@ -17,6 +17,7 @@ pub mod config;
 pub mod config_generator;
 pub mod errors;
 pub mod event_rules;
+pub mod evidence;
 pub mod extract;
 pub mod filter;
 pub mod llm_processor;
@@ -188,9 +189,23 @@ fn read_cli_log_file(
     file: &std::path::Path,
     config: &config::AnalyzerConfig,
 ) -> Result<Vec<LogEntry>, ParseError> {
-    let entries = parser::parse_log_file_with_config(file, config)?;
-    output::observe_entries(&entries);
-    Ok(entries)
+    let parsed = parser::parse_log_file_report(file, config)?;
+    output::observe_input(&parsed.coverage, &parsed.entries);
+    if parsed.coverage.is_unparsed() {
+        return Err(ParseError::NoRecognizedEntries(Box::new(parsed.coverage)));
+    }
+    for diagnostic in &parsed.coverage.normalization_diagnostics {
+        report_eprintln!(
+            "Normalization skipped {}:{} row {} field {}: {}",
+            file.display(),
+            diagnostic.line,
+            diagnostic.row_path,
+            diagnostic.field,
+            diagnostic.reason
+        );
+    }
+    output::observe_entries(&parsed.entries);
+    Ok(parsed.entries)
 }
 
 fn parse_and_merge_log_files_with_config(
@@ -234,6 +249,7 @@ fn read_analysis_inputs(
     for file in files {
         let parsed = parser::parse_log_file_report(file, config)
             .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+        output::observe_input(&parsed.coverage, &parsed.entries);
         output::observe_entries(&parsed.entries);
         logs.extend(parsed.entries);
         coverage.files.push(parsed.coverage);
@@ -362,6 +378,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
         build_info::metadata(&analyzer_config.profile_name),
         matches!(&cli.command, Commands::GenerateConfig { .. }),
     );
+    output::set_evidence(evidence::Context::new(cli, &analyzer_config)?);
     let format = cli.effective_format();
     let compact = cli.effective_compact();
     let output = &cli.output;

@@ -33,5 +33,5 @@ pub fn capabilities() -> Value {
     .iter()
     .map(|p| serde_json::to_value(p).unwrap())
     .collect();
-    json!({"schema_version":SCHEMA_VERSION,"build":identity(),"commands":commands,"output_formats":formats,"parser_formats":parsers,"presets":crate::config::builtin_template_names(),"event_classification":{"schema_versions":[1,2],"kinds":["command","request","event"],"adapters":["text","structured"],"legacy_marker_compatibility":true,"command_rules":"deprecated_command_only","coverage_basis":"selected_parsed_records_before_operation_type_and_display_limits"}})
+    json!({"schema_version":SCHEMA_VERSION,"build":identity(),"commands":commands,"report_schemas":{"report":"schemas/report.schema.json","capabilities":"schemas/capabilities.schema.json","investigation":"schemas/investigation.schema.json","evidence_contract_version":crate::evidence::CONTRACT_VERSION},"output_formats":formats,"parser_formats":parsers,"presets":crate::config::builtin_template_names(),"event_classification":{"schema_versions":[1,2],"kinds":["command","request","event"],"adapters":["text","structured"],"legacy_marker_compatibility":true,"command_rules":"deprecated_command_only","coverage_basis":"selected_parsed_records_before_operation_type_and_display_limits"}})
 }

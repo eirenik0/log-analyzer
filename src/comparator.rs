@@ -176,6 +176,8 @@ pub fn compare_logs(
                             .collect(),
                         text1,
                         text2,
+                        log1_source: crate::evidence::source(log1),
+                        log2_source: crate::evidence::source(log2),
                         log1_line_number: log1.source_line_number,
                         log2_line_number: log2.source_line_number,
                         log1_payload: Some(payload1.to_owned()),

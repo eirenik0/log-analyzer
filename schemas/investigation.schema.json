@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Investigation result contract 1",
+  "$defs": {
+    "reference": {
+      "type": "object",
+      "properties": {
+        "input_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "row_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expansion": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "path",
+            "index"
+          ],
+          "additionalProperties": false
+        },
+        "reference_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "location_redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "input_id",
+        "line",
+        "row_path",
+        "reference_id",
+        "location_redacted"
+      ],
+      "additionalProperties": false
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": 1
+    },
+    "input_snapshot_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "profile_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "observation"
+              },
+              "claim": {
+                "type": "string"
+              },
+              "supporting_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/reference"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "kind",
+              "claim",
+              "supporting_refs"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "measurement"
+              },
+              "claim": {
+                "type": "string"
+              },
+              "supporting_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/reference"
+                },
+                "minItems": 1
+              },
+              "value": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "boundaries": {
+                "type": "object",
+                "properties": {
+                  "start": {
+                    "$ref": "#/$defs/reference"
+                  },
+                  "end": {
+                    "$ref": "#/$defs/reference"
+                  }
+                },
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "additionalProperties": false
+              },
+              "profile_sha256": {
+                "$ref": "#/$defs/digest"
+              },
+              "semantics": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "claim",
+              "supporting_refs",
+              "value",
+              "unit",
+              "boundaries",
+              "profile_sha256",
+              "semantics"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "hypothesis"
+              },
+              "claim": {
+                "type": "string"
+              },
+              "supporting_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/reference"
+                },
+                "minItems": 1
+              },
+              "confidence": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "claim",
+              "supporting_refs",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "contrary_evidence"
+              },
+              "claim": {
+                "type": "string"
+              },
+              "supporting_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/reference"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "kind",
+              "claim",
+              "supporting_refs"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "unknown"
+              },
+              "claim": {
+                "type": "string"
+              },
+              "supporting_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/reference"
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "claim",
+              "supporting_refs",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "status": {
+      "enum": [
+        "supported",
+        "insufficient_evidence",
+        "unsupported_input",
+        "budget_exhausted"
+      ]
+    }
+  },
+  "required": [
+    "contract_version",
+    "input_snapshot_id",
+    "profile_sha256",
+    "findings",
+    "status"
+  ]
+}

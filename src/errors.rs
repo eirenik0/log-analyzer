@@ -93,6 +93,7 @@ pub struct ErrorAnalysisReport {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ErrorClusterReport {
+    pub sample_source: crate::perf_analyzer::SourceLocation,
     pub severity: String,
     pub pattern: String,
     pub count: usize,
@@ -109,6 +110,9 @@ pub struct ErrorClusterReport {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ClusterSessionImpact {
+    pub start_source: Option<crate::perf_analyzer::SourceLocation>,
+    pub end_source: Option<crate::perf_analyzer::SourceLocation>,
+    pub timing_semantics: String,
     pub session_path: String,
     pub error_count: usize,
     pub outcome: SessionOutcome,
@@ -127,6 +131,9 @@ pub enum SessionOutcome {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LongestBlockingError {
+    pub start_source: Option<crate::perf_analyzer::SourceLocation>,
+    pub end_source: Option<crate::perf_analyzer::SourceLocation>,
+    pub timing_semantics: String,
     pub severity: String,
     pub pattern: String,
     pub session_path: String,
@@ -135,6 +142,8 @@ pub struct LongestBlockingError {
 
 #[derive(Debug)]
 struct ClusterAccum {
+    sample_source: crate::perf_analyzer::SourceLocation,
+    session_first_source: HashMap<String, crate::perf_analyzer::SourceLocation>,
     severity: String,
     pattern: String,
     count: usize,
@@ -149,6 +158,7 @@ struct ClusterAccum {
 
 #[derive(Debug, Clone)]
 struct SessionLifecycleState {
+    last_source: crate::perf_analyzer::SourceLocation,
     last_seen: DateTime<Local>,
     orphaned: bool,
 }
@@ -191,6 +201,8 @@ pub fn analyze_errors_with_config(
             first_timestamp: entry.timestamp,
             last_timestamp: entry.timestamp,
             sample_message: entry.message.clone(),
+            sample_source: crate::evidence::source(entry),
+            session_first_source: HashMap::new(),
             session_counts: HashMap::new(),
             session_first_error: HashMap::new(),
             session_last_error: HashMap::new(),
@@ -211,6 +223,15 @@ pub fn analyze_errors_with_config(
                 .session_counts
                 .entry(entry.component_id.clone())
                 .or_insert(0) += 1;
+            if cluster
+                .session_first_error
+                .get(&entry.component_id)
+                .is_none_or(|ts| entry.timestamp < *ts)
+            {
+                cluster
+                    .session_first_source
+                    .insert(entry.component_id.clone(), crate::evidence::source(entry));
+            }
             cluster
                 .session_first_error
                 .entry(entry.component_id.clone())
@@ -795,11 +816,21 @@ fn finalize_cluster(
                     pattern: accum.pattern.clone(),
                     session_path: session_path.clone(),
                     duration_ms: ms,
+                    start_source: accum.session_first_source.get(&session_path).cloned(),
+                    end_source: session_states
+                        .get(&session_path)
+                        .map(|s| s.last_source.clone()),
+                    timing_semantics: "error_to_last_observed_session_record_estimate".into(),
                 });
             }
         }
 
         affected_sessions.push(ClusterSessionImpact {
+            start_source: accum.session_first_source.get(&session_path).cloned(),
+            end_source: session_states
+                .get(&session_path)
+                .map(|s| s.last_source.clone()),
+            timing_semantics: "error_to_last_observed_session_record_estimate".into(),
             session_path,
             error_count,
             outcome,
@@ -817,6 +848,7 @@ fn finalize_cluster(
     });
 
     ErrorClusterReport {
+        sample_source: accum.sample_source,
         severity: accum.severity,
         pattern: accum.pattern,
         count: accum.count,
@@ -843,10 +875,12 @@ fn build_session_lifecycle_states(
                 .and_modify(|state| {
                     if entry.timestamp > state.last_seen {
                         state.last_seen = entry.timestamp;
+                        state.last_source = crate::evidence::source(entry);
                     }
                 })
                 .or_insert(SessionLifecycleState {
                     last_seen: entry.timestamp,
+                    last_source: crate::evidence::source(entry),
                     orphaned: false,
                 });
         }
