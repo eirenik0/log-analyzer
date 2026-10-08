@@ -545,3 +545,75 @@ fn decoded_value_limit_is_independent_of_json_string_encoding() {
         matches!(classify(&rules, &entry, &message, &basic_fields()), Classification::Invalid { diagnostics, .. } if diagnostics[0].reason == "encoded_capture_limit_exceeded")
     );
 }
+
+#[test]
+fn complete_payload_capture_requires_version_two_and_a_named_capture() {
+    for (version, capture, error) in [
+        (1, "body", "requires event-rule version 2"),
+        (2, "missing", "requires an existing named capture"),
+        (2, "", "requires an existing named capture"),
+    ] {
+        let mut rule = text_rule();
+        rule["adapter"]["pattern"] =
+            json!(r#"Operation (?P<name>"[^"]*") completed(?: payload=(?P<body>.*))?"#);
+        rule["adapter"]["complete_payload_capture"] = json!(capture);
+        let schema = serde_json::from_value(json!({"version": version, "rules": [rule]})).unwrap();
+        assert!(
+            CompiledEventRules::compile(schema)
+                .unwrap_err()
+                .to_string()
+                .contains(error)
+        );
+    }
+}
+
+#[test]
+fn complete_payload_capture_rejects_trailing_prose_and_bounds_nesting() {
+    let mut rule = text_rule();
+    rule["adapter"]["pattern"] =
+        json!(r#"Operation (?P<name>"[^"]*") completed(?: payload=(?P<body>(?s:.*)))?"#);
+    rule["adapter"]["complete_payload_capture"] = json!("body");
+    let schema = serde_json::from_value(json!({"version": 2, "rules": [rule]})).unwrap();
+    let rules = CompiledEventRules::compile(schema).unwrap();
+    let entry = record();
+    let fields = basic_fields();
+    for suffix in [
+        "",
+        " payload={nested:[{text:'} pending'}]}",
+        " payload=[undefined] /* complete */",
+        " payload={} // complete",
+    ] {
+        let message = format!(r#"Operation "work" completed{suffix}"#);
+        assert!(
+            matches!(
+                classify(&rules, &entry, &message, &fields),
+                Classification::Recognized(_)
+            ),
+            "{suffix}"
+        );
+    }
+    for suffix in [
+        " payload={} pending {}",
+        " payload=[] pending []",
+        " payload={]",
+        " payload={",
+        " payload=[] /* incomplete",
+        " payload=undefined",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .chain(std::iter::once(format!(
+        " payload={}{}",
+        "[".repeat(129),
+        "]".repeat(129)
+    ))) {
+        let message = format!(r#"Operation "work" completed{suffix}"#);
+        assert!(
+            matches!(
+                classify(&rules, &entry, &message, &fields),
+                Classification::Unclassified
+            ),
+            "{suffix}"
+        );
+    }
+}

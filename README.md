@@ -145,6 +145,8 @@ and JSON escapes):
 - `eyes` / `custom-start`: `Command "name" is called`; completions use `finished`,
   `finished successfully`, `returned`, or `completed`. Optional suffix: `with settings {payload}`
   or `with settings [payload]`.
+- `eyes` also accepts `with default driver and settings` on command starts and
+  decodes those settings like the regular `with settings` form.
 - `service-api`: `Operation "name" started` or `begin`; completions use `completed`,
   `finished`, or `failed`. Optional payload suffix starts with `with settings` or `settings`.
 - `event-pipeline`: `Stage "name" begin` or `started`; completions use `done`,
@@ -163,6 +165,14 @@ Supported shipped request/event grammar:
   `is going to retried` as end forms. The ID is optional and must immediately
   follow the name; it cannot contain whitespace or `]`. Optional suffixes are
   `to the address "endpoint"` and `with body {payload}` / `[payload]`.
+  Eyes request starts also accept scalar bodies such as `with body undefined`.
+  Real SDK `that was sent` response tails accept `respond with OK(200)` (or another
+  status name/code), optional `, dont retry returned true|false`, and optional
+  `, httpVersion: default` (or another version). Retry tails accept
+  `with body ... is going to retried due to ...`. Arbitrary prose such as
+  `that was sent ... is still pending` does not establish an end boundary.
+  A standalone object/array response body must be structurally complete, with
+  only whitespace or complete JSON5 comments after its root container.
   `Received event of type "name"` starts and `Emit event of type "name"` ends,
   with optional `with payload {payload}` / `[payload]`. The compact
   `{"name":"name"}` event subject is also supported. Event identity uses `payload.key`.

@@ -278,7 +278,7 @@ impl CompiledEventRules {
                 return Err(fail("duplicate ID; choose a unique rule ID"));
             }
             let regex = match &rule.adapter {
-                Adapter::Text { pattern } => {
+                Adapter::Text { pattern, .. } => {
                     if pattern.len() > MAX_PATTERN_BYTES {
                         return Err(fail("pattern exceeds 8192 bytes"));
                     }
@@ -323,6 +323,29 @@ impl CompiledEventRules {
                     None
                 }
             };
+            if let Adapter::Text {
+                complete_payload_capture: Some(capture),
+                ..
+            } = &rule.adapter
+            {
+                if schema.version < 2 {
+                    return Err(fail(
+                        "complete_payload_capture requires event-rule version 2",
+                    ));
+                }
+                if !bounded_nonempty(capture)
+                    || !regex
+                        .as_ref()
+                        .unwrap()
+                        .capture_names()
+                        .flatten()
+                        .any(|n| n == capture)
+                {
+                    return Err(fail(
+                        "complete_payload_capture requires an existing named capture",
+                    ));
+                }
+            }
             if rule.mapping.scope.len() > MAX_SCOPE_FIELDS {
                 return Err(fail("at most 16 scope mappings are supported"));
             }
@@ -448,7 +471,10 @@ impl CompiledEventRules {
         let mut matched_kinds = Vec::new();
         for compiled in &self.0.rules {
             let captures = match &compiled.rule.adapter {
-                Adapter::Text { .. } => {
+                Adapter::Text {
+                    complete_payload_capture,
+                    ..
+                } => {
                     let Some(captures) = compiled
                         .regex
                         .as_ref()
@@ -457,6 +483,15 @@ impl CompiledEventRules {
                     else {
                         continue;
                     };
+                    if complete_payload_capture
+                        .as_ref()
+                        .and_then(|name| captures.name(name))
+                        .is_some_and(|body| {
+                            !crate::parser::complete_container_suffix(body.as_str())
+                        })
+                    {
+                        continue;
+                    }
                     Some(captures)
                 }
                 Adapter::Structured { conditions } => {

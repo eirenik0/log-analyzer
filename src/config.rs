@@ -232,8 +232,15 @@ pub struct EventRule {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Adapter {
-    Text { pattern: String },
-    Structured { conditions: Vec<FieldCondition> },
+    Text {
+        pattern: String,
+        /// Validate a participating capture as a complete, bounded container suffix.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        complete_payload_capture: Option<String>,
+    },
+    Structured {
+        conditions: Vec<FieldCondition>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
