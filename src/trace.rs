@@ -35,7 +35,12 @@ impl TraceSelector {
 }
 
 fn matches_id(entry: &LogEntry, needle: &str) -> bool {
-    if entry.raw_logline.contains(needle) {
+    if entry
+        .normalized_record
+        .as_deref()
+        .unwrap_or(&entry.raw_logline)
+        .contains(needle)
+    {
         return true;
     }
 
@@ -130,6 +135,9 @@ pub fn format_trace_text(entries: &[&LogEntry], selector: &TraceSelector) -> Str
             "{}  +{delta_ms:>6}ms  T+{elapsed_ms:>6}ms  [{}] {} | {} (line {})",
             ts, entry.level, component_label, message, entry.source_line_number
         );
+        if let Some(path) = &entry.source_row_path {
+            let _ = writeln!(out, "  row: {path}");
+        }
     }
 
     out
@@ -176,6 +184,8 @@ pub fn format_trace_json(entries: &[&LogEntry], selector: &TraceSelector) -> Str
                 "module_path": entry.module_path,
                 "structured_fields": entry.structured_fields,
                 "source_line_number": entry.source_line_number,
+                "source_file": entry.source_file,
+                "source_row_path": entry.source_row_path,
                 "request_id": request_id,
             })
         })

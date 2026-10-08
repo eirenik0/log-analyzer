@@ -79,6 +79,10 @@ pub fn format_search_text(
             entry.source_line_number, ts, entry.level, component_label, message
         );
 
+        if let Some(path) = &entry.source_row_path {
+            let _ = writeln!(out, "       row: {path}");
+        }
+
         if show_payloads && let Some(payload) = entry.payload() {
             let payload_text = serde_json::to_string(payload)
                 .unwrap_or_else(|_| "\"<failed to serialize payload>\"".to_string());
@@ -109,6 +113,7 @@ pub fn format_search_json(
             json!({
                 "is_match": row.is_match,
                 "source_line_number": entry.source_line_number,
+                "source_row_path": entry.source_row_path,
                 "timestamp": entry
                     .timestamp
                     .with_timezone(&Utc)

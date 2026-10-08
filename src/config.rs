@@ -672,6 +672,7 @@ mod tests {
             source_timestamp: None,
             timestamp_year_inferred: false,
             source_row_path: None,
+            normalized_record: None,
             kind: LogEntryKind::Command {
                 command: command.to_string(),
                 settings,
@@ -695,6 +696,7 @@ mod tests {
             source_timestamp: None,
             timestamp_year_inferred: false,
             source_row_path: None,
+            normalized_record: None,
             kind: LogEntryKind::Generic { payload: None },
             source_line_number: 1,
         }

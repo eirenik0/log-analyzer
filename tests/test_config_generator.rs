@@ -25,6 +25,7 @@ fn make_entry(component: &str, component_id: &str, kind: LogEntryKind) -> LogEnt
         source_timestamp: None,
         timestamp_year_inferred: false,
         source_row_path: None,
+        normalized_record: None,
         kind,
         source_line_number: 1,
     }

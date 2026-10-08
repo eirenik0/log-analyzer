@@ -193,6 +193,7 @@ pub fn parse_log_file_report(
                 });
                 match parsed {
                     Ok(mut entry) => {
+                        entry.normalized_record = Some(entry.raw_logline.clone());
                         entry.source_file = Some(path.display().to_string());
                         entry.source_row_path = Some(row_path);
                         entry.raw_logline = text.to_string();

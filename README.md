@@ -708,4 +708,6 @@ unmapped rows must already have the normal object schema. Configuration forces
 JSON-lines parsing. Normalization diagnostics appear in analysis `coverage.files`
 and text coverage; single-file commands also emit skipped-row diagnostics on stderr.
 Provenance retains the original file, physical line, and expanded JSON row path.
+Search and trace expose row paths; event and ID matching use only each normalized
+record, while original source lines remain available as evidence.
 Use `info -j` to inspect coverage before interpreting an investigation report.
