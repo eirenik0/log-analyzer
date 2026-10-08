@@ -602,7 +602,12 @@ fn parse_config_toml_in(
     path_display: &str,
     base_dir: Option<&Path>,
 ) -> Result<AnalyzerConfig, ConfigError> {
-    let mut chain = vec![path_display.to_string()];
+    // Same id form as parents (canonical path), so a cycle back to the root is found at once.
+    let root_id = Path::new(path_display)
+        .canonicalize()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path_display.to_string());
+    let mut chain = vec![root_id];
     let value = resolve_extends(raw, path_display, base_dir, &mut chain)?;
     let config = value
         .try_into::<AnalyzerConfig>()

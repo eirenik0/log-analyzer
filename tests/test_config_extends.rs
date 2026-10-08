@@ -161,3 +161,15 @@ correlation_id = { from = "literal", value = "a" }
     assert!(cfg.event_rules.is_some());
     assert_eq!(cfg.profile_name, "svc");
 }
+
+#[test]
+fn self_extension_is_a_cycle() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("self.toml");
+    fs::write(&path, "extends = \"self.toml\"\n").unwrap();
+    let err = config::load_config_from_path(&path).unwrap_err();
+    assert!(
+        matches!(&err, ConfigError::Extends { reason, .. } if reason.contains("cycle")),
+        "{err}"
+    );
+}
