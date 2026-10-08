@@ -963,6 +963,12 @@ pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
 // typed measurements/provenance intact, including when an opaque ID equals a label.
 fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &str) {
     let leaf = path.rsplit('.').next().unwrap_or(path);
+    if path == "event_timeline.status"
+        || (path.starts_with("event_timeline.pair_coverage.") && leaf == "status")
+    {
+        *redacted = original.clone();
+        return;
+    }
     if path == "operation_coverage" {
         *redacted = original.clone();
         return;

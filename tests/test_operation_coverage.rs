@@ -405,3 +405,78 @@ fn explicitly_selected_input_status_is_masked_without_changing_coverage_status()
         }
     }
 }
+
+#[test]
+fn controlled_timeline_status_paths_survive_opaque_id_collisions() {
+    use log_analyzer::timeline::{EventRule, PairRule, TimelineRules, Timing};
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("timeline.log");
+    let config_file = dir.path().join("config.toml");
+    let mut config = config::load_builtin_template("eyes").unwrap();
+    config.timeline = TimelineRules {
+        events: [("begin", "Received"), ("end", "Emit"), ("absent", "absent")]
+            .iter()
+            .map(|(name, pattern)| EventRule {
+                name: (*name).into(),
+                pattern: (*pattern).into(),
+                correlation_fields: vec!["component_id".into()],
+            })
+            .collect(),
+        pairs: vec![
+            PairRule {
+                name: "fetch".into(),
+                start_event: "begin".into(),
+                end_event: "end".into(),
+                timing: Timing::Measured,
+            },
+            PairRule {
+                name: "missing".into(),
+                start_event: "absent".into(),
+                end_event: "end".into(),
+                timing: Timing::Measured,
+            },
+        ],
+    };
+    fs::write(&config_file, toml::to_string(&config).unwrap()).unwrap();
+    for id in ["boundaries_available", "insufficient_evidence"] {
+        let payload = serde_json::json!({"key":id});
+        fs::write(&file, format!("core (demo) | 2026-01-01T00:00:00Z [INFO] Received event of type {{\"name\":\"work\"}} with payload {payload}\ncore (demo) | 2026-01-01T00:00:01Z [INFO] Emit event of type \"work\" with payload {payload}\n")).unwrap();
+        for format in ["text", "json"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+                .arg("--config")
+                .arg(&config_file)
+                .args([
+                    "--redact",
+                    "--mask-id",
+                    "correlation_id",
+                    "-F",
+                    format,
+                    "perf",
+                ])
+                .arg(&file)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let text = String::from_utf8(output.stdout).unwrap();
+            if format == "json" {
+                let value: Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(value["event_timeline"]["status"], "insufficient_evidence");
+                assert_eq!(
+                    value["event_timeline"]["pair_coverage"]["fetch"]["status"],
+                    "boundaries_available"
+                );
+                assert_eq!(
+                    value["event_timeline"]["pair_coverage"]["missing"]["status"],
+                    "insufficient_evidence"
+                );
+            } else {
+                assert!(text.contains("boundaries_available"), "{text}");
+                assert!(text.contains("insufficient_evidence"), "{text}");
+            }
+        }
+    }
+}
