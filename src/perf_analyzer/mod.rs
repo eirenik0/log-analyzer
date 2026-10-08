@@ -321,7 +321,7 @@ fn marker_is_nonaffirmative_inner(prefix: &str, allow_contrast: bool) -> bool {
                                     | "delay"
                             )
                         })))
-                || (word == "no"
+                || (matches!(word.as_str(), "no" | "zero" | "0")
                     && (index + 1 == words.len()
                         || words.get(index + 1).is_some_and(|next| {
                             matches!(

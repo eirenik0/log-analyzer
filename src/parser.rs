@@ -1148,9 +1148,82 @@ pub(crate) fn command_lifecycle_message<'a>(
 }
 
 fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::borrow::Cow<'a, str> {
+    let (_, quotes) = opaque_spans(body);
+    let mut parentheses = Vec::new();
+    let mut context = Vec::new();
+    for (index, ch) in body.char_indices() {
+        let quote = quotes.partition_point(|span| span.end <= index);
+        if quotes.get(quote).is_some_and(|span| span.contains(&index)) {
+            continue;
+        }
+        if ch == '(' {
+            parentheses.push(index);
+        } else if ch == ')'
+            && let Some(start) = parentheses.pop()
+        {
+            context.push(start..index + 1);
+        }
+    }
+    context.extend(parentheses.into_iter().map(|start| start..body.len()));
+    let assignments = finish_spans(metadata_assignment_spans(body, &quotes), true);
+    let context = finish_spans(
+        context
+            .into_iter()
+            .filter(|span| {
+                let assignment =
+                    assignments.partition_point(|assignment| assignment.end <= span.start);
+                if assignments
+                    .get(assignment)
+                    .is_some_and(|assignment| assignment.contains(&span.start))
+                {
+                    return false;
+                }
+                let clause = body[span.start + 1..span.end].trim_start();
+                let Some(first) = lifecycle_words(clause).next() else {
+                    return false;
+                };
+                let first = first.to_lowercase();
+                !lifecycle_qualifier(&first)
+                    && !matches!(
+                        first.as_str(),
+                        "not"
+                            | "no"
+                            | "zero"
+                            | "0"
+                            | "is"
+                            | "was"
+                            | "has"
+                            | "had"
+                            | "as"
+                            | "then"
+                            | "in"
+                            | "however"
+                            | "indeed"
+                    )
+                    && !first.ends_with("ly")
+                    && !config
+                        .perf
+                        .command_start_markers
+                        .iter()
+                        .chain(&config.perf.command_completion_markers)
+                        .any(|marker| !marker.is_empty() && clause.starts_with(marker))
+            })
+            .collect(),
+        true,
+    );
+    if !context.is_empty() {
+        let mut visible = String::with_capacity(body.len());
+        let mut previous = 0;
+        for span in context {
+            visible.push_str(&body[previous..span.start]);
+            visible.push(' ');
+            previous = span.end;
+        }
+        visible.push_str(&body[previous..]);
+        return std::borrow::Cow::Owned(command_lifecycle_body(&visible, config).into_owned());
+    }
     // Payload syntax is opaque even when malformed: its words cannot prove a
     // lifecycle boundary. Do not depend on successful JSON decoding here.
-    let (_, quotes) = opaque_spans(body);
     let end = body
         .char_indices()
         .find_map(|(index, ch)| {
