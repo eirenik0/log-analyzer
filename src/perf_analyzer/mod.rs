@@ -41,6 +41,34 @@ pub(crate) fn marker_has_trailing_condition(suffix: &str) -> bool {
         })
         .map_or(suffix.len(), |(index, _)| index);
     let clause = &suffix[..end];
+    let followup = clause.match_indices(" and ").find_map(|(index, _)| {
+        let mut words = crate::parser::lifecycle_words(&clause[index + 5..]);
+        let modal = words.next()?.to_lowercase();
+        if !matches!(modal.as_str(), "will" | "shall" | "would") {
+            return None;
+        }
+        let action = words.map(str::to_lowercase).find(|word| {
+            !crate::parser::lifecycle_qualifier(word)
+                && !matches!(word.as_str(), "be" | "have" | "then" | "eventually")
+        })?;
+        (!matches!(
+            action.as_str(),
+            "complete"
+                | "completed"
+                | "start"
+                | "started"
+                | "finish"
+                | "finished"
+                | "begin"
+                | "begun"
+                | "fail"
+                | "failed"
+                | "succeed"
+                | "succeeded"
+        ))
+        .then_some(index)
+    });
+    let clause = &clause[..followup.unwrap_or(clause.len())];
     let words: Vec<_> = crate::parser::lifecycle_words(clause)
         .map(str::to_lowercase)
         .collect();
