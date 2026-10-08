@@ -81,6 +81,8 @@ pub struct OperationStats {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceLocation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_ref: Option<crate::evidence::EvidenceReference>,
     pub file: Option<String>,
     pub line: usize,

@@ -1,0 +1,28 @@
+extends = "base"
+profile_name = "editable-example-candidate"
+[parser]
+format = "json-lines"
+[event_rules]
+version = 2
+[[event_rules.rules]]
+id = "begin"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "phase", equals = "start" }]
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "field", field = "operation" }
+phase = { from = "literal", value = "start" }
+correlation_id = { from = "field", field = "id" }
+scope = [{ from = "field", field = "session" }]
+[[event_rules.rules]]
+id = "done"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "phase", equals = "end" }]
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "field", field = "operation" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "field", field = "id" }
+scope = [{ from = "field", field = "session" }]

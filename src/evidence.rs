@@ -116,6 +116,7 @@ pub fn source(entry: &LogEntry) -> crate::perf_analyzer::SourceLocation {
     crate::perf_analyzer::SourceLocation {
         evidence_ref: None,
         file: entry.source_file.clone(),
+        input_ordinal: entry.source_input_ordinal,
         line: entry.source_line_number,
         row_path: entry.source_row_path.clone(),
     }
@@ -205,7 +206,12 @@ impl Context {
             }) {
                 let row = json!(entry.source_row_path);
                 let reference = self
-                    .reference(&coverage.file, &json!(entry.source_line_number), &row)
+                    .reference(
+                        &coverage.file,
+                        &json!(entry.source_line_number),
+                        &row,
+                        Some(input_ordinal),
+                    )
                     .unwrap();
                 let mut record = json!({"evidence_ref":reference,"source_file":entry.source_file,
                     "source_line_number":entry.source_line_number,"source_row_path":entry.source_row_path,
@@ -238,11 +244,23 @@ impl Context {
                 .collect(),
         )
     }
-    fn reference(&self, file: &str, line: &Value, row: &Value) -> Option<Value> {
+    fn reference(
+        &self,
+        file: &str,
+        line: &Value,
+        row: &Value,
+        ordinal: Option<usize>,
+    ) -> Option<Value> {
         if line.as_u64()? == 0 {
             return None;
         }
-        let input = self.inputs.iter().find(|input| input["file"] == file)?;
+        let input = match ordinal {
+            Some(ordinal) => self
+                .inputs
+                .get(ordinal)
+                .filter(|input| input["file"] == file)?,
+            None => self.inputs.iter().find(|input| input["file"] == file)?,
+        };
         Some(
             json!({"reference_id":digest(&serde_json::to_vec(&json!([input["input_id"],line,row,null])).unwrap()),"location_redacted":false,"input_id": input["input_id"], "line": line, "row_path": row}),
         )
@@ -253,7 +271,12 @@ impl Context {
                 return;
             }
             source.evidence_ref = self
-                .reference(file, &json!(source.line), &json!(source.row_path))
+                .reference(
+                    file,
+                    &json!(source.line),
+                    &json!(source.row_path),
+                    source.input_ordinal,
+                )
                 .map(|value| serde_json::from_value(value).unwrap());
         }
     }
@@ -264,6 +287,7 @@ impl Context {
             self.walk(section, None);
         }
         for key in [
+            "profile_validation",
             "search",
             "extract",
             "trace",
@@ -321,7 +345,14 @@ impl Context {
                     .unwrap_or(Value::Null);
                 if !map.contains_key("evidence_ref")
                     && let (Some(file), Some(line)) = (&file, line)
-                    && let Some(reference) = self.reference(file, line, &row)
+                    && let Some(reference) = self.reference(
+                        file,
+                        line,
+                        &row,
+                        map.get("input_ordinal")
+                            .and_then(Value::as_u64)
+                            .and_then(|ordinal| usize::try_from(ordinal).ok()),
+                    )
                 {
                     map.insert("evidence_ref".into(), reference);
                 }
@@ -424,5 +455,68 @@ impl Context {
             omissions["details"] = json!("payloads_absent_unless_requested");
         }
         json!({"contract_version":CONTRACT_VERSION,"snapshot_id": if self.inputs.is_empty(){Value::Null}else{json!(digest(&serde_json::to_vec(&self.inputs.iter().map(|input|&input["input_id"]).collect::<Vec<_>>()).unwrap()))}, "inputs":self.inputs,"profile_sha256":self.profile_digest,"query":self.query,"query_sha256":digest(&serde_json::to_vec(&self.query).unwrap()), "scope":{"status":status,"parsed_entries":parsed,"selected_entries":selected,"coverage_basis":"before_display_limits","capture_completeness":"unknown"},"redaction":{"applied":redacted,"masked_id_fields":masked,"legacy_sanitization": !redacted && (self.query.pointer("/command/Process/no_sanitize").is_some_and(|v|v==false) || self.query.pointer("/command/LlmDiff/no_sanitize").is_some_and(|v|v==false))},"omissions":omissions})
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn repeated_path_references_select_the_declared_read_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("changing.jsonl");
+        let config = crate::config::AnalyzerConfig::default();
+        let mut context = Context {
+            collect_records: true,
+            ..Context::default()
+        };
+        for message in ["first snapshot", "second snapshot"] {
+            std::fs::write(
+                &file,
+                json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","message":message}).to_string()
+                    + "\n",
+            )
+            .unwrap();
+            let parsed = crate::parser::parse_log_file_report(&file, &config).unwrap();
+            context.observe(&parsed.coverage, &parsed.entries);
+        }
+        let records = context.records();
+        assert_eq!(records.as_array().unwrap().len(), 2);
+        assert_ne!(context.inputs[0]["input_id"], context.inputs[1]["input_id"]);
+        for ordinal in [0, 1] {
+            assert_eq!(records[ordinal]["input_ordinal"], ordinal);
+            assert_eq!(
+                records[ordinal]["evidence_ref"]["input_id"],
+                context.inputs[ordinal]["input_id"]
+            );
+            let mut source = crate::perf_analyzer::SourceLocation {
+                input_ordinal: Some(ordinal),
+                file: Some(file.to_str().unwrap().into()),
+                line: 1,
+                row_path: None,
+                evidence_ref: None,
+            };
+            context.attach_source(&mut source);
+            assert_eq!(
+                serde_json::to_value(source.evidence_ref).unwrap(),
+                records[ordinal]["evidence_ref"]
+            );
+            let mut report = json!({"profile_validation":{"diagnostics":[{"source":{"input_ordinal":ordinal,"file":file,"line":1,"row_path":null}}]}});
+            context.annotate(&mut report);
+            assert_eq!(
+                report["profile_validation"]["diagnostics"][0]["source"]["evidence_ref"],
+                records[ordinal]["evidence_ref"]
+            );
+        }
+        assert!(
+            context
+                .reference(file.to_str().unwrap(), &json!(1), &Value::Null, Some(2))
+                .is_none()
+        );
+        assert!(
+            context
+                .reference("different-file", &json!(1), &Value::Null, Some(0))
+                .is_none()
+        );
     }
 }

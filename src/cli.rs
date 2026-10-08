@@ -227,6 +227,22 @@ pub enum Commands {
         #[arg(long, default_value="3", value_parser=clap::value_parser!(u32).range(1..=20))]
         samples: u32,
     },
+    /// Validate the selected preset or editable TOML candidate against sample evidence (JSON)
+    ValidateProfile {
+        #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
+        files: Vec<PathBuf>,
+        /// Requested operation kind; other kinds remain in the global inventory
+        #[arg(long, value_enum)]
+        kind: OperationType,
+        /// Timing requires reliable paired boundaries; recognition only checks classification
+        #[arg(long, value_enum, default_value = "timing")]
+        purpose: crate::profile_validation::Purpose,
+        /// Strict source-addressed positive/negative classification and pair assertions
+        #[arg(long)]
+        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+        expected: Option<PathBuf>,
+    },
     /// Compare two log files and show differences between JSON objects
     #[command(alias = "cmp")]
     Compare {
@@ -472,7 +488,7 @@ pub enum Commands {
         session: Option<String>,
     },
 
-    /// Analyze one or more log files and generate a TOML config profile
+    /// Generate editable TOML from samples; check it with validate-profile before selecting it
     #[command(alias = "gen-config")]
     GenerateConfig {
         /// One or more log files to analyze (supports shell-expanded globs)
