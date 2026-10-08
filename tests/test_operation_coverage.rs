@@ -320,6 +320,7 @@ fn yearless_new_year_lifecycle_is_rejected_before_date_sorting() {
             endpoint: None,
             payload: None,
         };
+        parser::attach_legacy_event_evidence(&mut entry, &config::AnalyzerConfig::default());
         entry
     })
     .collect::<Vec<_>>();
@@ -503,6 +504,7 @@ fn a_later_tied_lifecycle_does_not_discard_established_sequential_pairs() {
         )
         .unwrap();
         entry.source_file = Some((*file).into());
+        parser::attach_legacy_event_evidence(&mut entry, &config::AnalyzerConfig::default());
         entry
     })
     .collect::<Vec<_>>();
@@ -603,6 +605,7 @@ fn ordered_end_and_next_start_at_same_timestamp_close_before_later_ties() {
         )
         .unwrap();
         entry.source_file = Some((*file).into());
+        parser::attach_legacy_event_evidence(&mut entry, &config::AnalyzerConfig::default());
         entry
     })
     .collect::<Vec<_>>();

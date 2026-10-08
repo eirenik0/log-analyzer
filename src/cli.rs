@@ -107,7 +107,7 @@ pub enum SearchCountBy {
     component, comp, c    Filter by component name
     level, lvl, l         Filter by log level (INFO, ERROR, etc.)
     text, t               Filter by text in message
-    direction, dir, d     Filter by direction (incoming/outgoing)
+    direction, dir, d     Filter by direction (incoming/outgoing/unknown)
     <field-name>          Filter by structured key=value field (trace_id, actor_kind, ...)
 
   Different filter types are AND-ed. Multiple values of the same type are OR-ed.
@@ -387,7 +387,7 @@ pub enum Commands {
 
     /// Analyze operation timing and report incomplete lifecycle evidence
     #[command(
-        long_about = "Analyze operation timing and report incomplete lifecycle evidence. Shipped command profiles use whole-message command_rules, classified once before payload cleanup. Start-only, end-only, identity-only, conflicting and invalid evidence remains diagnostic; no completion elsewhere is required to report a start. Legacy custom marker profiles retain their semantics. See README for the supported command grammar and migration."
+        long_about = "Analyze operation timing and report incomplete lifecycle evidence. Shipped profiles use versioned event_rules for commands, requests and events, classified once before payload cleanup. Phases, identities and scopes are cached; transport direction does not imply a phase. Classification coverage counts selected parsed records before operation-type selection and display limits. Start-only, end-only, identity-only, conflicting and invalid evidence remains diagnostic; no completion elsewhere is required to report a start. Legacy custom marker profiles retain their semantics. See README for the supported lifecycle grammar and migration."
     )]
     Perf {
         /// One or more log files to analyze

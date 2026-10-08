@@ -26,3 +26,7 @@ event_correlation_keys = ["trace_id", "traceId", "request_id", "requestId", "id"
 known_components = []
 known_commands = []
 known_requests = []
+
+[event_rules]
+version = 2
+rules = []

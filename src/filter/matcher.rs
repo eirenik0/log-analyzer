@@ -59,6 +59,7 @@ pub fn to_log_filter(expr: &FilterExpression) -> LogFilter {
 /// Parse a direction string into a Direction enum
 fn parse_direction(s: &str) -> Option<Direction> {
     match s.to_lowercase().as_str() {
+        "unknown" => Some(Direction::Unknown),
         "incoming" | "in" => Some(Direction::Incoming),
         "outgoing" | "out" => Some(Direction::Outgoing),
         _ => None,

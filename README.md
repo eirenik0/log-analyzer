@@ -128,13 +128,13 @@ log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-t
 **Why this matters:**
 
 - **Session completion tracking** (`info` profile insights, `errors --sessions`) requires `[[sessions.levels]]` to know which `component_id` prefixes map to runners, tests, checks, and environments - and which commands create or complete them. Without this, incomplete/orphaned sessions go undetected.
-- **Performance pairing** (`perf`) uses versioned `[command_rules]` to classify shipped-profile command phases before cleanup. Legacy-only custom profiles retain their `[perf]` substring markers; those phases are cached at parsing too. Incomplete evidence is diagnostic even without any completion in the capture.
+- **Performance pairing** (`perf`) uses versioned `[event_rules]` to classify shipped-profile command/request/event phases before cleanup. Legacy-only custom profiles retain their `[perf]` substring markers; those phases are cached at parsing too. Incomplete evidence is diagnostic even without any completion in the capture.
 - **Payload extraction** (`extract`, `search --payloads`) relies on `json_indicators` and `command_payload_markers` from `[parser]` to locate and parse embedded JSON. If these don't match your log format, payloads are invisible.
-- **Request lifecycle tracing** (`trace`, `perf --orphans-only`) depends on `request_send_markers`, `request_receive_markers`, and `request_endpoint_marker` to pair outgoing requests with their responses.
+- **Request lifecycle tracing** (`trace`, `perf --orphans-only`) uses explicit phase/ID/scope mappings. Transport direction never establishes a phase by itself.
 
 The shipped `eyes`, `custom-start`, `service-api` and `event-pipeline` profiles
-now use version-1 `[command_rules]`. Full-message rules recognize command names
-and phases independently, including completion-only records. `base` remains
+now use version-2 `[event_rules]`. Full-message rules recognize command, request
+and event names/phases independently, including completion-only records. `base` remains
 generic. Typed JSON-field rules are also supported; string fields are not coerced
 to booleans or numbers. Rules compile once at loading and classification uses the
 original message before payload removal.
@@ -156,26 +156,69 @@ and JSON escapes):
   JSON5 value, only whitespace and complete comments are accepted; malformed,
   too-deep or trailing noncomment content stays visible with no decoded settings.
 
-**Compatibility and migration:** shipped command profiles now have this strict
-grammar; extra prose/previous incidental substring matches are unsupported.
-Legacy-only custom configurations retain their existing marker semantics; they
-are never automatically translated. To opt in, customize a new shipped template,
-remove `parser.command_prefix`, `parser.command_start_marker`,
-`perf.command_start_markers` and `perf.command_completion_markers`, and write
-explicit rules for your producer's whole messages or typed fields. Mixed command
-modes fail loading with these field names in the diagnostic. Request/event legacy
-markers may coexist with `[command_rules]` until their separate integration.
-`generate-config` preserves its template's explicit/legacy mode and does not
-infer lifecycle wording from observations.
+Supported shipped request/event grammar:
 
-The separate global `[event_rules]` contract still rejects **all** active legacy
-lifecycle markers and cannot coexist with `[command_rules]`. Command-only global
-rules use the command path; full request/event integration is pending #36.
-See the [event classification contract](docs/design/event-classification.md)
-for the schema, resource bounds and conflict policy.
+- `eyes` / `custom-start`: `Request "name" [id] will be sent` starts; `finished
+  successfully` and `respond with` end. `eyes` also declares `that was sent` and
+  `is going to retried` as end forms. The ID is optional and must immediately
+  follow the name; it cannot contain whitespace or `]`. Optional suffixes are
+  `to the address "endpoint"` and `with body {payload}` / `[payload]`.
+  `Received event of type "name"` starts and `Emit event of type "name"` ends,
+  with optional `with payload {payload}` / `[payload]`. The compact
+  `{"name":"name"}` event subject is also supported. Event identity uses `payload.key`.
+- `service-api`: `Request "name" [id] sent`, `queued` or `requested` starts;
+  `completed`, `responded` or `failed` ends. Optional `to "endpoint"` and
+  `with body` / `payload` object/array suffixes are supported.
+  `Consumed event "name"` / `Received event "name"` starts;
+  `Published event "name"` ends, with optional `payload` object/array.
+  Event keys are tried in declared order: `key`, `traceId`, `requestId`.
+- `event-pipeline`: `Call "name" [id] started` / `dispatched` starts;
+  `done`, `completed` or `failed` ends. Optional `target "endpoint"` and
+  `payload` / `with body` object/array suffixes are supported.
+  `Consumed "name"` / `Received "name"` starts; `Published "name"` /
+  `Emitted "name"` ends, with optional `payload` object/array.
+  Event key order is `key`, `eventId`, `traceId`, `jobId`.
+- A bare request subject is identity only. Missing request IDs or event keys stay
+  diagnostic. These profiles explicitly declare request send/start, receive/end
+  and event receive/start, emit/end; other applications can map different phases.
+- Every specialized profile also accepts canonical structured fields:
+  `operation_kind` (`command`, `request`, `event`), `operation_name`,
+  `operation_phase` (`start`, `end`), optional `correlation_id`, and required
+  `operation_direction` for requests (`send`/`receive`) or events (`emit`/`receive`).
+  Normalized JSON values must be strings; flat tracing fields use the same string
+  forms. Correlation scope inherits `[perf].correlation_scope_fields`.
+
+**Compatibility and migration:** shipped profiles have strict whole-message
+lifecycle grammar; incidental substring matches in extra prose are unsupported.
+Legacy-only custom configurations keep their marker semantics. Version-1 explicit
+rules keep their grammar; version 2 adds direction/endpoint and `first_field`
+mappings, including the declared `payload.KEY` namespace. First-field lookup uses
+presence order; a wrong type or empty value is invalid, not skipped. No present
+alternative means missing correlation identity. Direction is optional in custom
+rules and remains `Unknown` when absent; it never implies a phase.
+
+To migrate, customize a shipped global `[event_rules]` template and remove all
+legacy lifecycle fields named in validation errors: parser event emit/receive,
+command prefix/start, request prefix/send/receive and perf command start/completion
+markers. Keep payload separators, normalization and real scope fields. Global
+rules cannot coexist with `[command_rules]`. The latter remains a deprecated
+command-only compatibility wrapper permitting legacy request/event recognition.
+`generate-config` shares the template's rules and preserves mode without inferring
+wording. See the [event classification contract](docs/design/event-classification.md)
+for versions, resource bounds, conflict policy and the library migration.
+
+`perf` reports `operation_coverage.classification` for selected parsed records:
+classified (with identity-only/legacy subsets), unclassified, conflicting, invalid
+and unavailable evidence. These counts precede operation-type selection and display
+limits; parse coverage stays independent and pre-filter. Unknown records remain
+searchable. Measured pairs retain start/end classification and source provenance;
+text and JSON show the same diagnostics and selection/omission totals. New fields
+are additive under report schema version 1. `unclassified_command_records` remains
+a deprecated compatibility count of unclassified records across kinds.
 
 Command names are explicit correlation identities in shipped rules, paired only
-within nonempty `[perf].correlation_scope_fields` (default `component_id`).
+within nonempty `[perf].correlation_scope_fields` (default `component_id`), cached
+at parsing together with IDs/phases for all explicit operation kinds.
 Explicit scope mappings override these inherited fields. Empty command scope is
 now diagnostic in every mode, including legacy profiles; configure real scope
 fields before pairing. Missing IDs/scope,
@@ -188,11 +231,11 @@ Explicit session completion hints require an end phase that is not failed;
 a command name or a start alone cannot mark a session complete.
 
 For library users, `LogEntry` now has `classification` evidence. Constructors
-leave it absent; caller-constructed command records without evidence are
+leave it absent; caller-constructed operation records without evidence are
 reported as diagnostic, rather than having their message interpreted during
-analysis. Legacy callers may explicitly use `attach_legacy_command_evidence`
+analysis. Legacy callers may explicitly use `attach_legacy_event_evidence`
 before analysis. Changing display text or analysis marker configuration cannot
-change a parsed record's cached phase.
+change a parsed record's cached phase, identity or explicit scope.
 
 **How to get started:**
 
@@ -302,7 +345,7 @@ Use `-f, --filter` with a unified expression syntax:
 | `component` | `comp`, `c` | Filter by component name |
 | `level` | `lvl`, `l` | Filter by log level (INFO, ERROR, etc.) |
 | `text` | `t` | Filter by text in message |
-| `direction` | `dir`, `d` | Filter by direction (incoming/outgoing) |
+| `direction` | `dir`, `d` | Filter by direction (incoming/outgoing/unknown) |
 
 **Prefix with `!` to exclude.**  
 Different filter types are combined with AND. Multiple values of the same type are OR-ed.

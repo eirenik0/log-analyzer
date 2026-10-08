@@ -171,7 +171,7 @@ fn malformed_escapes_and_missing_optional_capture_are_invalid() {
     let rules = compile(json!([rule]));
     let entry = record();
     let fields = basic_fields();
-    let Classification::Invalid { diagnostics } =
+    let Classification::Invalid { diagnostics, .. } =
         classify(&rules, &entry, "Operation completed", &fields)
     else {
         panic!()
@@ -327,7 +327,7 @@ fn configuration_validation_and_limits() {
             .and_then(|s| CompiledEventRules::compile(s).map_err(|e| e.to_string()));
         assert!(result.is_err());
     }
-    invalid(json!({"version":2,"rules":[]}));
+    invalid(json!({"version":3,"rules":[]}));
     invalid(json!({"version":1,"rules":[text_rule(),text_rule()]}));
     for (path, value) in [
         ("/adapter/pattern", json!("(")),
@@ -387,7 +387,7 @@ fn record_resource_limits_are_explicit_and_unicode_safe() {
     let fields = basic_fields();
     let huge = "界".repeat(MAX_MESSAGE_BYTES / 3 + 1);
     assert!(
-        matches!(classify(&rules,&entry,&huge,&fields),Classification::Invalid {diagnostics} if diagnostics[0].reason=="message_limit_exceeded")
+        matches!(classify(&rules,&entry,&huge,&fields),Classification::Invalid {diagnostics, ..} if diagnostics[0].reason=="message_limit_exceeded")
     );
     let message = format!(
         "Operation \"{}\" completed",
@@ -431,7 +431,7 @@ fn loaded_profiles_compile_once_round_trip_and_reject_mixed_markers() {
             .to_string()
             .contains("cannot coexist")
     );
-    std::fs::write(&path, raw.replace("version = 1", "version = 2")).unwrap();
+    std::fs::write(&path, raw.replace("version = 1", "version = 3")).unwrap();
     assert!(
         load_config_from_path(&path)
             .unwrap_err()
@@ -535,13 +535,13 @@ fn decoded_value_limit_is_independent_of_json_string_encoding() {
         "a".repeat(MAX_VALUE_BYTES + 1)
     );
     assert!(
-        matches!(classify(&rules, &entry, &message, &basic_fields()), Classification::Invalid { diagnostics } if diagnostics[0].reason == "empty_or_oversized_value")
+        matches!(classify(&rules, &entry, &message, &basic_fields()), Classification::Invalid { diagnostics, .. } if diagnostics[0].reason == "empty_or_oversized_value")
     );
     let message = format!(
         "Operation \"{}\" completed",
         r"\u0061".repeat(MAX_VALUE_BYTES + 1)
     );
     assert!(
-        matches!(classify(&rules, &entry, &message, &basic_fields()), Classification::Invalid { diagnostics } if diagnostics[0].reason == "encoded_capture_limit_exceeded")
+        matches!(classify(&rules, &entry, &message, &basic_fields()), Classification::Invalid { diagnostics, .. } if diagnostics[0].reason == "encoded_capture_limit_exceeded")
     );
 }

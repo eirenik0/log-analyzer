@@ -142,9 +142,11 @@ fn every_shipped_profile_pairs_all_documented_command_forms() {
         cfg,
         &[r#"Command "work" is called"#, r#"Command "work" completed"#],
     );
-    assert!(logs.iter().all(
-        |log| matches!(log.kind, LogEntryKind::Generic { .. }) && log.classification.is_none()
-    ));
+    assert!(
+        logs.iter()
+            .all(|log| matches!(log.kind, LogEntryKind::Generic { .. })
+                && matches!(log.classification, Some(ClassifiedRecord::Unclassified)))
+    );
     assert!(analyze(cfg, &logs).operations.is_empty());
 }
 
@@ -246,11 +248,20 @@ fn missing_scope_offsets_and_cross_file_ties_remain_safe() {
             r#"Operation "work" completed"#,
         ],
     );
-    logs[0].component_id.clear();
+    let original = logs[0].raw_logline.clone();
+    logs[0] =
+        parser::parse_log_entry_with_config(&original.replace(" (job-demo)", ""), 1, &cfg).unwrap();
     assert!(analyze(&cfg, &logs).operations.is_empty());
-    logs[0].component_id = logs[1].component_id.clone();
+    logs[0] = parser::parse_log_entry_with_config(&original, 1, &cfg).unwrap();
     cfg.perf.correlation_scope_fields.clear();
-    let result = analyze(&cfg, &logs);
+    let empty_scope_logs: Vec<_> = logs
+        .iter()
+        .map(|entry| {
+            parser::parse_log_entry_with_config(&entry.raw_logline, entry.source_line_number, &cfg)
+                .unwrap()
+        })
+        .collect();
+    let result = analyze(&cfg, &empty_scope_logs);
     assert!(result.operations.is_empty());
     assert!(
         result
@@ -259,9 +270,10 @@ fn missing_scope_offsets_and_cross_file_ties_remain_safe() {
             .all(|e| e.reason == "missing_scope_field")
     );
     cfg.perf.correlation_scope_fields = vec!["component_id".into()];
-    logs[0].component_id = "other".into();
+    logs[0] = parser::parse_log_entry_with_config(&original.replace("job-demo", "other"), 1, &cfg)
+        .unwrap();
     assert!(analyze(&cfg, &logs).operations.is_empty());
-    logs[0].component_id = logs[1].component_id.clone();
+    logs[0] = parser::parse_log_entry_with_config(&original, 1, &cfg).unwrap();
     logs[0].timestamp_year_inferred = true;
     assert!(analyze(&cfg, &logs).operations.is_empty());
     logs[0].timestamp_year_inferred = false;
@@ -378,9 +390,10 @@ fn command_scoped_migration_is_explicit_and_templates_stay_synchronized() {
         );
     }
     let cfg = config::load_builtin_template("service-api").unwrap();
-    assert!(cfg.command_rules.is_some());
-    assert!(!cfg.parser.request_prefix.is_empty());
-    assert!(!cfg.parser.event_emit_markers.is_empty());
+    assert!(cfg.event_rules.is_some());
+    assert!(cfg.command_rules.is_none());
+    assert!(cfg.parser.request_prefix.is_empty());
+    assert!(cfg.parser.event_emit_markers.is_empty());
     let generated = log_analyzer::config_generator::generate_config(
         &parse(&cfg, &[r#"Operation "work" completed"#]),
         &cfg,
@@ -389,8 +402,8 @@ fn command_scoped_migration_is_explicit_and_templates_stay_synchronized() {
         },
     );
     assert!(std::ptr::eq(
-        cfg.command_rules.as_ref().unwrap().schema(),
-        generated.command_rules.as_ref().unwrap().schema()
+        cfg.event_rules.as_ref().unwrap().schema(),
+        generated.event_rules.as_ref().unwrap().schema()
     ));
     assert_eq!(generated.profile.known_commands, ["work"]);
     let dir = tempfile::tempdir().unwrap();
@@ -401,12 +414,9 @@ fn command_scoped_migration_is_explicit_and_templates_stay_synchronized() {
     let message = config::load_config_from_path(&file)
         .unwrap_err()
         .to_string();
-    assert!(
-        message.contains("remove parser.command_prefix"),
-        "{message}"
-    );
+    assert!(message.contains("legacy lifecycle markers"), "{message}");
     mixed.perf.command_completion_markers.clear();
-    mixed.event_rules = mixed.command_rules.clone();
+    mixed.command_rules = mixed.event_rules.clone();
     assert!(mixed.validate_event_rules().is_err());
 }
 
@@ -606,10 +616,12 @@ fn cli_command_selection_preserves_full_coverage_and_diagnostic_omissions() {
 
 #[test]
 fn payload_marker_limits_apply_to_both_explicit_command_entry_points() {
-    let schema = config::load_builtin_template("service-api")
-        .unwrap()
-        .command_rules
-        .unwrap();
+    let cfg = config::load_builtin_template("service-api").unwrap();
+    let mut schema = cfg.event_rules.unwrap().schema().clone();
+    schema
+        .rules
+        .retain(|r| r.mapping.kind == log_analyzer::event_rules::OperationKind::Command);
+    let schema = CompiledEventRules::compile(schema).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("limits.toml");
     for global in [false, true] {
@@ -684,6 +696,10 @@ fn explicit_payload_accepts_only_trailing_trivia_and_searches_overlapping_marker
         assert_eq!(logs[0].payload().unwrap()["a"], 1);
         assert!(logs[0].message.ends_with("[JSON removed]"));
     }
+    cfg.event_rules = Some(rules(json!([{
+        "id":"overlap", "adapter":{"type":"text","pattern":"Operation (?P<name>\\\"(?:[^\\\"\\\\]|\\\\.)*\\\") started with settings .*"},
+        "mapping":{"kind":"command","name":{"from":"capture","capture":"name","decode":"json_string"},"phase":{"from":"literal","value":"start"}}
+    }])));
     cfg.parser.command_payload_markers = vec!["aaa".into(), "aaaa".into()];
     let message = "Operation \"aaa {name}\" started with settings aaaa {a: 2}";
     let logs = parse(&cfg, &[message]);
@@ -697,6 +713,7 @@ fn explicit_payload_accepts_only_trailing_trivia_and_searches_overlapping_marker
 #[test]
 fn maximum_marker_configuration_handles_repeated_prefixes_in_a_large_message() {
     let mut cfg = config::load_builtin_template("service-api").unwrap();
+    cfg.event_rules = None;
     cfg.command_rules = Some(rules(json!([{
         "id":"large-command", "adapter":{"type":"text","pattern":".*"},
         "mapping":{"kind":"command","name":{"from":"literal","value":"work"},
@@ -720,6 +737,7 @@ fn maximum_marker_configuration_handles_repeated_prefixes_in_a_large_message() {
 #[test]
 fn whitespace_markers_do_not_repeatedly_scan_a_large_suffix() {
     let mut cfg = config::load_builtin_template("service-api").unwrap();
+    cfg.event_rules = None;
     cfg.command_rules = Some(rules(json!([{
         "id":"large-command", "adapter":{"type":"text","pattern":".*"},
         "mapping":{"kind":"command","name":{"from":"literal","value":"work"},

@@ -4,6 +4,7 @@ use clap::ValueEnum;
 /// Common representation for both event and request directions
 #[derive(Debug, Clone, PartialEq, ValueEnum)]
 pub enum Direction {
+    Unknown,
     Outgoing, // Represents EventDirection::Emit or RequestDirection::Send
     Incoming, // Represents EventDirection::Receive or RequestDirection::Receive
 }
@@ -12,6 +13,7 @@ pub enum Direction {
 impl From<EventDirection> for Direction {
     fn from(event_direction: EventDirection) -> Self {
         match event_direction {
+            EventDirection::Unknown => Direction::Unknown,
             EventDirection::Emit => Direction::Outgoing,
             EventDirection::Receive => Direction::Incoming,
         }
@@ -22,6 +24,7 @@ impl From<EventDirection> for Direction {
 impl From<RequestDirection> for Direction {
     fn from(request_direction: RequestDirection) -> Self {
         match request_direction {
+            RequestDirection::Unknown => Direction::Unknown,
             RequestDirection::Send => Direction::Outgoing,
             RequestDirection::Receive => Direction::Incoming,
         }
@@ -34,6 +37,7 @@ impl TryFrom<Direction> for EventDirection {
 
     fn try_from(direction: Direction) -> Result<Self, Self::Error> {
         match direction {
+            Direction::Unknown => Ok(EventDirection::Unknown),
             Direction::Outgoing => Ok(EventDirection::Emit),
             Direction::Incoming => Ok(EventDirection::Receive),
         }
@@ -45,6 +49,7 @@ impl TryFrom<Direction> for RequestDirection {
 
     fn try_from(direction: Direction) -> Result<Self, Self::Error> {
         match direction {
+            Direction::Unknown => Ok(RequestDirection::Unknown),
             Direction::Outgoing => Ok(RequestDirection::Send),
             Direction::Incoming => Ok(RequestDirection::Receive),
         }

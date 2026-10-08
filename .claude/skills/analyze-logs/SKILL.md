@@ -17,10 +17,10 @@ log-analyzer --preset eyes <command> ...
 log-analyzer --config config/profiles/custom.toml <command> ...
 ```
 
-Shipped command profiles use whole-message `command_rules`; customize the explicit
+Shipped profiles use version-2 whole-message/structured `event_rules`; customize the explicit
 rules when your producer's messages differ. Legacy-only custom marker profiles
-retain their semantics. Mixed legacy/explicit command settings fail loading.
-Check unmatched/ambiguous/invalid evidence and `unclassified_command_records`
+retain their semantics. Mixed legacy/global explicit lifecycle settings fail loading.
+Check unmatched/ambiguous/invalid evidence and `operation_coverage.classification`
 before interpreting empty timing results. `generate-config` preserves template mode.
 
 Profiles can also define session hierarchy/lifecycle hints with `[[sessions.levels]]` (for example runner/test/environment prefixes plus create/complete commands). `info` will then report session completion health per level.

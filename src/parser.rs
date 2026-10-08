@@ -679,7 +679,7 @@ fn build_log_entry(
     typed_fields: Option<&serde_json::Map<String, Value>>,
 ) -> Result<LogEntry, ParseError> {
     use crate::event_rules::{ClassifiedRecord, RecordInput, StructuredFields};
-    let mut entry = if config.command_classifier().is_some() {
+    let mut entry = if config.event_classifier().is_some() {
         create_generic_log(
             component,
             component_id,
@@ -703,27 +703,67 @@ fn build_log_entry(
             &config.parser,
         )?
     };
-    let classification = config.command_classifier().map(|rules| {
-        rules
-            .classify(
-                &config.profile_name,
-                RecordInput {
-                    record: &entry,
-                    original_message: &message,
-                    fields: typed_fields
-                        .map(StructuredFields::Json)
-                        .unwrap_or(StructuredFields::Flat(&structured_fields)),
+    let mut markers = config.parser.command_payload_markers.clone();
+    if config.event_rules.is_some() {
+        markers.extend(config.parser.request_payload_markers.iter().cloned());
+        markers.push(config.parser.event_payload_separator.clone());
+    }
+    let (decoded_payload, cleaned) = if config.event_classifier().is_some()
+        && message.len() <= crate::event_rules::MAX_MESSAGE_BYTES
+    {
+        explicit_payload(&message, &markers)
+    } else {
+        (None, message.clone())
+    };
+    let fields = typed_fields
+        .map(StructuredFields::Json)
+        .unwrap_or(StructuredFields::Flat(&structured_fields));
+    let classification = config.event_classifier().map(|rules| {
+        rules.classify_owned(
+            &config.profile_name,
+            RecordInput {
+                record: &entry,
+                original_message: &message,
+                fields: if rules.schema().version >= 2 {
+                    StructuredFields::WithPayload {
+                        fields: &fields,
+                        payload: decoded_payload.as_ref().or(payload_override.as_ref()),
+                    }
+                } else {
+                    fields
                 },
-            )
-            .into_owned(&config.profile_name)
+            },
+        )
     });
     match &classification {
         Some(ClassifiedRecord::Event { semantics, .. }) => {
-            let (settings, cleaned) = explicit_command_payload(&message, &config.parser);
+            use crate::event_rules::OperationKind;
             entry.message = cleaned;
-            entry.kind = LogEntryKind::Command {
-                command: semantics.name.clone(),
-                settings,
+            entry.kind = match semantics.kind {
+                OperationKind::Command => LogEntryKind::Command {
+                    command: semantics.name.clone(),
+                    settings: decoded_payload,
+                },
+                OperationKind::Request => LogEntryKind::Request {
+                    request: semantics.name.clone(),
+                    request_id: semantics.correlation_id.clone(),
+                    endpoint: semantics.endpoint.clone(),
+                    direction: match semantics.direction.as_deref() {
+                        Some("send") => RequestDirection::Send,
+                        Some("receive") => RequestDirection::Receive,
+                        _ => RequestDirection::Unknown,
+                    },
+                    payload: decoded_payload,
+                },
+                OperationKind::Event => LogEntryKind::Event {
+                    event_type: semantics.name.clone(),
+                    direction: match semantics.direction.as_deref() {
+                        Some("emit") => EventDirection::Emit,
+                        Some("receive") => EventDirection::Receive,
+                        _ => EventDirection::Unknown,
+                    },
+                    payload: decoded_payload,
+                },
             };
         }
         Some(ClassifiedRecord::Conflict { .. } | ClassifiedRecord::Invalid { .. }) => (),
@@ -765,26 +805,87 @@ fn build_log_entry(
 
     entry.structured_fields = structured_fields;
     entry.module_path = module_path;
-    if config.command_classifier().is_none() {
-        attach_legacy_command_evidence(&mut entry, config);
+    let inherited_scope = record_correlation_scope(&entry, config).unwrap_or_default();
+    if let Some(ClassifiedRecord::Event {
+        semantics,
+        legacy: false,
+        ..
+    }) = &mut entry.classification
+        && semantics.scope.is_empty()
+    {
+        semantics.scope = inherited_scope;
     }
+    attach_legacy_event_evidence(&mut entry, config);
     Ok(entry)
 }
 
 /// Legacy-only compatibility adapter. Phase searches happen once at parsing, never in perf.
 /// Library callers assembling legacy Command records may attach the same evidence explicitly.
 pub fn attach_legacy_command_evidence(entry: &mut LogEntry, config: &AnalyzerConfig) {
-    if config.command_classifier().is_some() {
+    attach_legacy_event_evidence(entry, config);
+}
+
+/// Legacy compatibility lives at the parsing seam; perf consumes cached evidence only.
+pub fn attach_legacy_event_evidence(entry: &mut LogEntry, config: &AnalyzerConfig) {
+    use crate::event_rules::{ClassifiedRecord, EventSemantics, OperationKind, Phase};
+    if config.event_rules.is_some() {
         return;
     }
-    use crate::event_rules::{ClassifiedRecord, EventSemantics, OperationKind, Phase};
-    let LogEntryKind::Command { command, .. } = &entry.kind else {
-        return;
+    let (kind, name, id, start, end, direction, endpoint) = match &entry.kind {
+        LogEntryKind::Command { command, .. } if config.command_rules.is_none() => (
+            OperationKind::Command,
+            command.clone(),
+            Some(command.clone()),
+            contains_any_marker(&entry.message, &config.perf.command_start_markers),
+            contains_any_marker(&entry.message, &config.perf.command_completion_markers),
+            None,
+            None,
+        ),
+        LogEntryKind::Request {
+            request,
+            request_id,
+            direction,
+            endpoint,
+            ..
+        } => (
+            OperationKind::Request,
+            request.clone(),
+            request_id.clone(),
+            *direction == RequestDirection::Send,
+            *direction == RequestDirection::Receive,
+            Some(direction.to_string().to_lowercase()),
+            endpoint.clone(),
+        ),
+        LogEntryKind::Event {
+            event_type,
+            direction,
+            payload,
+        } => (
+            OperationKind::Event,
+            event_type.clone(),
+            payload.as_ref().and_then(|p| {
+                config
+                    .perf
+                    .event_correlation_keys
+                    .iter()
+                    .find_map(|key| p.get(key).and_then(Value::as_str).map(str::to_owned))
+            }),
+            *direction == EventDirection::Receive,
+            *direction == EventDirection::Emit,
+            Some(direction.to_string().to_lowercase()),
+            None,
+        ),
+        LogEntryKind::Generic { .. } => {
+            if entry.classification.is_none() {
+                entry.classification = Some(ClassifiedRecord::Unclassified);
+            }
+            return;
+        }
+        _ => return,
     };
-    let start = contains_any_marker(&entry.message, &config.perf.command_start_markers);
-    let end = contains_any_marker(&entry.message, &config.perf.command_completion_markers);
     entry.classification = Some(if start && end {
         ClassifiedRecord::Conflict {
+            kinds: vec![kind],
             profile: config.profile_name.clone(),
             rule_ids: vec!["legacy-start".into(), "legacy-end".into()],
         }
@@ -792,8 +893,12 @@ pub fn attach_legacy_command_evidence(entry: &mut LogEntry, config: &AnalyzerCon
         ClassifiedRecord::Event {
             legacy: true,
             semantics: EventSemantics {
-                kind: OperationKind::Command,
-                name: command.clone(),
+                kind,
+                name,
+                correlation_id: id,
+                scope: Vec::new(),
+                direction,
+                endpoint,
                 phase: if start {
                     Some(Phase::Start)
                 } else if end {
@@ -802,8 +907,6 @@ pub fn attach_legacy_command_evidence(entry: &mut LogEntry, config: &AnalyzerCon
                     None
                 },
                 outcome: None,
-                correlation_id: Some(command.clone()),
-                scope: Vec::new(),
             },
             profile: config.profile_name.clone(),
             rule_ids: vec!["legacy-markers".into()],
@@ -811,7 +914,7 @@ pub fn attach_legacy_command_evidence(entry: &mut LogEntry, config: &AnalyzerCon
     });
 }
 
-fn explicit_command_payload(message: &str, rules: &ParserRules) -> (Option<Value>, String) {
+fn explicit_payload(message: &str, payload_markers: &[String]) -> (Option<Value>, String) {
     // Record marker-eligible starts once; matching is independent of quoted command names.
     let mut eligible = vec![false; message.len()];
     let mut quote = None;
@@ -835,11 +938,7 @@ fn explicit_command_payload(message: &str, rules: &ParserRules) -> (Option<Value
             eligible[position] = true;
         }
     }
-    let markers: Vec<_> = rules
-        .command_payload_markers
-        .iter()
-        .filter(|s| !s.is_empty())
-        .collect();
+    let markers: Vec<_> = payload_markers.iter().filter(|s| !s.is_empty()).collect();
     if markers.is_empty() {
         return (None, message.to_string());
     }
@@ -876,7 +975,7 @@ fn explicit_command_payload(message: &str, rules: &ParserRules) -> (Option<Value
         let rest = &message[payload_start..];
         if let Some(end) = command_payload_end(rest)
             && command_payload_trivia(&rest[end..])
-            && let Ok(payload) = json5::from_str::<Value>(&rest[..end].replace("undefined", "null"))
+            && let Ok(payload) = json5::from_str::<Value>(&normalize_json5_undefined(&rest[..end]))
         {
             return (
                 Some(payload),
@@ -885,6 +984,81 @@ fn explicit_command_payload(message: &str, rules: &ParserRules) -> (Option<Value
         }
     }
     (None, message.to_string())
+}
+
+// Convert legacy JSON5 undefined values without rewriting string identities or property names.
+fn normalize_json5_undefined(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut copied = 0;
+    let mut containers = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut line_comment = false;
+    let mut block_comment = false;
+    let mut previous = None;
+    let mut chars = input.char_indices().peekable();
+    while let Some((position, ch)) = chars.next() {
+        if line_comment {
+            line_comment = ch != '\n';
+            continue;
+        }
+        if block_comment {
+            if ch == '*' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+                chars.next();
+                block_comment = false;
+            }
+            continue;
+        }
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == delimiter {
+                quote = None;
+                previous = Some(ch);
+            }
+            continue;
+        }
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            '/' if chars.peek().is_some_and(|(_, next)| *next == '/') => {
+                chars.next();
+                line_comment = true;
+                continue;
+            }
+            '/' if chars.peek().is_some_and(|(_, next)| *next == '*') => {
+                chars.next();
+                block_comment = true;
+                continue;
+            }
+            '{' | '[' => containers.push(ch),
+            '}' | ']' => {
+                containers.pop();
+            }
+            'u' if (previous == Some(':')
+                || previous == Some('[')
+                || (previous == Some(',') && containers.last() == Some(&'[')))
+                && input[position..].starts_with("undefined")
+                && input[position + 9..].chars().next().is_none_or(|next| {
+                    next.is_whitespace() || matches!(next, ',' | ']' | '}' | '/')
+                }) =>
+            {
+                output.push_str(&input[copied..position]);
+                output.push_str("null");
+                copied = position + 9;
+                for _ in 0..8 {
+                    chars.next();
+                }
+            }
+            _ => (),
+        }
+        if !ch.is_whitespace() {
+            previous = Some(ch);
+        }
+    }
+    output.push_str(&input[copied..]);
+    output
 }
 
 // Only whitespace and complete JSON5 comments may follow the bounded root value.
@@ -1621,4 +1795,45 @@ fn extract_json_from_position(input: &str, start_pos: usize) -> Option<Value> {
     }
 
     None
+}
+
+pub(crate) fn record_correlation_scope(
+    entry: &LogEntry,
+    config: &AnalyzerConfig,
+) -> Option<Vec<String>> {
+    config
+        .perf
+        .correlation_scope_fields
+        .iter()
+        .map(|field| match field.as_str() {
+            "component_id" => {
+                (!entry.component_id.trim().is_empty()).then(|| entry.component_id.clone())
+            }
+            "component" => Some(entry.component.clone()),
+            _ => entry
+                .structured_field(field)
+                .map(str::to_owned)
+                .or_else(|| {
+                    entry
+                        .envelope_payload
+                        .as_ref()
+                        .and_then(|p| p.get(field))
+                        .or_else(|| entry.payload().and_then(|p| p.get(field)))
+                        .filter(|value| !value.is_null())
+                        .map(|value| {
+                            value
+                                .as_str()
+                                .map(str::to_owned)
+                                .unwrap_or_else(|| value.to_string())
+                        })
+                }),
+        })
+        .map(|value| {
+            value.filter(|value| {
+                !value.trim().is_empty()
+                    && value != "null"
+                    && value.len() <= crate::event_rules::MAX_VALUE_BYTES
+            })
+        })
+        .collect::<Option<Vec<_>>>()
 }
