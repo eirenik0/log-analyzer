@@ -86,6 +86,17 @@ pub struct EventSemantics {
     #[serde(default)]
     pub endpoint: Option<String>,
     pub scope: Vec<String>,
+    /// `false` for a start whose rule says no end record follows.
+    #[serde(default = "end_expected_default", skip_serializing_if = "is_true")]
+    pub end_expected: bool,
+}
+
+fn end_expected_default() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 /// Provenance stays in the existing record: timestamp/offset/year inference,
@@ -373,6 +384,17 @@ impl CompiledEventRules {
                     "direction must be send/receive for requests or emit/receive for events",
                 ));
             }
+            if let Some(end_expected) = mapping.end_expected {
+                if schema.version == 1 {
+                    return Err(fail("end_expected requires event-rule version 2"));
+                }
+                if !end_expected
+                    && (mapping.phase.is_none()
+                        || matches!(&mapping.phase, Some(ValueMapping::Literal { value }) if value != "start"))
+                {
+                    return Err(fail("end_expected = false requires a start phase"));
+                }
+            }
             if mapping.outcome.is_some()
                 && (mapping.phase.is_none()
                     || matches!(&mapping.phase, Some(ValueMapping::Literal { value }) if value != "end"))
@@ -611,11 +633,16 @@ fn map_event(
     if outcome.is_some() && phase != Some(Phase::End) {
         return Err(("outcome_requires_end", "outcome"));
     }
+    let end_expected = mapping.end_expected.unwrap_or(true);
+    if !end_expected && phase != Some(Phase::Start) {
+        return Err(("end_expected_requires_start", "phase"));
+    }
     Ok(EventSemantics {
         kind: mapping.kind,
         name,
         phase,
         outcome,
+        end_expected,
         correlation_id: mapping
             .correlation_id
             .as_ref()

@@ -231,6 +231,13 @@ pub fn analyze_performance_with_config(
                 .or_default() += 1;
             continue;
         }
+        if let Some(ClassifiedRecord::Event { semantics, .. }) = evidence
+            && semantics.phase == Some(Phase::Start)
+            && !semantics.end_expected
+        {
+            results.operation_coverage.start_only_events += 1;
+            continue;
+        }
         let event = BoundaryEvent {
             entry,
             name,

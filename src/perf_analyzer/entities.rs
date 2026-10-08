@@ -127,6 +127,9 @@ pub struct OperationCoverage {
     pub rejected_events: usize,
     pub rejected_pairs: usize,
     pub suppressed_events: usize,
+    /// Starts whose rule says no end record follows; neither paired nor unmatched.
+    #[serde(default)]
+    pub start_only_events: usize,
     pub suppressed_operation_types: Vec<SuppressedOperationType>,
     pub capture_window: CaptureWindow,
     pub upstream_export_completeness: String,
@@ -177,6 +180,7 @@ impl Default for OperationCoverage {
             rejected_events: 0,
             rejected_pairs: 0,
             suppressed_events: 0,
+            start_only_events: 0,
             suppressed_operation_types: Vec::new(),
             upstream_export_completeness: "unknown".into(),
             capture_window: CaptureWindow {

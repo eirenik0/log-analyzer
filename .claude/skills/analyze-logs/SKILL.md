@@ -22,6 +22,10 @@ rules when your producer's messages differ. Legacy-only custom marker profiles
 retain their semantics. Mixed legacy/global explicit lifecycle settings fail loading.
 Check unmatched/ambiguous/invalid evidence and `operation_coverage.classification`
 before interpreting empty timing results. `generate-config` preserves template mode.
+For producers that intentionally emit no end, version-2 start rules can set
+`end_expected = false`. `perf` counts these as `start_only_events` without orphans
+or measured durations; configured session completion commands can complete on
+them. Operation-type filters count excluded start-only records as suppressed.
 Record-field scopes over 4096 bytes use bounded prefix/length/digest keys rather
 than failing scope lookup; summaries containing the reserved digest marker are
 also encoded. Treat these keys as summaries, not the original scope. Explicit

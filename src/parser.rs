@@ -907,6 +907,7 @@ pub fn attach_legacy_event_evidence(entry: &mut LogEntry, config: &AnalyzerConfi
                     None
                 },
                 outcome: None,
+                end_expected: true,
             },
             profile: config.profile_name.clone(),
             rule_ids: vec!["legacy-markers".into()],

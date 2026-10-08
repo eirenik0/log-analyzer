@@ -573,9 +573,16 @@ Unmatched ends and missing keys are retained in `unmatched_events`; JSON include
 `ambiguous_groups` and start/end source file and line references. Diagnostic
 sections also obey `--top-n`, with full totals and omitted counts; `0` preserves all.
 
+Some producers log only the start of an operation. Mark such a start rule with
+`end_expected = false` in its version-2 `mapping`; `perf` then counts it as
+`start_only_events` instead of an orphan, and session levels can complete on it.
+Other rules keep expecting an end, so a missing end there is still reported.
+These records do not produce measured durations or completed timing operations.
+An operation-type filter counts excluded start-only records as suppressed events.
+
 `perf` reports `operation_coverage` separately from parse coverage in text and JSON.
 Relevant events are parsed request, event, and command candidates; each is paired,
-unmatched, or suppressed. Suppressions identify operation-type filters, missing
+unmatched, suppressed, or explicitly start-only. Suppressions identify operation-type filters, missing
 recognized boundaries. Command starts no longer depend on finding a completion
 elsewhere; starts, ends and identity-only evidence remain diagnostic when unpaired.
 Conflicting rule interpretations and invalid mappings also remain unmatched.
@@ -583,7 +590,8 @@ Unknown generic records evaluated by command rules are counted separately in
 `unclassified_command_records`, without fabricating command identities.
 `no_applicable_events` means no candidates; `insufficient_evidence` means candidates
 but no measured pairs; `partial_evidence` includes pairs plus unmatched/suppressed
-candidates; `observed_pairs` means all selected candidates paired, without claiming
+candidates; `observed_pairs` means there are measured pairs and all remaining
+candidates paired or explicitly expect no end, without claiming
 capture completeness. Ambiguous/rejected event counts are subsets of unmatched
 counts. Ambiguous pair cardinality is `null`/unknown when it cannot be established;
 rejected pairs count groups with exactly one start and one end whose timestamp

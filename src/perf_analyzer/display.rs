@@ -131,11 +131,12 @@ fn write_operation_coverage(out: &mut String, coverage: &super::OperationCoverag
     let _ = writeln!(out, "Operation coverage: {}", coverage.status);
     let _ = writeln!(
         out,
-        "Relevant events: {}; paired: {}; unmatched: {}; suppressed: {}",
+        "Relevant events: {}; paired: {}; unmatched: {}; suppressed: {}; start-only: {}",
         coverage.relevant_events,
         coverage.paired_events,
         coverage.unmatched_events,
-        coverage.suppressed_events
+        coverage.suppressed_events,
+        coverage.start_only_events
     );
     let _ = writeln!(
         out,

@@ -255,6 +255,9 @@ pub struct EventMapping {
     pub endpoint: Option<ValueMapping>,
     #[serde(default)]
     pub scope: Vec<ValueMapping>,
+    /// Version 2: `false` marks a start that has no end record by design.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_expected: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -896,7 +899,9 @@ fn analyze_session_path(entry: &LogEntry, sessions: &mut SessionInsights) {
             ..
         }) => (
             semantics.phase == Some(Phase::Start),
-            semantics.phase == Some(Phase::End) && semantics.outcome != Some(Outcome::Failure),
+            // A start with no expected end is the whole operation, so it can complete too.
+            (semantics.phase == Some(Phase::End) && semantics.outcome != Some(Outcome::Failure))
+                || (semantics.phase == Some(Phase::Start) && !semantics.end_expected),
         ),
         Some(
             crate::event_rules::ClassifiedRecord::Conflict { .. }
