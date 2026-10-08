@@ -1203,8 +1203,34 @@ fn metadata_assignment_spans(
         let first_word = value[..value_end - value_start]
             .trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
             .to_lowercase();
-        let value_end = if quoted_value.is_none()
-            && (lifecycle_words(&first_word).any(|word| {
+        let value_end = if quoted_value.is_none() && value.starts_with('(') {
+            let mut depth = 0usize;
+            value
+                .char_indices()
+                .find_map(|(offset, ch)| {
+                    let absolute = value_start + offset;
+                    let quote = quotes.partition_point(|span| span.end <= absolute);
+                    if quotes
+                        .get(quote)
+                        .is_some_and(|span| span.contains(&absolute))
+                    {
+                        return None;
+                    }
+                    match ch {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(absolute + ch.len_utf8());
+                            }
+                        }
+                        _ => {}
+                    }
+                    None
+                })
+                .unwrap_or(text.len())
+        } else if quoted_value.is_none()
+            && lifecycle_words(&first_word).any(|word| {
                 matches!(
                     word,
                     "not"
@@ -1232,12 +1258,15 @@ fn metadata_assignment_spans(
                         | "remains"
                         | "remain"
                 ) || lifecycle_qualifier(word)
-            }) || value.starts_with('('))
+            })
         {
             // A qualified multiword value cannot expose a later phase word.
             value
-                .find([',', ';', '.', '!', '?', '\n'])
-                .map_or(text.len(), |offset| value_start + offset)
+                .char_indices()
+                .find(|&(offset, ch)| {
+                    matches!(ch, ',' | ';' | '?') || lifecycle_sentence_boundary(value, offset, ch)
+                })
+                .map_or(text.len(), |(offset, _)| value_start + offset)
         } else {
             value_end
         };

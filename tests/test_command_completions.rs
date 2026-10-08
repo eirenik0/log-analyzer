@@ -756,6 +756,12 @@ fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
         "inspected completed=false",
         "inspected phase=started status=completed",
         "inspected status=(completed)",
+        "inspected status=(version 1.2 completed)",
+        "inspected status=(version 1.2 (completed))",
+        "inspected status=(version 1.2 completed",
+        "inspected status=(version 1.2. completed)",
+        "inspected status=(note=')' version 1.2 completed)",
+        "inspected status=not v1.2 completed",
         "inspected status = not completed",
         "inspected status=was completed",
         "inspected status=is completed",
@@ -947,6 +953,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "completed. Is everything okay?",
         "completed v1.2. Is everything okay?",
         "status=not completed, completed",
+        "status=(version 1.2 (pending)) completed",
+        "status=(note=')' version 1.2 pending) completed",
     ] {
         let start = parse(r#"Operation "work" started"#, 0, &config);
         let end = parse(&format!("Operation \"work\" {wording}"), 1, &config);
