@@ -60,12 +60,31 @@ fn select_results(
             .then_with(|| a.op_type.cmp(&b.op_type))
             .then_with(|| a.start_time.cmp(&b.start_time))
             .then_with(|| a.correlation_id.cmp(&b.correlation_id))
+            .then_with(|| {
+                (
+                    &a.start_source.file,
+                    a.start_source.line,
+                    &a.start_source.row_path,
+                )
+                    .cmp(&(
+                        &b.start_source.file,
+                        b.start_source.line,
+                        &b.start_source.row_path,
+                    ))
+            })
     });
     selected.orphans.sort_by(|a, b| {
         a.start_time
             .cmp(&b.start_time)
             .then_with(|| a.name.cmp(&b.name))
             .then_with(|| a.correlation_id.cmp(&b.correlation_id))
+            .then_with(|| {
+                (&a.source.file, a.source.line, &a.source.row_path).cmp(&(
+                    &b.source.file,
+                    b.source.line,
+                    &b.source.row_path,
+                ))
+            })
     });
     let mut violations: Vec<_> = selected
         .operations

@@ -51,6 +51,8 @@ struct OutputState {
     stdout: String,
     prepared: bool,
     compact: bool,
+    budget: Option<crate::report_budget::Policy>,
+    deferred_file: Option<std::path::PathBuf>,
 }
 
 thread_local! {
@@ -73,6 +75,59 @@ impl OutputGuard {
         Self
     }
 }
+impl OutputGuard {
+    pub fn finish(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let state = STATE.with(|state| {
+            if state
+                .borrow()
+                .as_ref()
+                .is_some_and(|state| state.budget.is_some())
+            {
+                state.borrow_mut().take()
+            } else {
+                None
+            }
+        });
+        let Some(mut state) = state else {
+            return Ok(());
+        };
+        let text = std::mem::take(&mut state.stdout);
+        if text.is_empty() {
+            return Ok(());
+        }
+        let complete = state.report(&text);
+        let value: Value = serde_json::from_str(&complete)?;
+        let result = state.budget.as_ref().unwrap().apply(value);
+        if let Some(path) = state.deferred_file {
+            std::fs::write(&path, &result.document)?;
+        }
+        io::stdout().lock().write_all(result.document.as_bytes())?;
+        if let Some(error) = result.error {
+            Err(error.into())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+pub fn set_budget(policy: crate::report_budget::Policy, path: Option<std::path::PathBuf>) {
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let state = state.as_mut().unwrap();
+        state.budget = Some(policy);
+        state.deferred_file = path;
+    });
+}
+
+pub fn defer_output_file() -> bool {
+    STATE.with(|state| {
+        state
+            .borrow()
+            .as_ref()
+            .is_some_and(|state| state.budget.is_some())
+    })
+}
+
 impl Drop for OutputGuard {
     fn drop(&mut self) {
         let rendered = STATE.with(|state| {
@@ -287,10 +342,13 @@ impl OutputState {
                         } else {
                             format!("{path}.{key}")
                         };
-                        let value = self
-                            .replacement(&field_path, &rendered)
-                            .map(Value::String)
-                            .unwrap_or_else(|| self.value_at(value, &field_path));
+                        let value = if field_path == "evidence_records" {
+                            self.value_at(value, &field_path)
+                        } else {
+                            self.replacement(&field_path, &rendered)
+                                .map(Value::String)
+                                .unwrap_or_else(|| self.value_at(value, &field_path))
+                        };
                         (key.clone(), value)
                     })
                     .collect(),
@@ -564,10 +622,11 @@ impl OutputState {
                     } else {
                         format!("{path}.{key}")
                     };
-                    if self
-                        .mask_ids
-                        .iter()
-                        .any(|field| field_matches(&path, field))
+                    if path != "evidence_records"
+                        && self
+                            .mask_ids
+                            .iter()
+                            .any(|field| field_matches(&path, field))
                     {
                         let rendered = value
                             .as_str()
@@ -652,6 +711,9 @@ impl OutputState {
             .ok()
             .filter(Value::is_object);
         if let (Some(context), Some(value)) = (&self.evidence, &mut original) {
+            if self.budget.is_some() {
+                value["evidence_records"] = context.records();
+            }
             context.annotate(value);
         }
         let annotated = self
@@ -1059,6 +1121,9 @@ pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
 // Performance has source strings and analytic metadata in the same object. Keep
 // typed measurements/provenance intact, including when an opaque ID equals a label.
 fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &str) {
+    if path == "evidence_records" {
+        return;
+    }
     let leaf = path.rsplit('.').next().unwrap_or(path);
     if (path.contains(".classification.")
         || path.contains(".start_classification.")
@@ -1146,6 +1211,48 @@ impl OutputState {
         }
         reference
     }
+    // Classification mixes generated provenance with source-derived identities. Rebuild
+    // its generated scaffold, redacting source semantics independently of container masks.
+    fn provenance_value(&mut self, original: &Value) -> Value {
+        match original {
+            Value::String(text) => Value::String(self.text(text)),
+            Value::Array(items) => {
+                Value::Array(items.iter().map(|v| self.provenance_value(v)).collect())
+            }
+            Value::Object(map) => Value::Object(
+                map.iter()
+                    .map(|(k, v)| (k.clone(), self.provenance_value(v)))
+                    .collect(),
+            ),
+            value => value.clone(),
+        }
+    }
+    fn canonical_classification(&mut self, original: &Value) -> Value {
+        let Some(map) = original.as_object() else {
+            return original.clone();
+        };
+        let mut result = self.value(original);
+        for key in ["status", "kinds", "legacy"] {
+            if let Some(value) = map.get(key) {
+                result[key] = value.clone();
+            }
+        }
+        for key in ["profile", "rule_ids", "diagnostics"] {
+            if let Some(value) = map.get(key) {
+                result[key] = self.provenance_value(value);
+            }
+        }
+        if let Some(semantics) = map.get("semantics") {
+            let mut redacted = self.value(semantics);
+            for key in ["kind", "phase", "outcome", "direction", "end_expected"] {
+                if let Some(value) = semantics.get(key) {
+                    redacted[key] = value.clone();
+                }
+            }
+            result["semantics"] = redacted;
+        }
+        result
+    }
     fn restore_evidence_refs(&mut self, original: &Value, redacted: &mut Value, payload: bool) {
         if !payload && original.get("evidence_ref").is_some() && !redacted.is_object() {
             *redacted = self.value(original);
@@ -1153,10 +1260,28 @@ impl OutputState {
         match (original, redacted) {
             (Value::Object(map), Value::Object(out)) => {
                 if !payload && map.contains_key("evidence_ref") {
-                    for key in ["line", "source_line", "source_line_number"] {
+                    for key in [
+                        "line",
+                        "source_line",
+                        "source_line_number",
+                        "input_ordinal",
+                        "timestamp_year_inferred",
+                    ] {
                         if let Some(value) = map.get(key) {
                             out.insert(key.into(), value.clone());
                         }
+                    }
+                }
+                if !payload && map.contains_key("evidence_ref") && map.contains_key("input_ordinal")
+                {
+                    if let Some(timestamp) = map.get("timestamp") {
+                        out.insert("timestamp".into(), timestamp.clone());
+                    }
+                    if let Some(classification) = map.get("classification") {
+                        out.insert(
+                            "classification".into(),
+                            self.canonical_classification(classification),
+                        );
                     }
                 }
                 if !payload {

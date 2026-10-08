@@ -2,6 +2,20 @@
 
 Complete documentation of all log-analyzer commands and options.
 
+## Common report budgets
+
+Use `--report-max-chars`, `--report-max-bytes`, and `--report-max-items` for compact
+JSON investigation pages. Follow `retrieval.next_cursor` with identical
+inputs/profile/query/redaction; increasing budgets is allowed. Reconstruct each
+`retrieval.collections` pointer once in page order. `evidence_records` is the
+unique selected-source stream; analytic views may repeat those references.
+Use `--complete-output` for all collections. Stop on metadata-over-budget,
+oversized-item, zero-item or invalid-cursor states; increase budgets or restart
+as directed. Never claim character limits are exact model-token limits.
+Native process/perf/error display counts become unlimited in common mode;
+legacy error sample/stack clipping conflicts with retrieval. Full semantics and
+resource limits are in `docs/design/bounded-reports.md`.
+
 ## Shared evidence contract
 
 On exit 1 with `coverage.status = "unparsed_input"`, inspect the coverage-only

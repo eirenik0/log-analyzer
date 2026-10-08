@@ -342,3 +342,8 @@ Source references survive selection, sorting and compaction; aggregate counts
 need record retrieval. Describe trace spans and legacy error span estimates with
 their declared semantics. Keep observations, measurements, hypotheses, contrary
 evidence and unknowns distinct in investigation findings.
+
+For common bounded JSON investigation output, use the report budget controls
+advertised by capabilities. Follow snapshot-bound cursors without changing
+selection/redaction and inspect stop/omission states before concluding. Use
+`--complete-output` when needed; see the common-budget reference for compatibility.

@@ -118,6 +118,26 @@ pub enum SearchCountBy {
     --filter \"t:timeout d:incoming\"       Contains 'timeout', incoming only
     --filter \"actor_kind:switch\"          Structured field filter on tracing/json logs")]
 pub struct Cli {
+    /// Bound the final JSON report by Unicode scalar characters (not model tokens); implies JSON
+    #[arg(long, global = true, conflicts_with = "complete_output")]
+    pub report_max_chars: Option<usize>,
+
+    /// Bound the final JSON report by UTF-8 bytes, including metadata and newline; implies JSON
+    #[arg(long, global = true, conflicts_with = "complete_output")]
+    pub report_max_bytes: Option<usize>,
+
+    /// Maximum presentation items per JSON page; implies JSON (0 allows no items)
+    #[arg(long, global = true, conflicts_with = "complete_output")]
+    pub report_max_items: Option<usize>,
+
+    /// Resume unchanged input/profile/query/redaction from a previous report cursor; implies JSON
+    #[arg(long, global = true, conflicts_with = "complete_output")]
+    pub report_cursor: Option<String>,
+
+    /// Return all evidence and analytic collections as JSON without legacy display clipping
+    #[arg(long, global = true)]
+    pub complete_output: bool,
+
     /// Redact sensitive report fields, message fragments, and URL query values
     #[arg(long, global = true)]
     pub redact: bool,
@@ -473,8 +493,36 @@ pub enum Commands {
 
 impl Cli {
     /// Get the effective output format (handles -j shorthand)
+    pub fn common_reports(&self) -> bool {
+        self.complete_output
+            || self.report_max_chars.is_some()
+            || self.report_max_bytes.is_some()
+            || self.report_max_items.is_some()
+            || self.report_cursor.is_some()
+    }
+
+    pub fn prepare_common_reports(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.common_reports() {
+            return Ok(());
+        }
+        match &mut self.command {
+            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } =>
+                return Err("Common report budgets support info/search/extract/perf/trace/process/comparisons/errors; this command is unsupported".into()),
+            Commands::Process { limit, .. } => *limit = 0,
+            Commands::Perf { top_n, .. } => *top_n = 0,
+            Commands::Errors { top_n, bounded, max_sample_chars, max_stack_frames, max_output_chars, .. } => {
+                if *bounded || max_sample_chars.is_some() || max_stack_frames.is_some() || max_output_chars.is_some() {
+                    return Err("Common report retrieval conflicts with legacy error sample/stack/output clipping; omit legacy bounded flags".into());
+                }
+                *top_n = 0;
+            }
+            _ => (),
+        }
+        Ok(())
+    }
+
     pub fn effective_format(&self) -> OutputFormat {
-        if self.json {
+        if self.json || self.common_reports() {
             OutputFormat::Json
         } else {
             self.format

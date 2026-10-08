@@ -142,5 +142,26 @@
       "--version"
     ],
     "type": "version"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "--report-max-items",
+      "1",
+      "search",
+      "{fixture}"
+    ],
+    "pointer": "/retrieval/next_cursor"
+  },
+  {
+    "args": [
+      "--preset",
+      "eyes",
+      "--complete-output",
+      "process",
+      "{fixture}"
+    ],
+    "pointer": "/evidence_records"
   }
 ]

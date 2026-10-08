@@ -250,6 +250,15 @@ pub fn sort_logs(logs: &mut [LogEntry], order: crate::cli::ProcessSortOrder) {
 }
 
 pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> LlmLogOutput {
+    process_logs_for_llm_complete(logs, limit, sanitize, false)
+}
+
+pub fn process_logs_for_llm_complete(
+    logs: &[LogEntry],
+    limit: usize,
+    sanitize: bool,
+    complete: bool,
+) -> LlmLogOutput {
     let total_entries = logs.len();
     let filtered_entries = if limit > 0 && limit < logs.len() {
         limit
@@ -366,11 +375,15 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
                 };
 
                 // Then compact the sanitized data
-                compact_json_value(&sanitized, 3, 0)
+                if complete {
+                    sanitized
+                } else {
+                    compact_json_value(&sanitized, 3, 0)
+                }
             });
 
             // Compact message text
-            let compact_message = if log.message.len() > 200 {
+            let compact_message = if !complete && log.message.len() > 200 {
                 format!("{}...", crate::output::byte_prefix(&log.message, 197))
             } else {
                 log.message.clone()
