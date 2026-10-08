@@ -118,6 +118,14 @@ pub enum SearchCountBy {
     --filter \"t:timeout d:incoming\"       Contains 'timeout', incoming only
     --filter \"actor_kind:switch\"          Structured field filter on tracing/json logs")]
 pub struct Cli {
+    /// Redact sensitive report fields, message fragments, and URL query values
+    #[arg(long, global = true)]
+    pub redact: bool,
+
+    /// Additionally mask this identifier field with stable replacements (repeatable)
+    #[arg(long, global = true, requires = "redact")]
+    pub mask_id: Vec<String>,
+
     /// Output format (text or json)
     #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text, global = true, group = "output_options", env = "LOG_ANALYZER_FORMAT")]
     pub format: OutputFormat,
@@ -134,13 +142,7 @@ pub struct Cli {
     pub json: bool,
 
     /// Use compact mode for output (shorter keys, optimized structure)
-    #[arg(
-        short = 'c',
-        long,
-        global = true,
-        group = "output_options",
-        env = "LOG_ANALYZER_COMPACT"
-    )]
+    #[arg(short = 'c', long, global = true, env = "LOG_ANALYZER_COMPACT")]
     pub compact: bool,
 
     /// Filter expression (e.g., "c:core l:ERROR !t:timeout")

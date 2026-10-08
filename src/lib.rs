@@ -1,3 +1,15 @@
+// Route report output through a CLI-scoped presentation layer.
+macro_rules! report_print {
+    ($($arg:tt)*) => { crate::output::print(format_args!($($arg)*)) };
+}
+macro_rules! report_eprintln {
+    ($($arg:tt)*) => { std::eprintln!("{}", crate::output::diagnostic(&format!($($arg)*))) };
+}
+macro_rules! report_println {
+    () => { crate::output::print(format_args!("\n")) };
+    ($($arg:tt)*) => { crate::output::print(format_args!("{}\n", format_args!($($arg)*))) };
+}
+
 pub mod cli;
 pub mod comparator;
 pub mod config;
@@ -7,6 +19,7 @@ pub mod extract;
 pub mod filter;
 pub mod llm_processor;
 pub mod normalize;
+mod output;
 pub mod parser;
 pub mod perf_analyzer;
 pub mod search;
@@ -21,8 +34,8 @@ pub use comparator::{
 };
 use comparator::{LogFilter, display_log_summary};
 use errors::{
-    ErrorReportLimits, ErrorsOptions, analyze_errors_with_config, format_bounded_errors_text,
-    format_errors_json, format_errors_text,
+    ErrorReportLimits, ErrorsOptions, analyze_errors_with_config,
+    format_bounded_errors_text_with_prefix, format_errors_json, format_errors_text,
 };
 use extract::{format_extract_json, format_extract_rows, format_extract_text};
 use filter::{FilterExpression, print_filter_warnings, to_log_filter};
@@ -78,16 +91,20 @@ fn print_session_insights(insights: &config::SessionInsights) {
         return;
     }
 
-    println!("  session insights:");
+    report_println!("  session insights:");
     for level in visible_levels {
         let total = level.sessions.len();
         let completed = level.completed_count();
         let incomplete = level.incomplete_count();
         let status = if incomplete == 0 { "OK" } else { "WARN" };
 
-        println!(
+        report_println!(
             "    {} ({} sessions): {} completed, {} incomplete [{}]",
-            level.config.name, total, completed, incomplete, status
+            level.config.name,
+            total,
+            completed,
+            incomplete,
+            status
         );
 
         for field in &level.config.summary_fields {
@@ -109,7 +126,7 @@ fn print_session_insights(insights: &config::SessionInsights) {
                     .all(|s| s.summary_fields.contains_key(field))
             {
                 let value = values.iter().next().expect("one value");
-                println!(
+                report_println!(
                     "      {{{}: {}}} across all {}",
                     field,
                     value,
@@ -135,22 +152,22 @@ fn print_profile_insights(logs: &[LogEntry], config: &config::AnalyzerConfig) {
         return;
     }
 
-    println!("\nProfile insights ({})", config.profile_name);
+    report_println!("\nProfile insights ({})", config.profile_name);
     print_session_insights(&insights.sessions);
     if !insights.unknown_components.is_empty() {
-        println!(
+        report_println!(
             "  unknown components: {}",
             list_preview(&insights.unknown_components, 8)
         );
     }
     if !insights.unknown_commands.is_empty() {
-        println!(
+        report_println!(
             "  unknown commands: {}",
             list_preview(&insights.unknown_commands, 8)
         );
     }
     if !insights.unknown_requests.is_empty() {
-        println!(
+        report_println!(
             "  unknown requests: {}",
             list_preview(&insights.unknown_requests, 8)
         );
@@ -161,8 +178,17 @@ fn write_output_file(
     path: &std::path::Path,
     content: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    std::fs::write(path, content)
+    std::fs::write(path, output::format_report(content))
         .map_err(|e| format!("Failed to write output file '{}': {}", path.display(), e).into())
+}
+
+fn read_cli_log_file(
+    file: &std::path::Path,
+    config: &config::AnalyzerConfig,
+) -> Result<Vec<LogEntry>, ParseError> {
+    let entries = parser::parse_log_file_with_config(file, config)?;
+    output::observe_entries(&entries);
+    Ok(entries)
 }
 
 fn parse_and_merge_log_files_with_config(
@@ -172,7 +198,7 @@ fn parse_and_merge_log_files_with_config(
     let mut logs = Vec::new();
 
     for file in files {
-        let mut parsed = parse_log_file_with_config(file, analyzer_config)
+        let mut parsed = read_cli_log_file(file, analyzer_config)
             .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
         logs.append(&mut parsed);
     }
@@ -206,6 +232,7 @@ fn read_analysis_inputs(
     for file in files {
         let parsed = parser::parse_log_file_report(file, config)
             .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
+        output::observe_entries(&parsed.entries);
         logs.extend(parsed.entries);
         coverage.files.push(parsed.coverage);
     }
@@ -227,7 +254,7 @@ fn read_analysis_inputs(
     };
     if coverage.status == "unparsed_input" {
         let rendered = render_analysis_report("", format, &coverage)?;
-        print!("{rendered}");
+        report_print!("{rendered}");
         if let Some(path) = output {
             write_output_file(path, &rendered)?;
         }
@@ -288,6 +315,20 @@ fn render_analysis_report(
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
+    let _output_guard = output::OutputGuard::new(
+        cli.redact,
+        &cli.mask_id,
+        cli.effective_compact() || matches!(&cli.command, Commands::LlmDiff { .. }),
+    );
+    let result = run_with_cli(&cli);
+    if cli.redact {
+        result.map_err(|error| output::diagnostic(&error.to_string()).into())
+    } else {
+        result
+    }
+}
+
+fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     let analyzer_config = config::load_config(cli.config.as_deref(), cli.preset.as_deref())
         .map_err(|e| format!("Failed to load config: {}", e))?;
     let format = cli.effective_format();
@@ -318,20 +359,20 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // If in verbose mode, display some diagnostic information
     if verbose > 0 && !quiet {
-        eprintln!("Verbosity level: {}", verbose);
-        eprintln!("Color mode: {:?}", color_mode);
+        report_eprintln!("Verbosity level: {}", verbose);
+        report_eprintln!("Color mode: {:?}", color_mode);
         if let Some(out_path) = output {
-            eprintln!("Output will be written to: {}", out_path.display());
+            report_eprintln!("Output will be written to: {}", out_path.display());
         }
         if let Some(ref filter_expr) = cli.filter {
-            eprintln!("Filter: {}", filter_expr);
+            report_eprintln!("Filter: {}", filter_expr);
         }
-        eprintln!("Config profile: {}", analyzer_config.profile_name);
+        report_eprintln!("Config profile: {}", analyzer_config.profile_name);
         if let Some(config_path) = &cli.config {
-            eprintln!("Config file: {}", config_path.display());
+            report_eprintln!("Config file: {}", config_path.display());
         }
         if let Some(preset) = &cli.preset {
-            eprintln!("Config preset: {}", preset);
+            report_eprintln!("Config preset: {}", preset);
         }
     }
 
@@ -342,7 +383,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Schema { file, samples } => {
             let preview = normalize::schema_preview(file, *samples as usize)?;
             let rendered = serde_json::to_string_pretty(&preview)?;
-            println!("{rendered}");
+            report_println!("{rendered}");
             if let Some(path) = output {
                 write_output_file(path, &rendered)?;
             }
@@ -356,10 +397,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = parse_log_file_with_config(file1, &analyzer_config)
+            let logs1 = read_cli_log_file(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let logs2 = parse_log_file_with_config(file2, &analyzer_config)
+            let logs2 = read_cli_log_file(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Create options
@@ -373,8 +414,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .quiet_mode(quiet);
 
             // Compare logs with proper error handling
-            let results = compare_logs(&logs1, &logs2, &filter, &options)
+            let mut results = compare_logs(&logs1, &logs2, &filter, &options)
                 .map_err(|e| format!("Comparison failed: {:?}", e))?;
+            output::redact_comparison(&mut results);
 
             // Display results in the selected format
             match format {
@@ -388,7 +430,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 OutputFormat::Json => {
                     let json_output = generate_json_output(&results, &options);
-                    println!("{}", json_output);
+                    report_println!("{}", json_output);
                     if let Some(path) = output {
                         write_output_file(path, &json_output)?;
                     }
@@ -402,10 +444,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sort_by,
         } => {
             // Parse log files with proper error handling
-            let logs1 = parse_log_file_with_config(file1, &analyzer_config)
+            let logs1 = read_cli_log_file(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let logs2 = parse_log_file_with_config(file2, &analyzer_config)
+            let logs2 = read_cli_log_file(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Create options with diff_only=true
@@ -419,8 +461,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .quiet_mode(quiet);
 
             // Compare logs with proper error handling
-            let results = compare_logs(&logs1, &logs2, &filter, &options)
+            let mut results = compare_logs(&logs1, &logs2, &filter, &options)
                 .map_err(|e| format!("Comparison failed: {:?}", e))?;
+            output::redact_comparison(&mut results);
 
             // Display results in the selected format
             match format {
@@ -434,7 +477,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 OutputFormat::Json => {
                     let json_output = generate_json_output(&results, &options);
-                    println!("{}", json_output);
+                    report_println!("{}", json_output);
                     if let Some(path) = output {
                         write_output_file(path, &json_output)?;
                     }
@@ -448,14 +491,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log files with proper error handling
-            let mut logs1 = parse_log_file_with_config(file1, &analyzer_config)
+            let mut logs1 = read_cli_log_file(file1, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file1.display(), e))?;
 
-            let mut logs2 = parse_log_file_with_config(file2, &analyzer_config)
+            let mut logs2 = read_cli_log_file(file2, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file2.display(), e))?;
 
             // Apply sanitization if enabled (default behavior unless --no-sanitize is used)
-            if !no_sanitize {
+            if !no_sanitize && !cli.redact {
                 llm_processor::sanitize_logs(&mut logs1);
                 llm_processor::sanitize_logs(&mut logs2);
             }
@@ -471,12 +514,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .quiet_mode(quiet);
 
             // Compare logs with proper error handling
-            let results = compare_logs(&logs1, &logs2, &filter, &options)
+            let mut results = compare_logs(&logs1, &logs2, &filter, &options)
                 .map_err(|e| format!("Comparison failed: {:?}", e))?;
+            output::redact_comparison(&mut results);
 
             // Output as JSON (fixed format for LlmDiff)
             let json_output = generate_json_output(&results, &options);
-            println!("{}", json_output);
+            report_println!("{}", json_output);
             if let Some(path) = output {
                 write_output_file(path, &json_output)?;
             }
@@ -513,13 +557,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     "total_entries": filtered_logs.len(), "levels": levels, "components": components,
                 }}).to_string();
                 let rendered = render_analysis_report(&report, format, &coverage)?;
-                print!("{rendered}");
+                report_print!("{rendered}");
                 if let Some(path) = output {
                     write_output_file(path, &rendered)?;
                 }
                 return Ok(());
             }
-            print!("{}", coverage_text(&coverage));
+            report_print!("{}", coverage_text(&coverage));
 
             // Display log summary with enhanced options
             display_log_summary(&filtered_logs, *samples, *json_schema, *payloads, *timeline);
@@ -528,17 +572,17 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Show filtering information if applied
             if let Some(ref filter_expr) = cli.filter {
                 if !filtered_logs.is_empty() {
-                    println!(
+                    report_println!(
                         "\nShowing {} log entries after applying filter: {}",
                         filtered_logs.len(),
                         filter_expr
                     );
                 } else {
-                    println!("\nNo log entries match the filter: {}", filter_expr);
+                    report_println!("\nNo log entries match the filter: {}", filter_expr);
                 }
             }
 
-            println!("\nLog analysis completed successfully.");
+            report_println!("\nLog analysis completed successfully.");
         }
         Commands::Process {
             file,
@@ -547,7 +591,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             no_sanitize,
         } => {
             // Parse log file with proper error handling
-            let logs = parse_log_file_with_config(file, &analyzer_config)
+            let logs = read_cli_log_file(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
 
             // Filter logs
@@ -559,19 +603,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             llm_processor::sort_logs(&mut filtered_logs, *sort_by);
 
+            output::prepare_process_entries(&mut filtered_logs);
+
             // Process logs for LLM consumption (sanitize by default, unless --no-sanitize is used)
-            let llm_output =
-                llm_processor::process_logs_for_llm(&filtered_logs, *limit, !no_sanitize);
+            let llm_output = llm_processor::process_logs_for_llm(
+                &filtered_logs,
+                *limit,
+                !no_sanitize && !cli.redact,
+            );
 
             // Output as JSON
             match serde_json::to_string_pretty(&llm_output) {
                 Ok(json) => {
-                    println!("{}", json);
+                    report_println!("{}", json);
                     if let Some(path) = output {
                         write_output_file(path, &json)?;
                     }
                 }
-                Err(e) => eprintln!("Error serializing output: {}", e),
+                Err(e) => report_eprintln!("Error serializing output: {}", e),
             }
         }
         Commands::Search {
@@ -580,7 +629,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             payloads,
             count_by,
         } => {
-            let logs = parse_log_file_with_config(file, &analyzer_config)
+            let logs = read_cli_log_file(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
             let match_indices = collect_match_indices(&logs, &filter);
 
@@ -604,7 +653,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            print!("{rendered}");
+            report_print!("{rendered}");
             if let Some(path) = output {
                 write_output_file(path, &rendered)?;
             }
@@ -645,16 +694,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 },
             };
 
-            let report =
+            let mut report =
                 analyze_errors_with_config(&logs, &filter, &analyzer_config, &error_options);
+            output::prepare_errors(&mut report);
             let rendered = match format {
                 OutputFormat::Text => {
                     if let Some(limits) = error_options.limits {
-                        format_bounded_errors_text(
+                        format_bounded_errors_text_with_prefix(
                             &report,
                             &error_options,
                             limits,
-                            &coverage_text(&coverage),
+                            &output::diagnostic(&coverage_text(&coverage)),
+                            output::report_prefix(),
                         )
                     } else {
                         render_analysis_report(
@@ -671,7 +722,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 )?,
             };
 
-            print!("{rendered}");
+            let rendered = if error_options.limits.is_some() && cli.redact {
+                output::prepare_bounded_output(&rendered, matches!(format, OutputFormat::Json))
+            } else {
+                rendered
+            };
+            report_print!("{rendered}");
             if let Some(path) = output {
                 write_output_file(path, &rendered)?;
             }
@@ -682,7 +738,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             rows,
             expand_array,
         } => {
-            let logs = parse_log_file_with_config(file, &analyzer_config)
+            let logs = read_cli_log_file(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
             let match_indices = collect_match_indices(&logs, &filter);
 
@@ -704,7 +760,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            print!("{rendered}");
+            report_print!("{rendered}");
             if let Some(path) = output {
                 write_output_file(path, &rendered)?;
             }
@@ -739,6 +795,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let selected: Vec<_> = logs.iter().filter(|entry| filter.matches(entry)).collect();
             results.event_timeline = timeline::analyze(&selected, &analyzer_config.timeline)?;
 
+            output::prepare_performance(&mut results);
+
             // Display results based on format
             match format {
                 OutputFormat::Text => {
@@ -750,7 +808,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         *sort_by,
                     );
                     let text = render_analysis_report(&text, format, &coverage)?;
-                    print!("{text}");
+                    report_print!("{text}");
                     if let Some(path) = output {
                         write_output_file(path, &text)?;
                     }
@@ -764,7 +822,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         *sort_by,
                     );
                     let json = render_analysis_report(&json, format, &coverage)?;
-                    print!("{}", json);
+                    report_print!("{}", json);
                     if let Some(path) = output {
                         write_output_file(path, &json)?;
                     }
@@ -782,6 +840,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 return Err("Trace requires either --id or --session".into());
             };
 
+            output::register_selector(selector.value());
             let entries = collect_trace_entries(&logs, &filter, &selector);
 
             let event_timeline = timeline::analyze(&entries, &analyzer_config.timeline)?;
@@ -792,7 +851,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(report) = &event_timeline {
                         text.push_str(&timeline::format_text(report));
                     }
-                    print!("{text}");
+                    report_print!("{text}");
                     if let Some(path) = output {
                         write_output_file(path, &text)?;
                     }
@@ -804,7 +863,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         report["trace"]["event_timeline"] = serde_json::to_value(timeline)?;
                     }
                     let json = serde_json::to_string_pretty(&report)?;
-                    println!("{}", json);
+                    report_println!("{}", json);
                     if let Some(path) = output {
                         write_output_file(path, &json)?;
                     }
@@ -888,7 +947,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             ));
             let output_text = format!("{header}{body}");
 
-            print!("{output_text}");
+            report_print!("{output_text}");
             if let Some(path) = output {
                 write_output_file(path, &output_text)?;
             }

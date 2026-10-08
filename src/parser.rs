@@ -262,7 +262,7 @@ pub fn parse_log_file_with_config(
         return Err(ParseError::NoRecognizedEntries(parsed.coverage));
     }
     for diagnostic in &parsed.coverage.normalization_diagnostics {
-        eprintln!(
+        report_eprintln!(
             "Normalization skipped {}:{} row {} field {}: {}",
             path.as_ref().display(),
             diagnostic.line,

@@ -81,6 +81,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
             formatter.write_divider("=", 80)?;
 
             for (index, key) in results.unique_to_log1.iter().enumerate() {
+                let key = crate::output::diagnostic(key);
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
                     let details = if parts.len() > 3 {
@@ -109,6 +110,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
             formatter.write_divider("=", 80)?;
 
             for (index, key) in results.unique_to_log2.iter().enumerate() {
+                let key = crate::output::diagnostic(key);
                 let parts: Vec<&str> = key.split('|').collect();
                 if parts.len() >= 3 {
                     let details = if parts.len() > 3 {
@@ -178,7 +180,8 @@ pub fn format_comparison_results<F: OutputFormatter>(
                 }
             }
 
-            let parts: Vec<&str> = key.split('|').collect();
+            let displayed_key = crate::output::diagnostic(key);
+            let parts: Vec<&str> = displayed_key.split('|').collect();
 
             // Print formatted key header with clearer structure
             formatter.write_line("")?;
@@ -209,7 +212,7 @@ pub fn format_comparison_results<F: OutputFormatter>(
                 formatter.write_highlight(&format!(
                     "[K{}] {} ({} instances)",
                     key_idx + 1,
-                    key,
+                    displayed_key,
                     comparisons.len()
                 ))?;
             }
@@ -330,13 +333,13 @@ pub fn format_json_differences<F: OutputFormatter>(
             let value2_truncated = value2_str.len() > max_len;
 
             let value1_display = if value1_truncated {
-                format!("{}...", &value1_str[0..max_len])
+                format!("{}...", crate::output::byte_prefix(&value1_str, max_len))
             } else {
                 value1_str.clone()
             };
 
             let value2_display = if value2_truncated {
-                format!("{}...", &value2_str[0..max_len])
+                format!("{}...", crate::output::byte_prefix(&value2_str, max_len))
             } else {
                 value2_str.clone()
             };

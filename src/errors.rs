@@ -487,8 +487,18 @@ pub fn format_bounded_errors_text(
     limits: ErrorReportLimits,
     scope: &str,
 ) -> String {
+    format_bounded_errors_text_with_prefix(report, options, limits, scope, "")
+}
+
+pub fn format_bounded_errors_text_with_prefix(
+    report: &ErrorAnalysisReport,
+    options: &ErrorsOptions,
+    limits: ErrorReportLimits,
+    scope: &str,
+    prefix: &str,
+) -> String {
     let mut out = format!(
-        "{}: {} entries ({} patterns) across {} {}\n{}\nImpact summary\n  Total errors: {}\n  Total warnings: {}\n  Unique error patterns: {}\n  Affected sessions: {}\n",
+        "{prefix}{}: {} entries ({} patterns) across {} {}\n{}\nImpact summary\n  Total errors: {}\n  Total warnings: {}\n  Unique error patterns: {}\n  Affected sessions: {}\n",
         if report.warn_count > 0 {
             "ERRORS/WARNS"
         } else {

@@ -22,63 +22,63 @@ pub struct ConsoleFormatter;
 
 impl OutputFormatter for ConsoleFormatter {
     fn write_header(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.bold().bright_white().on_bright_black());
+        report_println!("{}", text.bold().bright_white().on_bright_black());
         Ok(())
     }
 
     fn write_divider(&mut self, char: &str, count: usize) -> io::Result<()> {
-        println!("{}", char.repeat(count).bright_white());
+        report_println!("{}", char.repeat(count).bright_white());
         Ok(())
     }
 
     fn write_line(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text);
+        report_println!("{}", text);
         Ok(())
     }
 
     fn write_source_file1(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.cyan());
+        report_println!("{}", text.cyan());
         Ok(())
     }
 
     fn write_source_file2(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.magenta());
+        report_println!("{}", text.magenta());
         Ok(())
     }
 
     fn write_highlight(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.yellow().bold());
+        report_println!("{}", text.yellow().bold());
         Ok(())
     }
 
     fn write_label(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.bold().bright_blue());
+        report_println!("{}", text.bold().bright_blue());
         Ok(())
     }
 
     // New methods with semantic coloring
     fn write_success(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.green().bold());
+        report_println!("{}", text.green().bold());
         Ok(())
     }
 
     fn write_warning(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.yellow().bold());
+        report_println!("{}", text.yellow().bold());
         Ok(())
     }
 
     fn write_error(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.red().bold());
+        report_println!("{}", text.red().bold());
         Ok(())
     }
 
     fn write_info(&mut self, text: &str) -> io::Result<()> {
-        println!("{}", text.bright_white().bold());
+        report_println!("{}", text.bright_white().bold());
         Ok(())
     }
 
     fn write_table(&mut self, table: &Table) -> io::Result<()> {
-        println!("{table}");
+        report_println!("{table}");
         Ok(())
     }
 }

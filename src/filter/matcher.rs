@@ -75,17 +75,19 @@ pub fn print_filter_warnings(expr: &FilterExpression) {
     ];
     for level in expr.include_filters(&FilterType::Level) {
         if !known_levels.iter().any(|k| k.eq_ignore_ascii_case(level)) {
-            eprintln!(
+            report_eprintln!(
                 "Warning: Unknown log level '{}'. Common levels are: {:?}",
-                level, known_levels
+                level,
+                known_levels
             );
         }
     }
     for level in expr.exclude_filters(&FilterType::Level) {
         if !known_levels.iter().any(|k| k.eq_ignore_ascii_case(level)) {
-            eprintln!(
+            report_eprintln!(
                 "Warning: Unknown log level '{}'. Common levels are: {:?}",
-                level, known_levels
+                level,
+                known_levels
             );
         }
     }

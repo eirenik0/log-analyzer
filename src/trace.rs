@@ -81,7 +81,7 @@ pub fn format_trace_text(entries: &[&LogEntry], selector: &TraceSelector) -> Str
         out,
         "TRACE ({}) contains \"{}\"",
         selector.selector_type(),
-        selector.value()
+        crate::output::identifier(selector.value())
     );
 
     let _ = writeln!(
@@ -126,9 +126,18 @@ pub fn format_trace_text(entries: &[&LogEntry], selector: &TraceSelector) -> Str
         let component_label = if entry.component_id.is_empty() {
             entry.component.as_str().to_string()
         } else {
-            format!("{} ({})", entry.component, entry.component_id)
+            format!(
+                "{} ({})",
+                entry.component,
+                crate::output::identifier(&entry.component_id)
+            )
         };
-        let message = entry.message.replace('\n', "\\n");
+        let message = if crate::output::redaction_enabled() {
+            // Preserve header boundaries through the final presentation pass.
+            crate::output::diagnostic(&entry.message)
+        } else {
+            entry.message.replace('\n', "\\n")
+        };
 
         let _ = writeln!(
             out,

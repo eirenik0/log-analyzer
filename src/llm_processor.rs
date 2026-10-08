@@ -118,6 +118,29 @@ pub fn sanitize_json_value(value: &Value) -> Value {
     }
 }
 
+fn is_identifier_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    let canonical = crate::output::canonical(key);
+    matches!(
+        canonical.as_str(),
+        "id" | "requestid"
+            | "traceid"
+            | "spanid"
+            | "correlationid"
+            | "sessionid"
+            | "componentid"
+            | "jobid"
+            | "testid"
+            | "userid"
+            | "renderid"
+            | "checkid"
+            | "clientid"
+    ) || lower.ends_with("_id")
+        || lower.ends_with("-id")
+        || key.ends_with("Id")
+        || key.ends_with("ID")
+}
+
 pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize) -> Value {
     if current_depth >= max_depth {
         return json!("[TRUNCATED]");
@@ -136,14 +159,18 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
 
                 // Shorten long field names
                 let compact_key = if key.len() > 30 {
-                    format!("{}...", &key[0..27])
+                    format!("{}...", crate::output::byte_prefix(key, 27))
                 } else {
                     key.clone()
                 };
 
                 compacted_map.insert(
                     compact_key,
-                    compact_json_value(val, max_depth, current_depth + 1),
+                    if is_identifier_key(key) && val.is_string() {
+                        val.clone()
+                    } else {
+                        compact_json_value(val, max_depth, current_depth + 1)
+                    },
                 );
             }
             Value::Object(compacted_map)
@@ -171,7 +198,7 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
         }
         Value::String(s) => {
             if s.len() > 100 {
-                json!(format!("{}...", &s[0..97]))
+                json!(format!("{}...", crate::output::byte_prefix(s, 97)))
             } else {
                 value.clone()
             }
@@ -324,7 +351,7 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
 
             // Compact message text
             let compact_message = if log.message.len() > 200 {
-                format!("{}...", &log.message[0..197])
+                format!("{}...", crate::output::byte_prefix(&log.message, 197))
             } else {
                 log.message.clone()
             };
