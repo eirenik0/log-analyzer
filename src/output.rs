@@ -41,8 +41,7 @@ struct OutputState {
     next_id: usize,
     matcher: Option<(AhoCorasick, Vec<String>)>,
     preserve_numeric_metadata: bool,
-    performance_prepared: bool,
-    final_analytic_text: bool,
+    performance_text: Option<String>,
     path_substring_ids: bool,
     metadata: Option<Value>,
     metadata_comments: bool,
@@ -122,6 +121,16 @@ pub fn diagnostic(text: &str) -> String {
             None => text.to_string(),
         },
     )
+}
+
+// The formatter consumes already-redacted typed performance results. Protect
+// only that generated section; late-added coverage still follows redaction.
+pub fn prepare_performance_text(text: &str) {
+    STATE.with(|state| {
+        if let Some(state) = state.borrow_mut().as_mut().filter(|s| s.redact) {
+            state.performance_text = Some(text.to_string());
+        }
+    });
 }
 
 pub fn source_path(text: &str) -> String {
@@ -323,8 +332,7 @@ impl OutputState {
 
     fn text(&mut self, text: &str) -> String {
         self.ensure_masks();
-        if !(self.preserve_numeric_metadata
-            && (self.final_analytic_text || text.chars().all(|c| c.is_ascii_digit())))
+        if !(self.preserve_numeric_metadata && text.chars().all(|c| c.is_ascii_digit()))
             && let Some(replacement) = self.masked_values.get(text)
         {
             return replacement.clone();
@@ -504,8 +512,7 @@ impl OutputState {
                 || placeholders
                     .get(placeholder_index)
                     .is_some_and(|p| p.contains(&start))
-                || (self.preserve_numeric_metadata
-                    && (self.final_analytic_text || original.chars().all(|c| c.is_ascii_digit())))
+                || (self.preserve_numeric_metadata && original.chars().all(|c| c.is_ascii_digit()))
             {
                 continue;
             }
@@ -580,22 +587,25 @@ impl OutputState {
         }
     }
 
-    fn metadata_text(&self, comment: bool) -> String {
-        let Some(metadata) = &self.metadata else {
+    fn metadata_text(&mut self, comment: bool) -> String {
+        let Some(metadata) = self.metadata.clone() else {
             return String::new();
         };
         let build = &metadata["build"];
-        let profile = metadata["active_profile"].as_str().unwrap().chars().fold(
-            String::new(),
-            |mut out, ch| {
-                if ch.is_control() {
-                    out.extend(ch.escape_default());
-                } else {
-                    out.push(ch);
-                }
-                out
-            },
-        );
+        let raw_profile = metadata["active_profile"].as_str().unwrap();
+        let profile = if self.redact {
+            self.text(raw_profile)
+        } else {
+            raw_profile.to_string()
+        };
+        let profile = profile.chars().fold(String::new(), |mut out, ch| {
+            if ch.is_control() {
+                out.extend(ch.escape_default());
+            } else {
+                out.push(ch);
+            }
+            out
+        });
         format!(
             "{}Build: log-analyzer {} revision={} state={} profile={} schema={}\n",
             if comment { "# " } else { "" },
@@ -609,13 +619,17 @@ impl OutputState {
 
     fn report(&mut self, text: &str) -> String {
         let rendered = self.redact_report(text);
-        let Some(metadata) = &self.metadata else {
+        let Some(mut metadata) = self.metadata.clone() else {
             return rendered;
         };
         if let Ok(mut value) = serde_json::from_str::<Value>(&rendered)
             && value.is_object()
         {
-            value["report_metadata"] = metadata.clone();
+            if self.redact {
+                metadata["active_profile"] =
+                    Value::String(self.text(metadata["active_profile"].as_str().unwrap()));
+            }
+            value["report_metadata"] = metadata;
             return format!(
                 "{}\n",
                 if self.compact {
@@ -703,12 +717,19 @@ impl OutputState {
         if serde_json::from_str::<Value>(text).is_ok_and(|value| value.is_number()) {
             return format!("{marker}\n{text}");
         }
+        if let Some(section) = self.performance_text.clone()
+            && let Some(prefix) = text.strip_suffix(&section)
+        {
+            self.preserve_numeric_metadata = true;
+            let prefix = self.text(prefix);
+            let prefix = self.text(&prefix);
+            self.preserve_numeric_metadata = false;
+            return format!("{marker}\n{prefix}{section}");
+        }
         self.preserve_numeric_metadata = true;
-        self.final_analytic_text = self.performance_prepared;
         let text = self.text(text);
         let rendered = format!("{marker}\n{}", self.text(&text));
         self.preserve_numeric_metadata = false;
-        self.final_analytic_text = false;
         rendered
     }
 }
@@ -856,8 +877,8 @@ pub fn set_metadata(metadata: Value, comments: bool) {
 pub fn text_metadata() -> String {
     STATE.with(|state| {
         state
-            .borrow()
-            .as_ref()
+            .borrow_mut()
+            .as_mut()
             .map(|s| s.metadata_text(false))
             .unwrap_or_default()
     })
@@ -866,8 +887,8 @@ pub fn text_metadata() -> String {
 pub fn report_prefix() -> String {
     STATE.with(|state| {
         state
-            .borrow()
-            .as_ref()
+            .borrow_mut()
+            .as_mut()
             .map(|s| {
                 format!(
                     "{}{}",
@@ -941,7 +962,6 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
             restore_performance_metadata(&value, &mut redacted, "");
             *results = serde_json::from_value(redacted)
                 .expect("source redaction preserves typed performance metadata");
-            state.performance_prepared = true;
         }
     });
 }

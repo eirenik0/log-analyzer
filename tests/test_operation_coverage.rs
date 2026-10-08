@@ -525,3 +525,58 @@ fn a_later_tied_lifecycle_does_not_discard_established_sequential_pairs() {
         logs.reverse();
     }
 }
+
+#[test]
+fn late_profile_and_normalization_diagnostics_remain_masked_in_performance_reports() {
+    use log_analyzer::normalize::NormalizationRules;
+    use std::collections::BTreeMap;
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("input.jsonl");
+    let config_file = dir.path().join("config.toml");
+    let mut config = config::load_builtin_template("eyes").unwrap();
+    config.profile_name = "late-id".into();
+    config.normalization = Some(NormalizationRules {
+        root_path: "/late-id".into(),
+        expand_rows: true,
+        fields: BTreeMap::from([
+            ("timestamp".into(), "/time".into()),
+            ("message".into(), "/message".into()),
+            ("component".into(), "/component".into()),
+            ("component_id".into(), "/scope".into()),
+        ]),
+        ..Default::default()
+    });
+    fs::write(&config_file, toml::to_string(&config).unwrap()).unwrap();
+    let payload = serde_json::json!({"key":"late-id"});
+    let rows = serde_json::json!({"late-id":[
+        {"time":"2026-01-01T00:00:00Z","scope":"demo","component":"core","message":format!("Received event of type {{\"name\":\"work\"}} with payload {payload}")},
+        {"time":"2026-01-01T00:00:01Z","scope":"demo","component":"core","message":format!("Emit event of type \"work\" with payload {payload}")},
+        {"time":null,"message":"invalid timestamp"}
+    ]});
+    fs::write(&file, rows.to_string()).unwrap();
+    for format in ["text", "json"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+            .arg("--config")
+            .arg(&config_file)
+            .args([
+                "--redact",
+                "--mask-id",
+                "correlation_id",
+                "-F",
+                format,
+                "perf",
+            ])
+            .arg(&file)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(!text.contains("late-id"), "{text}");
+        assert!(text.contains("[MASKED_ID:"), "{text}");
+        assert!(text.contains("observed_pairs"));
+    }
+}
