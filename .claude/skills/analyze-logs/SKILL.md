@@ -333,3 +333,12 @@ Filter semantics:
 - **Components**: All log sources in the input log file(s)
 - **Event Types**: Categorized operations
 - **Timeline**: Distribution of events over time across the merged input timeline
+
+### Evidence identity
+
+Use the shared [evidence contract](../../../docs/design/evidence-contract.md)
+and published schemas. Verify input/profile identities before reusing citations.
+Source references survive selection, sorting and compaction; aggregate counts
+need record retrieval. Describe trace spans and legacy error span estimates with
+their declared semantics. Keep observations, measurements, hypotheses, contrary
+evidence and unknowns distinct in investigation findings.

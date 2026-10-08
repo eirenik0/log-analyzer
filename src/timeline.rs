@@ -231,6 +231,7 @@ pub fn analyze(
                 }
                 .into(),
                 source: SourceLocation {
+                    evidence_ref: None,
                     file: entry.source_file.clone(),
                     line: entry.source_line_number,
                     row_path: entry.source_row_path.clone(),

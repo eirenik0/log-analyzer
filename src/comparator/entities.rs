@@ -51,6 +51,8 @@ pub struct LogComparison {
     pub json_differences: Vec<JsonDifference>,
     pub text1: Option<String>,
     pub text2: Option<String>,
+    pub log1_source: crate::perf_analyzer::SourceLocation,
+    pub log2_source: crate::perf_analyzer::SourceLocation,
     pub log1_line_number: usize,
     pub log2_line_number: usize,
     pub log1_payload: Option<Value>,

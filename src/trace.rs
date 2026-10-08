@@ -192,6 +192,8 @@ pub fn format_trace_json(entries: &[&LogEntry], selector: &TraceSelector) -> Str
                 "raw_logline": entry.raw_logline,
                 "module_path": entry.module_path,
                 "structured_fields": entry.structured_fields,
+                "timestamp_year_source": if entry.timestamp_year_inferred {"inferred"} else {"source"},
+                "timestamp_offset_source": if entry.source_timestamp.is_some() {"source"} else {"local_assumption"},
                 "source_line_number": entry.source_line_number,
                 "source_file": entry.source_file,
                 "source_row_path": entry.source_row_path,

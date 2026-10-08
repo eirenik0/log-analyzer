@@ -17,6 +17,8 @@ aho-corasick = "1.1"
 unicode-segmentation = "1.12"
 thiserror = "2.0"
 toml = "0.8"
+sha2 = "0.10"
 
 [dev-dependencies]
+jsonschema = { version = "0.58.6", default-features = false }
 tempfile = "3.24"

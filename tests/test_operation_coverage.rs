@@ -390,7 +390,9 @@ fn explicitly_selected_input_status_is_masked_without_changing_coverage_status()
             .unwrap();
         assert!(output.status.success());
         let text = String::from_utf8(output.stdout).unwrap();
-        assert!(!text.contains("701"), "{text}");
+        if format == "text" {
+            assert!(!text.contains("701"), "{text}");
+        }
         if format == "json" {
             let value: Value = serde_json::from_str(&text).unwrap();
             assert!(
@@ -399,6 +401,55 @@ fn explicitly_selected_input_status_is_masked_without_changing_coverage_status()
                     .unwrap()
                     .starts_with("[MASKED_ID:")
             );
+            // A short numeric ID can occur by chance inside generated hashes.
+            // Keep the whole-content leak check after excluding only SHA-256 values.
+            fn check_content(value: &Value, path: &str) {
+                let leaf = path.rsplit('.').next().unwrap_or(path);
+                let generated_digest = path == "report_metadata.build.source_revision"
+                    || path == "coverage.files.snapshot_sha256"
+                    || (path.starts_with("report_metadata.evidence.")
+                        && matches!(
+                            leaf,
+                            "input_id"
+                                | "snapshot_id"
+                                | "profile_sha256"
+                                | "query_sha256"
+                                | "sha256"
+                                | "snapshot_sha256"
+                                | "os_bytes_sha256"
+                        ))
+                    || (path.contains(".evidence_ref.")
+                        && matches!(leaf, "input_id" | "reference_id"));
+                if generated_digest {
+                    let revision = path == "report_metadata.build.source_revision";
+                    if revision && value.is_null() {
+                        return;
+                    }
+                    let digest = value.as_str().unwrap();
+                    assert_eq!(digest.len(), if revision { 40 } else { 64 });
+                    assert!(
+                        digest
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    );
+                    return;
+                }
+                match value {
+                    Value::Object(map) => {
+                        for (key, value) in map {
+                            assert!(!key.contains("701"), "{key}");
+                            check_content(value, &format!("{path}.{key}"));
+                        }
+                    }
+                    Value::Array(items) => items.iter().for_each(|item| check_content(item, path)),
+                    other => assert!(!other.to_string().contains("701"), "{other}"),
+                }
+            }
+            // Start without a dot so exceptions match generated metadata paths exactly.
+            for (key, item) in value.as_object().unwrap() {
+                assert!(!key.contains("701"), "{key}");
+                check_content(item, key);
+            }
             assert_eq!(value["operation_coverage"]["status"], "observed_pairs");
         } else {
             assert!(text.contains("Operation coverage: observed_pairs"));
