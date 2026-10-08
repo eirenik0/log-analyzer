@@ -757,6 +757,11 @@ fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
         "inspected phase=started status=completed",
         "inspected status=(completed)",
         "inspected status = not completed",
+        "inspected status=was completed",
+        "inspected status=is completed",
+        "inspected status=has already completed",
+        "inspected status=had been completed",
+        "inspected status=got completed",
         "inspected status=never completed",
         "inspected status=not-yet completed",
         "inspected status=never-successfully completed",
@@ -791,6 +796,9 @@ fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
         "status=settings completed",
         "completed: note='started?'",
         "completed: 'did it start?'",
+        "note='not completed' completed",
+        "status='was completed' completed",
+        "note='probably completed' completed",
     ] {
         let start = parse(r#"Operation "work" started"#, 0, &config);
         let end = parse(&format!("Operation \"work\" {body}"), 1, &config);
@@ -903,6 +911,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "never started",
         "did not begin",
         "status = not started",
+        "status=was started",
         "is yet to be started",
         "is scheduled to be started",
         "is unlikely to have started",

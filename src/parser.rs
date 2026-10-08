@@ -1148,27 +1148,52 @@ fn metadata_assignment_spans(
         let value = text[index + ch.len_utf8()..].trim_start();
         let value_start = text.len() - value.len();
         let quote = quotes.partition_point(|span| span.end <= value_start);
-        let value_end = quotes
-            .get(quote)
-            .filter(|span| span.contains(&value_start))
-            .map_or_else(
-                || {
-                    value
-                        .char_indices()
-                        .find_map(|(offset, ch)| {
-                            (ch.is_whitespace() || matches!(ch, ',' | ';'))
-                                .then_some(value_start + offset)
-                        })
-                        .unwrap_or(text.len())
-                },
-                |span| span.end.min(text.len()),
-            );
+        let quoted_value = quotes.get(quote).filter(|span| span.contains(&value_start));
+        let value_end = quoted_value.map_or_else(
+            || {
+                value
+                    .char_indices()
+                    .find_map(|(offset, ch)| {
+                        (ch.is_whitespace() || matches!(ch, ',' | ';'))
+                            .then_some(value_start + offset)
+                    })
+                    .unwrap_or(text.len())
+            },
+            |span| span.end.min(text.len()),
+        );
         let first_word = value[..value_end - value_start]
             .trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
             .to_lowercase();
-        let value_end = if lifecycle_words(&first_word)
-            .any(|word| matches!(word, "not" | "no" | "to" | "only") || lifecycle_qualifier(word))
-            || value.starts_with('(')
+        let value_end = if quoted_value.is_none()
+            && (lifecycle_words(&first_word).any(|word| {
+                matches!(
+                    word,
+                    "not"
+                        | "no"
+                        | "to"
+                        | "only"
+                        | "is"
+                        | "was"
+                        | "were"
+                        | "are"
+                        | "am"
+                        | "has"
+                        | "had"
+                        | "have"
+                        | "be"
+                        | "been"
+                        | "being"
+                        | "got"
+                        | "get"
+                        | "gets"
+                        | "getting"
+                        | "became"
+                        | "become"
+                        | "becomes"
+                        | "remains"
+                        | "remain"
+                ) || lifecycle_qualifier(word)
+            }) || value.starts_with('('))
         {
             // A qualified multiword value cannot expose a later phase word.
             value
