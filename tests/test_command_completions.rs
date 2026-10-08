@@ -444,3 +444,103 @@ fn multiple_valid_subjects_cannot_attribute_a_completion_to_the_first_command() 
     assert_eq!(result.orphans.len(), 1);
     assert_eq!(result.orphans[0].name, "old");
 }
+
+#[test]
+fn configured_unfinished_payloads_keep_command_looking_values_opaque() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for payload in [
+        r#"{note:'Operation "work" completed'"#,
+        r#"[{note:'Operation "work" completed'}"#,
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let request = parse(
+            &format!("Request \"fetch\" [0--request] sent with body {payload}"),
+            1,
+            &config,
+        );
+        assert!(
+            matches!(request.kind, LogEntryKind::Request { .. }),
+            "{:?}",
+            request.kind
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, request, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{payload}");
+        assert!(result.orphans.iter().any(|orphan| orphan.name == "work"));
+        let generic = parse(&format!("payload {payload}"), 0, &config);
+        assert!(matches!(generic.kind, LogEntryKind::Generic { .. }));
+    }
+    let start = parse(
+        r#"context with body {} Operation "work" started"#,
+        0,
+        &config,
+    );
+    let end = parse(
+        r#"context with body {} Operation "work" completed"#,
+        1,
+        &config,
+    );
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, end],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert_eq!(result.operations.len(), 1);
+}
+
+#[test]
+fn unfinished_json_like_payloads_are_opaque_without_configured_marker_words() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for payload in [
+        r#"{note:'Operation "work" completed'"#,
+        r#"{"note":'Operation "work" completed'"#,
+        r#"['Operation "work" completed'"#,
+        r#"[[{note:'Operation "work" completed'}"#,
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let request = parse(
+            &format!("Request \"fetch\" [0--request] sent {payload}"),
+            1,
+            &config,
+        );
+        assert!(
+            matches!(request.kind, LogEntryKind::Request { .. }),
+            "{payload}: {:?}",
+            request.kind
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, request],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty());
+    }
+}
+
+#[test]
+fn braces_inside_command_names_cannot_hide_another_subject() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let start = parse(r#"Operation "{" started"#, 0, &config);
+    assert!(matches!(&start.kind,LogEntryKind::Command {command,..} if command=="{"));
+    let ambiguous = parse(
+        r#"previous=Operation "{" Operation "work" completed"#,
+        1,
+        &config,
+    );
+    assert!(matches!(ambiguous.kind, LogEntryKind::Generic { .. }));
+    let other = parse(r#"Operation "other" completed"#, 2, &config);
+    let result = perf_analyzer::analyze_performance_with_config(
+        &[start, ambiguous, other],
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert!(result.operations.is_empty());
+}

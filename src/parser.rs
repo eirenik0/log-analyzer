@@ -886,7 +886,11 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
         return None;
     }
     let spans = balanced_json_spans(message);
+    let unfinished_payload = unfinished_payload_start(message, rules, &spans);
     let mut candidates = message.match_indices(prefix).filter_map(|(start, _)| {
+        if unfinished_payload.is_some_and(|boundary| start >= boundary) {
+            return None;
+        }
         let index = spans.partition_point(|span| span.end <= start);
         if spans.get(index).is_some_and(|span| span.contains(&start)) {
             return None;
@@ -898,6 +902,37 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
         return None;
     }
     Some(candidate)
+}
+
+fn unfinished_payload_start(
+    message: &str,
+    rules: &ParserRules,
+    spans: &[std::ops::Range<usize>],
+) -> Option<usize> {
+    let openers: Vec<_> = message
+        .char_indices()
+        .filter_map(|(index, ch)| matches!(ch, '{' | '[').then_some(index))
+        .collect();
+    let mut boundary = None;
+    for marker in rules
+        .command_payload_markers
+        .iter()
+        .chain(&rules.request_payload_markers)
+        .filter(|marker| !marker.is_empty())
+    {
+        for (start, _) in message.match_indices(marker) {
+            let probe = start + marker.len() - usize::from(marker.ends_with(['{', '[']));
+            let index = openers.partition_point(|opener| *opener < probe);
+            if let Some(&opener) = openers.get(index) {
+                let index = spans.partition_point(|span| span.end <= opener);
+                if !spans.get(index).is_some_and(|span| span.contains(&opener)) {
+                    boundary =
+                        Some(boundary.map_or(opener, |previous: usize| previous.min(opener)));
+                }
+            }
+        }
+    }
+    boundary
 }
 
 fn parse_command_candidate(
@@ -1375,12 +1410,45 @@ fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Val
         .map(|value| (value, start_pos + span.end))
 }
 
-// Scan disjoint outer spans once; unmatched opening delimiters do not trigger
+fn looks_like_json_start(input: &str) -> bool {
+    let Some(opener) = input.chars().next() else {
+        return false;
+    };
+    let mut rest = input[opener.len_utf8()..].trim_start();
+    if opener == '[' {
+        while let Some(next) = rest.strip_prefix('[') {
+            rest = next.trim_start();
+        }
+        if rest.starts_with('{') {
+            return looks_like_json_start(rest);
+        }
+        return rest.starts_with(['"', '\'', '+', '-'])
+            || rest.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+            || ["null", "true", "false", "undefined"]
+                .iter()
+                .any(|value| rest.starts_with(value));
+    }
+    if rest.starts_with(['"', '\'', '/']) {
+        return true;
+    }
+    let end = rest
+        .char_indices()
+        .find_map(|(index, ch)| {
+            (!(ch.is_alphanumeric() || matches!(ch, '_' | '$' | '\\'))).then_some(index)
+        })
+        .unwrap_or(rest.len());
+    end > 0 && rest[end..].trim_start().starts_with(':')
+}
+
+// Scan disjoint outer spans once, retaining unfinished JSON-like payloads.
+// Unmatched contextual opening delimiters do not trigger
 // repeated suffix scans. Quotes/comments are significant only inside a span.
 fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
     let mut spans = Vec::new();
     let mut delimiters = Vec::new();
     let mut root_start = 0;
+    let mut outside_quote = None;
+    let mut outside_escape = false;
     let mut string_quote = None;
     let mut escape_next = false;
     let mut characters = input.char_indices().peekable();
@@ -1388,6 +1456,26 @@ fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
     let mut block_comment = false;
     while let Some((index, ch)) = characters.next() {
         if delimiters.is_empty() {
+            if let Some(quote) = outside_quote {
+                if outside_escape {
+                    outside_escape = false;
+                } else if ch == '\\' {
+                    outside_escape = true;
+                } else if ch == quote {
+                    outside_quote = None;
+                }
+                continue;
+            }
+            if ch == '"'
+                || (ch == '\''
+                    && !input[..index]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|previous| previous.is_alphanumeric()))
+            {
+                outside_quote = Some(ch);
+                continue;
+            }
             if matches!(ch, '{' | '[') {
                 root_start = index;
                 delimiters.push(ch);
@@ -1438,6 +1526,9 @@ fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
             }
             _ => {}
         }
+    }
+    if !delimiters.is_empty() && looks_like_json_start(&input[root_start..]) {
+        spans.push(root_start..input.len());
     }
     spans
 }

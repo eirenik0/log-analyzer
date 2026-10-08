@@ -139,7 +139,9 @@ text after the name and before payload delimiters, including malformed or
 unclosed payloads. Names support escaped quotes and
 Unicode. A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
-balanced payload regions (including invalid JSON) are not commands.
+balanced payload regions (including invalid JSON) are not commands. Configured
+command/request payload markers and recognizable JSON-like beginnings also keep
+unfinished payload regions opaque.
 Custom unquoted names retain the legacy `command_start_marker` delimiter; use
 quoted names to recognize completion lines independently of that delimiter.
 
