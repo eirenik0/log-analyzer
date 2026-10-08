@@ -23,6 +23,7 @@ fn make_entry(component: &str, component_id: &str, kind: LogEntryKind) -> LogEnt
         source_file: None,
         envelope_payload: None,
         source_timestamp: None,
+        timestamp_year_inferred: false,
         kind,
         source_line_number: 1,
     }

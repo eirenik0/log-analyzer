@@ -222,7 +222,7 @@ fn text_and_json_label_offsets_assumed_for_naive_timestamps() {
     .unwrap();
     let report = timeline::analyze(&[&entry], &rules()).unwrap().unwrap();
     assert_eq!(report.events[0].timestamp_offset_source, "host_assumed");
-    assert!(timeline::format_text(&report).contains("[offset: host_assumed]"));
+    assert!(timeline::format_text(&report).contains("[offset: host_assumed; year: source]"));
     assert!(
         serde_json::to_string(&report)
             .unwrap()
@@ -266,4 +266,54 @@ fn absent_configured_pairs_are_reported_as_unavailable() {
         serde_json::to_value(&report).unwrap()["pair_coverage"]["heartbeat"]["status"],
         "no_applicable_events"
     );
+}
+
+#[test]
+fn yearless_syslog_cannot_produce_measured_or_capture_durations() {
+    let configured = TimelineRules {
+        events: ["begin", "response"]
+            .iter()
+            .map(|name| EventRule {
+                name: name.to_string(),
+                pattern: format!("{name} id=(?P<id>\\w+)"),
+                correlation_fields: vec!["id".into()],
+            })
+            .collect(),
+        pairs: vec![PairRule {
+            name: "fetch".into(),
+            start_event: "begin".into(),
+            end_event: "response".into(),
+            timing: Timing::Measured,
+        }],
+    };
+    let logs = [
+        "Dec 31 23:59:59 host worker[1]: begin id=a",
+        "Jan  1 00:00:01 host worker[1]: response id=a",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, line)| parse_log_entry_with_config(line, i + 1, &AnalyzerConfig::default()).unwrap())
+    .collect::<Vec<_>>();
+    assert!(logs.iter().all(|entry| entry.timestamp_year_inferred));
+    let report = timeline::analyze(&logs.iter().collect::<Vec<_>>(), &configured)
+        .unwrap()
+        .unwrap();
+    assert!(report.capture_window.is_none());
+    assert!(report.elapsed_capture_ms.is_none());
+    assert!(report.measured_work_sum_ms.is_none());
+    assert!(report.intervals.is_empty());
+    assert_eq!(report.incomplete.len(), 2);
+    assert!(
+        report
+            .incomplete
+            .iter()
+            .all(|item| item.reason == "incomplete_timestamp_year")
+    );
+    assert!(
+        report
+            .events
+            .iter()
+            .all(|event| event.gap_since_previous_match_ms.is_none())
+    );
+    assert!(timeline::format_text(&report).contains("year: inferred_year"));
 }

@@ -42,6 +42,7 @@ pub struct TimelineEvent {
     pub key: Option<Vec<String>>,
     pub timestamp: DateTime<FixedOffset>,
     pub timestamp_offset_source: String,
+    pub timestamp_year_source: String,
     pub source: SourceLocation,
     pub raw: String,
     pub gap_since_previous_match_ms: Option<i64>,
@@ -148,11 +149,14 @@ pub fn analyze(
             ));
         }
     }
-    let capture_window = logs
-        .iter()
-        .map(|e| evidence_timestamp(e))
-        .min()
-        .zip(logs.iter().map(|e| evidence_timestamp(e)).max());
+    let capture_window = if logs.iter().any(|entry| entry.timestamp_year_inferred) {
+        None
+    } else {
+        logs.iter()
+            .map(|e| evidence_timestamp(e))
+            .min()
+            .zip(logs.iter().map(|e| evidence_timestamp(e)).max())
+    };
     let mut report = TimelineReport {
         status: "no_applicable_events".into(),
         events: Vec::new(),
@@ -215,6 +219,12 @@ pub fn analyze(
                     "host_assumed"
                 }
                 .into(),
+                timestamp_year_source: if entry.timestamp_year_inferred {
+                    "inferred_year"
+                } else {
+                    "source"
+                }
+                .into(),
                 source: SourceLocation {
                     file: entry.source_file.clone(),
                     line: entry.source_line_number,
@@ -224,16 +234,31 @@ pub fn analyze(
             });
         }
     }
-    report.events.sort_by_key(|e| e.timestamp);
+    if report
+        .events
+        .iter()
+        .all(|event| event.timestamp_year_source == "source")
+    {
+        report.events.sort_by_key(|e| e.timestamp);
+    } else {
+        report.events.sort_by(|a, b| {
+            a.source
+                .file
+                .cmp(&b.source.file)
+                .then_with(|| a.source.line.cmp(&b.source.line))
+        });
+    }
     let mut previous = None;
     for event in &mut report.events {
-        event.gap_since_previous_match_ms = previous.map(|time| {
-            event
-                .timestamp
-                .signed_duration_since(time)
-                .num_milliseconds()
-        });
-        previous = Some(event.timestamp);
+        event.gap_since_previous_match_ms = previous
+            .filter(|_| event.timestamp_year_source == "source")
+            .map(|time| {
+                event
+                    .timestamp
+                    .signed_duration_since(time)
+                    .num_milliseconds()
+            });
+        previous = (event.timestamp_year_source == "source").then_some(event.timestamp);
     }
     for pair in &rules.pairs {
         let mut groups: BTreeMap<Vec<String>, Vec<&TimelineEvent>> = BTreeMap::new();
@@ -251,7 +276,21 @@ pub fn analyze(
                 });
             }
         }
-        for (key, events) in groups {
+        for (key, mut events) in groups {
+            if events
+                .iter()
+                .any(|event| event.timestamp_year_source != "source")
+            {
+                for event in events {
+                    report.incomplete.push(IncompleteInterval {
+                        pair: pair.name.clone(),
+                        event: event.clone(),
+                        reason: "incomplete_timestamp_year".into(),
+                    });
+                }
+                continue;
+            }
+            events.sort_by_key(|event| event.timestamp);
             let mut active = false;
             let shared_boundary = events.windows(2).any(|pair| {
                 pair[0].timestamp == pair[1].timestamp
@@ -389,9 +428,10 @@ pub fn format_text(report: &TimelineReport) -> String {
     for event in &report.events {
         let _ = writeln!(
             out,
-            "{} [offset: {}] {} {:?}; gap since previous matched event {:?}ms at {}:{}",
+            "{} [offset: {}; year: {}] {} {:?}; gap since previous matched event {:?}ms at {}:{}",
             event.timestamp.to_rfc3339(),
             event.timestamp_offset_source,
+            event.timestamp_year_source,
             event.event_type,
             event.key,
             event.gap_since_previous_match_ms,

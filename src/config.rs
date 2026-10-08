@@ -668,6 +668,7 @@ mod tests {
             source_file: None,
             envelope_payload: None,
             source_timestamp: None,
+            timestamp_year_inferred: false,
             kind: LogEntryKind::Command {
                 command: command.to_string(),
                 settings,
@@ -689,6 +690,7 @@ mod tests {
             source_file: None,
             envelope_payload: None,
             source_timestamp: None,
+            timestamp_year_inferred: false,
             kind: LogEntryKind::Generic { payload: None },
             source_line_number: 1,
         }

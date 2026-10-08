@@ -635,6 +635,11 @@ fn build_log_entry(
     )?;
 
     entry.source_timestamp = DateTime::parse_from_rfc3339(source_timestamp).ok();
+    entry.timestamp_year_inferred = !source_timestamp
+        .trim()
+        .as_bytes()
+        .get(..4)
+        .is_some_and(|year| year.iter().all(u8::is_ascii_digit));
     entry.envelope_payload = payload_override.clone();
     if let Some(payload) = payload_override {
         let existing = match &mut entry.kind {
