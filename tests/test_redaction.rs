@@ -664,3 +664,66 @@ fn nested_sensitive_paths_and_masked_extracts_keep_context() {
         "[REDACTED OUTPUT]\n1\n"
     );
 }
+
+#[test]
+fn complete_unquoted_scalars_and_raw_placeholder_like_ids_are_redacted() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("scalars.jsonl");
+    let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":"https://example.test/?token=query-secret&request_id=allowed token=[prefix]bracket-secret token=[1]array-suffix-secret token=prefix,comma-secret token=prefix&amp-secret token=[REDACTED]suffix-secret token={\"a\":1}object-suffix-secret", "payload":{"request_id":"[MASKED_ID:1]-customer-42"}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    for format in ["text", "json"] {
+        let output = run(&[
+            "--redact",
+            "--mask-id",
+            "request_id",
+            "-F",
+            format,
+            "search",
+            file.to_str().unwrap(),
+            "--payloads",
+        ]);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        for secret in [
+            "bracket-secret",
+            "array-suffix-secret",
+            "object-suffix-secret",
+            "comma-secret",
+            "amp-secret",
+            "suffix-secret",
+            "query-secret",
+            "customer-42",
+        ] {
+            assert!(!text.contains(secret), "{text}");
+        }
+        assert!(text.contains("example.test"));
+    }
+}
+
+#[test]
+fn overlapping_known_ids_use_the_complete_stable_mask() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("overlap.jsonl");
+    let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":"received answer for 123.456 and 123", "payload":{"request_id":"123","trace_id":"123.456"}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "--mask-id",
+        "trace_id",
+        "-F",
+        "json",
+        "search",
+        file.to_str().unwrap(),
+        "--payloads",
+    ]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let entry = &report["search"]["entries"][0];
+    assert_eq!(
+        entry["message"],
+        "received answer for [MASKED_ID:2] and [MASKED_ID:1]"
+    );
+    assert_eq!(entry["payload"]["trace_id"], "[MASKED_ID:2]");
+}

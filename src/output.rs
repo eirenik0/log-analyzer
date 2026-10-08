@@ -135,28 +135,42 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8(decoded).unwrap_or_else(|_| text.to_string())
 }
 
+fn field_matches(key: &str, field: &str) -> bool {
+    let decoded = percent_decode(key);
+    let segments: Vec<_> = decoded.split('.').collect();
+    (0..segments.len()).any(|start| canonical(&segments[start..].join(".")) == canonical(field))
+}
+
 impl OutputState {
     fn replacement(&mut self, key: &str, value: &str) -> Option<String> {
         let decoded = percent_decode(key);
         let leaf = canonical(decoded.rsplit('.').next().unwrap_or(&decoded));
-        let segments: Vec<_> = decoded.split('.').collect();
-        let matches_field = |field: &str| {
-            (0..segments.len())
-                .any(|start| canonical(&segments[start..].join(".")) == canonical(field))
-        };
+
         if (leaf == "id" || leaf == "correlationid")
             && let Some(replacement) = self.masked_values.get(value)
         {
             return Some(replacement.clone());
         }
-        if self.mask_ids.iter().any(|field| matches_field(field)) {
+        if self.mask_ids.iter().any(|field| field_matches(key, field)) {
             if value == "null" || value.is_empty() {
                 return None;
             }
-            if value.starts_with("[MASKED_ID:") {
+            if self
+                .masked_values
+                .values()
+                .any(|generated| generated == value)
+            {
                 return Some(value.to_string());
             }
-            let next = self.masked_values.len() + 1;
+            let mut next = self.masked_values.len() + 1;
+            while format!("[MASKED_ID:{next}]") == value
+                || self
+                    .masked_values
+                    .values()
+                    .any(|generated| generated == &format!("[MASKED_ID:{next}]"))
+            {
+                next += 1;
+            }
             return Some(
                 self.masked_values
                     .entry(value.to_string())
@@ -166,7 +180,7 @@ impl OutputState {
         }
         SECRET_FIELDS
             .iter()
-            .any(|field| matches_field(field))
+            .any(|field| field_matches(key, field))
             .then(|| "[REDACTED]".into())
     }
 
@@ -228,6 +242,25 @@ impl OutputState {
                 static FIELD: LazyLock<Regex> = LazyLock::new(|| {
                     Regex::new(r#"([A-Za-z_][A-Za-z0-9_.-]*)(["']?\s*[:=]\s*)$"#).unwrap()
                 });
+                let sensitive_prefix = FIELD.captures(prefix).is_some_and(|captures| {
+                    SECRET_FIELDS
+                        .iter()
+                        .any(|field| field_matches(&captures[1], field))
+                        || self
+                            .mask_ids
+                            .iter()
+                            .any(|field| field_matches(&captures[1], field))
+                });
+                if sensitive_prefix
+                    && text[end..]
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| !ch.is_whitespace())
+                {
+                    // A JSON-looking prefix with attached characters is still one scalar token.
+                    search = start + ch.len_utf8();
+                    continue;
+                }
                 let replacement = FIELD.captures(prefix).and_then(|captures| {
                     self.replacement(&captures[1], &value.to_string())
                         .map(|replacement| {
@@ -270,10 +303,10 @@ impl OutputState {
         });
         // Also handle log-style key=value and JSON5-style key: value fragments.
         static ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
-            Regex::new(r#"(?i)([A-Za-z_][A-Za-z0-9_.-]*)([\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,}\]]+)"#).unwrap()
+            Regex::new(r#"(?i)([A-Za-z_][A-Za-z0-9_.-]*)([\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s]+)"#).unwrap()
         });
         static HEADER: LazyLock<Regex> = LazyLock::new(|| {
-            Regex::new(r#"(?i)\b(authorization|auth|cookie|set[_-]cookie)(["']?[ \t]*[:=][ \t]*)([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)"#).unwrap()
+            Regex::new(r#"(?i)\b(authorization|auth|cookie|set[_.-]?cookie)(["']?[ \t]*[:=][ \t]*)([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)"#).unwrap()
         });
         let out = HEADER.replace_all(&out, |captures: &regex::Captures<'_>| {
             format!("{}{}[REDACTED]", &captures[1], &captures[2])
@@ -282,7 +315,16 @@ impl OutputState {
         let text = assignment
             .replace_all(&out, |captures: &regex::Captures<'_>| {
                 let raw = &captures[3];
-                if raw.starts_with("[REDACTED") || raw.starts_with("[MASKED_ID:") {
+                let start = captures.get(0).unwrap().start();
+                let previous = out[..start].chars().next_back();
+                // URL query values were already handled with their own delimiters.
+                if matches!(previous, Some('?') | Some('&'))
+                    || raw == "[REDACTED]"
+                    || self
+                        .masked_values
+                        .values()
+                        .any(|generated| generated == raw)
+                {
                     return captures[0].to_string();
                 }
                 let value = serde_json::from_str::<Value>(raw)
@@ -308,7 +350,9 @@ impl OutputState {
         static PLACEHOLDER: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"\[(?:MASKED_ID:\d+|REDACTED)\]").unwrap());
         let mut text = text.to_string();
-        for (original, replacement) in &self.masked_values {
+        let mut values: Vec<_> = self.masked_values.iter().collect();
+        values.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then_with(|| a.0.cmp(b.0)));
+        for (original, replacement) in values {
             // Preserve existing placeholders while masking known identifiers in prose.
             if original.is_empty() {
                 continue;
