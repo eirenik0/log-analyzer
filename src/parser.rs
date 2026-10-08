@@ -1135,7 +1135,11 @@ pub(crate) fn command_lifecycle_message<'a>(
     let mut words = lifecycle_words(&context);
     let interrogative = words.next().is_some_and(auxiliary_question)
         || words.last().is_some_and(auxiliary_question);
-    if interrogative || crate::perf_analyzer::marker_is_nonaffirmative(&context) {
+    if interrogative
+        || crate::perf_analyzer::marker_is_nonaffirmative(
+            context.trim_end_matches(|ch: char| ch.is_whitespace() || matches!(ch, ',' | ';')),
+        )
+    {
         std::borrow::Cow::Borrowed("")
     } else {
         body
@@ -1187,7 +1191,15 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
                 .then_some(index)
         })
         .unwrap_or(end);
-    let question_tail = end < payload_end && lifecycle_question(&body[end..payload_end]);
+    let question_tail = end < payload_end
+        && (lifecycle_question(&body[end..payload_end])
+            || body[end..payload_end]
+                .trim_start_matches(':')
+                .split_whitespace()
+                .next()
+                .is_some_and(|word| {
+                    matches!(word.to_lowercase().as_str(), "not" | "never" | "cannot")
+                }));
     let body = &body[..end];
     let excluded = finish_spans(
         quotes

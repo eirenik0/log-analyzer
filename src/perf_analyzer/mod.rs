@@ -44,35 +44,38 @@ fn marker_has_trailing_condition(suffix: &str) -> bool {
     let words: Vec<_> = crate::parser::lifecycle_words(clause)
         .map(str::to_lowercase)
         .collect();
-    words.iter().any(|word| {
-        matches!(
-            word.as_str(),
-            "or" | "versus"
-                | "vs"
-                | "alternatively"
-                | "if"
-                | "unless"
-                | "when"
-                | "whenever"
-                | "once"
-                | "until"
-                | "provided"
-                | "providing"
-                | "assuming"
-                | "conditionally"
-                | "depending"
-                | "contingent"
-                | "subject"
-                | "given"
-                | "insofar"
-        ) || crate::parser::lifecycle_uncertainty(word)
-    }) || words.windows(2).any(|pair| {
-        (pair[0] == "only" && matches!(pair[1].as_str(), "after" | "upon"))
-            || (pair[0] == "in" && pair[1] == "case")
-            || (pair[0] == "on" && pair[1] == "condition")
-    }) || words
-        .windows(3)
-        .any(|phrase| phrase == ["as", "soon", "as"])
+    marker_is_nonaffirmative(clause)
+        || words.iter().any(|word| {
+            matches!(
+                word.as_str(),
+                "or" | "versus"
+                    | "vs"
+                    | "alternatively"
+                    | "if"
+                    | "unless"
+                    | "when"
+                    | "whenever"
+                    | "once"
+                    | "until"
+                    | "provided"
+                    | "providing"
+                    | "assuming"
+                    | "conditionally"
+                    | "depending"
+                    | "contingent"
+                    | "subject"
+                    | "given"
+                    | "insofar"
+            ) || crate::parser::lifecycle_uncertainty(word)
+        })
+        || words.windows(2).any(|pair| {
+            (pair[0] == "only" && matches!(pair[1].as_str(), "after" | "upon"))
+                || (pair[0] == "in" && pair[1] == "case")
+                || (pair[0] == "on" && pair[1] == "condition")
+        })
+        || words
+            .windows(3)
+            .any(|phrase| phrase == ["as", "soon", "as"])
 }
 
 pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
@@ -142,7 +145,14 @@ pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
     }) || words[start..].iter().enumerate().any(|(offset, word)| {
         let index = start + offset;
         (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
-            || crate::parser::lifecycle_qualifier(word)
+            || (crate::parser::lifecycle_qualifier(word)
+                && !(word == "without"
+                    && words.get(index + 1).is_some_and(|next| {
+                        matches!(
+                            next.as_str(),
+                            "errors" | "issues" | "problems" | "failures" | "delay"
+                        )
+                    })))
             || (word == "no"
                 && (index + 1 == words.len()
                     || words.get(index + 1).is_some_and(|next| {
