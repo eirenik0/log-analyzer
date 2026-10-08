@@ -13,6 +13,7 @@ fn main() {
         "Cargo.toml",
         "Cargo.lock",
         "src",
+        "schemas",
         "tests",
         "config",
         "README.md",

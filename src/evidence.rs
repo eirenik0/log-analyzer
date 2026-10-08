@@ -34,6 +34,57 @@ pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+/// Non-UTF-8 source labels retain a readable display and a distinct byte identity.
+/// Escape valid labels beginning with @ so they cannot impersonate encoded labels.
+pub(crate) fn path_label(path: &std::path::Path) -> String {
+    match path.to_str() {
+        Some(text) if text.starts_with('@') => format!("@utf8:{text}"),
+        Some(text) => text.into(),
+        None => format!(
+            "@os-bytes:{}:{}",
+            digest(path.as_os_str().as_encoded_bytes()),
+            path.to_string_lossy()
+        ),
+    }
+}
+
+/// Preserve normal paths; non-UTF-8 paths expose a safe display and byte identity.
+fn path_value(path: &std::path::Path) -> Value {
+    match path.to_str() {
+        Some(path) => json!(path),
+        None => {
+            json!({"file":path_label(path),"os_bytes_sha256":digest(path.as_os_str().as_encoded_bytes())})
+        }
+    }
+}
+
+pub(crate) fn serialize_path<S: serde::Serializer>(
+    path: &std::path::Path,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serde::Serialize::serialize(&path_value(path), serializer)
+}
+
+pub(crate) fn serialize_paths<S: serde::Serializer>(
+    paths: &[std::path::PathBuf],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serde::Serialize::serialize(
+        &paths
+            .iter()
+            .map(|path| path_value(path))
+            .collect::<Vec<_>>(),
+        serializer,
+    )
+}
+
+pub(crate) fn serialize_optional_path<S: serde::Serializer>(
+    path: &Option<std::path::PathBuf>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serde::Serialize::serialize(&path.as_deref().map(path_value), serializer)
+}
+
 /// Hash exactly the byte stream consumed by the parser, including line endings.
 pub(crate) struct SnapshotReader<R> {
     inner: R,

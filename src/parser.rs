@@ -167,7 +167,7 @@ pub fn parse_log_file_report(
     };
     let file = File::open(path)?;
     let mut coverage = ParseCoverage {
-        file: path.display().to_string(),
+        file: crate::evidence::path_label(path),
         profile: config.profile_name.clone(),
         configured_parser: config.parser.format,
         selected_parser: format,
@@ -199,7 +199,7 @@ pub fn parse_log_file_report(
                 match parsed {
                     Ok(mut entry) => {
                         entry.normalized_record = Some(entry.raw_logline.clone());
-                        entry.source_file = Some(path.display().to_string());
+                        entry.source_file = Some(crate::evidence::path_label(path));
                         entry.source_row_path = Some(row_path);
                         entry.raw_logline = text.to_string();
                         entries.push(entry);
@@ -219,7 +219,7 @@ pub fn parse_log_file_report(
         }
         match parse_log_entry_in_format(text, line_number, config, format) {
             Ok(mut entry) => {
-                entry.source_file = Some(path.display().to_string());
+                entry.source_file = Some(crate::evidence::path_label(path));
                 entries.push(entry);
             }
             Err(_) => coverage.rejected_candidates += 1,

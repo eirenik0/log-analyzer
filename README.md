@@ -66,7 +66,7 @@ a diagnosis. Format auto-detection samples the first ten nonempty lines.
 
 JSON reports add snapshot-scoped `evidence_ref` citations and shared input,
 profile, query, coverage, redaction and omission semantics under the existing
-`report_metadata.evidence`. Inspect `log-analyzer capabilities` for schema paths
+`report_metadata.evidence`. Inspect `log-analyzer capabilities` for embedded schema documents
 and contract versions. Published [JSON Schemas](schemas/) and the
 [evidence contract](docs/design/evidence-contract.md) document report variants,
 citation resolution, measurement boundaries, changed-input behavior and limits.

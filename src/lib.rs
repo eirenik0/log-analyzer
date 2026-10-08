@@ -336,8 +336,9 @@ fn render_analysis_report(
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli_parse();
+    // Capability schemas are static binary content, never user log data.
     let _output_guard = output::OutputGuard::new(
-        cli.redact,
+        cli.redact && !matches!(&cli.command, Commands::Capabilities),
         &cli.mask_id,
         cli.effective_compact() || matches!(&cli.command, Commands::LlmDiff { .. }),
         (matches!(cli.effective_format(), OutputFormat::Json)

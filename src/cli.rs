@@ -151,6 +151,7 @@ pub struct Cli {
 
     /// Path to output file for results
     #[arg(short, long, global = true, env = "LOG_ANALYZER_OUTPUT")]
+    #[serde(skip_serializing)]
     pub output: Option<PathBuf>,
 
     /// Path to a TOML profile; supports `extends` inheritance
@@ -161,6 +162,7 @@ pub struct Cli {
     /// profiles, counting the child and every parent, including built-ins.
     /// Cycles and unknown parents are errors.
     #[arg(long, global = true, env = "LOG_ANALYZER_CONFIG")]
+    #[serde(skip_serializing)]
     pub config: Option<PathBuf>,
 
     /// Built-in preset/profile to use instead of --config (base, eyes, custom-start, service-api, event-pipeline)
@@ -196,10 +198,11 @@ pub struct Cli {
 
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
-    /// Print build identity, commands, formats, presets and report schema locations as JSON
+    /// Print build identity, commands, formats, presets and embedded report schemas as JSON
     Capabilities,
     /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
     Schema {
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file: PathBuf,
         #[arg(long, default_value="3", value_parser=clap::value_parser!(u32).range(1..=20))]
         samples: u32,
@@ -209,10 +212,12 @@ pub enum Commands {
     Compare {
         /// First log file
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file1: PathBuf,
 
         /// Second log file
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file2: PathBuf,
 
         /// Show only differences, skip matching objects
@@ -232,10 +237,12 @@ pub enum Commands {
     Diff {
         /// First log file
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file1: PathBuf,
 
         /// Second log file
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file2: PathBuf,
 
         /// Show full JSON objects, not just the differences
@@ -252,6 +259,7 @@ pub enum Commands {
     Info {
         /// One or more log files to analyze
         #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
         files: Vec<PathBuf>,
 
         /// Show sample log messages for each component
@@ -275,6 +283,7 @@ pub enum Commands {
     Search {
         /// Log file to search
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file: PathBuf,
 
         /// Show N matching context entries before/after each match
@@ -294,6 +303,7 @@ pub enum Commands {
     Errors {
         /// One or more log files to analyze (supports shell-expanded globs)
         #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
         files: Vec<PathBuf>,
 
         /// Number of clusters to show (0 = all)
@@ -337,6 +347,7 @@ pub enum Commands {
     Extract {
         /// Log file to analyze
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file: PathBuf,
 
         /// Field name/path to extract from payload JSON (supports dot paths, e.g. "foo.bar")
@@ -356,10 +367,12 @@ pub enum Commands {
     LlmDiff {
         /// First log file
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file1: PathBuf,
 
         /// Second log file
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file2: PathBuf,
 
         /// Sort output by given field
@@ -376,6 +389,7 @@ pub enum Commands {
     Process {
         /// Log file to process
         #[arg(required = true)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
         file: PathBuf,
 
         /// Sort output by given field
@@ -398,6 +412,7 @@ pub enum Commands {
     Perf {
         /// One or more log files to analyze
         #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
         files: Vec<PathBuf>,
 
         /// Duration threshold in milliseconds for highlighting slow operations
@@ -425,6 +440,7 @@ pub enum Commands {
     Trace {
         /// One or more log files to search (supports shell-expanded globs)
         #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
         files: Vec<PathBuf>,
 
         /// Correlation/request ID substring to trace (matches raw log lines)
@@ -441,6 +457,7 @@ pub enum Commands {
     GenerateConfig {
         /// One or more log files to analyze (supports shell-expanded globs)
         #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
         files: Vec<PathBuf>,
 
         /// Name for the generated profile
@@ -449,6 +466,7 @@ pub enum Commands {
 
         /// Base template path or built-in name (base, eyes, custom-start, service-api, event-pipeline)
         #[arg(long)]
+        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
         template: Option<PathBuf>,
     },
 }

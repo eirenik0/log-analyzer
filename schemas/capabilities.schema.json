@@ -73,13 +73,61 @@
       "type": "object",
       "properties": {
         "report": {
-          "const": "schemas/report.schema.json"
+          "type": "object",
+          "required": [
+            "$schema",
+            "type",
+            "properties"
+          ],
+          "properties": {
+            "$schema": {
+              "const": "https://json-schema.org/draft/2020-12/schema"
+            },
+            "type": {
+              "const": "object"
+            },
+            "properties": {
+              "type": "object"
+            }
+          }
         },
         "capabilities": {
-          "const": "schemas/capabilities.schema.json"
+          "type": "object",
+          "required": [
+            "$schema",
+            "type",
+            "properties"
+          ],
+          "properties": {
+            "$schema": {
+              "const": "https://json-schema.org/draft/2020-12/schema"
+            },
+            "type": {
+              "const": "object"
+            },
+            "properties": {
+              "type": "object"
+            }
+          }
         },
         "investigation": {
-          "const": "schemas/investigation.schema.json"
+          "type": "object",
+          "required": [
+            "$schema",
+            "type",
+            "properties"
+          ],
+          "properties": {
+            "$schema": {
+              "const": "https://json-schema.org/draft/2020-12/schema"
+            },
+            "type": {
+              "const": "object"
+            },
+            "properties": {
+              "type": "object"
+            }
+          }
         },
         "evidence_contract_version": {
           "const": 1

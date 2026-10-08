@@ -634,3 +634,180 @@ fn normalized_timeline_and_operation_exports_omit_hidden_source_keys() {
         );
     }
 }
+
+#[test]
+fn installed_capabilities_embed_schemas_without_source_files() {
+    let dir = tempdir().unwrap();
+    let caps: Value = serde_json::from_slice(
+        &Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+            .current_dir(dir.path())
+            .arg("capabilities")
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    for (key, text) in [
+        ("report", include_str!("../schemas/report.schema.json")),
+        (
+            "capabilities",
+            include_str!("../schemas/capabilities.schema.json"),
+        ),
+        (
+            "investigation",
+            include_str!("../schemas/investigation.schema.json"),
+        ),
+    ] {
+        assert_eq!(
+            caps["report_schemas"][key],
+            serde_json::from_str::<Value>(text).unwrap()
+        );
+        jsonschema::validator_for(&caps["report_schemas"][key]).unwrap();
+    }
+    for field in [
+        "input_id",
+        "reference_id",
+        "$schema",
+        "properties",
+        "file",
+        "report_schemas",
+        "source_revision",
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+            .current_dir(dir.path())
+            .args(["--redact", "--mask-id", field, "capabilities"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let masked: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(masked, caps);
+        for key in ["report", "capabilities", "investigation"] {
+            jsonschema::validator_for(&masked["report_schemas"][key]).unwrap();
+        }
+    }
+    assert!(jsonschema::is_valid(
+        &caps["report_schemas"]["capabilities"],
+        &caps
+    ));
+    assert!(jsonschema::is_valid(
+        &caps["report_schemas"]["report"],
+        &run(&["-j", "search", &fixture()])
+    ));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn non_utf8_input_and_destination_paths_preserve_query_and_source_identity() {
+    use std::os::unix::ffi::OsStringExt;
+    let dir = tempdir().unwrap();
+    let paths: Vec<_> = [0xfe, 0xff]
+        .into_iter()
+        .map(|byte| {
+            let path = dir.path().join(std::ffi::OsString::from_vec(vec![
+                b'i', byte, b'.', b'l', b'o', b'g',
+            ]));
+            fs::copy(fixture(), &path).unwrap();
+            path
+        })
+        .collect();
+    assert_eq!(paths[0].to_string_lossy(), paths[1].to_string_lossy());
+    let mut reports = Vec::new();
+    for path in &paths {
+        let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+            .args(["-j", "search"])
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        validate(&report);
+        assert!(
+            evidence(&report)["query"]["command"]["Search"]["file"]["os_bytes_sha256"].is_string()
+        );
+        reports.push(report);
+    }
+    assert_ne!(
+        evidence(&reports[0])["query_sha256"],
+        evidence(&reports[1])["query_sha256"]
+    );
+    assert_ne!(
+        evidence(&reports[0])["inputs"][0]["input_id"],
+        evidence(&reports[1])["inputs"][0]["input_id"]
+    );
+    let output_path = dir
+        .path()
+        .join(std::ffi::OsString::from_vec(vec![b'o', 0xff]));
+    let profile_path = dir
+        .path()
+        .join(std::ffi::OsString::from_vec(vec![b'p', 0xff]));
+    fs::write(&profile_path, "extends = 'base'\n").unwrap();
+    let result = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+        .args(["-j", "--output"])
+        .arg(&output_path)
+        .arg("--config")
+        .arg(&profile_path)
+        .arg("search")
+        .arg(&paths[0])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let saved: Value = serde_json::from_slice(&fs::read(&output_path).unwrap()).unwrap();
+    validate(&saved);
+    assert_eq!(
+        evidence(&saved)["query_sha256"],
+        evidence(&reports[0])["query_sha256"]
+    );
+    let merged = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+        .args(["-j", "perf"])
+        .args(&paths)
+        .output()
+        .unwrap();
+    assert!(merged.status.success());
+    let merged: Value = serde_json::from_slice(&merged.stdout).unwrap();
+    validate(&merged);
+    assert_ne!(
+        evidence(&merged)["inputs"][0]["input_id"],
+        evidence(&merged)["inputs"][1]["input_id"]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_cli_paths_serialize_without_filesystem_support() {
+    use clap::Parser;
+    use std::os::unix::ffi::OsStringExt;
+    let path = std::ffi::OsString::from_vec(vec![b'i', 0xff]);
+    let cli = log_analyzer::cli::Cli::try_parse_from([
+        std::ffi::OsString::from("log-analyzer"),
+        "--output".into(),
+        path.clone(),
+        "--config".into(),
+        path.clone(),
+        "search".into(),
+        path.clone(),
+    ])
+    .unwrap();
+    let value = serde_json::to_value(cli).unwrap();
+    assert!(value.get("output").is_none());
+    assert!(value.get("config").is_none());
+    assert!(value["command"]["Search"]["file"]["os_bytes_sha256"].is_string());
+    let cli = log_analyzer::cli::Cli::try_parse_from([
+        std::ffi::OsString::from("log-analyzer"),
+        "generate-config".into(),
+        path.clone(),
+        "--template".into(),
+        path,
+    ])
+    .unwrap();
+    let value = serde_json::to_value(cli).unwrap();
+    assert!(value["command"]["GenerateConfig"]["files"][0]["os_bytes_sha256"].is_string());
+    assert!(value["command"]["GenerateConfig"]["template"]["os_bytes_sha256"].is_string());
+}

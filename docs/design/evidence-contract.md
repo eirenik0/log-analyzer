@@ -11,6 +11,10 @@ Published JSON Schemas are in [`schemas/`](../../schemas):
 compact, redacted, count/row modes and coverage-only unparsed-input output;
 `capabilities.schema.json` covers capability discovery;
 `investigation.schema.json` describes findings produced by a consuming agent.
+The binary embeds all three documents in `capabilities.report_schemas` under
+`report`, `capabilities`, and `investigation`. Installed clients can retrieve them
+from any working directory without source files or network access. Capability
+documents contain static binary content and ignore global redaction/masking flags.
 These schemas describe CLI output, not standalone library formatter calls, which
 do not load an output context. `generate-config` produces TOML, not JSON.
 The conformance tests execute each CLI variant and reject malformed boundaries
@@ -38,7 +42,14 @@ boundaries, and this hash identifies their actual definitions.
 `query` records effective command options and filters; `query_sha256` hashes the
 unredacted query. Rendering, output destination and redaction flags are excluded.
 Profile identity is recorded separately. Presentation limits are query options,
-not evidence identity.
+not evidence identity. Non-UTF-8 command paths use an object containing a lossy
+`file` display and an `os_bytes_sha256` fingerprint of Rust OS-encoded path bytes;
+these fingerprints are platform-specific and distinguish paths with the same
+display. Output and configuration destination paths are never serialized into
+the query. Source-location strings for non-UTF-8 paths use
+`@os-bytes:<fingerprint>:<lossy-display>` so indistinguishable displays remain
+distinct inputs. Valid paths beginning with `@` are escaped with `@utf8:`.
+These labels identify supplied OS paths; they are not paths to open directly.
 
 References may be reused only when input IDs and profile identity match the
 saved manifest. Recompute identities after changing logs, paths or profile
