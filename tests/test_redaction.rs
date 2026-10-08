@@ -548,3 +548,119 @@ fn redaction_preserves_compact_compare_and_llm_output() {
         assert!(!text.contains("left-secret") && !text.contains("right-secret"));
     }
 }
+
+#[test]
+fn dotted_extract_and_comparison_values_keep_sensitive_context() {
+    let dir = tempdir().unwrap();
+    let left = dir.path().join("left.jsonl");
+    let right = dir.path().join("right.jsonl");
+    for (file, secret) in [(&left, "left-secret"), (&right, "right-secret")] {
+        let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":"fields", "api.key":secret, "payload":{"api.key":secret}});
+        fs::write(file, format!("{row}\n")).unwrap();
+    }
+    for format in ["text", "json"] {
+        for command in ["extract", "diff"] {
+            let mut args = vec!["--redact", "-F", format, command, left.to_str().unwrap()];
+            if command == "extract" {
+                args.extend(["--field", "api.key"]);
+            } else {
+                args.push(right.to_str().unwrap());
+            }
+            let output = run(&args);
+            assert!(output.status.success());
+            let text = String::from_utf8(output.stdout).unwrap();
+            if format == "json" {
+                let report: Value = serde_json::from_str(&text).unwrap();
+                if command == "extract" {
+                    assert_eq!(report["extract"]["groups"][0]["value"], "[REDACTED]");
+                } else {
+                    assert_eq!(report["summary"]["differences_count"], 1);
+                }
+            }
+            assert!(
+                !text.contains("left-secret") && !text.contains("right-secret"),
+                "{command} {format}: {text}"
+            );
+        }
+    }
+}
+
+#[test]
+fn redacted_text_match_counts_have_the_marker() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("count.jsonl");
+    fs::write(
+        &file,
+        json!({"ts":"2026-01-01T00:00:00Z","message":"one"}).to_string(),
+    )
+    .unwrap();
+    let target = dir.path().join("count.txt");
+    let output = run(&[
+        "--redact",
+        "-o",
+        target.to_str().unwrap(),
+        "search",
+        file.to_str().unwrap(),
+        "--count-by",
+        "matches",
+    ]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "[REDACTED OUTPUT]\n1\n"
+    );
+    assert_eq!(
+        fs::read_to_string(target).unwrap(),
+        "[REDACTED OUTPUT]\n1\n"
+    );
+}
+
+#[test]
+fn nested_sensitive_paths_and_masked_extracts_keep_context() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("nested.jsonl");
+    let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":"values", "payload":{"trace_id":"selected-id","parent":{"api":{"key":"nested-api-secret"},"private.key":"nested-private-secret"}}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    let output = run(&[
+        "--redact",
+        "-F",
+        "json",
+        "search",
+        file.to_str().unwrap(),
+        "--payloads",
+    ]);
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !text.contains("nested-api-secret") && !text.contains("nested-private-secret"),
+        "{text}"
+    );
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "trace_id",
+        "-F",
+        "json",
+        "extract",
+        file.to_str().unwrap(),
+        "--field",
+        "trace_id",
+    ]);
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["extract"]["groups"][0]["value"], "[MASKED_ID:1]");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("[MASKED_ID:2]"));
+    let row = json!({"ts":"2026-01-01T00:00:00Z","message":"one","payload":{"request_id":"1"}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    let output = run(&[
+        "--redact",
+        "--mask-id",
+        "request_id",
+        "search",
+        file.to_str().unwrap(),
+        "--count-by",
+        "matches",
+    ]);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "[REDACTED OUTPUT]\n1\n"
+    );
+}

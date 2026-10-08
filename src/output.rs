@@ -138,18 +138,18 @@ fn percent_decode(text: &str) -> String {
 impl OutputState {
     fn replacement(&mut self, key: &str, value: &str) -> Option<String> {
         let decoded = percent_decode(key);
-        let key = canonical(&decoded);
         let leaf = canonical(decoded.rsplit('.').next().unwrap_or(&decoded));
+        let segments: Vec<_> = decoded.split('.').collect();
+        let matches_field = |field: &str| {
+            (0..segments.len())
+                .any(|start| canonical(&segments[start..].join(".")) == canonical(field))
+        };
         if (leaf == "id" || leaf == "correlationid")
             && let Some(replacement) = self.masked_values.get(value)
         {
             return Some(replacement.clone());
         }
-        if self
-            .mask_ids
-            .iter()
-            .any(|field| canonical(field) == key || canonical(field) == leaf)
-        {
+        if self.mask_ids.iter().any(|field| matches_field(field)) {
             if value == "null" || value.is_empty() {
                 return None;
             }
@@ -166,11 +166,15 @@ impl OutputState {
         }
         SECRET_FIELDS
             .iter()
-            .any(|field| canonical(field) == key || canonical(field) == leaf)
+            .any(|field| matches_field(field))
             .then(|| "[REDACTED]".into())
     }
 
     fn value(&mut self, value: &Value) -> Value {
+        self.value_at(value, "")
+    }
+
+    fn value_at(&mut self, value: &Value, path: &str) -> Value {
         match value {
             Value::Object(map) => Value::Object(
                 map.iter()
@@ -179,15 +183,22 @@ impl OutputState {
                             .as_str()
                             .map(str::to_string)
                             .unwrap_or_else(|| value.to_string());
+                        let field_path = if path.is_empty() {
+                            key.clone()
+                        } else {
+                            format!("{path}.{key}")
+                        };
                         let value = self
-                            .replacement(key, &rendered)
+                            .replacement(&field_path, &rendered)
                             .map(Value::String)
-                            .unwrap_or_else(|| self.value(value));
+                            .unwrap_or_else(|| self.value_at(value, &field_path));
                         (key.clone(), value)
                     })
                     .collect(),
             ),
-            Value::Array(items) => Value::Array(items.iter().map(|v| self.value(v)).collect()),
+            Value::Array(items) => {
+                Value::Array(items.iter().map(|v| self.value_at(v, path)).collect())
+            }
             Value::String(text) => Value::String(self.text(text)),
             value => value.clone(),
         }
@@ -330,7 +341,9 @@ impl OutputState {
         if !self.redact || text.is_empty() {
             return text.to_string();
         }
-        if let Ok(value) = serde_json::from_str::<Value>(text) {
+        if let Ok(value) = serde_json::from_str::<Value>(text)
+            && value.is_object()
+        {
             let mut value = if self.prepared {
                 value
             } else {
@@ -351,8 +364,11 @@ impl OutputState {
                 for group in groups {
                     if let Some(value) = group.get_mut("value")
                         && let Some(replacement) = self.replacement(
-                            field.rsplit('.').next().unwrap_or(&field),
-                            &value.to_string(),
+                            &field,
+                            &value
+                                .as_str()
+                                .map(str::to_string)
+                                .unwrap_or_else(|| value.to_string()),
                         )
                     {
                         *value = Value::String(replacement);
@@ -381,6 +397,9 @@ impl OutputState {
         } else {
             "[REDACTED OUTPUT]"
         };
+        if serde_json::from_str::<Value>(text).is_ok_and(|value| value.is_number()) {
+            return format!("{marker}\n{text}");
+        }
         let text = self.text(text);
         format!("{marker}\n{}", self.text(&text))
     }
@@ -401,10 +420,11 @@ pub fn redact_comparison(results: &mut crate::comparator::ComparisonResults) {
                         .as_str()
                         .map(str::to_string)
                         .unwrap_or_else(|| value.to_string());
-                    let replacement = diff
-                        .path
-                        .split('.')
-                        .find_map(|key| state.replacement(key, &rendered));
+                    let replacement = state.replacement(&diff.path, &rendered).or_else(|| {
+                        diff.path
+                            .split('.')
+                            .find_map(|key| state.replacement(key, &rendered))
+                    });
                     *value = replacement
                         .map(Value::String)
                         .unwrap_or_else(|| state.value(value));
