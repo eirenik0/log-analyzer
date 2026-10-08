@@ -480,3 +480,48 @@ fn controlled_timeline_status_paths_survive_opaque_id_collisions() {
         }
     }
 }
+
+#[test]
+fn a_later_tied_lifecycle_does_not_discard_established_sequential_pairs() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let mut logs = [
+        (0, "sent", "first.log"),
+        (1, "completed", "first.log"),
+        (2, "sent", "first.log"),
+        (2, "completed", "second.log"),
+        (3, "sent", "first.log"),
+        (4, "completed", "first.log"),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (time, marker, file))| {
+        let mut entry = parser::parse_log_entry_with_config(
+            &format!(
+                "core (demo) | 2026-01-01T00:00:0{time}Z [INFO] Request \"work\" [0--a] {marker}"
+            ),
+            i + 1,
+            &config,
+        )
+        .unwrap();
+        entry.source_file = Some((*file).into());
+        entry
+    })
+    .collect::<Vec<_>>();
+    for _ in 0..2 {
+        let result =
+            perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &config);
+        assert_eq!(result.operations.len(), 2);
+        assert!(
+            result
+                .operations
+                .iter()
+                .all(|operation| operation.duration_ms == 1000)
+        );
+        assert_eq!(result.operation_coverage.paired_events, 4);
+        assert_eq!(result.operation_coverage.ambiguous_events, 2);
+        assert_eq!(result.operation_coverage.ambiguous_groups, 1);
+        assert_eq!(result.operation_coverage.status, "partial_evidence");
+        assert!(result.orphans.is_empty());
+        logs.reverse();
+    }
+}

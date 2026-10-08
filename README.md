@@ -469,6 +469,8 @@ offsets. Bounds and elapsed time are unavailable for empty selections or inferre
 years. Boundaries outside the input or filters remain unknown; upstream export
 completeness is always `unknown`. Equal timestamps across files or duplicated
 physical rows with identical row paths have no established boundary order and cannot create durations or assert a missing completion in the orphan list.
+Ties are isolated at closed lifecycle boundaries; established sequential pairs
+before and after the uncertain segment remain measured.
 
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 

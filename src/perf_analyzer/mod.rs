@@ -229,7 +229,8 @@ pub fn analyze_performance_with_config(
             .or_default()
             .push(event);
     }
-    for (key, mut events) in groups {
+    let mut pending_groups: std::collections::VecDeque<_> = groups.into_iter().collect();
+    while let Some((key, mut events)) = pending_groups.pop_front() {
         // Inferred years cannot establish boundary chronology (including New Year).
         if events
             .iter()
@@ -263,6 +264,36 @@ pub fn analyze_performance_with_config(
             bucket_file != Some(&event.entry.source_file)
                 || !seen_rows.insert((event.entry.source_line_number, &event.entry.source_row_path))
         });
+        if tied {
+            // Close established lifecycles before isolating an unordered timestamp bucket.
+            let mut segments = Vec::new();
+            let mut segment = Vec::new();
+            let mut outstanding = 0i64;
+            let mut boundaries = events.into_iter().peekable();
+            while let Some(event) = boundaries.next() {
+                let timestamp = event.entry.timestamp;
+                outstanding += if event.start { 1 } else { -1 };
+                segment.push(event);
+                if boundaries
+                    .peek()
+                    .is_none_or(|next| next.entry.timestamp != timestamp)
+                    && outstanding <= 0
+                {
+                    segments.push(std::mem::take(&mut segment));
+                    outstanding = 0;
+                }
+            }
+            if !segment.is_empty() {
+                segments.push(segment);
+            }
+            if segments.len() > 1 {
+                for segment in segments.into_iter().rev() {
+                    pending_groups.push_front((key.clone(), segment));
+                }
+                continue;
+            }
+            events = segments.pop().unwrap_or_default();
+        }
         let mut active = false;
         let ambiguous = tied
             || events.iter().any(|event| {
@@ -405,7 +436,7 @@ pub fn analyze_performance_with_config(
     results
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct CorrelationKey {
     op_type: String,
     name: String,
