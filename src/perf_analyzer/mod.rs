@@ -34,7 +34,13 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
 }
 
 fn marker_has_trailing_condition(suffix: &str) -> bool {
-    let clause = suffix.split(['.', '!', '?', '\n']).next().unwrap_or(suffix);
+    let end = suffix
+        .char_indices()
+        .find(|&(index, ch)| {
+            ch == '?' || crate::parser::lifecycle_sentence_boundary(suffix, index, ch)
+        })
+        .map_or(suffix.len(), |(index, _)| index);
+    let clause = &suffix[..end];
     let words: Vec<_> = crate::parser::lifecycle_words(clause)
         .map(str::to_lowercase)
         .collect();

@@ -888,6 +888,10 @@ fn negated_markers_cannot_create_command_boundaries() {
         "would have completed",
         "if completed",
         "completed?",
+        "completed v1.2?",
+        "completed 1.5 seconds ago?",
+        "completed host.example?",
+        "completed v1.2 if validation passes",
         "completed: cache flushed?",
         "completed:false?",
         "has completed successfully?",
@@ -923,6 +927,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "shall be started",
         "started if validation passes",
         "started or not",
+        "started v1.2?",
     ] {
         let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
         let end = parse(r#"Operation "work" completed"#, 1, &config);
@@ -940,6 +945,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "not only completed",
         "with no errors completed",
         "completed. Is everything okay?",
+        "completed v1.2. Is everything okay?",
         "status=not completed, completed",
     ] {
         let start = parse(r#"Operation "work" started"#, 0, &config);

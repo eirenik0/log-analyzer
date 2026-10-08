@@ -1246,6 +1246,15 @@ fn metadata_assignment_spans(
     spans
 }
 
+pub(crate) fn lifecycle_sentence_boundary(text: &str, index: usize, ch: char) -> bool {
+    matches!(ch, '!' | '\n')
+        || (ch == '.'
+            && text[index + ch.len_utf8()..]
+                .chars()
+                .next()
+                .is_none_or(char::is_whitespace))
+}
+
 pub(crate) fn lifecycle_question(suffix: &str) -> bool {
     let (_, quotes) = opaque_spans(suffix);
     for (index, ch) in suffix.char_indices() {
@@ -1256,7 +1265,7 @@ pub(crate) fn lifecycle_question(suffix: &str) -> bool {
         if ch == '?' {
             return true;
         }
-        if matches!(ch, '.' | '!' | '\n') {
+        if lifecycle_sentence_boundary(suffix, index, ch) {
             break;
         }
     }
