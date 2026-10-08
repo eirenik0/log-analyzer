@@ -458,14 +458,16 @@ but no measured pairs; `partial_evidence` includes pairs plus unmatched/suppress
 candidates; `observed_pairs` means all selected candidates paired, without claiming
 capture completeness. Ambiguous/rejected event counts are subsets of unmatched
 counts. Ambiguous pair cardinality is `null`/unknown when it cannot be established;
-rejected pairs count unique candidate pairs with inferred timestamp years.
+rejected pairs count groups with exactly one start and one end whose timestamp
+years are inferred. All boundaries in a group containing inferred years are
+rejected before date sorting.
 Coverage remains full when display limits or `--orphans-only` hide rows.
 
 The observed capture window uses filtered parsed timestamps and preserves source
 offsets. Bounds and elapsed time are unavailable for empty selections or inferred
 years. Boundaries outside the input or filters remain unknown; upstream export
 completeness is always `unknown`. Equal timestamps across files or duplicated
-physical rows have no established boundary order and cannot create durations.
+physical rows with identical row paths have no established boundary order and cannot create durations.
 
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 

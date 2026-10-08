@@ -220,5 +220,119 @@ fn opaque_event_ids_cannot_replace_analytic_labels_or_typed_timestamps() {
             value["operations"][0]["start_time"].as_str().unwrap(),
         )
         .unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+            .args([
+                "--preset",
+                "eyes",
+                "--redact",
+                "--mask-id",
+                "correlation_id",
+                "perf",
+            ])
+            .arg(&file)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            text.contains("Operation coverage: observed_pairs"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Upstream export completeness: unknown"),
+            "{text}"
+        );
+        assert!(text.contains("[MASKED_ID:"), "{text}");
     }
+}
+
+#[test]
+fn normalized_rows_on_one_line_keep_their_source_order_at_equal_timestamps() {
+    use log_analyzer::normalize::NormalizationRules;
+    use std::collections::BTreeMap;
+    let mut config = config::load_builtin_template("service-api").unwrap();
+    config.normalization = Some(NormalizationRules {
+        root_path: "/rows".into(),
+        expand_rows: true,
+        fields: BTreeMap::from([
+            ("timestamp".into(), "/time".into()),
+            ("message".into(), "/message".into()),
+            ("component".into(), "/component".into()),
+            ("component_id".into(), "/scope".into()),
+        ]),
+        ..Default::default()
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("rows.jsonl");
+    let rows = serde_json::json!({"rows":[
+        {"time":"2026-01-01T00:00:00Z","component":"core","scope":"demo","message":"Request \"work\" [0--a] sent"},
+        {"time":"2026-01-01T00:00:00Z","component":"core","scope":"demo","message":"Request \"work\" [0--a] completed"}
+    ]});
+    fs::write(&file, rows.to_string()).unwrap();
+    let report = parser::parse_log_file_report(&file, &config).unwrap();
+    assert_eq!(report.entries.len(), 2);
+    let result = perf_analyzer::analyze_performance_with_config(
+        &report.entries,
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert_eq!(result.operations.len(), 1);
+    assert_eq!(result.operations[0].duration_ms, 0);
+    assert_eq!(
+        result.operations[0].start_source.row_path.as_deref(),
+        Some("/rows/0")
+    );
+    let mut duplicate = report.entries.clone();
+    duplicate[1].source_row_path = duplicate[0].source_row_path.clone();
+    let result = perf_analyzer::analyze_performance_with_config(
+        &duplicate,
+        &LogFilter::new(),
+        None,
+        &config,
+    );
+    assert!(result.operations.is_empty());
+    assert_eq!(result.operation_coverage.ambiguous_events, 2);
+}
+
+#[test]
+fn yearless_new_year_lifecycle_is_rejected_before_date_sorting() {
+    use log_analyzer::parser::{LogEntryKind, RequestDirection};
+    let config = config::load_builtin_template("service-api").unwrap();
+    let mut logs = [
+        "Dec 31 23:59:59 host worker[1]: begin",
+        "Jan  1 00:00:01 host worker[1]: end",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, line)| {
+        let mut entry = parser::parse_log_entry_with_config(line, i + 1, &config).unwrap();
+        entry.component_id = "demo".into();
+        entry.kind = LogEntryKind::Request {
+            request: "work".into(),
+            request_id: Some("a".into()),
+            direction: if i == 0 {
+                RequestDirection::Send
+            } else {
+                RequestDirection::Receive
+            },
+            endpoint: None,
+            payload: None,
+        };
+        entry
+    })
+    .collect::<Vec<_>>();
+    assert!(logs.iter().all(|entry| entry.timestamp_year_inferred));
+    logs.sort_by_key(|entry| entry.timestamp);
+    let result =
+        perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &config);
+    assert!(result.operations.is_empty());
+    assert_eq!(result.operation_coverage.rejected_pairs, 1);
+    assert_eq!(result.operation_coverage.rejected_events, 2);
+    assert!(
+        result
+            .unmatched_events
+            .iter()
+            .all(|event| event.reason == "incomplete_timestamp_year")
+    );
 }

@@ -41,6 +41,7 @@ struct OutputState {
     next_id: usize,
     matcher: Option<(AhoCorasick, Vec<String>)>,
     preserve_numeric_metadata: bool,
+    performance_prepared: bool,
     metadata: Option<Value>,
     metadata_comments: bool,
     structured: bool,
@@ -298,7 +299,8 @@ impl OutputState {
 
     fn text(&mut self, text: &str) -> String {
         self.ensure_masks();
-        if !(self.preserve_numeric_metadata && text.chars().all(|c| c.is_ascii_digit()))
+        if !(self.preserve_numeric_metadata
+            && (self.performance_prepared || text.chars().all(|c| c.is_ascii_digit())))
             && let Some(replacement) = self.masked_values.get(text)
         {
             return replacement.clone();
@@ -477,7 +479,8 @@ impl OutputState {
                 || placeholders
                     .get(placeholder_index)
                     .is_some_and(|p| p.contains(&start))
-                || (self.preserve_numeric_metadata && original.chars().all(|c| c.is_ascii_digit()))
+                || (self.preserve_numeric_metadata
+                    && (self.performance_prepared || original.chars().all(|c| c.is_ascii_digit())))
             {
                 continue;
             }
@@ -911,6 +914,7 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
             restore_performance_metadata(&value, &mut redacted, "");
             *results = serde_json::from_value(redacted)
                 .expect("source redaction preserves typed performance metadata");
+            state.performance_prepared = true;
         }
     });
 }

@@ -230,16 +230,41 @@ pub fn analyze_performance_with_config(
             .push(event);
     }
     for (key, mut events) in groups {
+        // Inferred years cannot establish boundary chronology (including New Year).
+        if events
+            .iter()
+            .any(|event| event.entry.timestamp_year_inferred)
+        {
+            if events.len() == 2 && events.iter().filter(|event| event.start).count() == 1 {
+                results.operation_coverage.rejected_pairs += 1;
+            }
+            for event in events {
+                if event.start {
+                    results.orphans.push(event.orphan());
+                }
+                results
+                    .unmatched_events
+                    .push(event.unmatched(key.scope.clone(), "incomplete_timestamp_year"));
+            }
+            continue;
+        }
         events.sort_by(|a, b| {
             a.entry
                 .timestamp
                 .cmp(&b.entry.timestamp)
                 .then_with(|| a.entry.source_line_number.cmp(&b.entry.source_line_number))
         });
-        let tied = events.windows(2).any(|pair| {
-            pair[0].entry.timestamp == pair[1].entry.timestamp
-                && (pair[0].entry.source_file != pair[1].entry.source_file
-                    || pair[0].entry.source_line_number == pair[1].entry.source_line_number)
+        let mut bucket_time = None;
+        let mut bucket_file = None;
+        let mut seen_rows = std::collections::HashSet::new();
+        let tied = events.iter().any(|event| {
+            if bucket_time != Some(event.entry.timestamp) {
+                bucket_time = Some(event.entry.timestamp);
+                bucket_file = Some(&event.entry.source_file);
+                seen_rows.clear();
+            }
+            bucket_file != Some(&event.entry.source_file)
+                || !seen_rows.insert((event.entry.source_line_number, &event.entry.source_row_path))
         });
         let mut active = false;
         let ambiguous = tied
@@ -289,17 +314,6 @@ pub fn analyze_performance_with_config(
                 pending = Some(event);
             } else if let Some(start) = pending.take() {
                 let entry = event.entry;
-                if start.entry.timestamp_year_inferred || entry.timestamp_year_inferred {
-                    results.operation_coverage.rejected_pairs += 1;
-                    results.orphans.push(start.orphan());
-                    results
-                        .unmatched_events
-                        .push(start.unmatched(key.scope.clone(), "incomplete_timestamp_year"));
-                    results
-                        .unmatched_events
-                        .push(event.unmatched(key.scope.clone(), "incomplete_timestamp_year"));
-                    continue;
-                }
                 results.operations.push(TimedOperation {
                     op_type: key.op_type.clone(),
                     name: key.name.clone(),
