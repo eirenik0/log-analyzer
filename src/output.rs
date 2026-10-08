@@ -42,6 +42,8 @@ struct OutputState {
     matcher: Option<(AhoCorasick, Vec<String>)>,
     preserve_numeric_metadata: bool,
     performance_prepared: bool,
+    final_analytic_text: bool,
+    path_substring_ids: bool,
     metadata: Option<Value>,
     metadata_comments: bool,
     structured: bool,
@@ -117,6 +119,15 @@ pub fn diagnostic(text: &str) -> String {
     STATE.with(
         |state| match state.borrow_mut().as_mut().filter(|s| s.redact) {
             Some(state) => state.text(text),
+            None => text.to_string(),
+        },
+    )
+}
+
+pub fn source_path(text: &str) -> String {
+    STATE.with(
+        |state| match state.borrow_mut().as_mut().filter(|s| s.redact) {
+            Some(state) => state.path_text(text),
             None => text.to_string(),
         },
     )
@@ -262,6 +273,9 @@ impl OutputState {
             }
             Value::String(text) => {
                 let leaf = path.rsplit('.').next().unwrap_or(path);
+                if matches!(leaf, "file" | "source_file") {
+                    return Value::String(self.path_text(text));
+                }
                 let metadata = matches!(
                     leaf,
                     "timestamp"
@@ -297,10 +311,20 @@ impl OutputState {
         }
     }
 
+    fn path_text(&mut self, text: &str) -> String {
+        let previous = self.preserve_numeric_metadata;
+        self.preserve_numeric_metadata = false;
+        self.path_substring_ids = true;
+        let rendered = self.text(text);
+        self.path_substring_ids = false;
+        self.preserve_numeric_metadata = previous;
+        rendered
+    }
+
     fn text(&mut self, text: &str) -> String {
         self.ensure_masks();
         if !(self.preserve_numeric_metadata
-            && (self.performance_prepared || text.chars().all(|c| c.is_ascii_digit())))
+            && (self.final_analytic_text || text.chars().all(|c| c.is_ascii_digit())))
             && let Some(replacement) = self.masked_values.get(text)
         {
             return replacement.clone();
@@ -474,13 +498,14 @@ impl OutputState {
             }
             let original = &originals[found.pattern().as_usize()];
             let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
-            if text[..start].chars().next_back().is_some_and(is_word)
-                || text[end..].chars().next().is_some_and(is_word)
+            if (!self.path_substring_ids
+                && (text[..start].chars().next_back().is_some_and(is_word)
+                    || text[end..].chars().next().is_some_and(is_word)))
                 || placeholders
                     .get(placeholder_index)
                     .is_some_and(|p| p.contains(&start))
                 || (self.preserve_numeric_metadata
-                    && (self.performance_prepared || original.chars().all(|c| c.is_ascii_digit())))
+                    && (self.final_analytic_text || original.chars().all(|c| c.is_ascii_digit())))
             {
                 continue;
             }
@@ -679,9 +704,11 @@ impl OutputState {
             return format!("{marker}\n{text}");
         }
         self.preserve_numeric_metadata = true;
+        self.final_analytic_text = self.performance_prepared;
         let text = self.text(text);
         let rendered = format!("{marker}\n{}", self.text(&text));
         self.preserve_numeric_metadata = false;
+        self.final_analytic_text = false;
         rendered
     }
 }

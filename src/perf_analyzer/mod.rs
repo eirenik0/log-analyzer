@@ -239,9 +239,6 @@ pub fn analyze_performance_with_config(
                 results.operation_coverage.rejected_pairs += 1;
             }
             for event in events {
-                if event.start {
-                    results.orphans.push(event.orphan());
-                }
                 results
                     .unmatched_events
                     .push(event.unmatched(key.scope.clone(), "incomplete_timestamp_year"));

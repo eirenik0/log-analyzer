@@ -460,7 +460,8 @@ capture completeness. Ambiguous/rejected event counts are subsets of unmatched
 counts. Ambiguous pair cardinality is `null`/unknown when it cannot be established;
 rejected pairs count groups with exactly one start and one end whose timestamp
 years are inferred. All boundaries in a group containing inferred years are
-rejected before date sorting.
+rejected before date sorting and retained only in diagnostics, without claiming
+a missing completion in the orphan list.
 Coverage remains full when display limits or `--orphans-only` hide rows.
 
 The observed capture window uses filtered parsed timestamps and preserves source

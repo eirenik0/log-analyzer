@@ -279,7 +279,7 @@ fn coverage_text(coverage: &AnalysisCoverage) -> String {
         let _ = writeln!(
             text,
             "  {}: parser={}, profile={}, input={} bytes, parsed={} entries, rejected={} candidates",
-            file.file,
+            output::source_path(&file.file),
             parser.as_str().unwrap_or("unknown"),
             file.profile,
             file.input_bytes,

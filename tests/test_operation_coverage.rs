@@ -92,6 +92,7 @@ fn inferred_years_and_equal_timestamp_files_cannot_invent_pairs() {
         perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &config);
     assert!(result.operations.is_empty());
     assert_eq!(result.operation_coverage.rejected_pairs, 1);
+    assert!(result.orphans.is_empty());
     assert_eq!(result.operation_coverage.rejected_events, 2);
     assert_eq!(result.operation_coverage.capture_window.elapsed_ms, None);
     logs[0].timestamp_year_inferred = false;
@@ -328,6 +329,7 @@ fn yearless_new_year_lifecycle_is_rejected_before_date_sorting() {
         perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &config);
     assert!(result.operations.is_empty());
     assert_eq!(result.operation_coverage.rejected_pairs, 1);
+    assert!(result.orphans.is_empty());
     assert_eq!(result.operation_coverage.rejected_events, 2);
     assert!(
         result
@@ -335,4 +337,32 @@ fn yearless_new_year_lifecycle_is_rejected_before_date_sorting() {
             .iter()
             .all(|event| event.reason == "incomplete_timestamp_year")
     );
+}
+
+#[test]
+fn redacted_performance_masks_ids_in_late_appended_parse_coverage_filenames() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("capture-sensitive-id.log");
+    let payload = serde_json::json!({"key":"sensitive-id"});
+    fs::write(&file, format!("core (demo) | 2026-01-01T00:00:00Z [INFO] Received event of type {{\"name\":\"work\"}} with payload {payload}\ncore (demo) | 2026-01-01T00:00:01Z [INFO] Emit event of type \"work\" with payload {payload}\n")).unwrap();
+    for format in ["json", "text"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+            .args([
+                "--preset",
+                "eyes",
+                "--redact",
+                "--mask-id",
+                "correlation_id",
+                "-F",
+                format,
+                "perf",
+            ])
+            .arg(&file)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(!text.contains("sensitive-id"), "{text}");
+        assert!(text.contains("[MASKED_ID:"), "{text}");
+    }
 }
