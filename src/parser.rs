@@ -1197,7 +1197,27 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
             .iter()
             .chain(&config.perf.command_completion_markers)
             .any(|marker| !marker.is_empty() && clause.starts_with(marker));
-        subjects[index] = if !marker && lifecycle_linking_adverb(&words[index].1) {
+        subjects[index] = if !marker
+            && (lifecycle_linking_adverb(&words[index].1)
+                || lifecycle_qualifier(&words[index].1)
+                || matches!(
+                    words[index].1.as_str(),
+                    "not"
+                        | "no"
+                        | "zero"
+                        | "0"
+                        | "only"
+                        | "is"
+                        | "are"
+                        | "was"
+                        | "were"
+                        | "has"
+                        | "have"
+                        | "had"
+                        | "be"
+                        | "been"
+                        | "as"
+                )) {
             subjects[index + 1]
         } else if !marker
             && words[index].1 == "in"
@@ -1221,35 +1241,18 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
                     return false;
                 }
                 let word = words.partition_point(|word| word.0 <= span.start);
-                let Some((position, first)) =
+                let Some((position, _)) =
                     words.get(subjects[word]).filter(|word| word.0 < span.end)
                 else {
                     return false;
                 };
                 let clause = &body[*position..span.end];
-                !lifecycle_qualifier(first)
-                    && !matches!(
-                        first.as_str(),
-                        "not"
-                            | "no"
-                            | "zero"
-                            | "0"
-                            | "is"
-                            | "was"
-                            | "has"
-                            | "had"
-                            | "as"
-                            | "then"
-                            | "in"
-                            | "however"
-                            | "indeed"
-                    )
-                    && !config
-                        .perf
-                        .command_start_markers
-                        .iter()
-                        .chain(&config.perf.command_completion_markers)
-                        .any(|marker| !marker.is_empty() && clause.starts_with(marker))
+                !config
+                    .perf
+                    .command_start_markers
+                    .iter()
+                    .chain(&config.perf.command_completion_markers)
+                    .any(|marker| !marker.is_empty() && clause.starts_with(marker))
             })
             .collect(),
         true,
@@ -1572,6 +1575,11 @@ pub(crate) fn lifecycle_linking_adverb(word: &str) -> bool {
             | "however"
             | "instead"
             | "indeed"
+            | "so"
+            | "thus"
+            | "therefore"
+            | "hence"
+            | "consequently"
     ) || (word.ends_with("ly") && !lifecycle_qualifier(word))
 }
 

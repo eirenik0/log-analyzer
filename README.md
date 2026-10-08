@@ -156,8 +156,9 @@ clause; a marker in a later unrelated statement cannot complete the command.
 Subordinate clauses with another subject, such as `while cleanup completed`,
 cannot supply its boundary; dash- and comma-delimited clauses follow the same rule.
 Parenthetical statements about another subject, including those with leading linking
-adverbs, are excluded while preserving following
-command markers. Zero-evidence wording cannot prove a boundary.
+adverbs or unrelated negative annotations, are excluded while preserving following
+command markers. A qualifier that governs a parenthetical lifecycle marker remains
+nonaffirmative. Zero-evidence wording cannot prove a boundary.
 Phase-linking adverbs such as `and then completed` preserve same-subject markers.
 Ordinary bracketed annotations such as `[trace-42]`
 preserve a following lifecycle marker.
