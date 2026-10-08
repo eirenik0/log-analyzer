@@ -114,6 +114,65 @@ fn select_results(
     }
 }
 
+fn write_operation_coverage(out: &mut String, coverage: &super::OperationCoverage) {
+    let _ = writeln!(out, "Operation coverage: {}", coverage.status);
+    let _ = writeln!(
+        out,
+        "Relevant events: {}; paired: {}; unmatched: {}; suppressed: {}",
+        coverage.relevant_events,
+        coverage.paired_events,
+        coverage.unmatched_events,
+        coverage.suppressed_events
+    );
+    let _ = writeln!(
+        out,
+        "Ambiguity: {} groups, {} events, pairs={}; rejected: {} pairs, {} events",
+        coverage.ambiguous_groups,
+        coverage.ambiguous_events,
+        coverage
+            .ambiguous_pairs
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "unknown".into()),
+        coverage.rejected_pairs,
+        coverage.rejected_events
+    );
+    for suppressed in &coverage.suppressed_operation_types {
+        let _ = writeln!(
+            out,
+            "Suppressed {}: {} events ({})",
+            suppressed.op_type, suppressed.events, suppressed.reason
+        );
+    }
+    let window = &coverage.capture_window;
+    if let Some((start, end)) = window.start.zip(window.end) {
+        let _ = writeln!(
+            out,
+            "Observed capture window: {} to {} ({}; {})",
+            start.to_rfc3339(),
+            end.to_rfc3339(),
+            window
+                .elapsed_ms
+                .map(|ms| format!("{ms}ms"))
+                .unwrap_or_else(|| "unknown".into()),
+            window.basis
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "Observed capture window: unavailable ({})",
+            window.basis
+        );
+    }
+    let _ = writeln!(
+        out,
+        "Upstream export completeness: {}",
+        coverage.upstream_export_completeness
+    );
+    for limit in &window.limits {
+        let _ = writeln!(out, "Capture limit: {limit}");
+    }
+}
+
 fn write_selection_summary(out: &mut String, report: &PerfReport) {
     let _ = writeln!(
         out,
@@ -156,6 +215,7 @@ pub fn format_perf_results_text(
     let mut out = String::new();
     let report = select_results(results, threshold_ms, top_n, orphans_only, sort_by);
     let results = &report.results;
+    write_operation_coverage(&mut out, &results.operation_coverage);
     write_selection_summary(&mut out, &report);
     if let Some(timeline) = &results.event_timeline {
         out.push_str(&crate::timeline::format_text(timeline));

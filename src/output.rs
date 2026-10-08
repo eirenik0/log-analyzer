@@ -615,6 +615,7 @@ impl OutputState {
         if let Ok(value) = serde_json::from_str::<Value>(text)
             && value.is_object()
         {
+            let original = value.clone();
             let mut value = if self.prepared {
                 value
             } else {
@@ -623,6 +624,9 @@ impl OutputState {
             // A second pass covers generic ID labels encountered before their named fields.
             if !self.prepared {
                 value = self.value(&value);
+            }
+            if original.get("operation_coverage").is_some() {
+                restore_performance_metadata(&original, &mut value, "");
             }
             // Aggregate extraction puts a selected field's values under generic `value` keys.
             if let Some(extract) = value.get_mut("extract")
@@ -903,8 +907,10 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
         if let Some(state) = state.as_mut().filter(|s| s.redact) {
             let value = serde_json::to_value(&*results).expect("performance results serialize");
             state.collect_value(&value, "");
-            *results = serde_json::from_value(state.value(&value))
-                .expect("redaction preserves typed performance fields");
+            let mut redacted = state.value(&value);
+            restore_performance_metadata(&value, &mut redacted, "");
+            *results = serde_json::from_value(redacted)
+                .expect("source redaction preserves typed performance metadata");
         }
     });
 }
@@ -920,4 +926,61 @@ pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
         end = next;
     }
     &text[..end]
+}
+
+// Performance has source strings and analytic metadata in the same object. Keep
+// typed measurements/provenance intact, including when an opaque ID equals a label.
+fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &str) {
+    let leaf = path.rsplit('.').next().unwrap_or(path);
+    if path == "operation_coverage" {
+        *redacted = original.clone();
+        return;
+    }
+    match original {
+        Value::Object(map) => {
+            if !redacted.is_object() {
+                *redacted = original.clone();
+            }
+            for (key, value) in map {
+                let path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                restore_performance_metadata(value, &mut redacted[key], &path);
+            }
+        }
+        Value::Array(items) => {
+            if !redacted.is_array() {
+                *redacted = original.clone();
+            }
+            for (original, redacted) in items.iter().zip(redacted.as_array_mut().unwrap()) {
+                restore_performance_metadata(original, redacted, path);
+            }
+        }
+        Value::Number(_) | Value::Bool(_) | Value::Null => *redacted = original.clone(),
+        Value::String(_)
+            if matches!(
+                leaf,
+                "op_type"
+                    | "boundary"
+                    | "reason"
+                    | "status"
+                    | "timing"
+                    | "timestamp"
+                    | "start"
+                    | "end"
+                    | "start_time"
+                    | "end_time"
+                    | "time_range"
+                    | "capture_window"
+                    | "timestamp_year_source"
+                    | "timestamp_offset_source"
+                    | "upstream_capture_completeness"
+            ) =>
+        {
+            *redacted = original.clone()
+        }
+        _ => (),
+    }
 }

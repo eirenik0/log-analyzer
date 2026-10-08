@@ -449,6 +449,24 @@ Unmatched ends and missing keys are retained in `unmatched_events`; JSON include
 `ambiguous_groups` and start/end source file and line references. Diagnostic
 sections also obey `--top-n`, with full totals and omitted counts; `0` preserves all.
 
+`perf` reports `operation_coverage` separately from parse coverage in text and JSON.
+Relevant events are parsed request, event, and command candidates; each is paired,
+unmatched, or suppressed. Suppressions identify operation-type filters, missing
+recognized boundaries, and command analysis disabled by absent completion evidence.
+`no_applicable_events` means no candidates; `insufficient_evidence` means candidates
+but no measured pairs; `partial_evidence` includes pairs plus unmatched/suppressed
+candidates; `observed_pairs` means all selected candidates paired, without claiming
+capture completeness. Ambiguous/rejected event counts are subsets of unmatched
+counts. Ambiguous pair cardinality is `null`/unknown when it cannot be established;
+rejected pairs count unique candidate pairs with inferred timestamp years.
+Coverage remains full when display limits or `--orphans-only` hide rows.
+
+The observed capture window uses filtered parsed timestamps and preserves source
+offsets. Bounds and elapsed time are unavailable for empty selections or inferred
+years. Boundaries outside the input or filters remain unknown; upstream export
+completeness is always `unknown`. Equal timestamps across files or duplicated
+physical rows have no established boundary order and cannot create durations.
+
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 
 ### Configurable event timelines
