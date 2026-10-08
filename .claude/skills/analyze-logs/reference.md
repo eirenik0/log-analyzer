@@ -616,4 +616,4 @@ Compact text preserves Unicode graphemes and disambiguates shortened field names
 
 Check `perf` operation coverage separately from parse coverage before interpreting empty results. README “perf” describes evidence statuses, suppressions, ambiguous/rejected events, and capture limits.
 
-Shipped command profiles recognize quoted start and completion names independently. For command pairing, tune `[perf]` lifecycle markers; command names and payload regions (including malformed JSON) are excluded from boundary matching. See README “Configuration is Essential” for custom unquoted-name compatibility.
+Shipped command profiles recognize quoted start and completion names independently. For command pairing, tune `[perf]` lifecycle markers; command names, quoted context, and payload regions (including malformed JSON) are excluded from boundary matching. See README “Configuration is Essential” for custom unquoted-name compatibility.

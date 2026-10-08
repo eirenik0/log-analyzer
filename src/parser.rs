@@ -998,17 +998,38 @@ fn parse_command_candidate(
     (!command.trim().is_empty()).then_some((command, name_end))
 }
 
-pub(crate) fn command_lifecycle_message<'a>(message: &'a str, rules: &ParserRules) -> &'a str {
+pub(crate) fn command_lifecycle_message<'a>(
+    message: &'a str,
+    rules: &ParserRules,
+) -> std::borrow::Cow<'a, str> {
     let body = extract_command_name(message, rules)
         .map(|(_, end)| &message[end..])
         .unwrap_or(message);
     // Payload syntax is opaque even when malformed: its words cannot prove a
     // lifecycle boundary. Do not depend on successful JSON decoding here.
+    let (_, quotes) = opaque_spans(body);
     let end = body
         .char_indices()
-        .find_map(|(index, ch)| matches!(ch, '{' | '[').then_some(index))
+        .find_map(|(index, ch)| {
+            let quote = quotes.partition_point(|span| span.end <= index);
+            (matches!(ch, '{' | '[')
+                && !quotes.get(quote).is_some_and(|span| span.contains(&index)))
+            .then_some(index)
+        })
         .unwrap_or(body.len());
-    &body[..end]
+    let body = &body[..end];
+    if quotes.first().is_none_or(|span| span.start >= end) {
+        return std::borrow::Cow::Borrowed(body);
+    }
+    let mut visible = String::with_capacity(end);
+    let mut previous = 0;
+    for quote in quotes.iter().take_while(|span| span.start < end) {
+        visible.push_str(&body[previous..quote.start]);
+        visible.push(' ');
+        previous = quote.end.min(end);
+    }
+    visible.push_str(&body[previous..]);
+    std::borrow::Cow::Owned(visible)
 }
 
 fn parse_quoted_field_value(input: &str, quote: char) -> Option<(String, usize)> {

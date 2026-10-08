@@ -628,3 +628,43 @@ fn quoted_context_and_crossed_json_payloads_cannot_complete_commands() {
         );
     }
 }
+
+#[test]
+fn quoted_tail_markers_cannot_invent_lifecycle_boundaries() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for tail in [
+        "note='completed'",
+        "note='completed",
+        r#"note="completed""#,
+        "note='started completed'",
+        "note='{} completed'",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let inspected = parse(&format!("Operation \"work\" inspected {tail}"), 1, &config);
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, inspected, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{tail}");
+    }
+    for body in [
+        "note='started' completed",
+        "note='{} started' completed",
+        "completed note='started'",
+        "worker's completed",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let end = parse(&format!("Operation \"work\" {body}"), 1, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{body}");
+        assert_eq!(result.operations[0].duration_ms, 1000, "{body}");
+    }
+}

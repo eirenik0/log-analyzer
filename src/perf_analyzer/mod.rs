@@ -109,7 +109,7 @@ pub fn analyze_performance_with_config(
     let track_commands = filtered.iter().any(|entry| {
         matches!(entry.kind, LogEntryKind::Command { .. })
             && contains_any_marker(
-                crate::parser::command_lifecycle_message(&entry.message, &config.parser),
+                &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
                 &config.perf.command_completion_markers,
             )
     });
@@ -148,11 +148,11 @@ pub fn analyze_performance_with_config(
                 command.as_str(),
                 Some(command.clone()),
                 contains_any_marker(
-                    crate::parser::command_lifecycle_message(&entry.message, &config.parser),
+                    &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
                     &config.perf.command_start_markers,
                 ),
                 contains_any_marker(
-                    crate::parser::command_lifecycle_message(&entry.message, &config.parser),
+                    &crate::parser::command_lifecycle_message(&entry.message, &config.parser),
                     &config.perf.command_completion_markers,
                 ),
             ),

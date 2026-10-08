@@ -136,8 +136,9 @@ Command classification uses `[parser].command_prefix` and a nonempty quoted
 name independently of start/completion wording. Shipped profiles recognize
 completion-only command lines too; `[perf]` determines their lifecycle role from
 text after the name and before payload delimiters, including malformed or
-unclosed payloads. Names support escaped quotes and
-Unicode. A missing boundary remains diagnostic rather than producing a duration.
+unclosed payloads. Quoted context is excluded from lifecycle matching, while
+markers before or after that context remain visible. Names support escaped quotes
+and Unicode. A missing boundary remains diagnostic rather than producing a duration.
 Empty/unterminated names, multiple valid command subjects, and prefixes inside
 quoted context or balanced payload regions (including invalid JSON) are not commands.
 JSON-like payloads with mismatched delimiters remain opaque through the line end. Configured
