@@ -447,7 +447,13 @@ Performance correlation uses operation kind, name, ID, and `component_id` scope.
 Configure `[perf].correlation_scope_fields` for a composite scope (for example
 `["component_id", "tenant"]`); `component`, structured fields, and top-level payload
 fields are supported. A missing, null, or empty configured scope field is
-reported instead of matched. Logs without session IDs need an explicit known
+reported instead of matched. Record-field scopes over 4096 bytes use bounded keys
+containing a UTF-8-safe prefix, byte length, and 128-bit FNV-1a digest. Short values
+containing the reserved ` bytes, fnv1a128:` marker are also encoded to prevent raw
+summaries from impersonating long scopes. Equal long values still correlate;
+digest collisions remain possible. Explicit event-rule scope mappings use the
+same reserved-marker encoding after validation and retain their 4096-byte input
+limit. Logs without session IDs need an explicit known
 scope (for example `["component"]`) or an intentionally empty scope list; an empty
 list makes IDs global and overlapping starts remain ambiguous. JSON envelope
 `payload`/`fields` are retained separately from embedded message payloads and

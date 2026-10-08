@@ -1829,11 +1829,9 @@ pub(crate) fn record_correlation_scope(
                 }),
         })
         .map(|value| {
-            value.filter(|value| {
-                !value.trim().is_empty()
-                    && value != "null"
-                    && value.len() <= crate::event_rules::MAX_VALUE_BYTES
-            })
+            value
+                .filter(|value| !value.trim().is_empty() && value != "null")
+                .map(|value| crate::event_rules::bounded_scope_value(&value))
         })
         .collect::<Option<Vec<_>>>()
 }

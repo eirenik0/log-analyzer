@@ -183,6 +183,34 @@ impl Classification<'_> {
     }
 }
 
+/// Keeps a record-field scope key within `MAX_VALUE_BYTES`.
+///
+/// Values over the limit become a readable prefix plus the byte length and a 128-bit
+/// FNV-1a digest of the full value. Equal values give equal keys, so long scopes still
+/// correlate. Short values containing the digest marker are also encoded, preventing
+/// a raw value from impersonating a generated key. Digest collisions remain possible.
+pub fn bounded_scope_value(value: &str) -> String {
+    const DIGEST_MARKER: &str = " bytes, fnv1a128:";
+    if value.len() <= MAX_VALUE_BYTES && !value.contains(DIGEST_MARKER) {
+        return value.to_string();
+    }
+    const PREFIX_BYTES: usize = 64;
+    let mut cut = PREFIX_BYTES.min(value.len());
+    while !value.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let mut hash: u128 = 0x6c62272e07bb014262b821756295c58d;
+    for byte in value.as_bytes() {
+        hash ^= u128::from(*byte);
+        hash = hash.wrapping_mul(0x0000000001000000000000000000013B);
+    }
+    format!(
+        "{}…[{}{DIGEST_MARKER}{hash:032x}]",
+        &value[..cut],
+        value.len()
+    )
+}
+
 fn bounded_nonempty(value: &str) -> bool {
     value.len() <= MAX_VALUE_BYTES && !value.trim().is_empty()
 }
@@ -631,7 +659,7 @@ fn map_event(
         scope: mapping
             .scope
             .iter()
-            .map(|source| get(source, "scope"))
+            .map(|source| get(source, "scope").map(|value| bounded_scope_value(&value)))
             .collect::<Result<_, _>>()?,
     })
 }
