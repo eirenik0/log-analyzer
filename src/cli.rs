@@ -153,7 +153,13 @@ pub struct Cli {
     #[arg(short, long, global = true, env = "LOG_ANALYZER_OUTPUT")]
     pub output: Option<PathBuf>,
 
-    /// Path to analyzer profile config (TOML)
+    /// Path to a TOML profile; supports `extends` inheritance
+    ///
+    /// A top-level `extends` names a built-in profile or a parent file resolved
+    /// relative to the child profile. Tables merge with child values winning;
+    /// arrays and scalars replace inherited values. Chains allow at most eight
+    /// profiles, counting the child and every parent, including built-ins.
+    /// Cycles and unknown parents are errors.
     #[arg(long, global = true, env = "LOG_ANALYZER_CONFIG")]
     pub config: Option<PathBuf>,
 
