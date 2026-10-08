@@ -45,21 +45,7 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
                 continue;
             }
             let normalized = adverb.trim_end_matches(',').to_lowercase();
-            if !matches!(
-                normalized.as_str(),
-                "then"
-                    | "afterward"
-                    | "afterwards"
-                    | "now"
-                    | "next"
-                    | "and"
-                    | "but"
-                    | "however"
-                    | "instead"
-                    | "indeed"
-            ) && !(normalized.ends_with("ly")
-                && !crate::parser::lifecycle_qualifier(&normalized))
-            {
+            if !crate::parser::lifecycle_linking_adverb(&normalized) {
                 break;
             }
             after = after[adverb.len()..].trim_start();

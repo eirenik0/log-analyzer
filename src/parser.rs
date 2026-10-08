@@ -901,7 +901,14 @@ fn command_prefix_boundary(message: &str, start: usize, prefix: &str) -> bool {
 
 // Command identity is independent of lifecycle wording. Only quoted names have
 // an unambiguous end on completion lines; retain legacy start-delimited names.
-fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<(String, usize, usize)> {
+struct CommandSubject {
+    name: String,
+    start: usize,
+    name_end: usize,
+    lifecycle_end: usize,
+}
+
+fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<CommandSubject> {
     let rules = &config.parser;
     let prefix = rules.command_prefix.as_str();
     if prefix.is_empty() {
@@ -998,7 +1005,14 @@ fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<(Strin
     if candidates.next().is_some() {
         return None;
     }
-    Some(candidate)
+    Some(CommandSubject {
+        name: candidate.0,
+        start: candidate.1,
+        name_end: candidate.2,
+        lifecycle_end: request_subject
+            .filter(|request| *request >= candidate.2)
+            .unwrap_or(message.len()),
+    })
 }
 
 fn unfinished_payload_start(
@@ -1109,10 +1123,10 @@ pub(crate) fn command_lifecycle_message<'a>(
     message: &'a str,
     config: &AnalyzerConfig,
 ) -> std::borrow::Cow<'a, str> {
-    let Some((_, start, end)) = extract_command_name(message, config) else {
+    let Some(subject) = extract_command_name(message, config) else {
         return command_lifecycle_body(message, config);
     };
-    let preceding = &message[..start];
+    let preceding = &message[..subject.start];
     let (payloads, quotes) = opaque_spans(preceding);
     let excluded = finish_spans(
         payloads
@@ -1130,7 +1144,7 @@ pub(crate) fn command_lifecycle_message<'a>(
         previous = span.end;
     }
     context.push_str(&preceding[previous..]);
-    let body = command_lifecycle_body(&message[end..], config);
+    let body = command_lifecycle_body(&message[subject.name_end..subject.lifecycle_end], config);
     let auxiliary_question = |word: &str| {
         matches!(
             word.to_lowercase().as_str(),
@@ -1166,6 +1180,34 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
     }
     context.extend(parentheses.into_iter().map(|start| start..body.len()));
     let assignments = finish_spans(metadata_assignment_spans(body, &quotes), true);
+    let mut search = 0;
+    let words: Vec<_> = lifecycle_words(body)
+        .map(|word| {
+            let start = search + body[search..].find(word).expect("word is a slice of body");
+            search = start + word.len();
+            (start, word.to_lowercase())
+        })
+        .collect();
+    let mut subjects = vec![words.len(); words.len() + 1];
+    for index in (0..words.len()).rev() {
+        let clause = &body[words[index].0..];
+        let marker = config
+            .perf
+            .command_start_markers
+            .iter()
+            .chain(&config.perf.command_completion_markers)
+            .any(|marker| !marker.is_empty() && clause.starts_with(marker));
+        subjects[index] = if !marker && lifecycle_linking_adverb(&words[index].1) {
+            subjects[index + 1]
+        } else if !marker
+            && words[index].1 == "in"
+            && words.get(index + 1).is_some_and(|word| word.1 == "fact")
+        {
+            subjects[index + 2]
+        } else {
+            index
+        };
+    }
     let context = finish_spans(
         context
             .into_iter()
@@ -1178,12 +1220,14 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
                 {
                     return false;
                 }
-                let clause = body[span.start + 1..span.end].trim_start();
-                let Some(first) = lifecycle_words(clause).next() else {
+                let word = words.partition_point(|word| word.0 <= span.start);
+                let Some((position, first)) =
+                    words.get(subjects[word]).filter(|word| word.0 < span.end)
+                else {
                     return false;
                 };
-                let first = first.to_lowercase();
-                !lifecycle_qualifier(&first)
+                let clause = &body[*position..span.end];
+                !lifecycle_qualifier(first)
                     && !matches!(
                         first.as_str(),
                         "not"
@@ -1200,7 +1244,6 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
                             | "however"
                             | "indeed"
                     )
-                    && !first.ends_with("ly")
                     && !config
                         .perf
                         .command_start_markers
@@ -1516,6 +1559,22 @@ pub(crate) fn lifecycle_words(text: &str) -> impl Iterator<Item = &str> {
         .filter(|word| !word.is_empty())
 }
 
+pub(crate) fn lifecycle_linking_adverb(word: &str) -> bool {
+    matches!(
+        word,
+        "then"
+            | "afterward"
+            | "afterwards"
+            | "now"
+            | "next"
+            | "and"
+            | "but"
+            | "however"
+            | "instead"
+            | "indeed"
+    ) || (word.ends_with("ly") && !lifecycle_qualifier(word))
+}
+
 pub(crate) fn lifecycle_qualifier(word: &str) -> bool {
     matches!(
         word,
@@ -1806,7 +1865,9 @@ fn determine_log_entry_kind(
                 payload,
             }));
         }
-    } else if let Some((command, _, name_end)) = extract_command_name(message, config) {
+    } else if let Some(subject) = extract_command_name(message, config) {
+        let command = subject.name;
+        let name_end = subject.name_end;
         let mut settings = None;
         let mut cleaned_message = message.to_string();
         let (_, quotes) = opaque_spans(message);

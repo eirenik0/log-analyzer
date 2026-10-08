@@ -17,6 +17,32 @@ fn parse(message: &str, index: usize, config: &config::AnalyzerConfig) -> parser
 }
 
 #[test]
+fn deeply_nested_parentheticals_preserve_subject_attribution() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for (clause, expected) in [
+        ("cleanup completed", 0),
+        ("recently cleanup completed", 0),
+        ("completed", 1),
+    ] {
+        let message = format!(
+            "Operation \"work\" inspected {}{clause}{}",
+            "(".repeat(50_000),
+            ")".repeat(50_000)
+        );
+        let results = perf_analyzer::analyze_performance_with_config(
+            &[
+                parse(r#"Operation "work" started"#, 0, &config),
+                parse(&message, 1, &config),
+            ],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(results.operations.len(), expected, "{clause}");
+    }
+}
+
+#[test]
 fn bracketed_annotations_preserve_command_start_and_completion() {
     let config = config::load_builtin_template("service-api").unwrap();
     let start = parse(r#"Operation "work" [trace-42] started"#, 0, &config);
@@ -918,6 +944,10 @@ fn negated_markers_cannot_create_command_boundaries() {
         "inspected and then cleanup completed",
         "inspected, cleanup completed",
         "inspected (cleanup completed)",
+        "inspected (recently cleanup completed)",
+        "inspected (then cleanup completed)",
+        "inspected (in fact cleanup completed)",
+        "inspected Request \"fetch\" completed [0--id]",
         "inspected (cleanup (background) completed)",
         "inspected (cleanup completed",
         "inspected (not completed)",
@@ -1015,6 +1045,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "inspected and then cleanup started",
         "inspected, cleanup started",
         "inspected (cleanup started)",
+        "inspected (recently cleanup started)",
+        "inspected Request \"fetch\" started [0--id]",
         "inspected while cleanup started",
         "inspected: cleanup started",
         "inspected; cleanup started",
@@ -1069,6 +1101,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "inspected (cleanup not completed) completed",
         "inspected (cleanup: completed) completed",
         "inspected (then completed)",
+        "inspected (recently completed)",
+        "completed Request \"fetch\" inspected [0--id]",
         "inspected, completed",
         "inspected, and then completed",
         "inspected, in fact, completed",

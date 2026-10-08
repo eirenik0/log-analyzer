@@ -149,12 +149,14 @@ and Unicode. Word-like command prefixes require a Unicode token boundary.
 Text attached directly to the closing name quote must begin a configured
 lifecycle marker; separated names remain independent of phase wording.
 An earlier valid request subject takes precedence over later command-shaped
-context, preserving request classification and pairing.
+context, preserving request classification and pairing. A later valid request subject
+ends the command’s lifecycle clause.
 Lifecycle markers must belong to the command’s first sentence or semicolon-delimited
 clause; a marker in a later unrelated statement cannot complete the command.
 Subordinate clauses with another subject, such as `while cleanup completed`,
 cannot supply its boundary; dash- and comma-delimited clauses follow the same rule.
-Parenthetical statements about another subject are excluded while preserving following
+Parenthetical statements about another subject, including those with leading linking
+adverbs, are excluded while preserving following
 command markers. Zero-evidence wording cannot prove a boundary.
 Phase-linking adverbs such as `and then completed` preserve same-subject markers.
 Ordinary bracketed annotations such as `[trace-42]`
