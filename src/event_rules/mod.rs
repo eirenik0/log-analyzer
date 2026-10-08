@@ -659,7 +659,7 @@ fn map_event(
         scope: mapping
             .scope
             .iter()
-            .map(|source| get(source, "scope"))
+            .map(|source| get(source, "scope").map(|value| bounded_scope_value(&value)))
             .collect::<Result<_, _>>()?,
     })
 }

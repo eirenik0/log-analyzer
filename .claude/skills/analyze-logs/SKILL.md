@@ -25,7 +25,8 @@ before interpreting empty timing results. `generate-config` preserves template m
 Record-field scopes over 4096 bytes use bounded prefix/length/digest keys rather
 than failing scope lookup; summaries containing the reserved digest marker are
 also encoded. Treat these keys as summaries, not the original scope. Explicit
-event-rule scope mappings retain their value limit. See [reference.md](reference.md)
+event-rule scope mappings use the same encoding after validation and retain their
+input limit. See [reference.md](reference.md)
 for correlation details and digest limitations.
 
 Profiles can also define session hierarchy/lifecycle hints with `[[sessions.levels]]` (for example runner/test/environment prefixes plus create/complete commands). `info` will then report session completion health per level.

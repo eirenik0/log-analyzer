@@ -1,7 +1,7 @@
 use log_analyzer::{
     comparator::LogFilter,
     config::{self, AnalyzerConfig},
-    event_rules::{MAX_VALUE_BYTES, bounded_scope_value},
+    event_rules::{CompiledEventRules, MAX_VALUE_BYTES, ValueMapping, bounded_scope_value},
     parser::{self, LogEntry},
     perf_analyzer,
 };
@@ -35,6 +35,112 @@ fn analyze(lines: &[(&str, &str)]) -> perf_analyzer::PerfAnalysisResults {
     let cfg = config::load_builtin_template("service-api").unwrap();
     let logs = parse(&cfg, lines);
     perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg)
+}
+
+fn with_explicit_scope(rule_id: &str, source: ValueMapping) -> AnalyzerConfig {
+    let mut cfg = config::load_builtin_template("service-api").unwrap();
+    let mut schema = cfg.event_rules.as_ref().unwrap().schema().clone();
+    let rule = schema
+        .rules
+        .iter_mut()
+        .find(|rule| rule.id == rule_id)
+        .unwrap();
+    rule.mapping.scope = vec![source];
+    cfg.event_rules = Some(CompiledEventRules::compile(schema).unwrap());
+    cfg
+}
+
+#[test]
+fn explicit_and_inherited_marker_scopes_pair_in_both_directions() {
+    let scope = "tenant bytes, fnv1a128:raw";
+    for rule_id in ["request-start-id", "request-end-id"] {
+        let cfg = with_explicit_scope(
+            rule_id,
+            ValueMapping::Literal {
+                value: scope.into(),
+            },
+        );
+        let logs = parse(
+            &cfg,
+            &[
+                (scope, r#"Request "work" [r1] sent"#),
+                (scope, r#"Request "work" [r1] completed"#),
+            ],
+        );
+        let result =
+            perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg);
+        assert_eq!(
+            result.operations.len(),
+            1,
+            "{rule_id}: {:?}",
+            result.unmatched_events
+        );
+        assert_eq!(result.operations[0].duration_ms, 1000);
+    }
+}
+
+#[test]
+fn an_explicit_summary_cannot_impersonate_an_inherited_long_scope() {
+    let long = long_scope("x");
+    let summary = bounded_scope_value(&long);
+    for rule_id in ["request-start-id", "request-end-id"] {
+        let cfg = with_explicit_scope(
+            rule_id,
+            ValueMapping::Literal {
+                value: summary.clone(),
+            },
+        );
+        let logs = parse(
+            &cfg,
+            &[
+                (&long, r#"Request "work" [r1] sent"#),
+                (&long, r#"Request "work" [r1] completed"#),
+            ],
+        );
+        let result =
+            perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg);
+        assert!(
+            result.operations.is_empty(),
+            "{rule_id} impersonated a long scope"
+        );
+    }
+}
+
+#[test]
+fn explicit_scope_values_retain_the_input_limit() {
+    let cfg = with_explicit_scope(
+        "request-start-id",
+        ValueMapping::Field {
+            field: "payload.scope".into(),
+        },
+    );
+    for length in [MAX_VALUE_BYTES, MAX_VALUE_BYTES + 1] {
+        let scope = "x".repeat(length);
+        let message = format!(
+            "Request \"work\" [r1] sent with body {}",
+            serde_json::json!({"scope": scope})
+        );
+        let logs = parse(
+            &cfg,
+            &[
+                (&scope, &message),
+                (&scope, r#"Request "work" [r1] completed"#),
+            ],
+        );
+        let result =
+            perf_analyzer::analyze_performance_with_config(&logs, &LogFilter::new(), None, &cfg);
+        assert_eq!(
+            result.operations.len(),
+            usize::from(length == MAX_VALUE_BYTES),
+            "length={length}"
+        );
+        if length > MAX_VALUE_BYTES {
+            assert!(matches!(
+                &logs[0].classification,
+                Some(log_analyzer::event_rules::ClassifiedRecord::Invalid { .. })
+            ));
+        }
+    }
 }
 
 #[test]

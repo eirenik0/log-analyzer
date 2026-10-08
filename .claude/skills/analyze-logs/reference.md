@@ -451,8 +451,9 @@ reported instead of matched. Record-field scopes over 4096 bytes use bounded key
 containing a UTF-8-safe prefix, byte length, and 128-bit FNV-1a digest. Short values
 containing the reserved ` bytes, fnv1a128:` marker are also encoded to prevent raw
 summaries from impersonating long scopes. Equal long values still correlate;
-digest collisions remain possible. Explicit event-rule scope mappings retain
-their 4096-byte value limit. Logs without session IDs need an explicit known
+digest collisions remain possible. Explicit event-rule scope mappings use the
+same reserved-marker encoding after validation and retain their 4096-byte input
+limit. Logs without session IDs need an explicit known
 scope (for example `["component"]`) or an intentionally empty scope list; an empty
 list makes IDs global and overlapping starts remain ambiguous. JSON envelope
 `payload`/`fields` are retained separately from embedded message payloads and

@@ -559,7 +559,8 @@ by a UTF-8-safe prefix, its byte length, and a 128-bit FNV-1a digest, so equal l
 values still pair. Short values containing the reserved ` bytes, fnv1a128:` marker
 are also encoded to prevent them from impersonating generated summaries. These
 keys are bounded summaries, not the original scope; digest collisions remain possible.
-Explicit event-rule scope mappings retain their 4096-byte value limit.
+Explicit event-rule scope mappings use the same reserved-marker encoding after
+validation and retain their 4096-byte input limit.
 Logs without session IDs need an explicit known
 scope (for example `["component"]`) or an intentionally empty scope list; an empty
 list makes IDs global and overlapping starts remain ambiguous. JSON envelope
