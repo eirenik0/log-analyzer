@@ -153,13 +153,33 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
 
             for (count, (key, val)) in map.into_iter().enumerate() {
                 if count >= MAX_FIELDS {
-                    compacted_map.insert("_truncated_fields".to_string(), json!(map.len() - count));
+                    let mut marker = "_truncated_fields".to_string();
+                    let mut next = 2usize;
+                    while map.contains_key(&marker) || compacted_map.contains_key(&marker) {
+                        marker = format!("_truncated_fields~{next}");
+                        next += 1;
+                    }
+                    compacted_map.insert(marker, json!(map.len() - count));
                     break;
                 }
 
                 // Shorten long field names
                 let compact_key = if key.len() > 30 {
-                    format!("{}...", crate::output::byte_prefix(key, 27))
+                    let mut suffix = "...".to_string();
+                    let mut next = 2usize;
+                    loop {
+                        let candidate = format!(
+                            "{}{}",
+                            crate::output::byte_prefix(key, 30 - suffix.len()),
+                            suffix
+                        );
+                        if !map.contains_key(&candidate) && !compacted_map.contains_key(&candidate)
+                        {
+                            break candidate;
+                        }
+                        suffix = format!("...~{next}");
+                        next += 1;
+                    }
                 } else {
                     key.clone()
                 };
