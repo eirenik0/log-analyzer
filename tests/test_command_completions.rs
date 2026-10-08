@@ -1302,6 +1302,18 @@ fn pre_subject_qualifiers_cannot_create_command_boundaries() {
         "Probably ",
         "Could not confirm ",
         "Never observed ",
+        "Has ",
+        "Have ",
+        "Had ",
+        "Is ",
+        "Are ",
+        "Was ",
+        "Were ",
+        "Did ",
+        "Does ",
+        "Do ",
+        "Am ",
+        "Checking: Has ",
     ] {
         for (first, second) in [
             (

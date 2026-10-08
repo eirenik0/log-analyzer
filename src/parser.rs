@@ -1126,7 +1126,16 @@ pub(crate) fn command_lifecycle_message<'a>(
     }
     context.push_str(&preceding[previous..]);
     let body = command_lifecycle_body(&message[end..], config);
-    if crate::perf_analyzer::marker_is_nonaffirmative(&context) {
+    let auxiliary_question = |word: &str| {
+        matches!(
+            word.to_lowercase().as_str(),
+            "has" | "have" | "had" | "is" | "are" | "was" | "were" | "did" | "does" | "do" | "am"
+        )
+    };
+    let mut words = lifecycle_words(&context);
+    let interrogative = words.next().is_some_and(auxiliary_question)
+        || words.last().is_some_and(auxiliary_question);
+    if interrogative || crate::perf_analyzer::marker_is_nonaffirmative(&context) {
         std::borrow::Cow::Borrowed("")
     } else {
         body
