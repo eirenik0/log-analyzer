@@ -78,7 +78,15 @@ pub(crate) fn marker_has_trailing_condition(suffix: &str) -> bool {
             .any(|phrase| phrase == ["as", "soon", "as"])
 }
 
+pub(crate) fn marker_is_nonaffirmative_context(prefix: &str) -> bool {
+    marker_is_nonaffirmative_inner(&prefix.replace([',', ';'], " "), false)
+}
+
 pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
+    marker_is_nonaffirmative_inner(prefix, true)
+}
+
+fn marker_is_nonaffirmative_inner(prefix: &str, allow_contrast: bool) -> bool {
     let mut normalized = prefix.to_lowercase();
     for insertion in [
         "however",
@@ -111,7 +119,8 @@ pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
         .iter()
         .enumerate()
         .rposition(|(index, word)| {
-            matches!(word.as_str(), "but" | "however" | "instead")
+            allow_contrast
+                && matches!(word.as_str(), "but" | "however" | "instead")
                 && !index.checked_sub(1).is_some_and(|previous| {
                     let previous = words[previous].as_str();
                     crate::parser::lifecycle_qualifier(previous)
@@ -137,70 +146,88 @@ pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
                 })
         })
         .map_or(0, |index| index + 1);
-    words[start..].windows(2).any(|pair| {
-        (pair[0] == "to" && pair[1] == "be")
-            || (matches!(pair[0].as_str(), "anything" | "all") && pair[1] == "but")
-            || (pair[0] == "far" && pair[1] == "from")
-            || (pair[0] == "nowhere" && pair[1] == "near")
-    }) || words[start..].windows(3).any(|phrase| {
-        matches!(
-            phrase[0].as_str(),
-            "failed" | "fails" | "failing" | "failure" | "fail"
-        ) && phrase[1] == "to"
-            && matches!(
-                phrase[2].as_str(),
-                "observe"
-                    | "confirm"
-                    | "detect"
-                    | "verify"
-                    | "establish"
-                    | "find"
-                    | "see"
-                    | "notice"
-                    | "prove"
-                    | "validate"
-                    | "record"
+    let evidence_failure = words[start..]
+        .iter()
+        .any(|word| matches!(word.as_str(), "failed" | "failure" | "failing" | "fails"))
+        && words[start..].iter().any(|word| {
+            matches!(
+                word.as_str(),
+                "verification"
+                    | "observation"
+                    | "confirmation"
+                    | "detection"
+                    | "validation"
+                    | "proof"
+                    | "evidence"
             )
-    }) || words[start..].iter().enumerate().any(|(offset, word)| {
-        let index = start + offset;
-        (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
-            || (crate::parser::lifecycle_qualifier(word)
-                && !(word == "without"
-                    && words.get(index + 1).is_some_and(|next| {
-                        matches!(
-                            next.as_str(),
-                            "errors" | "issues" | "problems" | "failures" | "delay"
-                        )
-                    })))
-            || (word == "no"
-                && (index + 1 == words.len()
-                    || words.get(index + 1).is_some_and(|next| {
-                        matches!(
-                            next.as_str(),
-                            "longer"
-                                | "means"
-                                | "way"
-                                | "sense"
-                                | "evidence"
-                                | "proof"
-                                | "confirmation"
-                                | "indication"
-                                | "indications"
-                                | "observation"
-                                | "observations"
-                                | "record"
-                                | "records"
-                                | "sign"
-                                | "signs"
-                                | "trace"
-                                | "traces"
-                                | "report"
-                                | "reports"
-                                | "log"
-                                | "logs"
-                        )
-                    })))
-    })
+        });
+    evidence_failure
+        || words[start..].windows(2).any(|pair| {
+            (pair[0] == "to" && pair[1] == "be")
+                || (matches!(pair[0].as_str(), "anything" | "all") && pair[1] == "but")
+                || (pair[0] == "far" && pair[1] == "from")
+                || (pair[0] == "nowhere" && pair[1] == "near")
+        })
+        || words[start..].windows(3).any(|phrase| {
+            matches!(
+                phrase[0].as_str(),
+                "failed" | "fails" | "failing" | "failure" | "fail"
+            ) && phrase[1] == "to"
+                && matches!(
+                    phrase[2].as_str(),
+                    "observe"
+                        | "confirm"
+                        | "detect"
+                        | "verify"
+                        | "establish"
+                        | "find"
+                        | "see"
+                        | "notice"
+                        | "prove"
+                        | "validate"
+                        | "record"
+                )
+        })
+        || words[start..].iter().enumerate().any(|(offset, word)| {
+            let index = start + offset;
+            (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
+                || (crate::parser::lifecycle_qualifier(word)
+                    && !(word == "without"
+                        && words.get(index + 1).is_some_and(|next| {
+                            matches!(
+                                next.as_str(),
+                                "errors" | "issues" | "problems" | "failures" | "delay"
+                            )
+                        })))
+                || (word == "no"
+                    && (index + 1 == words.len()
+                        || words.get(index + 1).is_some_and(|next| {
+                            matches!(
+                                next.as_str(),
+                                "longer"
+                                    | "means"
+                                    | "way"
+                                    | "sense"
+                                    | "evidence"
+                                    | "proof"
+                                    | "confirmation"
+                                    | "indication"
+                                    | "indications"
+                                    | "observation"
+                                    | "observations"
+                                    | "record"
+                                    | "records"
+                                    | "sign"
+                                    | "signs"
+                                    | "trace"
+                                    | "traces"
+                                    | "report"
+                                    | "reports"
+                                    | "log"
+                                    | "logs"
+                            )
+                        })))
+        })
 }
 
 /// Extracts the request ID from a log message containing [request_id] pattern
