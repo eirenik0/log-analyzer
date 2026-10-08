@@ -1978,6 +1978,15 @@
                   "legacy_record_fields",
                   "unavailable"
                 ]
+              },
+              "effective_scope": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
               }
             }
           }

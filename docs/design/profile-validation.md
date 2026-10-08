@@ -147,3 +147,12 @@ Validation source locations include zero-based `input_ordinal`, so expected pair
 match the declared input occurrence as well as physical line and normalized row.
 Repeated inputs still participate in shared correlation; duplicate or ambiguous
 boundaries remain diagnostics rather than becoming independent completed pairs.
+
+Scope-adequacy witnesses apply to explicit and legacy classified lifecycles.
+Legacy events use the configured record-field scope that the pairing engine uses;
+recognition can remain supported while aliased timing scope needs review.
+
+Each classified record exposes `effective_scope` from the shared pairing engine
+(array or null when unavailable), including legacy scope fallback. Scope masking
+learns these values before rendering, so incomplete legacy lifecycles receive the
+same whole-report privacy treatment as completed operations.

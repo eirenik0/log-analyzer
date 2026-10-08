@@ -532,7 +532,7 @@ struct BoundaryEvent<'a> {
     start: bool,
 }
 
-fn correlation_scope(entry: &LogEntry, config: &AnalyzerConfig) -> Option<Vec<String>> {
+pub(crate) fn correlation_scope(entry: &LogEntry, config: &AnalyzerConfig) -> Option<Vec<String>> {
     let scope = if let Some(ClassifiedRecord::Event {
         semantics, legacy, ..
     }) = &entry.classification

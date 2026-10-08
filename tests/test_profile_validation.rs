@@ -1073,3 +1073,104 @@ fn ordinal_scoped_facts_and_normalized_duplicate_witnesses_remain_distinct() {
         }
     }
 }
+
+#[test]
+fn legacy_scope_aliasing_uses_the_effective_correlation_key() {
+    let dir = tempdir().unwrap();
+    let p = dir.path().join("legacy.toml");
+    fs::write(
+        &p,
+        r#"profile_name = "legacy-candidate"
+[parser]
+format = "json-lines"
+request_prefix = 'Request "'
+request_send_markers = ['sent']
+request_receive_markers = ['done']
+[perf]
+correlation_scope_fields = ['session']
+"#,
+    )
+    .unwrap();
+    let mut data = Vec::new();
+    for (second, component, phase) in [
+        (0, "a", "sent"),
+        (1, "a", "done"),
+        (2, "b", "sent"),
+        (3, "b", "done"),
+    ] {
+        data.push(json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"component":"worker","component_id":component,"level":"INFO","session":"private-scope","message":format!("Request \"work\" [0--reused] {phase}")}));
+    }
+    let file = log(dir.path(), &data);
+    for extra in [
+        vec![],
+        vec![
+            "--redact",
+            "--mask-id",
+            "correlation_id",
+            "--report-max-items",
+            "100",
+        ],
+    ] {
+        let (value, output) = run(p.to_str().unwrap(), &file, &extra);
+        assert_eq!(output.status.code(), Some(1));
+        let validation = &value["profile_validation"];
+        assert_eq!(validation["suitability"]["status"], "insufficient_evidence");
+        assert_eq!(validation["totals"]["operations"], 2);
+        assert_eq!(validation["totals"]["scope_alias_groups"], 1);
+        assert_eq!(validation["records"][0]["classification"]["legacy"], true);
+        let diagnostic = validation["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["reason"] == "scope_adequacy_unknown")
+            .unwrap();
+        assert_eq!(diagnostic["scope"], json!(["private-scope"]));
+        assert_eq!(diagnostic["witnesses"].as_array().unwrap().len(), 4);
+        assert!(
+            diagnostic["witnesses"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|w| w["evidence_ref"].is_object())
+        );
+    }
+    for length in [1, data.len()] {
+        let scope_file = log(dir.path(), &data[..length]);
+        for mask in [
+            "scope",
+            "effective_scope",
+            "profile_validation.records.effective_scope",
+        ] {
+            for options in [
+                vec![],
+                vec!["--report-max-items", "100"],
+                vec!["--complete-output"],
+            ] {
+                let mut args = vec!["--redact", "--mask-id", mask];
+                args.extend(options);
+                let (value, output) = run(p.to_str().unwrap(), &scope_file, &args);
+                assert_eq!(output.status.code(), Some(1));
+                assert!(!String::from_utf8_lossy(&output.stdout).contains("private-scope"));
+                assert!(value["profile_validation"]["records"][0]["effective_scope"].is_array());
+            }
+        }
+    }
+    let file = log(dir.path(), &data);
+    let (value, output) = run(p.to_str().unwrap(), &file, &["--purpose", "recognition"]);
+    assert!(output.status.success());
+    assert_eq!(
+        value["profile_validation"]["totals"]["scope_alias_groups"],
+        1
+    );
+    for row in &mut data {
+        row["session"] = row["component_id"].clone();
+    }
+    let file = log(dir.path(), &data);
+    let (value, output) = run(p.to_str().unwrap(), &file, &[]);
+    assert!(output.status.success());
+    assert_eq!(
+        value["profile_validation"]["totals"]["scope_alias_groups"],
+        0
+    );
+    assert_eq!(value["profile_validation"]["totals"]["operations"], 2);
+}

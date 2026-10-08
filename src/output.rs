@@ -1221,6 +1221,23 @@ fn restore_performance_metadata(
 // do not match source records. These are data disclosures, not generated labels.
 fn validation_contexts(report: &Value) -> Vec<(String, String, Value)> {
     let mut contexts = Vec::new();
+    if let Some(records) = report
+        .pointer("/profile_validation/records")
+        .and_then(Value::as_array)
+    {
+        for (index, record) in records.iter().enumerate() {
+            if let Some(scope) = record.get("effective_scope") {
+                for field in ["scope", "profile_validation.records.effective_scope"] {
+                    contexts.push((
+                        field.into(),
+                        format!("/profile_validation/records/{index}/effective_scope"),
+                        scope.clone(),
+                    ));
+                }
+            }
+        }
+    }
+
     if let Some(checks) = report
         .pointer("/profile_validation/expected_results")
         .and_then(Value::as_array)

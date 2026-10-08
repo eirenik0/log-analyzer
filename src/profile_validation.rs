@@ -244,7 +244,7 @@ pub fn analyze(
             };
             records.push(json!({"input_ordinal":input,"source_file":entry.source_file,"source_line_number":entry.source_line_number,"source_row_path":entry.source_row_path,
                 "timestamp":entry.source_timestamp.map(|t|t.to_rfc3339()).unwrap_or_else(||entry.timestamp.to_rfc3339()),"timestamp_year_inferred":entry.timestamp_year_inferred,
-                "timestamp_offset_source":if entry.source_timestamp.is_some(){"source"}else{"local_assumption"},"classification":entry.classification,"requested_kind":relevant(entry,kind),"scope_origin":scope_origin}));
+                "timestamp_offset_source":if entry.source_timestamp.is_some(){"source"}else{"local_assumption"},"classification":entry.classification,"requested_kind":relevant(entry,kind),"scope_origin":scope_origin,"effective_scope":if matches!(entry.classification,Some(ClassifiedRecord::Event { .. })){perf_analyzer::correlation_scope(entry,config)}else{None}}));
         }
     }
     let mut diagnostics = Vec::new();
@@ -262,22 +262,19 @@ pub fn analyze(
             diagnostics.push(json!({"reason":"intentional_start_only","source":crate::evidence::source(entry),"classification":entry.classification}));
         }
     }
-    // Different source identities under one explicit pairing key are witnesses of
+    // Different source identities under one effective pairing key are witnesses of
     // possible aliasing, not proof that component IDs are the intended domain scope.
     type ScopeKey = (String, String, Vec<String>);
     let mut identities: BTreeMap<ScopeKey, (BTreeSet<Vec<String>>, Vec<SourceLocation>)> =
         BTreeMap::new();
     let mut witness_config = config.clone();
     for entry in &requested {
-        if let Some(ClassifiedRecord::Event {
-            semantics,
-            legacy: false,
-            ..
-        }) = &entry.classification
+        if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification
             && let Some(id) = &semantics.correlation_id
         {
+            let scope = perf_analyzer::correlation_scope(entry, config).unwrap_or_default();
             let group = identities
-                .entry((semantics.name.clone(), id.clone(), semantics.scope.clone()))
+                .entry((semantics.name.clone(), id.clone(), scope))
                 .or_default();
             let mut source_identity = vec![entry.component_id.clone()];
             for field in &config.perf.correlation_scope_fields {
