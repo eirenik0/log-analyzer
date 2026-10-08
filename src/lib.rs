@@ -272,16 +272,19 @@ fn coverage_text(coverage: &AnalysisCoverage) -> String {
             let _ = writeln!(
                 text,
                 "  Normalization skipped line {} row {} field {}: {}",
-                diagnostic.line, diagnostic.row_path, diagnostic.field, diagnostic.reason
+                diagnostic.line,
+                output::diagnostic(&diagnostic.row_path),
+                output::diagnostic(&diagnostic.field),
+                output::diagnostic(&diagnostic.reason)
             );
         }
         let parser = serde_json::to_value(file.selected_parser).expect("parser serializes");
         let _ = writeln!(
             text,
             "  {}: parser={}, profile={}, input={} bytes, parsed={} entries, rejected={} candidates",
-            file.file,
+            output::source_path(&file.file),
             parser.as_str().unwrap_or("unknown"),
-            file.profile,
+            output::diagnostic(&file.profile),
             file.input_bytes,
             file.parsed_entries,
             file.rejected_candidates
@@ -835,6 +838,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                         *orphans_only,
                         *sort_by,
                     );
+                    output::prepare_performance_text(&text);
                     let text = render_analysis_report(&text, format, &coverage)?;
                     report_print!("{text}");
                     if let Some(path) = output {

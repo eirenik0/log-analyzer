@@ -6,8 +6,8 @@ pub use display::{
     format_perf_results_text, truncate_string,
 };
 pub use entities::{
-    AmbiguousGroup, OperationStats, OrphanOperation, PerfAnalysisResults, SourceLocation,
-    TimedOperation, UnmatchedEvent,
+    AmbiguousGroup, CaptureWindow, OperationCoverage, OperationStats, OrphanOperation,
+    PerfAnalysisResults, SourceLocation, SuppressedOperationType, TimedOperation, UnmatchedEvent,
 };
 
 use crate::comparator::LogFilter;
@@ -76,16 +76,43 @@ pub fn analyze_performance_with_config(
 
     let filtered: Vec<_> = logs.iter().filter(|entry| filter.matches(entry)).collect();
     results.total_entries = filtered.len();
-    results.time_range = filtered
-        .iter()
-        .map(|entry| entry.timestamp)
-        .min()
-        .zip(filtered.iter().map(|entry| entry.timestamp).max());
+    let known_year =
+        !filtered.is_empty() && filtered.iter().all(|entry| !entry.timestamp_year_inferred);
+    results
+        .operation_coverage
+        .capture_window
+        .timestamp_year_known = known_year;
+    if known_year {
+        results.time_range = filtered
+            .iter()
+            .map(|entry| entry.timestamp)
+            .min()
+            .zip(filtered.iter().map(|entry| entry.timestamp).max());
+        let timestamps: Vec<_> = filtered
+            .iter()
+            .map(|entry| {
+                entry
+                    .source_timestamp
+                    .unwrap_or_else(|| entry.timestamp.fixed_offset())
+            })
+            .collect();
+        let window = &mut results.operation_coverage.capture_window;
+        window.start = timestamps.iter().copied().min();
+        window.end = timestamps.iter().copied().max();
+        window.elapsed_ms = window
+            .start
+            .zip(window.end)
+            .map(|(start, end)| end.signed_duration_since(start).num_milliseconds());
+    } else if !filtered.is_empty() {
+        results.operation_coverage.capture_window.limits.push("Timestamp years are inferred; absolute bounds and elapsed capture time are unavailable".into());
+    }
     let track_commands = filtered.iter().any(|entry| {
         matches!(entry.kind, LogEntryKind::Command { .. })
             && contains_any_marker(&entry.message, &config.perf.command_completion_markers)
     });
     let mut groups: std::collections::BTreeMap<CorrelationKey, Vec<BoundaryEvent<'_>>> =
+        std::collections::BTreeMap::new();
+    let mut suppressions: std::collections::BTreeMap<(String, String), usize> =
         std::collections::BTreeMap::new();
     for entry in filtered {
         let (name, id, start, end) = match &entry.kind {
@@ -114,7 +141,7 @@ pub fn analyze_performance_with_config(
                 *direction == EventDirection::Receive,
                 *direction == EventDirection::Emit,
             ),
-            LogEntryKind::Command { command, .. } if track_commands => (
+            LogEntryKind::Command { command, .. } => (
                 command.as_str(),
                 Some(command.clone()),
                 contains_any_marker(&entry.message, &config.perf.command_start_markers),
@@ -123,7 +150,20 @@ pub fn analyze_performance_with_config(
             _ => continue,
         };
         let op_type = entry.entry_type();
-        if op_type_filter.is_some_and(|selected| selected != op_type) || (!start && !end) {
+        results.operation_coverage.relevant_events += 1;
+        let suppression = if op_type_filter.is_some_and(|selected| selected != op_type) {
+            Some("operation_type_filter")
+        } else if op_type == "Command" && !track_commands {
+            Some("no_recognized_command_completion")
+        } else if !start && !end {
+            Some("no_recognized_boundary")
+        } else {
+            None
+        };
+        if let Some(reason) = suppression {
+            *suppressions
+                .entry((op_type.to_string(), reason.to_string()))
+                .or_default() += 1;
             continue;
         }
         let event = BoundaryEvent {
@@ -189,27 +229,106 @@ pub fn analyze_performance_with_config(
             .or_default()
             .push(event);
     }
-    for (key, mut events) in groups {
-        events.sort_by_key(|event| event.entry.timestamp);
-        let mut active = false;
-        let ambiguous = events.iter().any(|event| {
-            if event.start {
-                if active {
-                    return true;
-                }
-                active = true;
-            } else {
-                active = false;
+    let mut pending_groups: std::collections::VecDeque<_> = groups.into_iter().collect();
+    while let Some((key, mut events)) = pending_groups.pop_front() {
+        // Inferred years cannot establish boundary chronology (including New Year).
+        if events
+            .iter()
+            .any(|event| event.entry.timestamp_year_inferred)
+        {
+            if events.len() == 2 && events.iter().filter(|event| event.start).count() == 1 {
+                results.operation_coverage.rejected_pairs += 1;
             }
-            false
+            for event in events {
+                results
+                    .unmatched_events
+                    .push(event.unmatched(key.scope.clone(), "incomplete_timestamp_year"));
+            }
+            continue;
+        }
+        events.sort_by(|a, b| {
+            a.entry
+                .timestamp
+                .cmp(&b.entry.timestamp)
+                .then_with(|| a.entry.source_line_number.cmp(&b.entry.source_line_number))
         });
+        let mut bucket_time = None;
+        let mut bucket_file = None;
+        let mut seen_rows = std::collections::HashSet::new();
+        let mut unordered_timestamps = std::collections::HashSet::new();
+        for event in &events {
+            if bucket_time != Some(event.entry.timestamp) {
+                bucket_time = Some(event.entry.timestamp);
+                bucket_file = Some(&event.entry.source_file);
+                seen_rows.clear();
+            }
+            if bucket_file != Some(&event.entry.source_file)
+                || !seen_rows.insert((event.entry.source_line_number, &event.entry.source_row_path))
+            {
+                unordered_timestamps.insert(event.entry.timestamp);
+            }
+        }
+        let tied = !unordered_timestamps.is_empty();
+        if tied {
+            // Close established lifecycles before isolating an unordered timestamp bucket.
+            let mut segments = Vec::new();
+            let mut segment = Vec::new();
+            let mut outstanding = 0i64;
+            let mut boundaries = events.into_iter().peekable();
+            while let Some(event) = boundaries.next() {
+                let timestamp = event.entry.timestamp;
+                outstanding += if event.start { 1 } else { -1 };
+                segment.push(event);
+                if (!unordered_timestamps.contains(&timestamp)
+                    || boundaries
+                        .peek()
+                        .is_none_or(|next| next.entry.timestamp != timestamp))
+                    && outstanding <= 0
+                {
+                    segments.push(std::mem::take(&mut segment));
+                    outstanding = 0;
+                }
+            }
+            if !segment.is_empty() {
+                segments.push(segment);
+            }
+            if segments.len() > 1 {
+                for segment in segments.into_iter().rev() {
+                    pending_groups.push_front((key.clone(), segment));
+                }
+                continue;
+            }
+            events = segments.pop().unwrap_or_default();
+        }
+        let mut active = false;
+        let ambiguous = tied
+            || events.iter().any(|event| {
+                if event.start {
+                    if active {
+                        return true;
+                    }
+                    active = true;
+                } else {
+                    active = false;
+                }
+                false
+            });
         if ambiguous {
             let preserved: Vec<_> = events
                 .iter()
-                .map(|event| event.unmatched(key.scope.clone(), "overlapping_starts"))
+                .map(|event| {
+                    event.unmatched(
+                        key.scope.clone(),
+                        if tied {
+                            "ambiguous_timestamp_order"
+                        } else {
+                            "overlapping_starts"
+                        },
+                    )
+                })
                 .collect();
             for event in &events {
-                if event.start {
+                if event.start && !tied {
                     results.orphans.push(event.orphan());
                 }
             }
@@ -267,11 +386,63 @@ pub fn analyze_performance_with_config(
                 .push(event.unmatched(key.scope, "missing_end"));
         }
     }
+    let coverage = &mut results.operation_coverage;
+    coverage.suppressed_operation_types = suppressions
+        .into_iter()
+        .map(|((op_type, reason), events)| SuppressedOperationType {
+            op_type,
+            reason,
+            events,
+        })
+        .collect();
+    coverage.suppressed_events = coverage
+        .suppressed_operation_types
+        .iter()
+        .map(|s| s.events)
+        .sum();
+    coverage.paired_events = results.operations.len() * 2;
+    coverage.unmatched_events = results.unmatched_events.len();
+    coverage.ambiguous_groups = results.ambiguous_groups.len();
+    coverage.ambiguous_events = results
+        .unmatched_events
+        .iter()
+        .filter(|e| {
+            matches!(
+                e.reason.as_str(),
+                "overlapping_starts" | "ambiguous_timestamp_order" | "ambiguous_boundary"
+            )
+        })
+        .count();
+    coverage.ambiguous_pairs = if coverage.ambiguous_events > 0 {
+        None
+    } else {
+        Some(0)
+    };
+    coverage.rejected_events = results
+        .unmatched_events
+        .iter()
+        .filter(|e| {
+            matches!(
+                e.reason.as_str(),
+                "missing_correlation_key" | "missing_scope_field" | "incomplete_timestamp_year"
+            )
+        })
+        .count();
+    coverage.status = if coverage.relevant_events == 0 {
+        "no_applicable_events"
+    } else if coverage.paired_events == 0 {
+        "insufficient_evidence"
+    } else if coverage.unmatched_events > 0 || coverage.suppressed_events > 0 {
+        "partial_evidence"
+    } else {
+        "observed_pairs"
+    }
+    .into();
     results.calculate_stats();
     results
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct CorrelationKey {
     op_type: String,
     name: String,
@@ -301,7 +472,14 @@ impl BoundaryEvent<'_> {
             name: self.name.to_string(),
             correlation_id: self.id.clone(),
             scope,
-            boundary: if self.start { "start" } else { "end" }.to_string(),
+            boundary: if reason == "ambiguous_boundary" {
+                "ambiguous"
+            } else if self.start {
+                "start"
+            } else {
+                "end"
+            }
+            .to_string(),
             reason: reason.to_string(),
             timestamp: self.entry.timestamp,
             component: self.entry.component.clone(),

@@ -613,3 +613,5 @@ filtering or correlation.
 Use `log-analyzer capabilities` to inspect the installed build and supported commands. Reports carry build/profile metadata; see README “Build identity and capabilities” for schema and count-output behavior.
 
 Compact text preserves Unicode graphemes and disambiguates shortened field names. See README “Safe compact text” for omission-marker collisions and existing limits.
+
+Check `perf` operation coverage separately from parse coverage before interpreting empty results. README “perf” describes evidence statuses, suppressions, ambiguous/rejected events, and capture limits.

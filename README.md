@@ -449,6 +449,29 @@ Unmatched ends and missing keys are retained in `unmatched_events`; JSON include
 `ambiguous_groups` and start/end source file and line references. Diagnostic
 sections also obey `--top-n`, with full totals and omitted counts; `0` preserves all.
 
+`perf` reports `operation_coverage` separately from parse coverage in text and JSON.
+Relevant events are parsed request, event, and command candidates; each is paired,
+unmatched, or suppressed. Suppressions identify operation-type filters, missing
+recognized boundaries, and command analysis disabled by absent completion evidence.
+`no_applicable_events` means no candidates; `insufficient_evidence` means candidates
+but no measured pairs; `partial_evidence` includes pairs plus unmatched/suppressed
+candidates; `observed_pairs` means all selected candidates paired, without claiming
+capture completeness. Ambiguous/rejected event counts are subsets of unmatched
+counts. Ambiguous pair cardinality is `null`/unknown when it cannot be established;
+rejected pairs count groups with exactly one start and one end whose timestamp
+years are inferred. All boundaries in a group containing inferred years are
+rejected before date sorting and retained only in diagnostics, without claiming
+a missing completion in the orphan list.
+Coverage remains full when display limits or `--orphans-only` hide rows.
+
+The observed capture window uses filtered parsed timestamps and preserves source
+offsets. Bounds and elapsed time are unavailable for empty selections or inferred
+years. Boundaries outside the input or filters remain unknown; upstream export
+completeness is always `unknown`. Equal timestamps across files or duplicated
+physical rows with identical row paths have no established boundary order and cannot create durations or assert a missing completion in the orphan list.
+Ties are isolated at closed lifecycle boundaries; established sequential pairs
+before and after the uncertain segment remain measured.
+
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 
 ### Configurable event timelines

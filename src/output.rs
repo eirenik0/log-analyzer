@@ -41,6 +41,8 @@ struct OutputState {
     next_id: usize,
     matcher: Option<(AhoCorasick, Vec<String>)>,
     preserve_numeric_metadata: bool,
+    performance_text: Option<String>,
+    path_substring_ids: bool,
     metadata: Option<Value>,
     metadata_comments: bool,
     structured: bool,
@@ -116,6 +118,25 @@ pub fn diagnostic(text: &str) -> String {
     STATE.with(
         |state| match state.borrow_mut().as_mut().filter(|s| s.redact) {
             Some(state) => state.text(text),
+            None => text.to_string(),
+        },
+    )
+}
+
+// The formatter consumes already-redacted typed performance results. Protect
+// only that generated section; late-added coverage still follows redaction.
+pub fn prepare_performance_text(text: &str) {
+    STATE.with(|state| {
+        if let Some(state) = state.borrow_mut().as_mut().filter(|s| s.redact) {
+            state.performance_text = Some(text.to_string());
+        }
+    });
+}
+
+pub fn source_path(text: &str) -> String {
+    STATE.with(
+        |state| match state.borrow_mut().as_mut().filter(|s| s.redact) {
+            Some(state) => state.path_text(text),
             None => text.to_string(),
         },
     )
@@ -261,6 +282,9 @@ impl OutputState {
             }
             Value::String(text) => {
                 let leaf = path.rsplit('.').next().unwrap_or(path);
+                if matches!(leaf, "file" | "source_file") {
+                    return Value::String(self.path_text(text));
+                }
                 let metadata = matches!(
                     leaf,
                     "timestamp"
@@ -294,6 +318,16 @@ impl OutputState {
             }
             value => value.clone(),
         }
+    }
+
+    fn path_text(&mut self, text: &str) -> String {
+        let previous = self.preserve_numeric_metadata;
+        self.preserve_numeric_metadata = false;
+        self.path_substring_ids = true;
+        let rendered = self.text(text);
+        self.path_substring_ids = false;
+        self.preserve_numeric_metadata = previous;
+        rendered
     }
 
     fn text(&mut self, text: &str) -> String {
@@ -472,8 +506,9 @@ impl OutputState {
             }
             let original = &originals[found.pattern().as_usize()];
             let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
-            if text[..start].chars().next_back().is_some_and(is_word)
-                || text[end..].chars().next().is_some_and(is_word)
+            if (!self.path_substring_ids
+                && (text[..start].chars().next_back().is_some_and(is_word)
+                    || text[end..].chars().next().is_some_and(is_word)))
                 || placeholders
                     .get(placeholder_index)
                     .is_some_and(|p| p.contains(&start))
@@ -552,22 +587,25 @@ impl OutputState {
         }
     }
 
-    fn metadata_text(&self, comment: bool) -> String {
-        let Some(metadata) = &self.metadata else {
+    fn metadata_text(&mut self, comment: bool) -> String {
+        let Some(metadata) = self.metadata.clone() else {
             return String::new();
         };
         let build = &metadata["build"];
-        let profile = metadata["active_profile"].as_str().unwrap().chars().fold(
-            String::new(),
-            |mut out, ch| {
-                if ch.is_control() {
-                    out.extend(ch.escape_default());
-                } else {
-                    out.push(ch);
-                }
-                out
-            },
-        );
+        let raw_profile = metadata["active_profile"].as_str().unwrap();
+        let profile = if self.redact {
+            self.text(raw_profile)
+        } else {
+            raw_profile.to_string()
+        };
+        let profile = profile.chars().fold(String::new(), |mut out, ch| {
+            if ch.is_control() {
+                out.extend(ch.escape_default());
+            } else {
+                out.push(ch);
+            }
+            out
+        });
         format!(
             "{}Build: log-analyzer {} revision={} state={} profile={} schema={}\n",
             if comment { "# " } else { "" },
@@ -581,13 +619,17 @@ impl OutputState {
 
     fn report(&mut self, text: &str) -> String {
         let rendered = self.redact_report(text);
-        let Some(metadata) = &self.metadata else {
+        let Some(mut metadata) = self.metadata.clone() else {
             return rendered;
         };
         if let Ok(mut value) = serde_json::from_str::<Value>(&rendered)
             && value.is_object()
         {
-            value["report_metadata"] = metadata.clone();
+            if self.redact {
+                metadata["active_profile"] =
+                    Value::String(self.text(metadata["active_profile"].as_str().unwrap()));
+            }
+            value["report_metadata"] = metadata;
             return format!(
                 "{}\n",
                 if self.compact {
@@ -615,6 +657,7 @@ impl OutputState {
         if let Ok(value) = serde_json::from_str::<Value>(text)
             && value.is_object()
         {
+            let original = value.clone();
             let mut value = if self.prepared {
                 value
             } else {
@@ -623,6 +666,9 @@ impl OutputState {
             // A second pass covers generic ID labels encountered before their named fields.
             if !self.prepared {
                 value = self.value(&value);
+            }
+            if original.get("operation_coverage").is_some() {
+                restore_performance_metadata(&original, &mut value, "");
             }
             // Aggregate extraction puts a selected field's values under generic `value` keys.
             if let Some(extract) = value.get_mut("extract")
@@ -670,6 +716,15 @@ impl OutputState {
         };
         if serde_json::from_str::<Value>(text).is_ok_and(|value| value.is_number()) {
             return format!("{marker}\n{text}");
+        }
+        if let Some(section) = self.performance_text.clone()
+            && let Some(prefix) = text.strip_suffix(&section)
+        {
+            self.preserve_numeric_metadata = true;
+            let prefix = self.text(prefix);
+            let prefix = self.text(&prefix);
+            self.preserve_numeric_metadata = false;
+            return format!("{marker}\n{prefix}{section}");
         }
         self.preserve_numeric_metadata = true;
         let text = self.text(text);
@@ -822,8 +877,8 @@ pub fn set_metadata(metadata: Value, comments: bool) {
 pub fn text_metadata() -> String {
     STATE.with(|state| {
         state
-            .borrow()
-            .as_ref()
+            .borrow_mut()
+            .as_mut()
             .map(|s| s.metadata_text(false))
             .unwrap_or_default()
     })
@@ -832,8 +887,8 @@ pub fn text_metadata() -> String {
 pub fn report_prefix() -> String {
     STATE.with(|state| {
         state
-            .borrow()
-            .as_ref()
+            .borrow_mut()
+            .as_mut()
             .map(|s| {
                 format!(
                     "{}{}",
@@ -903,8 +958,10 @@ pub fn prepare_performance(results: &mut crate::perf_analyzer::PerfAnalysisResul
         if let Some(state) = state.as_mut().filter(|s| s.redact) {
             let value = serde_json::to_value(&*results).expect("performance results serialize");
             state.collect_value(&value, "");
-            *results = serde_json::from_value(state.value(&value))
-                .expect("redaction preserves typed performance fields");
+            let mut redacted = state.value(&value);
+            restore_performance_metadata(&value, &mut redacted, "");
+            *results = serde_json::from_value(redacted)
+                .expect("source redaction preserves typed performance metadata");
         }
     });
 }
@@ -920,4 +977,66 @@ pub(crate) fn byte_prefix(text: &str, max_bytes: usize) -> &str {
         end = next;
     }
     &text[..end]
+}
+
+// Performance has source strings and analytic metadata in the same object. Keep
+// typed measurements/provenance intact, including when an opaque ID equals a label.
+fn restore_performance_metadata(original: &Value, redacted: &mut Value, path: &str) {
+    let leaf = path.rsplit('.').next().unwrap_or(path);
+    if path == "event_timeline.status"
+        || (path.starts_with("event_timeline.pair_coverage.") && leaf == "status")
+    {
+        *redacted = original.clone();
+        return;
+    }
+    if path == "operation_coverage" {
+        *redacted = original.clone();
+        return;
+    }
+    match original {
+        Value::Object(map) => {
+            if !redacted.is_object() {
+                *redacted = original.clone();
+            }
+            for (key, value) in map {
+                let path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                restore_performance_metadata(value, &mut redacted[key], &path);
+            }
+        }
+        Value::Array(items) => {
+            if !redacted.is_array() {
+                *redacted = original.clone();
+            }
+            for (original, redacted) in items.iter().zip(redacted.as_array_mut().unwrap()) {
+                restore_performance_metadata(original, redacted, path);
+            }
+        }
+        Value::Number(_) | Value::Bool(_) | Value::Null => *redacted = original.clone(),
+        Value::String(_)
+            if matches!(
+                leaf,
+                "op_type"
+                    | "boundary"
+                    | "reason"
+                    | "timing"
+                    | "timestamp"
+                    | "start"
+                    | "end"
+                    | "start_time"
+                    | "end_time"
+                    | "time_range"
+                    | "capture_window"
+                    | "timestamp_year_source"
+                    | "timestamp_offset_source"
+                    | "upstream_capture_completeness"
+            ) =>
+        {
+            *redacted = original.clone()
+        }
+        _ => (),
+    }
 }

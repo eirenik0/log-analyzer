@@ -102,6 +102,73 @@ pub struct AmbiguousGroup {
     pub events: Vec<UnmatchedEvent>,
 }
 
+/// Evidence coverage for the selected, parsed input, independent of display limits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperationCoverage {
+    pub status: String,
+    pub relevant_events: usize,
+    pub paired_events: usize,
+    pub unmatched_events: usize,
+    pub ambiguous_groups: usize,
+    pub ambiguous_events: usize,
+    /// Exact pair cardinality is unavailable when boundaries are ambiguous.
+    pub ambiguous_pairs: Option<usize>,
+    pub rejected_events: usize,
+    pub rejected_pairs: usize,
+    pub suppressed_events: usize,
+    pub suppressed_operation_types: Vec<SuppressedOperationType>,
+    pub capture_window: CaptureWindow,
+    pub upstream_export_completeness: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuppressedOperationType {
+    pub op_type: String,
+    pub reason: String,
+    pub events: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureWindow {
+    pub start: Option<DateTime<chrono::FixedOffset>>,
+    pub end: Option<DateTime<chrono::FixedOffset>>,
+    pub elapsed_ms: Option<i64>,
+    pub basis: String,
+    pub timestamp_year_known: bool,
+    pub limits: Vec<String>,
+}
+
+impl Default for OperationCoverage {
+    fn default() -> Self {
+        Self {
+            status: "no_applicable_events".into(),
+            relevant_events: 0,
+            paired_events: 0,
+            unmatched_events: 0,
+            ambiguous_groups: 0,
+            ambiguous_events: 0,
+            ambiguous_pairs: Some(0),
+            rejected_events: 0,
+            rejected_pairs: 0,
+            suppressed_events: 0,
+            suppressed_operation_types: Vec::new(),
+            upstream_export_completeness: "unknown".into(),
+            capture_window: CaptureWindow {
+                start: None,
+                end: None,
+                elapsed_ms: None,
+                basis: "filtered_parsed_entries".into(),
+                timestamp_year_known: false,
+                limits: vec![
+                    "Only selected parsed rows define the observed window".into(),
+                    "Boundaries may be missing outside the capture or excluded by filters".into(),
+                    "Upstream export completeness is unknown".into(),
+                ],
+            },
+        }
+    }
+}
+
 /// Results of performance analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerfAnalysisResults {
@@ -119,6 +186,7 @@ pub struct PerfAnalysisResults {
     pub time_range: Option<(DateTime<Local>, DateTime<Local>)>,
     /// Total number of log entries analyzed
     pub total_entries: usize,
+    pub operation_coverage: OperationCoverage,
 }
 
 impl PerfAnalysisResults {
@@ -133,6 +201,7 @@ impl PerfAnalysisResults {
             ambiguous_groups: Vec::new(),
             time_range: None,
             total_entries: 0,
+            operation_coverage: OperationCoverage::default(),
         }
     }
 
