@@ -766,6 +766,8 @@ fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
         "inspected status=(completed)",
         "inspected status = not completed",
         "inspected status=never completed",
+        "inspected status=not-yet completed",
+        "inspected status=never-successfully completed",
         "inspected status=will be completed",
         "inspected status=(not completed)",
         "inspected status=not only completed",
@@ -827,6 +829,11 @@ fn negated_markers_cannot_create_command_boundaries() {
     let config = config::load_builtin_template("service-api").unwrap();
     for wording in [
         "not completed",
+        "not-completed",
+        "not-yet-completed",
+        "not-successfully-completed",
+        "not—yet—completed",
+        "not/yet/completed",
         "not yet completed",
         "hasn't completed",
         "hasn’t completed",
@@ -856,6 +863,8 @@ fn negated_markers_cannot_create_command_boundaries() {
     }
     for wording in [
         "not started",
+        "not-started",
+        "not-yet-started",
         "hasn't started",
         "never started",
         "did not begin",

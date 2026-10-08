@@ -1103,8 +1103,8 @@ fn metadata_assignment_spans(
         let first_word = value[..value_end - value_start]
             .trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
             .to_lowercase();
-        let value_end = if matches!(first_word.as_str(), "not" | "no")
-            || lifecycle_qualifier(&first_word)
+        let value_end = if lifecycle_words(&first_word)
+            .any(|word| matches!(word, "not" | "no") || lifecycle_qualifier(word))
             || value.starts_with('(')
         {
             // A qualified multiword value cannot expose a later phase word.
@@ -1117,6 +1117,11 @@ fn metadata_assignment_spans(
         spans.push(key_start..value_end);
     }
     spans
+}
+
+pub(crate) fn lifecycle_words(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|ch: char| !(ch.is_alphanumeric() || matches!(ch, '_' | '\'' | '’')))
+        .filter(|word| !word.is_empty())
 }
 
 pub(crate) fn lifecycle_qualifier(word: &str) -> bool {

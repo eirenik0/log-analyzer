@@ -44,8 +44,7 @@ fn marker_is_nonaffirmative(prefix: &str) -> bool {
         .rsplit([',', ';', '.', '!', '?', '\n'])
         .next()
         .unwrap_or(prefix);
-    let words: Vec<_> = clause
-        .split_whitespace()
+    let words: Vec<_> = crate::parser::lifecycle_words(clause)
         .map(|word| {
             word.trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
                 .to_lowercase()
