@@ -305,3 +305,98 @@ fn object_identifier_values_still_obey_compaction_limits() {
     assert!(compact.to_string().contains("TRUNCATED"));
     assert!(compact.to_string().len() < 1000);
 }
+
+#[test]
+fn numeric_ids_in_prose_and_unmatched_selectors_are_masked() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("numeric.jsonl");
+    let row = json!({"ts":"2026-01-01T00:00:00Z","level":"INFO","component":"core", "message":"received answer for 12345", "payload":{"request_id":"12345"}});
+    fs::write(&file, format!("{row}\n")).unwrap();
+    for format in ["text", "json"] {
+        for id in ["12345", "missing-id"] {
+            let output = run(&[
+                "--redact",
+                "--mask-id",
+                "request_id",
+                "-F",
+                format,
+                "trace",
+                file.to_str().unwrap(),
+                "--id",
+                id,
+            ]);
+            assert!(output.status.success());
+            assert!(
+                !String::from_utf8_lossy(&output.stdout).contains(id),
+                "{}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+        }
+    }
+}
+
+#[test]
+fn bounded_errors_budget_includes_redaction_and_expanded_masks() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("bounded.log");
+    fs::write(
+        &file,
+        format!(
+            "core (scope) | 2026-01-01T00:00:00.000Z [ERROR ] failure {}\n",
+            "token=x ".repeat(400)
+        ),
+    )
+    .unwrap();
+    for budget in [0, 300, 1000, 1800, 2500] {
+        let target = dir.path().join("out.txt");
+        let output = run(&[
+            "--redact",
+            "errors",
+            file.to_str().unwrap(),
+            "--bounded",
+            "--max-output-chars",
+            &budget.to_string(),
+            "-o",
+            target.to_str().unwrap(),
+        ]);
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(text, fs::read_to_string(target).unwrap());
+        assert!(text.starts_with("[REDACTED OUTPUT]"));
+        assert!(
+            text.chars().count() <= budget || text.contains("Mandatory metadata exceeds budget"),
+            "budget {budget}: {} chars\n{text}",
+            text.chars().count()
+        );
+        assert!(!text.contains("token=x"));
+    }
+}
+
+#[test]
+fn bounded_json_samples_do_not_expand_after_truncation() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("sample.log");
+    fs::write(
+        &file,
+        "core (scope) | 2026-01-01T00:00:00.000Z [ERROR ] token=x\n",
+    )
+    .unwrap();
+    let output = run(&[
+        "--redact",
+        "-F",
+        "json",
+        "errors",
+        file.to_str().unwrap(),
+        "--bounded",
+        "--max-sample-chars",
+        "10",
+    ]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let sample = report["errors"]["clusters"][0]["sample_message"]
+        .as_str()
+        .unwrap();
+    assert!(sample.chars().count() <= 10, "{sample}");
+    assert!(!sample.contains("token=x"));
+    assert_eq!(report["redaction"]["applied"], true);
+}

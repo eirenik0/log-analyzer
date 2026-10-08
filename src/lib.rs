@@ -34,8 +34,8 @@ pub use comparator::{
 };
 use comparator::{LogFilter, display_log_summary};
 use errors::{
-    ErrorReportLimits, ErrorsOptions, analyze_errors_with_config, format_bounded_errors_text,
-    format_errors_json, format_errors_text,
+    ErrorReportLimits, ErrorsOptions, analyze_errors_with_config,
+    format_bounded_errors_text_with_prefix, format_errors_json, format_errors_text,
 };
 use extract::{format_extract_json, format_extract_rows, format_extract_text};
 use filter::{FilterExpression, print_filter_warnings, to_log_filter};
@@ -690,16 +690,20 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 },
             };
 
-            let report =
+            let mut report =
                 analyze_errors_with_config(&logs, &filter, &analyzer_config, &error_options);
+            if error_options.limits.is_some() {
+                output::prepare_errors(&mut report);
+            }
             let rendered = match format {
                 OutputFormat::Text => {
                     if let Some(limits) = error_options.limits {
-                        format_bounded_errors_text(
+                        format_bounded_errors_text_with_prefix(
                             &report,
                             &error_options,
                             limits,
-                            &coverage_text(&coverage),
+                            &output::diagnostic(&coverage_text(&coverage)),
+                            output::report_prefix(),
                         )
                     } else {
                         render_analysis_report(
@@ -716,6 +720,11 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 )?,
             };
 
+            let rendered = if error_options.limits.is_some() && cli.redact {
+                output::prepare_bounded_output(&rendered, matches!(format, OutputFormat::Json))
+            } else {
+                rendered
+            };
             report_print!("{rendered}");
             if let Some(path) = output {
                 write_output_file(path, &rendered)?;
@@ -827,6 +836,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("Trace requires either --id or --session".into());
             };
 
+            output::register_selector(selector.value());
             let entries = collect_trace_entries(&logs, &filter, &selector);
 
             let event_timeline = timeline::analyze(&entries, &analyzer_config.timeline)?;

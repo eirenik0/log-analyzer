@@ -361,7 +361,12 @@ assignments, and URL query names/values (including percent encoding) are handled
 Endpoints and ordinary correlation IDs are retained regardless of ID length.
 Use repeatable `--mask-id <field>` with `--redact` to mask selected identifier fields
 as `[MASKED_ID:N]`; equal values share a replacement within one invocation across
-stdout and files. Replacements are local to each invocation.
+stdout and files, including known ID occurrences in prose. Trace selectors are
+masked even when no named input field or matching entry exists. Replacements are
+local to each invocation. Bounded errors are redacted before sample/output budgets
+are applied; the redaction marker counts against the text budget. Omission counts
+for strings describe the redacted presentation; numeric analysis totals retain
+their original values.
 
 Without `--redact`, investigation reports can contain raw sensitive data.
 `process` and `llm-diff` retain their legacy payload-only sanitization defaults;
