@@ -93,19 +93,26 @@ fn marker_is_nonaffirmative(prefix: &str) -> bool {
         .collect();
     let start = words
         .iter()
-        .rposition(|word| matches!(word.as_str(), "but" | "however" | "instead"))
-        .map_or(0, |index| index + 1);
-    words[start..]
-        .windows(2)
-        .any(|pair| pair[0] == "to" && pair[1] == "be")
-        || words[start..].iter().enumerate().any(|(offset, word)| {
-            let index = start + offset;
-            (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
-                || crate::parser::lifecycle_qualifier(word)
-                || (word == "no"
-                    && (index + 1 == words.len()
-                        || words.get(index + 1).is_some_and(|next| next == "longer")))
+        .enumerate()
+        .rposition(|(index, word)| {
+            matches!(word.as_str(), "however" | "instead")
+                || (word == "but"
+                    && !index.checked_sub(1).is_some_and(|previous| {
+                        matches!(words[previous].as_str(), "anything" | "all")
+                    }))
         })
+        .map_or(0, |index| index + 1);
+    words[start..].windows(2).any(|pair| {
+        (pair[0] == "to" && pair[1] == "be")
+            || (matches!(pair[0].as_str(), "anything" | "all") && pair[1] == "but")
+    }) || words[start..].iter().enumerate().any(|(offset, word)| {
+        let index = start + offset;
+        (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
+            || crate::parser::lifecycle_qualifier(word)
+            || (word == "no"
+                && (index + 1 == words.len()
+                    || words.get(index + 1).is_some_and(|next| next == "longer")))
+    })
 }
 
 /// Extracts the request ID from a log message containing [request_id] pattern

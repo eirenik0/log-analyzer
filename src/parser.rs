@@ -1237,6 +1237,8 @@ fn metadata_assignment_spans(
                         | "no"
                         | "to"
                         | "only"
+                        | "anything"
+                        | "all"
                         | "is"
                         | "was"
                         | "were"
