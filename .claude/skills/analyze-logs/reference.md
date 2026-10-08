@@ -278,6 +278,10 @@ For bug triage, use `errors` as an early first pass, then follow with targeted `
 
 ### extract
 
+Repeat `--field` to keep related values in rows, or select `--rows`. For explicit
+array expansion and missing/null semantics, see the README extract section.
+Rows retain timestamps, correlation IDs, and source file/line/row paths.
+
 Extract and aggregate a specific field from parsed payload/settings JSON in matching entries.
 
 ```bash

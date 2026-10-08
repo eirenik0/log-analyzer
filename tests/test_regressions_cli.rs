@@ -2142,3 +2142,166 @@ fn search_preserves_expanded_row_paths_in_both_output_formats() {
         }
     }
 }
+
+#[test]
+fn extract_multiple_fields_preserves_rows_nulls_and_source() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("rows.log");
+    write_file(
+        &file,
+        concat!(
+            "core | 2026-01-01T00:00:00.000+02:00 [INFO ] Request \"run\" [0--id1] will be sent with body {\"name\":\"case-}a[\",\"width\":800,\"status\":\"passed\"}\n",
+            "core | 2026-01-01T00:00:01.000+02:00 [INFO ] Request \"run\" [0--id2] will be sent with body {\"name\":\"case-b\",\"width\":null}\n",
+        ),
+    );
+    let output = command()
+        .args([
+            "-F",
+            "json",
+            "extract",
+            file.to_str().unwrap(),
+            "--field",
+            "name",
+            "--field",
+            "width",
+            "--field",
+            "status",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let rows = report["extract"]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0]["values"],
+        serde_json::json!({"name":"case-}a[","width":800,"status":"passed"})
+    );
+    assert_eq!(rows[1]["values"]["width"], serde_json::Value::Null);
+    assert_eq!(rows[1]["missing_fields"], serde_json::json!(["status"]));
+    assert_eq!(rows[0]["source"]["file"], file.to_str().unwrap());
+    assert_eq!(rows[0]["source"]["line"], 1);
+    assert!(rows[0]["timestamp"].as_str().unwrap().ends_with("+02:00"));
+    assert_eq!(rows[0]["correlation_ids"]["request_id"], "0--id1");
+    let text = command()
+        .args([
+            "extract",
+            file.to_str().unwrap(),
+            "--field",
+            "name",
+            "--field",
+            "width",
+        ])
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&text.stdout).contains("case-}a["));
+}
+
+#[test]
+fn extract_expands_only_selected_array_and_reports_invalid_expansions() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("array.log");
+    write_file(
+        &file,
+        concat!(
+            "core | 2026-01-01T00:00:00.000Z [INFO ] data {\"cases\":[{\"name\":\"a\",\"width\":800},{\"name\":\"b\",\"width\":1200}],\"other\":[1,2,3]}\n",
+            "core | 2026-01-01T00:00:01.000Z [INFO ] data {\"cases\":[]}\n",
+            "core | 2026-01-01T00:00:02.000Z [INFO ] data {\"cases\":null}\n",
+            "core | 2026-01-01T00:00:03.000Z [INFO ] data {}\n",
+        ),
+    );
+    let output = command()
+        .args([
+            "-F",
+            "json",
+            "extract",
+            file.to_str().unwrap(),
+            "--field",
+            "name",
+            "--field",
+            "width",
+            "--expand-array",
+            "cases",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let rows = report["extract"]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["values"]["width"], 800);
+    assert_eq!(rows[1]["values"]["name"], "b");
+    assert_eq!(rows[1]["array_index"], 1);
+    assert_eq!(report["extract"]["matches"], 4);
+    let rejected = report["extract"]["rejected_expansions"].as_array().unwrap();
+    assert_eq!(rejected.len(), 2);
+    assert_eq!(rejected[0]["reason"], "not_an_array");
+    assert_eq!(rejected[1]["reason"], "missing_array");
+}
+
+#[test]
+fn extract_checks_envelope_paths_and_item_local_ids() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("envelope.jsonl");
+    let row = serde_json::json!({
+        "ts": "2026-01-01T00:00:00Z", "level": "INFO", "component": "core",
+        "message": "embedded {\"debug\":true}",
+        "payload": {"name":"envelope", "request_id":"parent", "cases":[
+            {"name":"a", "request_id":"item-a"},
+            {"name":"b", "request_id":"item-b", "trace_id":"trace-b"},
+            {"name":"c", "request_id":null}
+        ]}
+    });
+    write_file(&file, &format!("{row}\n"));
+    let output = command()
+        .args([
+            "-F",
+            "json",
+            "extract",
+            file.to_str().unwrap(),
+            "--field",
+            "name",
+            "--rows",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["extract"]["rows"][0]["values"]["name"], "envelope");
+    let output = command()
+        .args([
+            "-F",
+            "json",
+            "extract",
+            file.to_str().unwrap(),
+            "--field",
+            "name",
+            "--expand-array",
+            "cases",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let rows = report["extract"]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0]["correlation_ids"]["request_id"], "item-a");
+    assert_eq!(rows[1]["correlation_ids"]["request_id"], "item-b");
+    assert_eq!(rows[1]["correlation_ids"]["trace_id"], "trace-b");
+    assert_eq!(
+        rows[2]["correlation_ids"]["request_id"],
+        serde_json::Value::Null
+    );
+}

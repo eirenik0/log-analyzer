@@ -24,7 +24,7 @@ use errors::{
     ErrorReportLimits, ErrorsOptions, analyze_errors_with_config, format_bounded_errors_text,
     format_errors_json, format_errors_text,
 };
-use extract::{format_extract_json, format_extract_text};
+use extract::{format_extract_json, format_extract_rows, format_extract_text};
 use filter::{FilterExpression, print_filter_warnings, to_log_filter};
 pub use parser::{
     LogEntry, LogEntryKind, ParseError, detect_log_format, parse_log_entry,
@@ -676,14 +676,32 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 write_output_file(path, &rendered)?;
             }
         }
-        Commands::Extract { file, field } => {
+        Commands::Extract {
+            file,
+            field,
+            rows,
+            expand_array,
+        } => {
             let logs = parse_log_file_with_config(file, &analyzer_config)
                 .map_err(|e| format!("Failed to parse log file '{}': {:?}", file.display(), e))?;
             let match_indices = collect_match_indices(&logs, &filter);
 
-            let rendered = match format {
-                OutputFormat::Text => format_extract_text(&logs, &match_indices, field),
-                OutputFormat::Json => format_extract_json(file, &logs, &match_indices, field),
+            let rendered = if *rows || field.len() > 1 || expand_array.is_some() {
+                format_extract_rows(
+                    file,
+                    &logs,
+                    &match_indices,
+                    field,
+                    expand_array.as_deref(),
+                    matches!(format, OutputFormat::Json),
+                )
+            } else {
+                match format {
+                    OutputFormat::Text => format_extract_text(&logs, &match_indices, &field[0]),
+                    OutputFormat::Json => {
+                        format_extract_json(file, &logs, &match_indices, &field[0])
+                    }
+                }
             };
 
             print!("{rendered}");
