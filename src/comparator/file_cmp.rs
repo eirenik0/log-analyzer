@@ -96,7 +96,9 @@ pub fn write_comparison_results(
             .file
             .write_all(crate::output::format_report(&content).as_bytes())
     } else {
-        Ok(())
+        formatter
+            .file
+            .write_all(crate::output::text_metadata().as_bytes())
     }
 }
 

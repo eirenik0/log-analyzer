@@ -771,3 +771,29 @@ Provenance retains the original file, physical line, and expanded JSON row path.
 Search and trace expose row paths; event and ID matching use only each normalized
 record, while original source lines remain available as evidence.
 Use `info -j` to inspect coverage before interpreting an investigation report.
+
+### Build identity and capabilities
+
+`log-analyzer --version` includes the package version, short source revision and
+build state. `log-analyzer capabilities` always emits JSON with the full build
+identity, schema version, canonical command names, output/parser formats and
+built-in presets. It does not load a profile, so it also works when the configured
+profile is unavailable.
+
+JSON reports include `report_metadata` with `schema_version`, `build` and
+`active_profile`. Text reports end with a `Build:` line; generated TOML uses a
+comment. Bounded error reports count build metadata against the text budget and
+retain it when details cannot fit. Text match-count output therefore includes
+metadata; use JSON for machine-readable counts.
+
+The source state is `clean` or `dirty` for a Git checkout (`dirty` means tracked
+changes), and `unknown` with a null revision for source archives or unavailable
+Git identity. Metadata describes the source at compilation time, rather than the
+checkout where a binary is later run. Profiles describe the selected parsing
+configuration, including the template used by `generate-config`.
+
+Maintained examples live in `examples/commands.json`. `cargo test --locked` runs
+them against the test binary. After `cargo build --release`, run
+`python3 scripts/check-examples.py target/release/log-analyzer`; release packaging
+also checks native binaries and explicitly skips targets that cannot run on the
+build host.

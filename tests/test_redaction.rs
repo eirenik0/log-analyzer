@@ -607,12 +607,9 @@ fn redacted_text_match_counts_have_the_marker() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "[REDACTED OUTPUT]\n1\n"
+        expected_count_report()
     );
-    assert_eq!(
-        fs::read_to_string(target).unwrap(),
-        "[REDACTED OUTPUT]\n1\n"
-    );
+    assert_eq!(fs::read_to_string(target).unwrap(), expected_count_report());
 }
 
 #[test]
@@ -661,7 +658,7 @@ fn nested_sensitive_paths_and_masked_extracts_keep_context() {
     ]);
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "[REDACTED OUTPUT]\n1\n"
+        expected_count_report()
     );
 }
 
@@ -1103,4 +1100,14 @@ fn derived_correlation_ids_reserve_generated_looking_source_values() {
             .iter()
             .all(|op| op["correlation_id"] != "[MASKED_ID:1]")
     );
+}
+
+fn expected_count_report() -> String {
+    let build = log_analyzer::build_info::identity();
+    format!(
+        "[REDACTED OUTPUT]\n1\nBuild: log-analyzer {} revision={} state={} profile=eyes schema=1\n",
+        build["package_version"].as_str().unwrap(),
+        build["source_revision"].as_str().unwrap_or("unknown"),
+        build["source_state"].as_str().unwrap()
+    )
 }

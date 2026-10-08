@@ -144,6 +144,23 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
+      - name: Check maintained examples against release binary
+        shell: bash
+        run: |
+          examples_host=$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')
+          examples_target="${{ matrix.target }}"
+          if [ "$examples_target" != "$examples_host" ] && ! { [ "$examples_target" = "x86_64-unknown-linux-musl" ] && [ "$examples_host" = "x86_64-unknown-linux-gnu" ]; }; then
+            echo "Skipping execution for cross target $examples_target on $examples_host"
+            exit 0
+          fi
+          examples_binary="target/$examples_target/release/${{ env.BINARY_NAME }}"
+          if [ -f "$examples_binary.exe" ]; then examples_binary="$examples_binary.exe"; fi
+          if command -v python3 >/dev/null; then
+            python3 scripts/check-examples.py "$examples_binary"
+          else
+            python scripts/check-examples.py "$examples_binary"
+          fi
+
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash

@@ -10,6 +10,7 @@ macro_rules! report_println {
     ($($arg:tt)*) => { crate::output::print(format_args!("{}\n", format_args!($($arg)*))) };
 }
 
+pub mod build_info;
 pub mod cli;
 pub mod comparator;
 pub mod config;
@@ -319,6 +320,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         cli.redact,
         &cli.mask_id,
         cli.effective_compact() || matches!(&cli.command, Commands::LlmDiff { .. }),
+        (matches!(cli.effective_format(), OutputFormat::Json)
+            && !matches!(&cli.command, Commands::GenerateConfig { .. }))
+            || matches!(
+                &cli.command,
+                Commands::Process { .. }
+                    | Commands::LlmDiff { .. }
+                    | Commands::Schema { .. }
+                    | Commands::Capabilities
+            ),
     );
     let result = run_with_cli(&cli);
     if cli.redact {
@@ -329,8 +339,25 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
+    if matches!(&cli.command, Commands::Capabilities) {
+        let capabilities = build_info::capabilities();
+        let rendered = if cli.effective_compact() {
+            serde_json::to_string(&capabilities)?
+        } else {
+            serde_json::to_string_pretty(&capabilities)?
+        };
+        report_println!("{rendered}");
+        if let Some(path) = &cli.output {
+            write_output_file(path, &rendered)?;
+        }
+        return Ok(());
+    }
     let analyzer_config = config::load_config(cli.config.as_deref(), cli.preset.as_deref())
         .map_err(|e| format!("Failed to load config: {}", e))?;
+    output::set_metadata(
+        build_info::metadata(&analyzer_config.profile_name),
+        matches!(&cli.command, Commands::GenerateConfig { .. }),
+    );
     let format = cli.effective_format();
     let compact = cli.effective_compact();
     let output = &cli.output;
@@ -380,6 +407,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     let filter = build_filter(&cli.filter)?;
 
     match &cli.command {
+        Commands::Capabilities => unreachable!("capabilities returned before config loading"),
         Commands::Schema { file, samples } => {
             let preview = normalize::schema_preview(file, *samples as usize)?;
             let rendered = serde_json::to_string_pretty(&preview)?;
@@ -705,7 +733,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                             &error_options,
                             limits,
                             &output::diagnostic(&coverage_text(&coverage)),
-                            output::report_prefix(),
+                            &output::report_prefix(),
                         )
                     } else {
                         render_analysis_report(
@@ -722,7 +750,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 )?,
             };
 
-            let rendered = if error_options.limits.is_some() && cli.redact {
+            let rendered = if error_options.limits.is_some() {
                 output::prepare_bounded_output(&rendered, matches!(format, OutputFormat::Json))
             } else {
                 rendered
@@ -898,6 +926,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                 analyzer_config.clone()
             };
 
+            output::set_metadata(build_info::metadata(&base_config.profile_name), true);
             let detected_formats: Vec<_> = files
                 .iter()
                 .filter_map(|file| detect_log_format(file, &base_config).ok())

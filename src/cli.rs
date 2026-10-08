@@ -98,7 +98,7 @@ pub enum SearchCountBy {
 
 /// Analyze, search, compare, and diagnose structured logs
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version = env!("LOG_ANALYZER_BUILD_VERSION"), about, long_about = None)]
 #[command(name = "log-analyzer")]
 #[command(after_help = "FILTER EXPRESSION SYNTAX:
   --filter \"type:value [!type:value] ...\"
@@ -190,6 +190,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Print build identity and supported commands, formats, presets and schema as JSON
+    Capabilities,
     /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
     Schema {
         file: PathBuf,

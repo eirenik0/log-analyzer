@@ -609,3 +609,5 @@ For reports intended for sharing, use global `--redact`; selected ID fields can
 use stable invocation-local masks via `--mask-id`. See README report redaction for
 the shared text/JSON policy and raw-output behavior. Redaction does not change
 filtering or correlation.
+
+Use `log-analyzer capabilities` to inspect the installed build and supported commands. Reports carry build/profile metadata; see README “Build identity and capabilities” for schema and count-output behavior.
