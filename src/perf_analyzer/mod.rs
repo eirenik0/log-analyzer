@@ -126,7 +126,29 @@ pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
             || crate::parser::lifecycle_qualifier(word)
             || (word == "no"
                 && (index + 1 == words.len()
-                    || words.get(index + 1).is_some_and(|next| next == "longer")))
+                    || words.get(index + 1).is_some_and(|next| {
+                        matches!(
+                            next.as_str(),
+                            "longer"
+                                | "evidence"
+                                | "proof"
+                                | "confirmation"
+                                | "indication"
+                                | "indications"
+                                | "observation"
+                                | "observations"
+                                | "record"
+                                | "records"
+                                | "sign"
+                                | "signs"
+                                | "trace"
+                                | "traces"
+                                | "report"
+                                | "reports"
+                                | "log"
+                                | "logs"
+                        )
+                    })))
     })
 }
 
