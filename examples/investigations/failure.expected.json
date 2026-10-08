@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "source": {
+        "input": 0,
+        "line": 2,
+        "row_path": null
+      },
+      "checks": {
+        "/status": "unclassified"
+      }
+    },
+    {
+      "source": {
+        "input": 0,
+        "line": 3,
+        "row_path": null
+      },
+      "checks": {
+        "/semantics/outcome": "failure",
+        "/semantics/correlation_id": "request-7"
+      }
+    }
+  ],
+  "pairs": [
+    {
+      "start": {
+        "input": 0,
+        "line": 1,
+        "row_path": null
+      },
+      "end": {
+        "input": 0,
+        "line": 3,
+        "row_path": null
+      },
+      "duration_ms": 2000
+    }
+  ]
+}

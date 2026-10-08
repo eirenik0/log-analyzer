@@ -1,0 +1,4 @@
+{"ts":"2026-01-01T00:00:00+02:00","level":"INFO","component":"worker","component_id":"a","session":"a","message":"lookup start","phase":"start","operation":"lookup","id":"request-7"}
+{"ts":"2026-01-01T00:00:01+02:00","level":"INFO","component":"worker","component_id":"b","session":"b","message":"lookup start","phase":"start","operation":"lookup","id":"request-7"}
+{"ts":"2026-01-01T00:00:02+02:00","level":"INFO","component":"worker","component_id":"a","session":"a","message":"lookup end","phase":"end","operation":"lookup","id":"request-7","outcome":"success"}
+{"ts":"2026-01-01T00:00:04+02:00","level":"INFO","component":"worker","component_id":"b","session":"b","message":"lookup end","phase":"end","operation":"lookup","id":"request-7","outcome":"success"}

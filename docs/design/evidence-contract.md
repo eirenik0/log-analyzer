@@ -117,8 +117,8 @@ full selected scope. Aggregates and schema samples have no exhaustive individual
 record omission count. For complete original payload evidence, use
 `search --payloads`; `process --limit 0` removes the record limit but still compacts
 payloads. `perf --top-n 0`, `errors --top-n 0 --complete`, and row/search/trace
-commands expose their respective full detail paths. Bounded pagination is tracked
-separately in #46; this contract does not claim it already exists.
+commands expose their respective full detail paths. Common bounded retrieval now exposes canonical source records and snapshot-bound
+cursors; see [bounded-reports.md](bounded-reports.md) for the delivered interface.
 
 `redaction.applied` describes explicit report-wide `--redact`.
 `legacy_sanitization` separately describes default process/LLM-diff sanitization,

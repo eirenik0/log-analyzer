@@ -109,3 +109,7 @@ logs/
 # Junie memory
 .junie/
 .DS_Store
+
+# Python check artifacts
+__pycache__/
+*.pyc

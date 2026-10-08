@@ -32,13 +32,15 @@ conventional when editing them on GitHub too.
 
 ## Quality checks
 
-Run before opening or updating a PR:
+The maintained example integration test requires Python 3.10+ on PATH (standard
+library only). Run before opening or updating a PR:
 
 ```bash
 cargo fmt --all -- --check
 cargo check --locked
 cargo clippy --locked -- -D warnings
 cargo test --locked
+python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
 When the evaluation corpus is available, also run its documented checks after

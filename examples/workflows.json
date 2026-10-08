@@ -1,0 +1,366 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "id": "failure-triage",
+      "question": "What failed, and can the supplied capture establish why?",
+      "steps": [
+        {
+          "id": "scope",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "info",
+            "{root}/examples/investigations/failure.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "validation",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "validate-profile",
+            "{root}/examples/investigations/failure.jsonl",
+            "--kind",
+            "request",
+            "--expected",
+            "{root}/examples/investigations/failure.expected.json"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "errors",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "errors",
+            "{root}/examples/investigations/failure.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "discovery",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "trace",
+            "{root}/examples/investigations/failure.jsonl",
+            "--id",
+            "request-7"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "timing",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "perf",
+            "{root}/examples/investigations/failure.jsonl",
+            "--op-type",
+            "request"
+          ],
+          "exit": 0,
+          "checks": []
+        }
+      ]
+    },
+    {
+      "id": "slow-info-comparison",
+      "question": "Why is the INFO-only run slower than the independent baseline?",
+      "steps": [
+        {
+          "id": "slow-validation",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "validate-profile",
+            "{root}/examples/investigations/slow.jsonl",
+            "--kind",
+            "request",
+            "--expected",
+            "{root}/examples/investigations/slow.expected.json"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "baseline-validation",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "validate-profile",
+            "{root}/examples/investigations/baseline.jsonl",
+            "--kind",
+            "request",
+            "--expected",
+            "{root}/examples/investigations/baseline.expected.json"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "errors",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "errors",
+            "{root}/examples/investigations/slow.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "slow-timing",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "perf",
+            "{root}/examples/investigations/slow.jsonl",
+            "--op-type",
+            "request"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "baseline-timing",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "perf",
+            "{root}/examples/investigations/baseline.jsonl",
+            "--op-type",
+            "request"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "slow-discovery",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "trace",
+            "{root}/examples/investigations/slow.jsonl",
+            "--id",
+            "slow-run"
+          ],
+          "exit": 0,
+          "checks": []
+        }
+      ]
+    },
+    {
+      "id": "reused-id-lifecycle",
+      "question": "Which lifecycle does the reused request ID identify?",
+      "steps": [
+        {
+          "id": "validation",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "validate-profile",
+            "{root}/examples/investigations/reused.jsonl",
+            "--kind",
+            "request",
+            "--expected",
+            "{root}/examples/investigations/reused.expected.json"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "discovery",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "trace",
+            "{root}/examples/investigations/reused.jsonl",
+            "--id",
+            "request-7"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "timing",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "perf",
+            "{root}/examples/investigations/reused.jsonl",
+            "--op-type",
+            "request"
+          ],
+          "exit": 0,
+          "checks": []
+        }
+      ]
+    },
+    {
+      "id": "truncated-capture",
+      "question": "Did the request complete or hang?",
+      "steps": [
+        {
+          "id": "scope",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "info",
+            "{root}/examples/investigations/truncated.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "validation",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "validate-profile",
+            "{root}/examples/investigations/truncated.jsonl",
+            "--kind",
+            "request"
+          ],
+          "exit": 1,
+          "checks": []
+        }
+      ]
+    },
+    {
+      "id": "unsuitable-profile",
+      "question": "Does successful parsing prove this run had no stalled requests?",
+      "steps": [
+        {
+          "id": "errors",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "errors",
+            "{root}/examples/investigations/unsuitable.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "validation",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "validate-profile",
+            "{root}/examples/investigations/unsuitable.jsonl",
+            "--kind",
+            "request"
+          ],
+          "exit": 1,
+          "checks": []
+        }
+      ]
+    },
+    {
+      "id": "unsupported-input",
+      "question": "Is the access-like file free of failures?",
+      "steps": [
+        {
+          "id": "validation",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "validate-profile",
+            "{root}/examples/investigations/unsupported.log",
+            "--kind",
+            "request"
+          ],
+          "exit": 1,
+          "checks": []
+        }
+      ]
+    },
+    {
+      "id": "budget-stop",
+      "question": "What can be concluded within a zero-item detail budget?",
+      "expected_stop": "item_limit_zero",
+      "steps": [
+        {
+          "id": "scope",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "0",
+            "info",
+            "{root}/examples/investigations/failure.jsonl"
+          ],
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "id": "tool-budget-stop",
+      "question": "What can be concluded when one page exhausts the tool-call allowance?",
+      "budgets": {
+        "max_calls": 1
+      },
+      "expected_stop": "tool_call_or_output_budget",
+      "steps": [
+        {
+          "id": "scope",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "info",
+            "{root}/examples/investigations/failure.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        }
+      ]
+    }
+  ]
+}
