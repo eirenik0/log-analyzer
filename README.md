@@ -7,6 +7,27 @@ A CLI tool for analyzing and comparing structured logs.
 
 The default `base` profile is intentionally generic. Use a built-in preset such as `--preset eyes` or a repo-specific `--config` file when you need log-family-specific parsing and lifecycle semantics.
 
+## Evidence-backed investigations
+
+Follow the [portable investigation workflow](docs/investigation-workflow.md) for
+failure triage, INFO-only slow-run comparison and one scoped lifecycle. It checks
+actual binary capabilities, input coverage and profile suitability before pairing,
+retrieves cited evidence within budgets, and keeps observations, measurements,
+hypotheses, contrary evidence and unknowns distinct. The Claude analysis skill uses
+these same steps. Substring discovery is not exact correlation, and independent
+runs retain separate snapshot identities.
+
+The maintained example runner executes 17 command examples and eight multi-step
+or stopping cases against your binary, including reused IDs, incomplete captures,
+unsuitable profiles and instruction-like log text:
+
+```sh
+python3 scripts/check-examples.py target/release/log-analyzer --report target/workflow-examples/report.json
+```
+
+These are deterministic workflow checks; they do not measure an arbitrary model's
+reasoning quality or establish a root cause from missing telemetry.
+
 ## Supported Log Format (Quick Check)
 
 `log-analyzer` works best with structured text logs where each entry looks like:

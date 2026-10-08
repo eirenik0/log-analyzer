@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "records": [],
+  "pairs": [
+    {
+      "start": {
+        "input": 0,
+        "line": 1,
+        "row_path": null
+      },
+      "end": {
+        "input": 0,
+        "line": 2,
+        "row_path": null
+      },
+      "duration_ms": 1000
+    }
+  ]
+}

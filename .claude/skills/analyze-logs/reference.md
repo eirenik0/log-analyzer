@@ -1,6 +1,15 @@
 # Log Analyzer Command Reference
 
-Complete documentation of all log-analyzer commands and options.
+Command syntax and configuration reference. Use the actual binary's help and
+capabilities as the authority for its supported version. Investigation sequencing,
+source verification and stopping conditions live in the portable
+[workflow](https://github.com/eirenik0/log-analyzer/blob/main/docs/investigation-workflow.md)
+and the skill entry point; do not replace them with a single-command summary.
+
+Trace IDs, session paths and structured filters use substring matching. Perform
+lifecycle pairing on complete related inputs, then verify exact classified identity
+and scope in cited source evidence. Independent run findings retain separate snapshots.
+Empty ERROR inventory still requires INFO-level timing/coverage investigation.
 
 ## Common report budgets
 

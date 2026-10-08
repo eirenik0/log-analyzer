@@ -1,0 +1,2 @@
+{"ts":"2026-01-01T00:00:00+02:00","level":"INFO","component":"worker","component_id":"failure-run","session":"failure-run","message":"lookup start","phase":"start","operation":"lookup","id":"request-7"}
+{"ts":"2026-01-01T00:00:10+02:00","level":"INFO","message":"capture stops here","session":"failure-run","component_id":"failure-run"}

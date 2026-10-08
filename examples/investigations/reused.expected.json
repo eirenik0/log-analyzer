@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "source": {
+        "input": 0,
+        "line": 1,
+        "row_path": null
+      },
+      "checks": {
+        "/semantics/scope": [
+          "a"
+        ]
+      }
+    },
+    {
+      "source": {
+        "input": 0,
+        "line": 2,
+        "row_path": null
+      },
+      "checks": {
+        "/semantics/scope": [
+          "b"
+        ]
+      }
+    }
+  ],
+  "pairs": [
+    {
+      "start": {
+        "input": 0,
+        "line": 1,
+        "row_path": null
+      },
+      "end": {
+        "input": 0,
+        "line": 3,
+        "row_path": null
+      },
+      "duration_ms": 2000
+    },
+    {
+      "start": {
+        "input": 0,
+        "line": 2,
+        "row_path": null
+      },
+      "end": {
+        "input": 0,
+        "line": 4,
+        "row_path": null
+      },
+      "duration_ms": 3000
+    }
+  ]
+}
