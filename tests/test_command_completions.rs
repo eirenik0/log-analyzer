@@ -816,3 +816,66 @@ fn embedded_start_words_cannot_replace_a_real_command_start() {
     assert_eq!(result.operations.len(), 1);
     assert_eq!(result.operations[0].duration_ms, 2000);
 }
+
+#[test]
+fn negated_markers_cannot_create_command_boundaries() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for wording in [
+        "not completed",
+        "not yet completed",
+        "hasn't completed",
+        "hasn’t completed",
+        "never completed",
+        "not successfully completed",
+        "cannot be completed",
+        "no longer completed",
+        "will be completed",
+        "would have completed",
+        "if completed",
+        "completed?",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let negated = parse(&format!("Operation \"work\" {wording}"), 1, &config);
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, negated, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{wording}");
+    }
+    for wording in [
+        "not started",
+        "hasn't started",
+        "never started",
+        "did not begin",
+    ] {
+        let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
+        let end = parse(r#"Operation "work" completed"#, 1, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[negated, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{wording}");
+    }
+    for wording in [
+        "not failed, completed",
+        "not failed but completed",
+        "not only completed",
+        "with no errors completed",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let end = parse(&format!("Operation \"work\" {wording}"), 1, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{wording}");
+        assert_eq!(result.operations[0].duration_ms, 1000, "{wording}");
+    }
+}

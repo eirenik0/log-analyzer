@@ -26,8 +26,56 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
                     || !text[..start].chars().next_back().is_some_and(word))
                     && (!marker.chars().next_back().is_some_and(word)
                         || !text[end..].chars().next().is_some_and(word))
+                    && !marker_is_nonaffirmative(&text[..start])
+                    && !text[end..].trim_start().starts_with('?')
             })
         })
+}
+
+fn marker_is_nonaffirmative(prefix: &str) -> bool {
+    let clause = prefix
+        .rsplit([',', ';', '.', '!', '?', '\n'])
+        .next()
+        .unwrap_or(prefix);
+    let words: Vec<_> = clause
+        .split_whitespace()
+        .map(|word| {
+            word.trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
+                .to_lowercase()
+        })
+        .collect();
+    let start = words
+        .iter()
+        .rposition(|word| matches!(word.as_str(), "but" | "however" | "instead"))
+        .map_or(0, |index| index + 1);
+    words[start..].iter().enumerate().any(|(offset, word)| {
+        let index = start + offset;
+        (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
+            || matches!(
+                word.as_str(),
+                "never"
+                    | "without"
+                    | "neither"
+                    | "nor"
+                    | "cannot"
+                    | "if"
+                    | "unless"
+                    | "whether"
+                    | "until"
+                    | "will"
+                    | "would"
+                    | "should"
+                    | "may"
+                    | "might"
+                    | "could"
+                    | "must"
+            )
+            || word.ends_with("n't")
+            || word.ends_with("n’t")
+            || (word == "no"
+                && (index + 1 == words.len()
+                    || words.get(index + 1).is_some_and(|next| next == "longer")))
+    })
 }
 
 /// Extracts the request ID from a log message containing [request_id] pattern
