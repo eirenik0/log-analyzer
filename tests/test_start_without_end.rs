@@ -127,6 +127,9 @@ fn an_operation_type_filter_also_skips_start_only_events() {
     );
     assert_eq!(result.operation_coverage.start_only_events, 0);
     assert_eq!(result.operations.len(), 1);
+    assert_eq!(result.operation_coverage.relevant_events, 4);
+    assert_eq!(result.operation_coverage.suppressed_events, 2);
+    assert_eq!(result.operation_coverage.status, "partial_evidence");
 }
 
 #[test]
@@ -182,5 +185,100 @@ fn by_default_a_start_does_not_complete_a_session() {
         .collect();
     let insights = config::analyze_profile(&logs, &cfg);
     assert_eq!(insights.sessions.levels[0].sessions.len(), 1);
+    assert_eq!(insights.sessions.levels[0].completed_count(), 0);
+}
+
+#[test]
+fn start_only_coverage_agrees_in_cli_text_and_json() {
+    let dir = tempdir().unwrap();
+    let cfg_path = dir.path().join("p.toml");
+    let log_path = dir.path().join("events.log");
+    fs::write(&cfg_path, profile("end_expected = false")).unwrap();
+    let lines = LINES
+        .iter()
+        .enumerate()
+        .map(|(i, message)| {
+            format!("worker (job-1) | 2026-01-01T00:00:{i:02}.000Z [INFO] {message}\n")
+        })
+        .collect::<String>();
+    fs::write(&log_path, lines).unwrap();
+
+    for filtered in [false, true] {
+        for format in ["text", "json"] {
+            let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_log-analyzer"));
+            cmd.env_remove("LOG_ANALYZER_PRESET").args([
+                "--config",
+                cfg_path.to_str().unwrap(),
+                "-F",
+                format,
+                "--color",
+                "never",
+                "perf",
+                log_path.to_str().unwrap(),
+            ]);
+            if filtered {
+                cmd.args(["--op-type", "request"]);
+            }
+            let output = cmd.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            if format == "json" {
+                let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                let coverage = &report["operation_coverage"];
+                assert_eq!(coverage["relevant_events"], 4);
+                assert_eq!(coverage["paired_events"], 2);
+                assert_eq!(coverage["start_only_events"], if filtered { 0 } else { 2 });
+                assert_eq!(coverage["suppressed_events"], if filtered { 2 } else { 0 });
+                assert_eq!(
+                    coverage["status"],
+                    if filtered {
+                        "partial_evidence"
+                    } else {
+                        "observed_pairs"
+                    }
+                );
+            } else {
+                let text = String::from_utf8(output.stdout).unwrap();
+                let expected = if filtered {
+                    "Relevant events: 4; paired: 2; unmatched: 0; suppressed: 2; start-only: 0"
+                } else {
+                    "Relevant events: 4; paired: 2; unmatched: 0; suppressed: 0; start-only: 2"
+                };
+                assert!(text.contains(expected), "{text}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_dynamic_non_start_phase_is_invalid_with_end_expected_false() {
+    let cfg = load(
+        &profile("end_expected = false")
+            .replacen(
+                "phase = { from = \"literal\", value = \"start\" }",
+                "phase = { from = \"capture\", capture = \"phase\" }",
+                1,
+            )
+            .replacen(
+                "Task (?P<name>\"\\w+\") begins",
+                "Task (?P<name>\"\\w+\") (?P<phase>\\w+)",
+                1,
+            ),
+    )
+    .unwrap();
+    let entry = parser::parse_log_entry_with_config(
+        r#"worker (job-1) | 2026-01-01T00:00:00.000Z [INFO] Task "close" end"#,
+        1,
+        &cfg,
+    )
+    .unwrap();
+    assert!(matches!(&entry.classification,
+        Some(log_analyzer::event_rules::ClassifiedRecord::Invalid { diagnostics, .. })
+        if diagnostics.iter().any(|d| d.reason == "end_expected_requires_start")
+    ));
+    let insights = config::analyze_profile(std::slice::from_ref(&entry), &cfg);
     assert_eq!(insights.sessions.levels[0].completed_count(), 0);
 }

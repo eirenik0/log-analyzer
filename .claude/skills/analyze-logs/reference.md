@@ -467,6 +467,15 @@ sections also obey `--top-n`, with full totals and omitted counts; `0` preserves
 
 Substring `trace` searches can span multiple lifecycles and do not establish pairing.
 
+Version-2 start rules may set `end_expected = false` in their `mapping` when the
+producer intentionally emits no end record. These contribute to
+`operation_coverage.start_only_events` (text: `start-only`) instead of orphans or
+unmatched events, and do not produce measured durations or completed timing
+operations. Operation-type filters count excluded start-only records as
+suppressed events while retaining the full relevant-event count. Configured
+session completion commands can complete a session on these records.
+Version 1 and non-start phases reject this option; the default still expects an end.
+
 ### Configurable event timelines
 
 See [README: Configurable event timelines](../../../README.md#configurable-event-timelines)

@@ -175,16 +175,6 @@ pub fn analyze_performance_with_config(
             });
             continue;
         }
-        if let Some(ClassifiedRecord::Event { semantics, .. }) = evidence
-            && semantics.phase == Some(Phase::Start)
-            && !semantics.end_expected
-        {
-            if op_type_filter.is_none_or(|selected| selected == semantics.kind.label()) {
-                results.operation_coverage.relevant_events += 1;
-                results.operation_coverage.start_only_events += 1;
-            }
-            continue;
-        }
         let (op_type, name, id, start, end) =
             if let Some(ClassifiedRecord::Event { semantics, .. }) = evidence {
                 (
@@ -239,6 +229,13 @@ pub fn analyze_performance_with_config(
             *suppressions
                 .entry((op_type.to_string(), reason.to_string()))
                 .or_default() += 1;
+            continue;
+        }
+        if let Some(ClassifiedRecord::Event { semantics, .. }) = evidence
+            && semantics.phase == Some(Phase::Start)
+            && !semantics.end_expected
+        {
+            results.operation_coverage.start_only_events += 1;
             continue;
         }
         let event = BoundaryEvent {
