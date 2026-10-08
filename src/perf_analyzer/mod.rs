@@ -33,7 +33,7 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
         })
 }
 
-fn marker_has_trailing_condition(suffix: &str) -> bool {
+pub(crate) fn marker_has_trailing_condition(suffix: &str) -> bool {
     let end = suffix
         .char_indices()
         .find(|&(index, ch)| {
@@ -159,6 +159,9 @@ pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
                         matches!(
                             next.as_str(),
                             "longer"
+                                | "means"
+                                | "way"
+                                | "sense"
                                 | "evidence"
                                 | "proof"
                                 | "confirmation"

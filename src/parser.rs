@@ -1191,15 +1191,27 @@ fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::bo
                 .then_some(index)
         })
         .unwrap_or(end);
-    let question_tail = end < payload_end
-        && (lifecycle_question(&body[end..payload_end])
-            || body[end..payload_end]
-                .trim_start_matches(':')
-                .split_whitespace()
-                .next()
-                .is_some_and(|word| {
-                    matches!(word.to_lowercase().as_str(), "not" | "never" | "cannot")
-                }));
+    let question_tail = end < payload_end && {
+        let tail = &body[end..payload_end];
+        let (_, tail_quotes) = opaque_spans(tail);
+        let excluded = finish_spans(
+            tail_quotes
+                .iter()
+                .cloned()
+                .chain(metadata_assignment_spans(tail, &tail_quotes))
+                .collect(),
+            true,
+        );
+        let mut visible = String::new();
+        let mut previous = 0;
+        for span in excluded {
+            visible.push_str(&tail[previous..span.start]);
+            visible.push(' ');
+            previous = span.end;
+        }
+        visible.push_str(&tail[previous..]);
+        lifecycle_question(tail) || crate::perf_analyzer::marker_has_trailing_condition(&visible)
+    };
     let body = &body[..end];
     let excluded = finish_spans(
         quotes
