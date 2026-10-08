@@ -159,7 +159,7 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
 
                 // Shorten long field names
                 let compact_key = if key.len() > 30 {
-                    format!("{}...", &key[0..27])
+                    format!("{}...", crate::output::byte_prefix(key, 27))
                 } else {
                     key.clone()
                 };
@@ -198,7 +198,7 @@ pub fn compact_json_value(value: &Value, max_depth: usize, current_depth: usize)
         }
         Value::String(s) => {
             if s.len() > 100 {
-                json!(format!("{}...", &s[0..97]))
+                json!(format!("{}...", crate::output::byte_prefix(s, 97)))
             } else {
                 value.clone()
             }

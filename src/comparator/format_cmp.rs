@@ -330,13 +330,13 @@ pub fn format_json_differences<F: OutputFormatter>(
             let value2_truncated = value2_str.len() > max_len;
 
             let value1_display = if value1_truncated {
-                format!("{}...", &value1_str[0..max_len])
+                format!("{}...", crate::output::byte_prefix(&value1_str, max_len))
             } else {
                 value1_str.clone()
             };
 
             let value2_display = if value2_truncated {
-                format!("{}...", &value2_str[0..max_len])
+                format!("{}...", crate::output::byte_prefix(&value2_str, max_len))
             } else {
                 value2_str.clone()
             };

@@ -809,3 +809,79 @@ fn many_identifiers_keep_all_entries_and_stable_masks() {
         "answer for [MASKED_ID:2000]"
     );
 }
+
+#[test]
+fn expanded_unicode_payloads_and_comparison_values_never_panic() {
+    let dir = tempdir().unwrap();
+    let left = dir.path().join("left.log");
+    let right = dir.path().join("right.log");
+    for (file, suffix) in [(&left, "a"), (&right, "b")] {
+        let value = format!("token=x {}🙂{suffix}", "a".repeat(79));
+        let short_value = format!("token=x {}🙂{suffix}", "a".repeat(31));
+        let payload = json!({"body":value,"short_body":short_value});
+        fs::write(
+            file,
+            format!("core | 2026-01-01T00:00:00.000Z [INFO] body {payload}\n"),
+        )
+        .unwrap();
+    }
+    let output = run(&["--redact", "process", left.to_str().unwrap()]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(report.to_string().contains("[REDACTED]"));
+    for command in ["compare", "diff"] {
+        let output = run(&[
+            "--redact",
+            "-F",
+            "text",
+            command,
+            left.to_str().unwrap(),
+            right.to_str().unwrap(),
+        ]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.contains("short_body"), "{text}");
+        assert!(!text.contains("token=x"));
+    }
+}
+
+#[test]
+fn redacted_performance_contexts_truncate_unicode_safely() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("orphan.log");
+    // Use the 100-byte orphan-only display path with an emoji across byte 97.
+    let prefix =
+        "core (demo) | 2026-01-01T00:00:00Z [INFO] Request \"a\" [0--id] will be sent token=x ";
+    let expanded_prefix_len = prefix.len() + "[REDACTED]".len() - 1;
+    assert!(expanded_prefix_len < 97);
+    fs::write(
+        &file,
+        format!("{prefix}{}🙂tail\n", "a".repeat(96 - expanded_prefix_len)),
+    )
+    .unwrap();
+    let output = run(&[
+        "--redact",
+        "-F",
+        "text",
+        "perf",
+        file.to_str().unwrap(),
+        "--orphans-only",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("Context:"), "{text}");
+    assert!(text.contains("[REDACTED]"), "{text}");
+    assert!(!text.contains("token=x"));
+}
