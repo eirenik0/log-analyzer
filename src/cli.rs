@@ -323,7 +323,7 @@ pub enum Commands {
         sort_by: ErrorsSortBy,
     },
 
-    /// Extract and aggregate a JSON payload/settings field from matching log entries
+    /// Extract payload/settings fields as aggregate values or correlated rows
     Extract {
         /// Log file to analyze
         #[arg(required = true)]
@@ -331,7 +331,15 @@ pub enum Commands {
 
         /// Field name/path to extract from payload JSON (supports dot paths, e.g. "foo.bar")
         #[arg(long, required = true)]
-        field: String,
+        field: Vec<String>,
+
+        /// Emit one correlated row per matching entry (automatic for multiple fields)
+        #[arg(long)]
+        rows: bool,
+
+        /// Expand one array at this dot path; selected fields are relative to each item
+        #[arg(long)]
+        expand_array: Option<String>,
     },
 
     /// Generate LLM-friendly compact JSON output of differences (shortcut for compare --diff-only -F json -c)

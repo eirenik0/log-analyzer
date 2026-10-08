@@ -75,6 +75,104 @@ pub fn format_extract_json(
     .unwrap_or_else(|_| "{\"extract\":{\"error\":\"failed to serialize extract output\"}}".into())
 }
 
+/// Rows share a single parsed payload and a single expansion root; no Cartesian product.
+pub fn format_extract_rows(
+    file: &Path,
+    logs: &[LogEntry],
+    indices: &[usize],
+    fields: &[String],
+    expand_array: Option<&str>,
+    json_output: bool,
+) -> String {
+    let mut rows = Vec::new();
+    let mut rejected = Vec::new();
+    for &index in indices {
+        let entry = &logs[index];
+        let source = json!({
+            "file": entry.source_file.as_deref().unwrap_or_else(|| file.to_str().unwrap_or("<non-UTF8 path>")),
+            "line": entry.source_line_number,
+            "row_path": entry.source_row_path,
+        });
+        let payload = entry.payload().or(entry.envelope_payload.as_ref());
+        let items: Vec<(Option<usize>, Option<&Value>)> = if let Some(path) = expand_array {
+            match payload.and_then(|value| extract_field_value(value, path)) {
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, value)| (Some(i), Some(value)))
+                    .collect(),
+                value => {
+                    rejected.push(json!({"source": source, "path": path, "reason": if value.is_none() { "missing_array" } else { "not_an_array" }}));
+                    continue;
+                }
+            }
+        } else {
+            vec![(None, payload)]
+        };
+        let mut correlation_ids = BTreeMap::new();
+        for name in ["correlation_id", "request_id", "trace_id", "span_id"] {
+            if let Some(value) = extract_entry_field_value(entry, name).filter(|v| !v.is_null()) {
+                correlation_ids.insert(name.to_string(), value);
+            }
+        }
+        if let crate::parser::LogEntryKind::Request {
+            request_id: Some(id),
+            ..
+        } = &entry.kind
+        {
+            correlation_ids.insert("request_id".to_string(), Value::String(id.clone()));
+        }
+        for (array_index, item) in items {
+            let mut values = BTreeMap::new();
+            let mut missing_fields = Vec::new();
+            for field in fields {
+                let value = if expand_array.is_some() {
+                    item.and_then(|value| extract_field_value(value, field))
+                        .cloned()
+                } else {
+                    extract_entry_field_value(entry, field)
+                };
+                if value.is_none() {
+                    missing_fields.push(field);
+                }
+                values.insert(field, value.unwrap_or(Value::Null));
+            }
+            rows.push(json!({
+                "source": source,
+                "timestamp": entry.source_timestamp.map(|t| t.to_rfc3339()).unwrap_or_else(|| entry.timestamp.to_rfc3339()),
+                "timestamp_year_inferred": entry.timestamp_year_inferred,
+                "correlation_ids": correlation_ids,
+                "array_path": expand_array,
+                "array_index": array_index,
+                "values": values,
+                "missing_fields": missing_fields,
+                "payload_present": payload.is_some(),
+            }));
+        }
+    }
+    if json_output {
+        serde_json::to_string_pretty(&json!({"extract": {
+            "file": file.display().to_string(), "mode": "rows", "fields": fields,
+            "matches": indices.len(), "row_count": rows.len(), "rows": rows,
+            "rejected_expansions": rejected,
+        }}))
+        .expect("JSON values serialize")
+    } else {
+        let mut out = format!(
+            "Extracted {} rows from {} matching entries\n",
+            rows.len(),
+            indices.len()
+        );
+        for row in rows {
+            let _ = writeln!(out, "{}", row);
+        }
+        for diagnostic in rejected {
+            let _ = writeln!(out, "Rejected expansion: {}", diagnostic);
+        }
+        out
+    }
+}
+
 fn build_extract_summary(
     logs: &[LogEntry],
     match_indices: &[usize],
@@ -150,7 +248,7 @@ fn extract_entry_field_value(entry: &LogEntry, field_path: &str) -> Option<Value
         return Some(Value::String(value.clone()));
     }
 
-    let payload = entry.payload()?;
+    let payload = entry.payload().or(entry.envelope_payload.as_ref())?;
     extract_field_value(payload, field_path).cloned()
 }
 

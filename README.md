@@ -341,7 +341,25 @@ log-analyzer errors stacks.log --complete --top-n 0
 
 ### extract
 
-Extracts a named field from parsed payload/settings JSON for matching log entries and aggregates counts by value.
+Extracts fields from parsed payload/settings JSON for matching log entries. A single
+`--field` keeps the existing aggregate counts. Repeat `--field` for correlated rows,
+or use `--rows` for one field. Each row includes the source file, physical line,
+expanded source row path, full timestamp (including source offset), and available
+request/trace/span/correlation IDs.
+
+```sh
+log-analyzer extract file.log --field name --field width --field status -F json
+log-analyzer extract file.log --field name --field width --expand-array cases
+```
+
+Inputs are parsed once. Without expansion, arrays remain values and numeric dot
+segments select individual array elements. `--expand-array <dot-path>` selects one
+array in each payload and emits one row per item; fields then refer to that item.
+There is no implicit expansion or Cartesian product. An empty array emits no rows;
+a missing or non-array expansion is reported in `rejected_expansions` (also in text).
+Rows retain JSON nulls; absent fields also have null values but are distinguished
+by `missing_fields`. A missing payload retains a row with `payload_present: false`.
+Embedded JSON parsing respects braces and escaped quotes inside strings.
 
 | Option | Description |
 |--------|-------------|
