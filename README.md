@@ -153,7 +153,7 @@ context, preserving request classification and pairing.
 Lifecycle markers must belong to the command’s first sentence or semicolon-delimited
 clause; a marker in a later unrelated statement cannot complete the command.
 Subordinate clauses with another subject, such as `while cleanup completed`,
-cannot supply its boundary; dash-delimited clauses follow the same rule.
+cannot supply its boundary; dash- and comma-delimited clauses follow the same rule.
 Phase-linking adverbs such as `and then completed` preserve same-subject markers.
 Ordinary bracketed annotations such as `[trace-42]`
 preserve a following lifecycle marker.

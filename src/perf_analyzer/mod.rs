@@ -26,10 +26,10 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
         })
         .map_or(text.len(), |(index, _)| index);
     static COORDINATOR: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)(?:\b(?:and|but|however|instead|because|while|when|whenever|after|before|since|until|once|although|though|whereas|if|unless|as|where)\s+|(?:—|–|--|\s-\s)\s*)").unwrap()
+        Regex::new(r"(?i)(?:\b(?:and|but|however|instead|because|while|when|whenever|after|before|since|until|once|although|though|whereas|if|unless|as|where)\s+|(?:,|—|–|--|\s-\s)\s*)").unwrap()
     });
     let other_subject = COORDINATOR.find_iter(text).find_map(|coordinator| {
-        let mut after = &text[coordinator.end()..];
+        let mut after = text[coordinator.end()..].trim_start();
         while let Some(adverb) = after.split_whitespace().next() {
             if markers
                 .iter()
@@ -37,10 +37,26 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
             {
                 break;
             }
-            let normalized = adverb.to_lowercase();
+            if after
+                .get(..8)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("in fact,"))
+            {
+                after = after[8..].trim_start();
+                continue;
+            }
+            let normalized = adverb.trim_end_matches(',').to_lowercase();
             if !matches!(
                 normalized.as_str(),
-                "then" | "afterward" | "afterwards" | "now" | "next"
+                "then"
+                    | "afterward"
+                    | "afterwards"
+                    | "now"
+                    | "next"
+                    | "and"
+                    | "but"
+                    | "however"
+                    | "instead"
+                    | "indeed"
             ) && !(normalized.ends_with("ly")
                 && !crate::parser::lifecycle_qualifier(&normalized))
             {
