@@ -2036,3 +2036,109 @@ timing = "measured"
         }
     }
 }
+
+#[test]
+fn normalization_reports_skipped_rows_and_schema_preview_without_guessing() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("wrapped.jsonl");
+    let config = dir.path().join("normalize.toml");
+    write_file(
+        &file,
+        "[\"2026-01-01T00:00:01+05:30\",{\"info\":{\"event\":\"heartbeat\",\"processId\":\"demo\"}}]\n[null,{\"info\":{\"event\":\"heartbeat\"}}]\n",
+    );
+    write_file(
+        &config,
+        "[normalization.fields]\ntimestamp='/0'\nmessage='/1/info/event'\npayload='/1/info'\n",
+    );
+    let output = command()
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "-j",
+            "info",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["coverage"]["parsed_entries"], 1);
+    assert_eq!(
+        value["coverage"]["files"][0]["normalization_diagnostics"][0]["reason"],
+        "null_field"
+    );
+    assert_eq!(
+        value["coverage"]["files"][0]["normalization_diagnostics"][0]["line"],
+        2
+    );
+    let output = command()
+        .args(["schema", file.to_str().unwrap(), "--samples", "1"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        value["schema_preview"]["samples"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        value["schema_preview"]["samples"][0]["paths"]["/0"],
+        "string"
+    );
+    assert_eq!(value["schema_preview"]["json_strings_decoded"], false);
+    let output = command()
+        .env_remove("LOG_ANALYZER_PRESET")
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "process",
+            file.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("null_field"));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["logs"][0]["source_line"], 1);
+    assert_eq!(value["logs"][0]["source_row_path"], "");
+}
+
+#[test]
+fn search_preserves_expanded_row_paths_in_both_output_formats() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("rows.jsonl");
+    let config = dir.path().join("rows.toml");
+    write_file(
+        &file,
+        "{\"rows\":[{\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"first\"},{\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":\"needle\"}]}",
+    );
+    write_file(
+        &config,
+        "[normalization]\nroot_path='/rows'\nexpand_rows=true\n",
+    );
+    for json in [true, false] {
+        let mut cmd = command();
+        cmd.env_remove("LOG_ANALYZER_PRESET")
+            .args(["--config", config.to_str().unwrap()]);
+        if json {
+            cmd.arg("-j");
+        }
+        let output = cmd
+            .args(["search", file.to_str().unwrap(), "--filter", "text:needle"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        if json {
+            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(value["search"]["entries"][0]["source_line_number"], 1);
+            assert_eq!(value["search"]["entries"][0]["source_row_path"], "/rows/1");
+        } else {
+            assert!(String::from_utf8_lossy(&output.stdout).contains("row: /rows/1"));
+        }
+    }
+}

@@ -28,6 +28,9 @@ pub struct TimeRange {
 #[derive(Serialize, Deserialize)]
 pub struct LlmLogEntry {
     pub idx: usize,
+    pub source_file: Option<String>,
+    pub source_line: usize,
+    pub source_row_path: Option<String>,
     pub ts: String,
     pub comp: String,
     pub lvl: String,
@@ -328,6 +331,9 @@ pub fn process_logs_for_llm(logs: &[LogEntry], limit: usize, sanitize: bool) -> 
 
             LlmLogEntry {
                 idx: idx + 1,
+                source_file: log.source_file.clone(),
+                source_line: log.source_line_number,
+                source_row_path: log.source_row_path.clone(),
                 ts: log
                     .timestamp
                     .with_timezone(&chrono::Utc)

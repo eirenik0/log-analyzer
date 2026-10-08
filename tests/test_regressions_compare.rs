@@ -31,6 +31,8 @@ fn request_log(
         envelope_payload: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
+        source_row_path: None,
+        normalized_record: None,
         kind: LogEntryKind::Request {
             request: "foo".to_string(),
             request_id: Some(request_id.to_string()),

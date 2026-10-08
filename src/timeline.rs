@@ -177,7 +177,12 @@ pub fn analyze(
     };
     for entry in logs {
         for (rule, pattern) in &compiled {
-            let Some(captures) = pattern.captures(&entry.raw_logline) else {
+            let Some(captures) = pattern.captures(
+                entry
+                    .normalized_record
+                    .as_deref()
+                    .unwrap_or(&entry.raw_logline),
+            ) else {
                 continue;
             };
             let key = rule
@@ -228,6 +233,7 @@ pub fn analyze(
                 source: SourceLocation {
                     file: entry.source_file.clone(),
                     line: entry.source_line_number,
+                    row_path: entry.source_row_path.clone(),
                 },
                 raw: entry.raw_logline.clone(),
                 gap_since_previous_match_ms: None,
@@ -300,9 +306,11 @@ pub fn analyze(
                 }
                 let bucket = &events[index..end];
                 let unordered = bucket.iter().enumerate().any(|(i, a)| {
-                    bucket[i + 1..]
-                        .iter()
-                        .any(|b| a.source.file != b.source.file || a.source.line == b.source.line)
+                    bucket[i + 1..].iter().any(|b| {
+                        a.source.file != b.source.file
+                            || (a.source.line == b.source.line
+                                && a.source.row_path == b.source.row_path)
+                    })
                 });
                 if unordered {
                     reason = Some("ambiguous_boundary");

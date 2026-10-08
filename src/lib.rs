@@ -6,6 +6,7 @@ pub mod errors;
 pub mod extract;
 pub mod filter;
 pub mod llm_processor;
+pub mod normalize;
 pub mod parser;
 pub mod perf_analyzer;
 pub mod search;
@@ -239,6 +240,13 @@ fn coverage_text(coverage: &AnalysisCoverage) -> String {
     use std::fmt::Write;
     let mut text = String::from("Parse coverage\n");
     for file in &coverage.files {
+        for diagnostic in &file.normalization_diagnostics {
+            let _ = writeln!(
+                text,
+                "  Normalization skipped line {} row {} field {}: {}",
+                diagnostic.line, diagnostic.row_path, diagnostic.field, diagnostic.reason
+            );
+        }
         let parser = serde_json::to_value(file.selected_parser).expect("parser serializes");
         let _ = writeln!(
             text,
@@ -331,6 +339,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let filter = build_filter(&cli.filter)?;
 
     match &cli.command {
+        Commands::Schema { file, samples } => {
+            let preview = normalize::schema_preview(file, *samples as usize)?;
+            let rendered = serde_json::to_string_pretty(&preview)?;
+            println!("{rendered}");
+            if let Some(path) = output {
+                write_output_file(path, &rendered)?;
+            }
+        }
+
         Commands::Compare {
             file1,
             file2,

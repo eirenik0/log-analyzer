@@ -102,6 +102,8 @@ pub struct LogEntry {
     /// Original explicit timestamp offset; absent when the input used local/naive time.
     pub source_timestamp: Option<DateTime<chrono::FixedOffset>>,
     pub timestamp_year_inferred: bool,
+    pub source_row_path: Option<String>,
+    pub normalized_record: Option<String>,
     /// Source line number in the original file (1-indexed)
     pub source_line_number: usize,
 }
@@ -222,6 +224,8 @@ pub fn create_event_log(params: EventLogParams) -> LogEntry {
         envelope_payload: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
+        source_row_path: None,
+        normalized_record: None,
         kind: LogEntryKind::Event {
             event_type: params.event_type,
             direction: params.direction,
@@ -245,6 +249,8 @@ pub fn create_command_log(params: CommandLogParams) -> LogEntry {
         envelope_payload: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
+        source_row_path: None,
+        normalized_record: None,
         kind: LogEntryKind::Command {
             command: params.command,
             settings: params.settings,
@@ -267,6 +273,8 @@ pub fn create_request_log(params: RequestLogParams) -> LogEntry {
         envelope_payload: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
+        source_row_path: None,
+        normalized_record: None,
         kind: LogEntryKind::Request {
             request: params.request,
             request_id: params.request_id,
@@ -302,6 +310,8 @@ pub fn create_generic_log(
         envelope_payload: None,
         source_timestamp: None,
         timestamp_year_inferred: false,
+        source_row_path: None,
+        normalized_record: None,
         kind: LogEntryKind::Generic { payload },
         source_line_number,
     }

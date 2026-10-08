@@ -290,6 +290,7 @@ fn source(entry: &LogEntry) -> SourceLocation {
     SourceLocation {
         file: entry.source_file.clone(),
         line: entry.source_line_number,
+        row_path: entry.source_row_path.clone(),
     }
 }
 

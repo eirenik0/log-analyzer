@@ -135,6 +135,7 @@ pub struct ParseCoverage {
     pub nonempty_lines: usize,
     pub parsed_entries: usize,
     pub rejected_candidates: usize,
+    pub normalization_diagnostics: Vec<crate::normalize::RowDiagnostic>,
 }
 
 impl ParseCoverage {
@@ -155,7 +156,11 @@ pub fn parse_log_file_report(
     config: &AnalyzerConfig,
 ) -> Result<ParsedLogFile, ParseError> {
     let path = path.as_ref();
-    let format = detect_log_format(path, config)?;
+    let format = if config.normalization.is_some() {
+        LogFormat::JsonLines
+    } else {
+        detect_log_format(path, config)?
+    };
     let file = File::open(path)?;
     let mut coverage = ParseCoverage {
         file: path.display().to_string(),
@@ -166,6 +171,7 @@ pub fn parse_log_file_report(
         nonempty_lines: 0,
         parsed_entries: 0,
         rejected_candidates: 0,
+        normalization_diagnostics: Vec::new(),
     };
     let reader = BufReader::new(file);
     let mut entries = Vec::new();
@@ -173,6 +179,35 @@ pub fn parse_log_file_report(
     let mut current_line_number = 0;
 
     let mut finish = |text: &str, line_number: usize| {
+        if let Some(rules) = &config.normalization {
+            for (row_path, row) in crate::normalize::normalize(text, line_number, rules) {
+                let parsed = row.and_then(|value| {
+                    parse_json_line_entry(&value.to_string(), line_number, config).map_err(|_| {
+                        crate::normalize::RowDiagnostic {
+                            line: line_number,
+                            row_path: row_path.clone(),
+                            field: "timestamp_or_message".into(),
+                            reason: "invalid_normalized_entry".into(),
+                        }
+                    })
+                });
+                match parsed {
+                    Ok(mut entry) => {
+                        entry.normalized_record = Some(entry.raw_logline.clone());
+                        entry.source_file = Some(path.display().to_string());
+                        entry.source_row_path = Some(row_path);
+                        entry.raw_logline = text.to_string();
+                        entries.push(entry);
+                    }
+                    Err(diagnostic) => {
+                        coverage.rejected_candidates += 1;
+                        coverage.normalization_diagnostics.push(diagnostic);
+                    }
+                }
+            }
+            return;
+        }
+
         if format != LogFormat::JsonLines && !line_starts_entry(text, format) {
             coverage.rejected_candidates += 1;
             return;
@@ -222,9 +257,19 @@ pub fn parse_log_file_with_config(
     path: impl AsRef<Path>,
     config: &AnalyzerConfig,
 ) -> Result<Vec<LogEntry>, ParseError> {
-    let parsed = parse_log_file_report(path, config)?;
+    let parsed = parse_log_file_report(path.as_ref(), config)?;
     if parsed.coverage.is_unparsed() {
         return Err(ParseError::NoRecognizedEntries(parsed.coverage));
+    }
+    for diagnostic in &parsed.coverage.normalization_diagnostics {
+        eprintln!(
+            "Normalization skipped {}:{} row {} field {}: {}",
+            path.as_ref().display(),
+            diagnostic.line,
+            diagnostic.row_path,
+            diagnostic.field,
+            diagnostic.reason
+        );
     }
     Ok(parsed.entries)
 }
