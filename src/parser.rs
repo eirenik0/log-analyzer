@@ -1160,7 +1160,7 @@ fn metadata_assignment_spans(
             .trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
             .to_lowercase();
         let value_end = if lifecycle_words(&first_word)
-            .any(|word| matches!(word, "not" | "no" | "to") || lifecycle_qualifier(word))
+            .any(|word| matches!(word, "not" | "no" | "to" | "only") || lifecycle_qualifier(word))
             || value.starts_with('(')
         {
             // A qualified multiword value cannot expose a later phase word.
@@ -1208,6 +1208,9 @@ pub(crate) fn lifecycle_qualifier(word: &str) -> bool {
             | "if"
             | "unless"
             | "whether"
+            | "when"
+            | "whenever"
+            | "once"
             | "until"
             | "will"
             | "would"

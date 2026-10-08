@@ -35,13 +35,34 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
 
 fn marker_has_trailing_condition(suffix: &str) -> bool {
     let clause = suffix.split(['.', '!', '?', '\n']).next().unwrap_or(suffix);
-    crate::parser::lifecycle_words(clause).any(|word| {
-        let word = word.to_lowercase();
+    let words: Vec<_> = crate::parser::lifecycle_words(clause)
+        .map(str::to_lowercase)
+        .collect();
+    words.iter().any(|word| {
         matches!(
             word.as_str(),
-            "if" | "unless" | "provided" | "assuming" | "conditionally" | "depending"
-        ) || crate::parser::lifecycle_uncertainty(&word)
-    })
+            "if" | "unless"
+                | "when"
+                | "whenever"
+                | "once"
+                | "until"
+                | "provided"
+                | "providing"
+                | "assuming"
+                | "conditionally"
+                | "depending"
+                | "contingent"
+                | "subject"
+                | "given"
+                | "insofar"
+        ) || crate::parser::lifecycle_uncertainty(word)
+    }) || words.windows(2).any(|pair| {
+        (pair[0] == "only" && matches!(pair[1].as_str(), "after" | "upon"))
+            || (pair[0] == "in" && pair[1] == "case")
+            || (pair[0] == "on" && pair[1] == "condition")
+    }) || words
+        .windows(3)
+        .any(|phrase| phrase == ["as", "soon", "as"])
 }
 
 fn marker_is_nonaffirmative(prefix: &str) -> bool {
