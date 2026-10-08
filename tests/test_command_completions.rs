@@ -668,3 +668,88 @@ fn quoted_tail_markers_cannot_invent_lifecycle_boundaries() {
         assert_eq!(result.operations[0].duration_ms, 1000, "{body}");
     }
 }
+
+#[test]
+fn nested_payloads_under_stray_openers_remain_opaque() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for payload in [
+        r#"{{text:'Operation "work" completed'}"#,
+        r#"{{text:'Operation "work" completed'"#,
+        r#"{{text:[} Operation "work" completed"#,
+        r#"{['Operation "work" completed']"#,
+        r#"{note='Operation "work" completed'"#,
+        r#"{note='Operation "work" completed"#,
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let contextual = parse(payload, 1, &config);
+        assert!(
+            !matches!(contextual.kind, LogEntryKind::Command { .. }),
+            "{payload}"
+        );
+        let other = parse(r#"Operation "other" completed"#, 2, &config);
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, contextual, other],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert!(result.operations.is_empty(), "{payload}");
+    }
+}
+
+#[test]
+fn quoted_payload_markers_and_openers_cannot_hide_later_commands() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for context in [
+        "note='payload ['",
+        "note='with settings {'",
+        "note='with body ['",
+        "note='payload' bracket='['",
+        "{ worker's note",
+    ] {
+        let start = parse(r#"Operation "work" started"#, 0, &config);
+        let end = parse(
+            &format!("{context} Operation \"work\" completed"),
+            1,
+            &config,
+        );
+        assert!(
+            matches!(end.kind, LogEntryKind::Command { .. }),
+            "{context}"
+        );
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[start, end],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{context}");
+        assert_eq!(result.operations[0].duration_ms, 1000, "{context}");
+    }
+}
+
+#[test]
+fn deeply_nested_unfinished_arrays_keep_their_contents_opaque() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let entry = parse(
+        &format!("{}Operation \"work\" completed", "[".repeat(50_000)),
+        1,
+        &config,
+    );
+    assert!(matches!(entry.kind, LogEntryKind::Generic { .. }));
+}
+
+#[test]
+fn deeply_nested_closed_payloads_are_skipped_without_decoding_inner_fragments() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    let payload = format!("{}0{}", "[".repeat(50_000), "]".repeat(50_000));
+    let entry = parse(&payload, 1, &config);
+    assert!(matches!(
+        entry.kind,
+        LogEntryKind::Generic { payload: None }
+    ));
+    let entry = parse(&format!("{payload} {{following:1}}"), 1, &config);
+    assert!(
+        matches!(entry.kind, LogEntryKind::Generic { payload: Some(ref value) } if value["following"] == 1)
+    );
+}

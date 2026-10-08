@@ -902,7 +902,7 @@ fn extract_command_name(message: &str, rules: &ParserRules) -> Option<(String, u
             }
         })
         .collect();
-    let unfinished_payload = unfinished_payload_start(message, rules, &spans);
+    let unfinished_payload = unfinished_payload_start(message, rules, &spans, &quotes);
     let mut candidates = message.match_indices(prefix).filter_map(|(start, _)| {
         if unfinished_payload.is_some_and(|boundary| start >= boundary) {
             return None;
@@ -930,10 +930,16 @@ fn unfinished_payload_start(
     message: &str,
     rules: &ParserRules,
     spans: &[std::ops::Range<usize>],
+    quotes: &[std::ops::Range<usize>],
 ) -> Option<usize> {
     let openers: Vec<_> = message
         .char_indices()
-        .filter_map(|(index, ch)| matches!(ch, '{' | '[').then_some(index))
+        .filter_map(|(index, ch)| {
+            let quote = quotes.partition_point(|span| span.end <= index);
+            (matches!(ch, '{' | '[')
+                && !quotes.get(quote).is_some_and(|span| span.contains(&index)))
+            .then_some(index)
+        })
         .collect();
     let mut boundary = None;
     for marker in rules
@@ -943,6 +949,10 @@ fn unfinished_payload_start(
         .filter(|marker| !marker.is_empty())
     {
         for (start, _) in message.match_indices(marker) {
+            let quote = quotes.partition_point(|span| span.end <= start);
+            if quotes.get(quote).is_some_and(|span| span.contains(&start)) {
+                continue;
+            }
             let probe = start + marker.len() - usize::from(marker.ends_with(['{', '[']));
             let index = openers.partition_point(|opener| *opener < probe);
             if let Some(&opener) = openers.get(index) {
@@ -1286,19 +1296,10 @@ fn determine_log_entry_kind(
 
     let payload = extract_json(message, &parser_rules.json_indicators);
 
-    if payload.is_some() {
-        let mut cleaned_message = String::new();
-        for (index, ch) in message.char_indices() {
-            if (ch == '{' || ch == '[') && extract_json_from_position(message, index).is_some() {
-                cleaned_message = message[..index].to_string();
-                cleaned_message.push_str("[JSON removed]");
-                break;
-            }
-        }
-
-        if !cleaned_message.is_empty() {
-            message_text = cleaned_message;
-        }
+    if payload.is_some()
+        && let Some((_, span)) = first_decodable_json_span(message)
+    {
+        message_text = format!("{}[JSON removed]", &message[..span.start]);
     }
 
     Ok(create_generic_log(
@@ -1426,14 +1427,24 @@ fn extract_json(input: &str, json_indicators: &[String]) -> Option<Value> {
         }
     }
 
-    for (index, ch) in input.char_indices() {
-        if (ch == '{' || ch == '[')
-            && let Some(json_value) = extract_json_from_position(input, index)
-        {
-            return Some(json_value);
+    first_decodable_json_span(input).map(|(value, _)| value)
+}
+
+fn first_decodable_json_span(input: &str) -> Option<(Value, std::ops::Range<usize>)> {
+    let mut after_deep_payload = 0;
+    for span in balanced_json_spans(input) {
+        if span.start < after_deep_payload {
+            continue;
+        }
+        if scan_payload_spans(&input[span.clone()], false).2 > 128 {
+            // Do not decode a nested fragment of an unsupported outer payload.
+            after_deep_payload = span.end;
+            continue;
+        }
+        if let Some(value) = decode_json_span(input, span.clone()) {
+            return Some((value, span));
         }
     }
-
     None
 }
 
@@ -1447,20 +1458,30 @@ fn extract_json_span_from_position(input: &str, start_pos: usize) -> Option<(Val
     if span.start != 0 {
         return None;
     }
-    let json = remaining[span.clone()].replace("undefined", "null");
-    json5::from_str::<Value>(&json)
-        .ok()
-        .map(|value| (value, start_pos + span.end))
+    let end = start_pos + span.end;
+    decode_json_span(remaining, span).map(|value| (value, end))
+}
+
+fn decode_json_span(input: &str, span: std::ops::Range<usize>) -> Option<Value> {
+    let json = &input[span];
+    // JSON5 decoding is recursive. Match serde_json's default depth limit
+    // before handing deeply nested input to that decoder.
+    if scan_payload_spans(json, false).2 > 128 {
+        return None;
+    }
+    json5::from_str::<Value>(&json.replace("undefined", "null")).ok()
 }
 
 fn looks_like_json_start(input: &str) -> bool {
     let Some(opener) = input.chars().next() else {
         return false;
     };
-    let mut rest = input[opener.len_utf8()..].trim_start();
+    let rest = input[opener.len_utf8()..].trim_start();
     if opener == '[' {
-        while let Some(next) = rest.strip_prefix('[') {
-            rest = next.trim_start();
+        // An array opener is itself a valid first array value. Do not rescan
+        // nested opener chains once for every unfinished delimiter.
+        if rest.starts_with('[') {
+            return true;
         }
         if rest.starts_with('{') {
             return looks_like_json_start(rest);
@@ -1487,15 +1508,27 @@ fn looks_like_json_start(input: &str) -> bool {
 // Unmatched contextual opening delimiters do not trigger
 // repeated suffix scans. Contextual quotes are retained separately from JSON.
 fn balanced_json_spans(input: &str) -> Vec<std::ops::Range<usize>> {
-    opaque_spans(input).0
+    scan_payload_spans(input, false).0
 }
 
 fn opaque_spans(input: &str) -> (Vec<std::ops::Range<usize>>, Vec<std::ops::Range<usize>>) {
+    let (spans, quotes, _) = scan_payload_spans(input, true);
+    (spans, quotes)
+}
+
+fn scan_payload_spans(
+    input: &str,
+    include_unfinished: bool,
+) -> (
+    Vec<std::ops::Range<usize>>,
+    Vec<std::ops::Range<usize>>,
+    usize,
+) {
+    let mut max_depth = 0;
     let mut spans = Vec::new();
     let mut quotes = Vec::new();
     let mut quote_start = 0;
     let mut delimiters = Vec::new();
-    let mut root_start = 0;
     let mut outside_quote = None;
     let mut outside_escape = false;
     let mut string_quote = None;
@@ -1528,8 +1561,8 @@ fn opaque_spans(input: &str) -> (Vec<std::ops::Range<usize>>, Vec<std::ops::Rang
                 continue;
             }
             if matches!(ch, '{' | '[') {
-                root_start = index;
-                delimiters.push(ch);
+                delimiters.push((ch, index));
+                max_depth = max_depth.max(delimiters.len());
             }
             continue;
         }
@@ -1552,6 +1585,7 @@ fn opaque_spans(input: &str) -> (Vec<std::ops::Range<usize>>, Vec<std::ops::Rang
             } else if ch == '\\' {
                 escape_next = true;
             } else if ch == quote {
+                quotes.push(quote_start..index + ch.len_utf8());
                 string_quote = None;
             }
             continue;
@@ -1565,28 +1599,77 @@ fn opaque_spans(input: &str) -> (Vec<std::ops::Range<usize>>, Vec<std::ops::Rang
                 characters.next();
                 block_comment = true;
             }
-            '"' | '\'' => string_quote = Some(ch),
-            '{' | '[' => delimiters.push(ch),
+            '\'' if input[..index]
+                .chars()
+                .next_back()
+                .is_some_and(|previous| previous.is_alphanumeric()) => {}
+            '"' | '\'' => {
+                quote_start = index;
+                string_quote = Some(ch);
+            }
+            '{' | '[' => {
+                delimiters.push((ch, index));
+                max_depth = max_depth.max(delimiters.len());
+            }
             '}' | ']' => {
                 let expected = if ch == '}' { '{' } else { '[' };
-                if delimiters.pop() != Some(expected) {
-                    if looks_like_json_start(&input[root_start..]) {
-                        spans.push(root_start..input.len());
-                        return (spans, quotes);
+                let Some((opener, start)) = delimiters.pop() else {
+                    continue;
+                };
+                if opener != expected {
+                    if let Some(opaque_start) = delimiters
+                        .iter()
+                        .map(|(_, start)| *start)
+                        .chain(std::iter::once(start))
+                        .find(|start| looks_like_json_start(&input[*start..]))
+                    {
+                        if include_unfinished {
+                            spans.push(opaque_start..input.len());
+                        }
+                        return (finish_spans(spans, include_unfinished), quotes, max_depth);
                     }
                     delimiters.clear();
-                } else if delimiters.is_empty() {
-                    spans.push(root_start..index + ch.len_utf8());
+                } else {
+                    // Retain nested balanced regions even if their enclosing
+                    // stray opener never closes or is not JSON-like.
+                    spans.push(start..index + ch.len_utf8());
                 }
             }
             _ => {}
         }
     }
-    if !delimiters.is_empty() && looks_like_json_start(&input[root_start..]) {
-        spans.push(root_start..input.len());
+    if let Some(start) = delimiters
+        .iter()
+        .map(|(_, start)| *start)
+        .find(|start| looks_like_json_start(&input[*start..]))
+        && include_unfinished
+    {
+        spans.push(start..input.len());
     }
-    if outside_quote.is_some() {
+    if outside_quote.is_some() || string_quote.is_some() {
         quotes.push(quote_start..input.len());
     }
-    (spans, quotes)
+    (finish_spans(spans, include_unfinished), quotes, max_depth)
+}
+
+fn finish_spans(
+    mut spans: Vec<std::ops::Range<usize>>,
+    merge: bool,
+) -> Vec<std::ops::Range<usize>> {
+    spans.sort_unstable_by_key(|span| span.start);
+    if !merge {
+        return spans;
+    }
+    let mut merged: Vec<std::ops::Range<usize>> = Vec::new();
+    for span in spans {
+        if let Some(previous) = merged
+            .last_mut()
+            .filter(|previous| span.start <= previous.end)
+        {
+            previous.end = previous.end.max(span.end);
+        } else {
+            merged.push(span);
+        }
+    }
+    merged
 }

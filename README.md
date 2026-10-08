@@ -143,7 +143,10 @@ Empty/unterminated names, multiple valid command subjects, and prefixes inside
 quoted context or balanced payload regions (including invalid JSON) are not commands.
 JSON-like payloads with mismatched delimiters remain opaque through the line end. Configured
 command/request payload markers and recognizable JSON-like beginnings also keep
-unfinished payload regions opaque.
+unfinished payload regions opaque. Balanced nested payloads remain opaque even
+under a stray enclosing opener; quoted metadata cannot introduce payload boundaries.
+Embedded JSON decoding requires balanced delimiters and supports nesting up to
+128 levels; deeper payloads remain opaque without decoding inner fragments.
 Custom unquoted names retain the legacy `command_start_marker` delimiter; use
 quoted names to recognize completion lines independently of that delimiter.
 
