@@ -183,6 +183,32 @@ impl Classification<'_> {
     }
 }
 
+/// Keeps a record-field scope value within `MAX_VALUE_BYTES` without losing identity.
+///
+/// Values over the limit become a readable prefix plus the byte length and a 128-bit
+/// FNV-1a digest of the full value. Equal values give equal keys, so long scopes still
+/// correlate; values that differ anywhere give different keys.
+pub fn bounded_scope_value(value: &str) -> String {
+    if value.len() <= MAX_VALUE_BYTES {
+        return value.to_string();
+    }
+    const PREFIX_BYTES: usize = 64;
+    let mut cut = PREFIX_BYTES;
+    while !value.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let mut hash: u128 = 0x6c62272e07bb014262b821756295c58d;
+    for byte in value.as_bytes() {
+        hash ^= u128::from(*byte);
+        hash = hash.wrapping_mul(0x0000000001000000000000000000013B);
+    }
+    format!(
+        "{}…[{} bytes, fnv1a128:{hash:032x}]",
+        &value[..cut],
+        value.len()
+    )
+}
+
 fn bounded_nonempty(value: &str) -> bool {
     value.len() <= MAX_VALUE_BYTES && !value.trim().is_empty()
 }
