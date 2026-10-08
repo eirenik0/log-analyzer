@@ -1100,9 +1100,46 @@ fn metadata_assignment_spans(
                 },
                 |span| span.end.min(text.len()),
             );
+        let first_word = value[..value_end - value_start]
+            .trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '\'' | '’'))
+            .to_lowercase();
+        let value_end = if matches!(first_word.as_str(), "not" | "no")
+            || lifecycle_qualifier(&first_word)
+            || value.starts_with('(')
+        {
+            // A qualified multiword value cannot expose a later phase word.
+            value
+                .find([',', ';', '.', '!', '?', '\n'])
+                .map_or(text.len(), |offset| value_start + offset)
+        } else {
+            value_end
+        };
         spans.push(key_start..value_end);
     }
     spans
+}
+
+pub(crate) fn lifecycle_qualifier(word: &str) -> bool {
+    matches!(
+        word,
+        "never"
+            | "without"
+            | "neither"
+            | "nor"
+            | "cannot"
+            | "if"
+            | "unless"
+            | "whether"
+            | "until"
+            | "will"
+            | "would"
+            | "should"
+            | "may"
+            | "might"
+            | "could"
+            | "must"
+    ) || word.ends_with("n't")
+        || word.ends_with("n’t")
 }
 
 fn parse_quoted_field_value(input: &str, quote: char) -> Option<(String, usize)> {

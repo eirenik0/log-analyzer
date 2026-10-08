@@ -764,6 +764,11 @@ fn assignment_metadata_cannot_supply_lifecycle_boundaries() {
         "inspected completed=false",
         "inspected phase=started status=completed",
         "inspected status=(completed)",
+        "inspected status = not completed",
+        "inspected status=never completed",
+        "inspected status=will be completed",
+        "inspected status=(not completed)",
+        "inspected status=not only completed",
         "inspected uncompleted",
         "inspected completedReason",
         "inspected unfinished",
@@ -833,6 +838,10 @@ fn negated_markers_cannot_create_command_boundaries() {
         "would have completed",
         "if completed",
         "completed?",
+        "has completed successfully?",
+        "has completed successfully or failed?",
+        "has completed, successfully?",
+        "has completed; successfully?",
     ] {
         let start = parse(r#"Operation "work" started"#, 0, &config);
         let negated = parse(&format!("Operation \"work\" {wording}"), 1, &config);
@@ -850,6 +859,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "hasn't started",
         "never started",
         "did not begin",
+        "status = not started",
     ] {
         let negated = parse(&format!("Operation \"work\" {wording}"), 0, &config);
         let end = parse(r#"Operation "work" completed"#, 1, &config);
@@ -866,6 +876,8 @@ fn negated_markers_cannot_create_command_boundaries() {
         "not failed but completed",
         "not only completed",
         "with no errors completed",
+        "completed. Is everything okay?",
+        "status=not completed, completed",
     ] {
         let start = parse(r#"Operation "work" started"#, 0, &config);
         let end = parse(&format!("Operation \"work\" {wording}"), 1, &config);

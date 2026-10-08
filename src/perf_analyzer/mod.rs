@@ -27,9 +27,16 @@ fn contains_command_marker(text: &str, markers: &[String]) -> bool {
                     && (!marker.chars().next_back().is_some_and(word)
                         || !text[end..].chars().next().is_some_and(word))
                     && !marker_is_nonaffirmative(&text[..start])
-                    && !text[end..].trim_start().starts_with('?')
+                    && !marker_is_questioned(&text[end..])
             })
         })
+}
+
+fn marker_is_questioned(suffix: &str) -> bool {
+    suffix
+        .split(['.', '!', '\n'])
+        .next()
+        .is_some_and(|clause| clause.contains('?'))
 }
 
 fn marker_is_nonaffirmative(prefix: &str) -> bool {
@@ -51,27 +58,7 @@ fn marker_is_nonaffirmative(prefix: &str) -> bool {
     words[start..].iter().enumerate().any(|(offset, word)| {
         let index = start + offset;
         (word == "not" && words.get(index + 1).is_none_or(|next| next != "only"))
-            || matches!(
-                word.as_str(),
-                "never"
-                    | "without"
-                    | "neither"
-                    | "nor"
-                    | "cannot"
-                    | "if"
-                    | "unless"
-                    | "whether"
-                    | "until"
-                    | "will"
-                    | "would"
-                    | "should"
-                    | "may"
-                    | "might"
-                    | "could"
-                    | "must"
-            )
-            || word.ends_with("n't")
-            || word.ends_with("n’t")
+            || crate::parser::lifecycle_qualifier(word)
             || (word == "no"
                 && (index + 1 == words.len()
                     || words.get(index + 1).is_some_and(|next| next == "longer")))
