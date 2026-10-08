@@ -882,6 +882,9 @@ fn negated_markers_cannot_create_command_boundaries() {
         "completed allegedly",
         "is likely to have completed",
         "probably completed",
+        "was not, however, completed",
+        "was not, in fact, completed",
+        "was not,however,completed",
         "is anything but completed",
         "is far from completed",
         "is nowhere near completed",
@@ -942,6 +945,7 @@ fn negated_markers_cannot_create_command_boundaries() {
         "is scheduled to be started",
         "is unlikely to have started",
         "probably started",
+        "was not, however, started",
         "is anything but started",
         "is far from started",
         "is nowhere near started",
@@ -1287,5 +1291,51 @@ fn request_subjects_keep_command_shaped_context_from_completing_operations() {
         );
         assert_eq!(result.operations.len(), 1, "{context}");
         assert_eq!(result.operations[0].name, "work");
+    }
+}
+
+#[test]
+fn pre_subject_qualifiers_cannot_create_command_boundaries() {
+    let config = config::load_builtin_template("service-api").unwrap();
+    for prefix in [
+        "Did not observe ",
+        "Probably ",
+        "Could not confirm ",
+        "Never observed ",
+    ] {
+        for (first, second) in [
+            (
+                r#"Operation "work" started"#.to_string(),
+                format!("{prefix}Operation \"work\" completed"),
+            ),
+            (
+                format!("{prefix}Operation \"work\" started"),
+                r#"Operation "work" completed"#.to_string(),
+            ),
+        ] {
+            let result = perf_analyzer::analyze_performance_with_config(
+                &[parse(&first, 0, &config), parse(&second, 1, &config)],
+                &LogFilter::new(),
+                None,
+                &config,
+            );
+            assert!(result.operations.is_empty(), "{first}; {second}");
+        }
+    }
+    for prefix in [
+        r#"note='not observed' "#,
+        r#"context={note:'not observed'} "#,
+        "status=not observed, ",
+    ] {
+        let result = perf_analyzer::analyze_performance_with_config(
+            &[
+                parse(&format!("{prefix}Operation \"work\" started"), 0, &config),
+                parse(&format!("{prefix}Operation \"work\" completed"), 1, &config),
+            ],
+            &LogFilter::new(),
+            None,
+            &config,
+        );
+        assert_eq!(result.operations.len(), 1, "{prefix}");
     }
 }

@@ -75,7 +75,20 @@ fn marker_has_trailing_condition(suffix: &str) -> bool {
         .any(|phrase| phrase == ["as", "soon", "as"])
 }
 
-fn marker_is_nonaffirmative(prefix: &str) -> bool {
+pub(crate) fn marker_is_nonaffirmative(prefix: &str) -> bool {
+    let mut normalized = prefix.to_lowercase();
+    for insertion in [
+        "however",
+        "in fact",
+        "indeed",
+        "actually",
+        "nevertheless",
+        "unfortunately",
+    ] {
+        normalized = normalized.replace(&format!(", {insertion},"), " ");
+        normalized = normalized.replace(&format!(",{insertion},"), " ");
+    }
+    let prefix = normalized.as_str();
     let start = prefix
         .char_indices()
         .rev()

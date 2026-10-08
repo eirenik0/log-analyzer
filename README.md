@@ -140,6 +140,8 @@ unclosed payloads. Quoted context and `key=value`/`key:value` metadata are
 excluded from lifecycle matching; marker words must have word boundaries and affirmative wording, while
 markers before or after that context remain visible. Pending, prospective, and
 in-progress or explicitly uncertain wording does not establish boundaries;
+pre-subject negation or uncertainty also suppresses lifecycle claims, and
+parenthetical insertions cannot discard preceding negation;
 trailing conditional, uncertainty, or unresolved-alternative wording cannot
 prove a boundary either. Explanatory colons after a
 configured lifecycle phrase preserve that phrase and exclude the explanation. Names support escaped quotes

@@ -901,7 +901,7 @@ fn command_prefix_boundary(message: &str, start: usize, prefix: &str) -> bool {
 
 // Command identity is independent of lifecycle wording. Only quoted names have
 // an unambiguous end on completion lines; retain legacy start-delimited names.
-fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<(String, usize)> {
+fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<(String, usize, usize)> {
     let rules = &config.parser;
     let prefix = rules.command_prefix.as_str();
     if prefix.is_empty() {
@@ -992,6 +992,7 @@ fn extract_command_name(message: &str, config: &AnalyzerConfig) -> Option<(Strin
                 return None;
             }
             parse_command_candidate(message, start + prefix.len(), config)
+                .map(|(name, end)| (name, start, end))
         });
     let candidate = candidates.next()?;
     if candidates.next().is_some() {
@@ -1103,9 +1104,36 @@ pub(crate) fn command_lifecycle_message<'a>(
     message: &'a str,
     config: &AnalyzerConfig,
 ) -> std::borrow::Cow<'a, str> {
-    let body = extract_command_name(message, config)
-        .map(|(_, end)| &message[end..])
-        .unwrap_or(message);
+    let Some((_, start, end)) = extract_command_name(message, config) else {
+        return command_lifecycle_body(message, config);
+    };
+    let preceding = &message[..start];
+    let (payloads, quotes) = opaque_spans(preceding);
+    let excluded = finish_spans(
+        payloads
+            .into_iter()
+            .chain(quotes.iter().cloned())
+            .chain(metadata_assignment_spans(preceding, &quotes))
+            .collect(),
+        true,
+    );
+    let mut context = String::new();
+    let mut previous = 0;
+    for span in excluded {
+        context.push_str(&preceding[previous..span.start]);
+        context.push(' ');
+        previous = span.end;
+    }
+    context.push_str(&preceding[previous..]);
+    let body = command_lifecycle_body(&message[end..], config);
+    if crate::perf_analyzer::marker_is_nonaffirmative(&context) {
+        std::borrow::Cow::Borrowed("")
+    } else {
+        body
+    }
+}
+
+fn command_lifecycle_body<'a>(body: &'a str, config: &AnalyzerConfig) -> std::borrow::Cow<'a, str> {
     // Payload syntax is opaque even when malformed: its words cannot prove a
     // lifecycle boundary. Do not depend on successful JSON decoding here.
     let (_, quotes) = opaque_spans(body);
@@ -1653,7 +1681,7 @@ fn determine_log_entry_kind(
                 payload,
             }));
         }
-    } else if let Some((command, name_end)) = extract_command_name(message, config) {
+    } else if let Some((command, _, name_end)) = extract_command_name(message, config) {
         let mut settings = None;
         let mut cleaned_message = message.to_string();
         let (_, quotes) = opaque_spans(message);
