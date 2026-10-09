@@ -50,6 +50,31 @@ class SkillInstallationTests(unittest.TestCase):
             self.assertEqual((target / 'templates/eyes.toml').read_bytes(), (self.skill / 'templates/eyes.toml').read_bytes())
             self.assertFalse((target / 'analyze-logs').exists())
 
+    def test_nested_working_directory_is_rejected_without_partial_copies(self):
+        before = sorted(str(p.relative_to(self.skill)) for p in self.skill.rglob('*'))
+        for cwd in (self.skill, self.skill / 'examples'):
+            with self.subTest(cwd=str(cwd)):
+                result = self.install(cwd)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('overlaps the skill source', result.stderr)
+                self.assertEqual(sorted(str(p.relative_to(self.skill)) for p in self.skill.rglob('*')), before)
+
+    def test_symlinked_destination_inside_source_is_rejected(self):
+        (self.project / '.claude').symlink_to(self.skill, target_is_directory=True)
+        result = self.install(self.project)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('overlaps the skill source', result.stderr)
+        self.assertFalse((self.skill / 'skills').exists())
+
+    def test_destination_ancestor_of_source_is_rejected(self):
+        target = self.project / '.claude/skills/analyze-logs'
+        target.parent.mkdir(parents=True)
+        target.symlink_to(self.skill.parent, target_is_directory=True)
+        result = self.install(self.project)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('overlaps the skill source', result.stderr)
+        self.assertFalse((self.skill.parent / 'SKILL.md').exists())
+
     def test_help_and_invalid_arguments(self):
         self.assertEqual(self.install(self.project, '--help').returncode, 0)
         self.assertNotEqual(self.install(self.project, '--invalid').returncode, 0)

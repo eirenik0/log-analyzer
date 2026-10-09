@@ -1064,7 +1064,8 @@ the maintained synthetic fixtures; their documented commands are checked by CI.
 
 For a standalone skill, run `/path/to/log-analyzer/scripts/install-skill.sh`
 from the destination project, or add `--global` for personal installation.
-Running it from the source repository is a safe no-op. Install the CLI separately;
+Running it from the source repository is a safe no-op; other overlapping source
+and destination directories are rejected before copying. Install the CLI separately;
 the skill's capability check detects whether the executable supports the workflow.
 
 ## Development

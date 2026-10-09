@@ -55,7 +55,31 @@ else
     echo "Installing to project: $INSTALL_DIR"
 fi
 
-# Create directory and copy files
+# Resolve existing ancestors, including symlinks, before creating a destination.
+resolve_directory() {
+    local candidate="$1"
+    local suffix=""
+    while [ ! -d "$candidate" ]; do
+        suffix="/$(basename "$candidate")$suffix"
+        candidate="$(dirname "$candidate")"
+    done
+    local resolved
+    resolved="$(cd "$candidate" && pwd -P)" || return 1
+    printf '%s%s\n' "$resolved" "$suffix"
+}
+
+SKILL_SOURCE="$(resolve_directory "$SKILL_SOURCE")"
+INSTALL_DIR="$(resolve_directory "$INSTALL_DIR")"
+if [ "$SKILL_SOURCE" != "$INSTALL_DIR" ]; then
+    case "${INSTALL_DIR%/}/" in
+        "${SKILL_SOURCE%/}/"*) echo "Error: installation destination overlaps the skill source" >&2; exit 1 ;;
+    esac
+    case "${SKILL_SOURCE%/}/" in
+        "${INSTALL_DIR%/}/"*) echo "Error: installation destination overlaps the skill source" >&2; exit 1 ;;
+    esac
+fi
+
+# Create directory and copy files only after ruling out recursive copies.
 mkdir -p "$INSTALL_DIR"
 if [ "$SKILL_SOURCE" -ef "$INSTALL_DIR" ]; then
     echo "Skill is already available in this project."
