@@ -104,7 +104,9 @@ processed-population facts. Independent inputs have separate scope completion;
 a later capture failure does not downgrade an earlier completed input. Oversized physical or multiline records retain nonempty and rejection diagnostics;
 a cutoff never turns observed content into empty input. Rejected physical or
 normalized records make declared-input support insufficient;
-known processed counts and elapsed measurements remain retained. Paired-population
+known processed counts and elapsed measurements remain retained. Selected conflicting or invalid
+classifications make semantic populations partial or unavailable. Unresolved policy
+role matches prevent complete domain counts and cardinality-dependent joins. Paired-population
 distributions require measurable source timestamps for every pair; individual
 reliable intervals remain available when that requirement is unmet. Identity-only
 classification does not establish lifecycle support or authorize zero lifecycle

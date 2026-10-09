@@ -172,6 +172,18 @@ pub(super) fn build(
         measurement_ids.push(measurement_id);
         durations.push(operation.duration_ms);
     }
+    if view.classification_loss > 0 {
+        let unresolved = retained
+            .iter()
+            .find(|entry| {
+                matches!(
+                    entry.classification,
+                    Some(ClassifiedRecord::Conflict { .. } | ClassifiedRecord::Invalid { .. })
+                )
+            })
+            .unwrap();
+        findings.push(fact(format!("{scope}-classification-unavailable"),scope,"unknown","Selected conflicting or invalid classifications prevent complete semantic populations.",vec![excerpt(unresolved,context,snapshot)],json!({"reason":format!("{} selected source records have unresolved semantics; this is not a missing event, operation or resource count.", view.classification_loss),"supporting_occurrences":[occurrence(unresolved,context,snapshot)]})));
+    }
     // An empty observation can be a measured zero only when the profile supplies rules.
     if operation_rules.is_empty() && view.pair_supported {
         operation_rules.extend(retained.iter().filter(|entry| matches!(&entry.classification, Some(ClassifiedRecord::Event { semantics, .. }) if semantics.phase.is_some())).flat_map(|entry| rules(entry)));
@@ -199,7 +211,7 @@ pub(super) fn build(
             && let Some(population) = populations.last_mut()
         {
             population["completeness"] = json!("partial");
-            population["exclusions"] = json!([{"reason":"Some selected operation families lack recognition of both boundaries; only recognized pairs are retained.","count":null}]);
+            population["exclusions"] = json!([{"reason":"Selected classification loss or incomplete boundary recognition prevents complete semantic coverage; only recognized pairs are retained.","count":null}]);
         }
         if durations.len() != paired_count {
             findings.push(fact(format!("{population_id}-distribution-unavailable"),scope,"unknown","Elapsed distributions are unavailable for this paired population.",Vec::new(),json!({"reason":"Not every paired member has source timestamp provenance; individual reliable measurements remain available.","supporting_occurrences":[]})));
@@ -316,7 +328,7 @@ pub(super) fn build(
         );
         if !capability && let Some(population) = populations.last_mut() {
             population["completeness"] = json!("partial");
-            population["exclusions"] = json!([{"reason":"Some selected operation families lack this recognition capability; positive classified occurrences are retained, absent occurrences are unknown.","count":null}]);
+            population["exclusions"] = json!([{"reason":"Selected classification loss or incomplete recognition prevents complete semantic coverage; positive classified occurrences are retained, absent occurrences are unknown.","count":null}]);
         }
     }
     findings.push(fact(format!("{scope}-domain-grouping-unavailable"),scope,"unknown","Domain groupings and relationships outside explicit policy declarations remain unavailable.",Vec::new(),json!({"reason":"Operation names, repeated IDs and timestamp proximity do not establish domain grouping or causal relationships.","supporting_occurrences":[]})));

@@ -18,6 +18,7 @@ pub(super) struct View<'a> {
     pub boundaries: usize,
     pub identity_only: usize,
     pub conflicting: usize,
+    pub classification_loss: usize,
     pub pairs: usize,
     pub unmatched: usize,
     pub ambiguous: usize,
@@ -51,6 +52,7 @@ impl<'a> View<'a> {
             boundaries: 0,
             identity_only: 0,
             conflicting: 0,
+            classification_loss: 0,
             pairs: 0,
             unmatched: 0,
             ambiguous: 0,
@@ -90,9 +92,11 @@ impl<'a> View<'a> {
                 }
                 Some(ClassifiedRecord::Conflict { .. }) => {
                     view.conflicting += 1;
+                    view.classification_loss += 1;
                     view.relevant += 1;
                 }
                 Some(ClassifiedRecord::Invalid { .. }) => {
+                    view.classification_loss += 1;
                     view.relevant += 1;
                 }
                 _ => {}
@@ -198,7 +202,7 @@ impl<'a> View<'a> {
                 view.unrecognized_boundaries += usize::from(!recognizable);
             }
         }
-        if view.classified == 0 {
+        if view.classified == 0 || view.classification_loss > 0 {
             view.pair_supported = false;
             view.failures_supported = false;
             view.successes_supported = false;
@@ -255,6 +259,9 @@ impl<'a> View<'a> {
         view
     }
     pub fn boundary_supported(&self, entry: &LogEntry, phase: Phase) -> bool {
+        if self.classification_loss > 0 {
+            return false;
+        }
         let source = (entry.source_line_number, entry.source_row_path.as_deref());
         match phase {
             Phase::Start => self.recognizable_starts.contains(&source),

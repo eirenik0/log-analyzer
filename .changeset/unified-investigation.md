@@ -41,3 +41,6 @@ partial coverage when recognition capabilities differ.
 
 Preserve nonempty and rejection coverage when physical or multiline record-size
 limits interrupt parsing, including automatic-sampling cutoffs.
+
+Retain conflicting and invalid classifications as unavailable semantic exclusions;
+withhold unsupported zeros, missing boundaries and policy relationship cardinality.

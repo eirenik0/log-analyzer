@@ -12,10 +12,7 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 fn has_role(entry: &LogEntry, role: &Role) -> bool {
-    matches!(
-        entry.classification,
-        Some(crate::event_rules::ClassifiedRecord::Event { .. })
-    ) && rules(entry).iter().any(|rule| role.rule_ids.contains(rule))
+    rules(entry).iter().any(|rule| role.rule_ids.contains(rule))
 }
 fn field(entry: &LogEntry, selector: &str) -> Option<String> {
     if let Some(field) = selector.strip_prefix("payload.") {
@@ -57,6 +54,7 @@ pub(super) fn calculate(
     for (index, declaration) in policy.populations.iter().enumerate() {
         let mut groups: BTreeMap<Vec<String>, Vec<&LogEntry>> = BTreeMap::new();
         let mut missing = Vec::new();
+        let mut unresolved = Vec::new();
         for entry in entries
             .iter()
             .filter(|entry| selected(entry, selectors, config))
@@ -72,6 +70,13 @@ pub(super) fn calculate(
                 .iter()
                 .any(|id| has_role(entry, roles[id.as_str()]))
             {
+                continue;
+            }
+            if !matches!(
+                entry.classification,
+                Some(crate::event_rules::ClassifiedRecord::Event { .. })
+            ) {
+                unresolved.push(entry);
                 continue;
             }
             let Some(mut key) = identity(entry, &declaration.identity_fields) else {
@@ -95,6 +100,12 @@ pub(super) fn calculate(
                 return;
             }
             groups.entry(key).or_default().push(entry);
+        }
+        if let Some(entry) = unresolved.first() {
+            findings.push(fact(format!("{scope}-policy-{index}-unavailable"),scope,"unknown","Some declared role matches have conflicting or invalid semantics.",vec![excerpt(entry,context,snapshot)],json!({"reason":format!("{} role-matching source records cannot establish membership; the number of excluded domain entities is unknown.", unresolved.len()),"supporting_occurrences":[occurrence(entry,context,snapshot)]})));
+            if groups.is_empty() {
+                continue;
+            }
         }
         let members=groups.iter().enumerate().map(|(member_index,(key,entries))| {
             json!({"kind":match declaration.entity{crate::investigation_policy::Entity::Events=>"event",crate::investigation_policy::Entity::Attempts=>"attempt",crate::investigation_policy::Entity::Resources=>"resource"},"id":format!("{scope}-policy-{index}-{member_index}"),"identity":declaration.identity_fields.iter().chain(std::iter::once(&"$correlation_scope".to_owned())).zip(key).map(|(field,value)|json!({"field":field,"value":value})).collect::<Vec<_>>(),"source_occurrences":entries.iter().map(|entry|occurrence(entry,context,snapshot)).collect::<Vec<_>>(),"measurement_ids":[]})
@@ -122,6 +133,11 @@ pub(super) fn calculate(
             memberships,
         );
         populations.last_mut().unwrap()["exclusions"] = json!([{"reason":"Missing declared identity fields; excluded from this population, never guessed","count":missing.len()}]);
+        if !unresolved.is_empty() {
+            let population = populations.last_mut().unwrap();
+            population["completeness"] = json!("partial");
+            population["exclusions"].as_array_mut().unwrap().push(json!({"reason":"Conflicting or invalid declared role matches; domain entity membership is unavailable","count":null}));
+        }
         if !missing.is_empty() {
             findings.push(fact(format!("{scope}-policy-{index}-missing"),scope,"unknown","Some role-matching events lack declared grouping identity.",vec![excerpt(missing[0],context,snapshot)],json!({"reason":"Missing declared identity fields prevent grouping; population exclusions give the exact count.","supporting_occurrences":[occurrence(missing[0],context,snapshot)]})));
         }
@@ -136,6 +152,7 @@ pub(super) fn calculate(
         let mut sources: BTreeMap<Vec<String>, Vec<&LogEntry>> = BTreeMap::new();
         let mut targets: BTreeMap<Vec<String>, Vec<&LogEntry>> = BTreeMap::new();
         let mut missing = 0usize;
+        let mut unresolved = Vec::new();
         for entry in entries
             .iter()
             .filter(|entry| selected(entry, selectors, config))
@@ -146,6 +163,13 @@ pub(super) fn calculate(
             let source = has_role(entry, roles[declaration.source_role.as_str()]);
             let target = has_role(entry, roles[declaration.target_role.as_str()]);
             if !source && !target {
+                continue;
+            }
+            if !matches!(
+                entry.classification,
+                Some(crate::event_rules::ClassifiedRecord::Event { .. })
+            ) {
+                unresolved.push(entry);
                 continue;
             }
             let Some(mut key) = identity(entry, &fields) else {
@@ -167,6 +191,10 @@ pub(super) fn calculate(
             if target {
                 targets.entry(key).or_default().push(entry);
             }
+        }
+        if let Some(entry) = unresolved.first() {
+            findings.push(fact(format!("{scope}-relationship-{index}-unavailable"),scope,"unknown","Unresolved declared role matches prevent establishing relationship cardinality.",vec![excerpt(entry,context,snapshot)],json!({"reason":format!("{} role-matching source records have conflicting or invalid semantics; no unique scoped joins are asserted.", unresolved.len()),"supporting_occurrences":[occurrence(entry,context,snapshot)]})));
+            continue;
         }
         let mut joins = 0usize;
         let mut ambiguous = 0usize;

@@ -2272,3 +2272,203 @@ fn record_size_cutoffs_preserve_nonempty_and_rejected_coverage() {
         assert!(retained["records"].as_array().unwrap().is_empty());
     }
 }
+
+#[test]
+fn unresolved_classifications_withhold_semantic_zeros_and_policy_cardinality() {
+    let original = fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap();
+    let policy = r#"
+[investigation]
+version = 1
+[[investigation.roles]]
+id = "starts"
+rule_ids = ["begin"]
+[[investigation.roles]]
+id = "ends"
+rule_ids = ["finish"]
+[[investigation.populations]]
+id = "events"
+entity = "events"
+roles = ["starts", "ends"]
+identity_fields = ["id"]
+grouping = "occurrence"
+[[investigation.relationships]]
+id = "start-end"
+source_role = "starts"
+target_role = "ends"
+join_fields = ["id"]
+required_scope_fields = ["session"]
+cardinality = "one_to_one"
+"#;
+    let conflicting = r#"
+[[event_rules.rules]]
+id = "conflicting-end"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{field = "message", equals = "uncertain"}, {field = "phase", equals = "end"}]
+[event_rules.rules.mapping]
+kind = "request"
+name = {from = "literal", value = "other"}
+phase = {from = "literal", value = "end"}
+correlation_id = {from = "field", field = "id"}
+scope = [{from = "field", field = "session"}]
+outcome = {from = "literal", value = "failure"}
+"#;
+    let unrelated = r#"
+[[event_rules.rules]]
+id = "aux-one"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{field = "phase", equals = "aux"}]
+[event_rules.rules.mapping]
+kind = "request"
+name = {from = "literal", value = "one"}
+correlation_id = {from = "field", field = "id"}
+[[event_rules.rules]]
+id = "aux-two"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{field = "phase", equals = "aux"}]
+[event_rules.rules.mapping]
+kind = "request"
+name = {from = "literal", value = "two"}
+correlation_id = {from = "field", field = "id"}
+"#;
+    for variant in [
+        "conflict",
+        "invalid",
+        "potential-conflict",
+        "potential-invalid",
+        "only-conflict",
+        "only-invalid",
+        "unrelated",
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("uncertain.toml");
+        fs::write(
+            &profile,
+            format!("{original}{conflicting}{unrelated}{policy}"),
+        )
+        .unwrap();
+        let row = |phase: &str, message: &str, outcome: &str, second: u32| {
+            json!({"ts":format!("2026-01-01T00:00:{second:02}+02:00"),"message":message,"operation":"run","phase":phase,"id":"one","session":"a","outcome":outcome}).to_string()
+        };
+        let only = variant.starts_with("only-");
+        let potential = variant.starts_with("potential-");
+        let mut rows = Vec::new();
+        if !only {
+            rows.push(row("start", "start", "success", 0));
+            if !potential {
+                rows.push(row("end", "end", "success", 1));
+            }
+        }
+        rows.push(if variant == "unrelated" {
+            row("aux", "unrelated", "success", 2)
+        } else if variant.ends_with("invalid") {
+            row("end", "uncertain-invalid", "not-an-outcome", 2)
+        } else {
+            row("end", "uncertain", "success", 2)
+        });
+        let source = temp.path().join("uncertain.jsonl");
+        fs::write(&source, rows.join("\n") + "\n").unwrap();
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        let populations = report["populations"].as_array().unwrap();
+        for suffix in [
+            "starts",
+            "ends",
+            "successes",
+            "failures",
+            "paired-lifecycles",
+        ] {
+            let population = populations
+                .iter()
+                .find(|p| p["id"] == format!("scope-0-{suffix}"));
+            if let Some(population) = population {
+                assert_eq!(population["completeness"], "partial", "{variant} {suffix}");
+                assert!(
+                    population["count"].as_u64().unwrap() > 0,
+                    "{variant} {suffix}"
+                );
+                assert!(
+                    population["exclusions"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|e| e["count"].is_null())
+                );
+            }
+        }
+        let policy_population = populations.iter().find(|p| p["id"] == "scope-0-policy-0");
+        if only {
+            assert!(policy_population.is_none());
+        } else {
+            let population = policy_population.unwrap();
+            assert_eq!(population["count"], if potential { 1 } else { 2 });
+            assert_eq!(
+                population["completeness"],
+                if variant == "unrelated" {
+                    "complete"
+                } else {
+                    "partial"
+                }
+            );
+        }
+        let findings = report["findings"].as_array().unwrap();
+        let joins: Vec<_> = findings
+            .iter()
+            .filter(|f| {
+                f["id"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("scope-0-relationship-0-")
+                    && f["kind"] == "observation"
+            })
+            .collect();
+        assert_eq!(joins.len(), usize::from(variant == "unrelated"));
+        if potential {
+            assert!(!findings.iter().any(|f| f["kind"] == "observation"
+                && f["claim"].as_str().unwrap().contains("no observed end")));
+        }
+        assert!(
+            findings
+                .iter()
+                .any(|f| f["id"] == "scope-0-classification-unavailable" && f["kind"] == "unknown")
+        );
+        if !only && !potential {
+            assert!(
+                findings
+                    .iter()
+                    .any(|f| f["kind"] == "measurement" && f["details"]["value"] == 1000)
+            );
+        }
+        let failure = report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["goal"] == "failures")
+            .unwrap();
+        assert_eq!(
+            failure["status"],
+            if variant.ends_with("invalid") {
+                "insufficient_evidence"
+            } else {
+                "conflicting"
+            }
+        );
+        if variant.ends_with("invalid") {
+            assert_eq!(
+                report["scopes"][0]["semantic_coverage"]["status"],
+                "insufficient_evidence"
+            );
+        }
+    }
+}
