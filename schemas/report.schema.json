@@ -146,6 +146,178 @@
               "reason"
             ]
           }
+        },
+        "structural_diagnostics": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "const": 1
+            },
+            "selection": {
+              "enum": [
+                "automatic_sample",
+                "explicit",
+                "normalization"
+              ]
+            },
+            "sampled_nonempty_lines": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "sample_format_matches": {
+              "type": "object",
+              "properties": {
+                "classic": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "rust_tracing": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "syslog": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "json_lines": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "classic",
+                "rust_tracing",
+                "syslog",
+                "json_lines"
+              ],
+              "additionalProperties": false
+            },
+            "sample_status": {
+              "enum": [
+                "no_match",
+                "tied",
+                "mixed",
+                "single_format",
+                "not_sampled"
+              ]
+            },
+            "observed_format_matches": {
+              "type": "object",
+              "properties": {
+                "classic": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "rust_tracing": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "syslog": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "json_lines": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "classic",
+                "rust_tracing",
+                "syslog",
+                "json_lines"
+              ],
+              "additionalProperties": false
+            },
+            "observed_status": {
+              "enum": [
+                "no_match",
+                "tied",
+                "mixed",
+                "single_format"
+              ]
+            },
+            "unsupported_python_headers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "physical_candidate_blocks": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "attached_nonempty_lines": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "blank_lines": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "diagnostics": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "reason": {
+                    "enum": [
+                      "unsupported_python_header",
+                      "selected_parser_mismatch",
+                      "unsupported_header",
+                      "unrecognized_leading_block",
+                      "invalid_selected_record"
+                    ]
+                  }
+                },
+                "required": [
+                  "line",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "diagnostic_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "omitted_diagnostics": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "structure_does_not_establish_event_semantics",
+                  "sample_does_not_establish_capture_completeness",
+                  "attached_lines_are_not_validated_continuations"
+                ]
+              }
+            }
+          },
+          "required": [
+            "version",
+            "selection",
+            "sampled_nonempty_lines",
+            "sample_format_matches",
+            "sample_status",
+            "observed_format_matches",
+            "observed_status",
+            "unsupported_python_headers",
+            "physical_candidate_blocks",
+            "attached_nonempty_lines",
+            "blank_lines",
+            "diagnostics",
+            "diagnostic_count",
+            "omitted_diagnostics",
+            "limitations"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

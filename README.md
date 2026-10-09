@@ -205,7 +205,38 @@ Rejected candidates count attempted entries, including malformed JSON lines and
 unrecognized leading blocks. Multiline payloads and stack frames stay attached
 to their entry and do not count as separate rejections. Partially recognized
 files succeed but expose rejected candidates; review coverage before trusting
-a diagnosis. Format auto-detection samples the first ten nonempty lines.
+a diagnosis. Format auto-detection samples the first ten nonempty lines from the
+same consumed input stream used for parsing. Selection retains the existing
+score/tie-break behavior; it is not a validation verdict.
+
+Each coverage object adds `structural_diagnostics` version 1: selection provenance,
+sampled format-match counts and no-match/tied/mixed status, whole-input format
+observations, physical candidate blocks, attached nonempty lines, blank lines,
+and bounded rejection source lines/reasons (first 20, with omitted/total counts).
+Text coverage shows these observations and limits, including clean and blank
+inputs. Bounded error text explicitly labels a compact clean-input structure
+summary to preserve its existing budget. It retains sample/full-input status and
+unverified attached-line counts, while omitting clean-only selection provenance,
+exact format-match vectors, physical-block, blank-line and zero unsupported-header
+counts. Unbounded text and JSON expose those counters. Ambiguity,
+unsupported structure and rejection details remain visible in bounded text,
+with the existing mandatory-metadata budget exception when necessary. Physical blocks count
+attempted source blocks; normalized parsed/rejected rows remain separate populations.
+Attached lines are not automatically verified continuations. Format observations
+can overlap (for example Rust tracing/syslog or JSON-looking payload lines).
+Neither format recognition nor capture coverage proves lifecycle meaning or
+upstream capture completeness. Existing report schema 1 retains additive fields;
+older retained reports without these diagnostics remain valid.
+
+A documented unsupported Python-style shape is an unindented date/time followed
+by a plain or bracketed level, then logger/message text (for example
+`2026-01-01 10:00:00,123 ERROR service - failed`). When it does not match a supported
+Rust tracing/syslog header, it starts a rejected block rather than being swallowed
+into a previous record. Its traceback lines stay in that block. This is explicit
+unsupported-structure reporting, not universal Python logging support. Indented
+header-like text remains attached. Use supported input formats or explicit
+structured-export normalization; generating lifecycle rules cannot repair an
+unsupported structural grammar.
 
 ## Evidence contract for agents
 

@@ -103,17 +103,25 @@ fn collections(report: &mut Value) -> Vec<Collection> {
     .map(str::to_owned)
     .collect();
     if let Some(files) = report.pointer("/coverage/files").and_then(Value::as_array) {
-        paths.extend(
-            (0..files.len()).map(|i| format!("/coverage/files/{i}/normalization_diagnostics")),
-        );
+        for i in 0..files.len() {
+            paths.push(format!("/coverage/files/{i}/normalization_diagnostics"));
+            paths.push(format!(
+                "/coverage/files/{i}/structural_diagnostics/diagnostics"
+            ));
+        }
     }
     if let Some(inputs) = report
         .pointer("/report_metadata/evidence/inputs")
         .and_then(Value::as_array)
     {
-        paths.extend((0..inputs.len()).map(|i| {
-            format!("/report_metadata/evidence/inputs/{i}/coverage/normalization_diagnostics")
-        }));
+        for i in 0..inputs.len() {
+            paths.push(format!(
+                "/report_metadata/evidence/inputs/{i}/coverage/normalization_diagnostics"
+            ));
+            paths.push(format!(
+                "/report_metadata/evidence/inputs/{i}/coverage/structural_diagnostics/diagnostics"
+            ));
+        }
     }
     paths.push("/evidence_records".into());
     let mut result = Vec::new();
