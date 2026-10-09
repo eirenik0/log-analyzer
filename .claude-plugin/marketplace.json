@@ -4,12 +4,12 @@
     "name": "eirenik0"
   },
   "metadata": {
-    "description": "Tools for analyzing and comparing Applitools test logs"
+    "description": "Local evidence engine for AI log investigations: deterministic parsing, scoped timing and verifiable sources."
   },
   "plugins": [
     {
       "name": "log-analyzer",
-      "description": "Analyze and compare JSON logs from Applitools testing framework. Find differences, analyze performance, and debug test failures.",
+      "description": "Local evidence engine for AI log investigations: deterministic parsing, scoped timing and verifiable sources.",
       "version": "0.2.0",
       "author": {
         "name": "eirenik0"

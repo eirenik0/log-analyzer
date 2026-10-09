@@ -3,30 +3,142 @@
 [![CI](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/ci.yml)
 [![Release](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml/badge.svg)](https://github.com/eirenik0/log-analyzer/actions/workflows/release.yml)
 
-A CLI tool for analyzing and comparing structured logs.
+Log Analyzer helps AI agents investigate failures and performance problems using
+compact, verifiable evidence from logs. It is a local Rust CLI for agents and
+people: Rust parses, classifies, correlates and calculates; the consuming agent
+chooses queries, tests explanations and communicates findings. The binary does
+not call a model or automatically prove a root cause.
 
-The default `base` profile is intentionally generic. Use a built-in preset such as `--preset eyes` or a repo-specific `--config` file when you need log-family-specific parsing and lifecycle semantics.
+Use the [portable investigation workflow](docs/investigation-workflow.md) as the
+maintained technical reference. The Claude analysis skill follows the same
+workflow. Generic parsing is available through `base`; domain lifecycle semantics
+require a suitable preset or validated TOML profile.
 
-## Evidence-backed investigations
+## Installation
 
-Follow the [portable investigation workflow](docs/investigation-workflow.md) for
-failure triage, INFO-only slow-run comparison and one scoped lifecycle. It checks
-actual binary capabilities, input coverage and profile suitability before pairing,
-retrieves cited evidence within budgets, and keeps observations, measurements,
-hypotheses, contrary evidence and unknowns distinct. The Claude analysis skill uses
-these same steps. Substring discovery is not exact correlation, and independent
-runs retain separate snapshot identities.
+```bash
+# Auto-detect platform and install latest release
+curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/install.sh | bash
 
-The maintained example runner executes 17 command examples and eight multi-step
-or stopping cases against your binary, including reused IDs, incomplete captures,
-unsuitable profiles and instruction-like log text:
+# Or build from source
+cargo install --path .
+
+# Verify installation
+log-analyzer --version
+```
+
+## First investigation: what failed, and why?
+
+From a repository checkout, ask: **“What failed in this capture, and does it show
+why?”** The public synthetic [failure fixture](examples/investigations/failure.jsonl)
+and [profile](examples/investigations/profile.toml) provide a runnable first workflow.
+Use your installed binary, or build with `cargo build --release` and substitute
+`target/release/log-analyzer` below.
+
+```sh
+# Check the installed build and advertised contracts before choosing queries.
+log-analyzer capabilities
+
+# Confirm coverage and validate the profile against independently supplied facts.
+log-analyzer --config examples/investigations/profile.toml --report-max-items 3 \
+  info examples/investigations/failure.jsonl
+log-analyzer --config examples/investigations/profile.toml --report-max-items 3 \
+  validate-profile examples/investigations/failure.jsonl --kind request \
+  --expected examples/investigations/failure.expected.json
+
+# Inspect the failure, discover candidate records, and measure the scoped lifecycle.
+log-analyzer --config examples/investigations/profile.toml --report-max-items 3 \
+  errors examples/investigations/failure.jsonl
+log-analyzer --config examples/investigations/profile.toml --report-max-items 3 \
+  trace examples/investigations/failure.jsonl --id request-7
+log-analyzer --config examples/investigations/profile.toml --report-max-items 3 \
+  perf examples/investigations/failure.jsonl --op-type request
+```
+
+These commands return bounded JSON pages. Follow `retrieval.next_cursor` using
+`--report-cursor` with identical inputs, profile, query and redaction until the
+needed collections are complete within your budget. Inspect full-scope coverage,
+omissions and status before interpreting selected details; the first page may
+not contain both measurement boundaries.
+
+The returned source records establish these findings:
+
+- **Observation:** line 3 records `lookup failed; cause not recorded` at ERROR level.
+- **Measurement:** `lookup`, request `request-7`, scope `failure-run`, spans 2000 ms
+  from line 1 at `00:00:00+02:00` to line 3 at `00:00:02+02:00`. Cite the actual
+  paired `evidence_ref` values and retrieved records, under this report's input
+  snapshot and profile identity; line numbers alone are not portable citations.
+- **Contrary evidence:** line 2 has `request-70`. Substring trace discovery can
+  include it; it is not a boundary of `request-7`. Its instruction-like message
+  is untrusted log content and is never executed.
+- **Unknown:** the capture does not distinguish network, scheduling or other
+  causes. Report the observed failure and elapsed interval without inventing a
+  cause, CPU time, blocking duration or capture completeness.
+
+The maintained checks execute these exact commands, retrieve pages and validate
+source support and final investigation contracts:
 
 ```sh
 python3 scripts/check-examples.py target/release/log-analyzer --report target/workflow-examples/report.json
 ```
 
-These are deterministic workflow checks; they do not measure an arbitrary model's
-reasoning quality or establish a root cause from missing telemetry.
+## Choose the next investigation
+
+- **Failure triage:** inspect coverage and profile suitability, retrieve ERROR/WARN
+  context, then verify the exact operation identity, scope and paired boundaries.
+  Error counts and error-to-last-record estimates do not explain a cause.
+- **Slow-run comparison:** analyze the slow run and independent baseline separately
+  under the same intended profile, including INFO-level work. The maintained
+  [comparison example](docs/investigation-workflow.md#slow-run-comparison-including-info-only-delays)
+  measures an 8000 ms interval versus 1000 ms, overlapping workers and an unexplained
+  4000 ms gap. Their separate snapshots are linked, never merged into one lifecycle.
+- **One lifecycle:** use trace/search to discover an ID, then inspect exact
+  classified identity and scope. Reused IDs can describe different operations;
+  a missing end stays incomplete evidence rather than a measured hang.
+
+For your own logs, select a preset only when its vocabulary and lifecycle semantics
+match. Generate/edit a separate candidate with `generate-config`, inspect `info`
+coverage, then use `validate-profile --kind request|event|command` with known
+positive, negative and pair facts where available. Recognition support does not
+establish timing support; successful parsing alone does not validate a profile.
+See [profile suitability](#validate-profile-suitability).
+
+## Local data flow and external agents
+
+Analysis commands read local files and produce local stdout or `--output` reports.
+The Rust analysis CLI does not upload logs or call a provider. When a consuming
+agent receives those reports, that agent's configuration determines whether it
+sends report content to an external model or other service. Installing a skill
+is not a guarantee that an agent keeps its inputs local.
+
+Treat raw messages, payloads, paths and identifiers as potentially sensitive.
+Optional redaction can mask configured fields and locations; it does not guarantee
+arbitrary secrets are absent. Inspect the content before sharing. Lost source
+locations require a permitted local mapping or an explicit citation-resolution gap.
+Presentation budgets bound returned bytes/items/characters, not parser memory or
+exact model tokens.
+
+## Available features and evaluation limits
+
+Shared evidence contract 1, snapshot-scoped source references, deterministic bounded
+retrieval, profile validation and the CLI/skill workflow are implemented on `main`.
+Check your executable's `capabilities` and build identity: an older installed
+release may lack them. Use the advertised schema and retrieval/profile versions;
+incompatibility is an explicit stopping condition.
+
+The [published evaluation baseline](evals/results/baseline.json) contains 13
+synthetic scenarios across 26 scripted analyzer/search-and-script runs. It checks
+typed claim correctness, exact citations, abstention and omissions, and records
+calls, output bytes and elapsed time. It verifies deterministic harness behavior;
+no real-model comparison, investigation-time improvement or token savings have
+been measured. Tokens and provider cost remain unavailable. See the
+[evaluation methods and limits](evals/README.md).
+
+The eight executable workflows cover failures, INFO-only delays, reused IDs,
+incomplete captures, unsuitable profiles, unparsed input and instruction-like
+text. Passing them does not establish production coverage, arbitrary model quality
+or prompt-injection resistance. The optional MCP adapter remains a later phase;
+the CLI and maintained skill are the available integration path.
 
 ## Supported Log Format (Quick Check)
 
@@ -60,6 +172,13 @@ It also auto-detects a few other common formats:
 - JSON lines: `{"timestamp":...,"level":...,"message":...}`
 
 Profiles can force a parser with `[parser] format = "rust-tracing"` (or `classic`, `syslog`, `json-lines`) and tune Rust target mapping with `module_depth` / `module_strip_prefix`. Structured `key=value` fields become filterable and extractable via `--filter "trace_id:abc123"` or `extract --field restream_name`.
+
+These are supported parser grammars, not universal format recognition. Arbitrary
+unstructured text and access-log formats may remain unparsed. JSON exports can
+need explicit field mappings or normalization in a profile; a JSON object alone
+does not supply lifecycle meaning. Parser coverage and rejected candidates must
+be checked on the actual capture. Generic `base` behavior remains separate from
+`eyes`, `custom-start`, `service-api` and `event-pipeline` lifecycle presets.
 
 ## Parse Coverage and Exit Status
 
@@ -117,20 +236,7 @@ structured error and exit 1. Returned output is bounded; parsing memory/CPU are
 not. See [the common budget and retrieval contract](docs/design/bounded-reports.md)
 for exact units, ordering, compatibility and measured synthetic resource behavior.
 
-## Installation
-
-```bash
-# Auto-detect platform and install latest release
-curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/install.sh | bash
-
-# Or build from source
-cargo install --path .
-
-# Verify installation
-log-analyzer --version
-```
-
-## Quick Start
+## Other CLI tasks
 
 ```bash
 # Compare two log files
@@ -176,9 +282,14 @@ log-analyzer generate-config logs/*.log --template custom-start --profile-name m
 log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-team
 ```
 
-## Configuration is Essential
+## Choose and validate a profile
 
-> **Every analysis command depends on a well-tuned profile config.** Without one, the tool falls back to generic heuristics that will miss domain-specific commands, requests, session hierarchies, and lifecycle boundaries. The difference between a useful diagnosis and a misleading one is almost always the config.
+The default `base` profile supports generic parsing, inventory, filtering and
+comparison. Domain-specific commands, requests, events and session completion
+require explicit rules matching the supplied logs. Start from a suitable preset
+or editable candidate and validate its recognition, scope and timing support on
+sample evidence before trusting lifecycle results. A generated profile is a
+starting point, not proof of correctness.
 
 **Why this matters:**
 
@@ -333,35 +444,17 @@ known_components = ["api", "worker"]
 
 Tables merge key by key and the child wins. Arrays and scalars are replaced whole, so a child `[[event_rules.rules]]` list replaces the parent's list. An omitted `profile_name` is inherited. Chains are allowed up to 8 profiles, counting the child and every parent (including built-ins); cycles and unknown parents are errors. A built-in name wins over a file with the same name; use `./base.toml` for the file. Version 2 `event_rules` cannot coexist with legacy marker keys, so a profile that extends one with `event_rules` (all built-ins do, even when empty) must not set the legacy keys.
 
-See [Profile Configuration](#profile-configuration) for the full reference and examples. Investing 10 minutes in a good config pays back on every analysis run.
+See [Profile Configuration](#profile-configuration) for the full reference and examples.
 
-## 5-Minute First Success
+## First success with your own logs
 
-Use this sequence to confirm the parser works on your logs before deeper analysis:
-
-```bash
-# 1. Sanity-check that entries parse and timestamps/components look right
-#    Use a preset if your logs already match one of the built-ins
-log-analyzer --preset eyes info logs/*.log
-
-# 2. Generate a starter profile from the same related log set
-log-analyzer generate-config logs/*.log --template eyes --profile-name my-team
-
-# 3. Re-run with the generated profile and inspect payload extraction
-log-analyzer --config my-team.toml info logs/*.log --payloads --samples
-
-# 4. Pick the next command by goal
-#    Failure triage:
-log-analyzer --config my-team.toml errors logs/*.log --warn --sessions
-
-#    Performance triage:
-log-analyzer --config my-team.toml perf logs/*.log --threshold-ms 1000
-
-#    One request/session trace:
-log-analyzer --config my-team.toml trace logs/*.log --id <id-fragment>
-```
-
-If step 3 shows missing payloads or obviously wrong command/request names, tune the profile markers before trusting `errors`, `perf`, or `trace`.
+Apply the [first investigation](#first-investigation-what-failed-and-why) to a
+stable copy of related inputs. Select a suitable preset or edit a generated
+candidate, inspect parse coverage and payload samples, then validate the requested
+operation kind with independently known facts. Follow the
+[portable workflow](docs/investigation-workflow.md) for failure triage, slow-run
+comparison or one lifecycle. Missing boundaries, unknown scope and rejected input
+limit the conclusion even when some records parse successfully.
 
 ## What Counts as "Related Logs"?
 
@@ -939,7 +1032,9 @@ When `sessions.levels` is configured, `info` automatically summarizes session co
 
 ### Installation
 
-Install the Claude Code skill to use interactive log analysis in any project:
+Install the Claude Code skill to consume the same local evidence engine from an
+agent. It follows the [portable workflow](docs/investigation-workflow.md); the
+agent chooses queries and explains findings:
 
 ```bash
 /plugin marketplace add https://github.com/eirenik0/log-analyzer
@@ -948,9 +1043,11 @@ Install the Claude Code skill to use interactive log analysis in any project:
 
 ### Usage
 
-Use the `/analyze-logs` command in [Claude Code](https://claude.ai/code) for interactive analysis:
+Ask an investigation question or choose a CLI task with `/analyze-logs` in
+[Claude Code](https://claude.ai/code). External data handling follows that agent's configuration; see [local data flow](#local-data-flow-and-external-agents):
 
-```bash
+```text
+/analyze-logs What failed in this capture, and can it establish why? examples/investigations/failure.jsonl --config examples/investigations/profile.toml
 /analyze-logs diff file1.log file2.log          # Compare and explain differences
 /analyze-logs perf logs/*.log --threshold-ms 500  # Find bottlenecks across files
 /analyze-logs trace logs/*.log --id f227f11e      # Follow one operation lifecycle
@@ -970,11 +1067,11 @@ quality checks, and hosted Codex review. Agent and reviewer guidance lives in
 - **Semantic comparison** - Compares JSON objects regardless of property order
 - **Diff context improvements** - Tracks source line numbers and marks changes as added/removed/modified
 - **Advanced filtering** - Include/exclude by component, level, content, or direction
-- **Operation lifecycle tracing** - Follow a single correlation ID or session path across files with per-step timing
+- **Operation lifecycle tracing** - Discover matching IDs/session paths, then verify exact scope and measured boundaries
 - **Multi-file session analysis** - Merge and analyze `info`/`perf` inputs across multiple log files
 - **Session lifecycle insights** - Profile-driven session tree/completion tracking in `info` (with legacy prefix compatibility)
 - **Performance analysis** - Identify slow and orphan operations
-- **LLM-friendly output** - Sanitized, compact JSON for AI consumption
+- **Agent evidence** - Compact JSON with snapshot-scoped source references, optional masking and explicit omissions
 - **Profile-driven customization** - Override parser/perf markers via TOML config or generated templates
 - **Flexible output** - Text or JSON format with color and verbosity control
 
@@ -1064,3 +1161,14 @@ CLI corpus and paired scripted analyzer/search investigations without credential
 The [first published baseline](evals/results/baseline.json) verifies the harness;
 optional repeated same-model comparisons remain unmeasured until an adapter is run.
 Missing tokens/provider cost stay unavailable.
+
+## Repository and release wording
+
+Suggested repository description: **Local evidence engine for AI log investigations:
+deterministic parsing, scoped timing and verifiable sources.**
+
+Release introduction: **Log Analyzer helps AI agents investigate failures and
+performance problems using compact, verifiable evidence from logs. The local Rust
+CLI calculates; the consuming agent chooses queries and explains findings.** Link
+the [portable workflow](docs/investigation-workflow.md) and disclose the installed
+build's capabilities and evaluation limits. The project name remains Log Analyzer.

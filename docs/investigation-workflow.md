@@ -175,4 +175,6 @@ validate emitted pages and final contracts against the embedded schemas.
 
 These checks verify deterministic workflows and command handling, not an arbitrary
 model's reasoning or resistance to prompt injection. Agent-quality scoring and
-provider/token/cost measurements belong to the separate evaluation harness (#49).
+provider/token/cost measurements use the separate [evaluation harness](../evals/README.md).
+Its [published scripted baseline](../evals/results/baseline.json) verifies harness
+behavior; real-model quality, variability and token savings remain unmeasured.
