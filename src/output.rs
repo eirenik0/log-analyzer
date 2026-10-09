@@ -358,7 +358,20 @@ impl OutputState {
             }
             Value::String(text) => {
                 let leaf = path.rsplit('.').next().unwrap_or(path);
-                if path.ends_with(".ValidateProfile.expected") {
+                if path.ends_with(".ValidateProfile.expected")
+                    || path.ends_with(".ResolveProfile.expected")
+                    || path.ends_with(".ResolveProfile.association")
+                    || path.ends_with(".ResolveProfile.candidate_config")
+                    || matches!(
+                        path,
+                        "profile_resolution.selected.choice.config"
+                            | "profile_resolution.selected.choice.selector.config"
+                            | "profile_resolution.candidates.choice.config"
+                            | "profile_resolution.candidates.choice.selector.config"
+                            | "profile_resolution.candidates.identity.choice.config"
+                            | "profile_resolution.candidates.identity.choice.selector.config"
+                    )
+                {
                     return Value::String(self.path_text(text));
                 }
                 if matches!(

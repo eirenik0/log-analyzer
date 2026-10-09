@@ -597,3 +597,139 @@ fn candidate_payload_redaction_is_not_reversed_by_generated_metadata_restoration
         "supported"
     );
 }
+#[test]
+fn embedded_identifier_in_generated_selector_paths_is_masked_in_stdout_and_saved_reports() {
+    let dir = tempdir().unwrap();
+    let file = fixture(dir.path());
+    let data = fs::read_to_string(&file)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let mut v: Value = serde_json::from_str(l).unwrap();
+            v["component_id"] = json!("private-id");
+            v.to_string() + "\n"
+        })
+        .collect::<String>();
+    fs::write(&file, data).unwrap();
+    let original = profile(dir.path(), "candidate", "session");
+    let renamed_profile = dir.path().join("prefixprivate-id.toml");
+    fs::rename(&original, &renamed_profile).unwrap();
+    let p = renamed_profile.to_str().unwrap().to_owned();
+    let f = facts(dir.path(), "a");
+    let renamed = dir.path().join("prefixprivate-id-facts.json");
+    fs::rename(&f, &renamed).unwrap();
+    let f = renamed.to_str().unwrap();
+    let (v, _) = run(&[
+        "--config",
+        &p,
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+    ]);
+    let association = dir.path().join("prefixprivate-id-association.json");
+    fs::write(&association,json!({"version":1,"profile":{"config":"prefixprivate-id.toml","sha256":v["profile_resolution"]["selected"]["sha256"]},"sources":[{"file":file,"selected_parser":"json-lines"}],"event_contract":2,"structural_contract":1}).to_string()).unwrap();
+    let association = association.to_str().unwrap();
+    let saved = dir.path().join("report.json");
+    let saved = saved.to_str().unwrap();
+    for selector in [
+        vec!["--config", p.as_str()],
+        vec!["--candidate-config", p.as_str()],
+        vec!["--association", association],
+    ] {
+        let mut args = vec![
+            "--redact",
+            "--mask-id",
+            "component_id",
+            "--output",
+            saved,
+            "resolve-profile",
+            &file,
+            "--kind",
+            "request",
+            "--expected",
+            f,
+        ];
+        args.extend(selector);
+        let (v, o) = run(&args);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        assert!(!String::from_utf8_lossy(&o.stdout).contains("private-id"));
+        assert!(!fs::read_to_string(saved).unwrap().contains("private-id"));
+        let paths = |value: &Value| {
+            let mut results = vec![
+                value["profile_resolution"]["selected"]["choice"].clone(),
+                value["report_metadata"]["evidence"]["query"].clone(),
+            ];
+            for c in value["profile_resolution"]["candidates"]
+                .as_array()
+                .unwrap()
+            {
+                results.extend([
+                    c["choice"].clone(),
+                    c["identity"]["choice"].clone(),
+                    c["evidence"]["query"].clone(),
+                ]);
+            }
+            results
+        };
+        for value in [
+            v,
+            serde_json::from_slice(&fs::read(saved).unwrap()).unwrap(),
+        ] {
+            assert!(!json!(paths(&value)).to_string().contains("private-id"));
+        }
+    }
+    fs::write(&p, "invalid TOML syntax\n").unwrap();
+    let (_, o) = run(&[
+        "--redact",
+        "--mask-id",
+        "component_id",
+        "--output",
+        saved,
+        "--config",
+        &p,
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("private-id"));
+    assert!(!fs::read_to_string(saved).unwrap().contains("private-id"));
+}
+
+#[test]
+fn candidate_limit_applies_to_deduplicated_alternatives() {
+    let dir = tempdir().unwrap();
+    let file = fixture(dir.path());
+    let p = profile(dir.path(), "candidate", "session");
+    let mut args = vec!["resolve-profile", &file, "--kind", "request"];
+    for _ in 0..20 {
+        args.extend(["--candidate-config", &p]);
+    }
+    let (v, o) = run(&args);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(v["profile_resolution"]["status"], "insufficient_evidence");
+    assert_eq!(
+        v["profile_resolution"]["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["origin"] == "candidate_config")
+            .count(),
+        1
+    );
+    let paths: Vec<_> = (0..17)
+        .map(|i| profile(dir.path(), &format!("candidate-{i}"), "session"))
+        .collect();
+    let mut args = vec!["resolve-profile", &file, "--kind", "request"];
+    for p in &paths {
+        args.extend(["--candidate-config", p]);
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+        .args(args)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("At most 16"));
+}

@@ -52,7 +52,8 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     else {
         unreachable!()
     };
-    if candidate_config.len() > 16 {
+    let paths: BTreeSet<_> = candidate_config.iter().collect();
+    if paths.len() > 16 {
         return Err("At most 16 candidate-config alternatives are allowed".into());
     }
     let kind = match kind {
@@ -97,7 +98,9 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
     } else if let Some(path) = association {
         match load_association(path, files) {
-            Err(reason) => mapping = json!({"status":"invalid","reason":reason}),
+            Err(reason) => {
+                mapping = json!({"status":"invalid","reason":crate::output::source_path(&reason)})
+            }
             Ok((saved, config, choice)) => {
                 mapping = json!({"status":"pending_revalidation","reason":null});
                 let expected_shapes: Vec<_> = saved
@@ -122,7 +125,6 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
             Ok(config::load_builtin_template(name).expect("known built-in")),
         ));
     }
-    let paths: BTreeSet<_> = candidate_config.iter().collect();
     for path in paths {
         choices.push((
             "candidate_config".into(),
@@ -132,7 +134,7 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     }
     'candidate: for (origin, choice, loaded) in choices {
         match loaded {
-            Err(error)=>candidates.push(json!({"origin":origin,"choice":choice,"status":"invalid_configuration","error":error,"identity":null,"eligible":false})),
+            Err(error)=>candidates.push(json!({"origin":origin,"choice":choice,"status":"invalid_configuration","error":crate::output::source_path(&error),"identity":null,"eligible":false})),
             Ok(config)=> {
                 let mut inputs=Vec::new();let mut coverage=Vec::new();
                 let mut context=evidence::Context::new(cli,&config)?;
@@ -141,7 +143,7 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
                         Ok(parsed)=>parsed,
                         Err(error)=>{
                             if origin=="association" {mapping=json!({"status":"invalid","reason":"source_structure_unavailable"});}
-                            candidates.push(json!({"origin":origin,"choice":choice,"identity":identity(&config,&origin,choice.clone()),"status":"input_structure_unavailable","error":format!("{error:?}"),"eligible":false}));
+                            candidates.push(json!({"origin":origin,"choice":choice,"identity":identity(&config,&origin,choice.clone()),"status":"input_structure_unavailable","error":crate::output::source_path(&format!("{error:?}")),"eligible":false}));
                             continue 'candidate;
                         }
                     };
