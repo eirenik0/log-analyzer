@@ -472,6 +472,10 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     if matches!(&cli.command, Commands::ResolveProfile { .. }) {
         return profile_resolution::run(cli);
     }
+    run_analysis_with_cli(cli)
+}
+
+fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     let analyzer_config = config::load_config(cli.config.as_deref(), cli.preset.as_deref())
         .map_err(|e| format!("Failed to load config: {}", e))?;
     output::set_metadata(
