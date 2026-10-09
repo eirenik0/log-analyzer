@@ -107,7 +107,11 @@ distributions require measurable source timestamps for every pair; individual
 reliable intervals remain available when that requirement is unmet. Identity-only
 classification does not establish lifecycle support or authorize zero lifecycle
 counts. Mixed identity-only and boundary evidence retains observed boundary facts
-while declaring incomplete lifecycle coverage. Reading exactly the input byte cap conservatively
+while declaring incomplete lifecycle coverage. Outcome and opposite-boundary
+recognition are checked per selected operation family. Literal success/failure
+mappings do not authorize the other outcome; unavailable recognition withholds
+zero counts and missing-boundary claims. Positive classified facts remain retained
+with explicit partial population coverage when capabilities differ. Reading exactly the input byte cap conservatively
 reports a prefix if physical EOF was not observed.
 
 The memory setting bounds a conservative reservation model for buffered/retained

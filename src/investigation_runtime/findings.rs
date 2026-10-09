@@ -173,7 +173,7 @@ pub(super) fn build(
         durations.push(operation.duration_ms);
     }
     // An empty observation can be a measured zero only when the profile supplies rules.
-    if operation_rules.is_empty() {
+    if operation_rules.is_empty() && view.pair_supported {
         operation_rules.extend(retained.iter().filter(|entry| matches!(&entry.classification, Some(ClassifiedRecord::Event { semantics, .. }) if semantics.phase.is_some())).flat_map(|entry| rules(entry)));
     }
     if !operation_rules.is_empty() {
@@ -195,6 +195,12 @@ pub(super) fn build(
             populations,
             memberships,
         );
+        if !view.pair_supported
+            && let Some(population) = populations.last_mut()
+        {
+            population["completeness"] = json!("partial");
+            population["exclusions"] = json!([{"reason":"Some selected operation families lack recognition of both boundaries; only recognized pairs are retained.","count":null}]);
+        }
         if durations.len() != paired_count {
             findings.push(fact(format!("{population_id}-distribution-unavailable"),scope,"unknown","Elapsed distributions are unavailable for this paired population.",Vec::new(),json!({"reason":"Not every paired member has source timestamp provenance; individual reliable measurements remain available.","supporting_occurrences":[]})));
         } else if !durations.is_empty() {
@@ -233,6 +239,14 @@ pub(super) fn build(
         if !view.contains(entry) {
             continue;
         }
+        let missing_capability = (event.reason == "missing_end"
+            && !view.boundary_supported(entry, crate::event_rules::Phase::End))
+            || (event.reason == "missing_start"
+                && !view.boundary_supported(entry, crate::event_rules::Phase::Start));
+        if missing_capability {
+            findings.push(fact(format!("{scope}-unmatched-{index}"),scope,"unknown","Opposite-boundary recognition is unavailable; this observation does not establish a missing lifecycle boundary.",vec![excerpt(entry,context,snapshot)],json!({"reason":"No compatible opposite-boundary recognition is established for this selected operation.","supporting_occurrences":[occurrence(entry,context,snapshot)]})));
+            continue;
+        }
         findings.push(fact(format!("{scope}-unmatched-{index}"),scope,"observation",match event.reason.as_str(){"missing_end"=>"A start has no observed end in this selected capture; this does not establish a hang.","missing_start"=>"An end has no observed start in this selected capture.","overlapping_starts"=>"Repeated overlapping starts prevent an unambiguous lifecycle pairing.","conflicting_event_rules"=>"Explicit rules assign conflicting event semantics.",_=>"The event could not form a reliable scoped lifecycle pair."},vec![excerpt(entry,context,snapshot)],json!({"supporting_occurrences":[occurrence(entry,context,snapshot)]})));
     }
     if view.boundaries == 0 {
@@ -256,13 +270,6 @@ pub(super) fn build(
             "Explicit success outcomes; this is an event count, not a distinct-resource count.",
         ),
     ] {
-        if matches!(suffix, "starts" | "ends") && view.boundaries == 0 {
-            continue;
-        }
-        if matches!(suffix, "failures" | "successes") && !view.outcomes_supported {
-            findings.push(fact(format!("{scope}-{suffix}-unavailable"), scope, "unknown", "Outcome counts are unavailable without an applicable selected outcome mapping.", Vec::new(), json!({"reason":"No selected classification rule declares outcome semantics for this processed population.","supporting_occurrences":[]})));
-            continue;
-        }
         if !budget.checkpoint("calculation", entries.len() as u64) {
             return;
         }
@@ -283,6 +290,16 @@ pub(super) fn build(
                 }
             })
             .collect();
+        let capability = match suffix {
+            "starts" => view.starts_supported,
+            "ends" => view.ends_supported,
+            "failures" => view.failures_supported,
+            _ => view.successes_supported,
+        };
+        if !capability && selected_events.is_empty() {
+            findings.push(fact(format!("{scope}-{suffix}-unavailable"),scope,"unknown","This event count is unavailable without recognition capability for the selected operation population.",Vec::new(),json!({"reason":"Explicit selected operation families do not all establish the required phase or outcome recognition.","supporting_occurrences":[]})));
+            continue;
+        }
         let rule_ids: BTreeSet<_> = retained.iter().flat_map(|entry| rules(entry)).collect();
         let members = selected_events.iter().map(|entry|{let source=occurrence(entry,context,snapshot);json!({"kind":"event","id":format!("{scope}-{suffix}-{}",source["evidence_ref"]["reference_id"].as_str().unwrap()),"identity":[{"field":"reference_id","value":source["evidence_ref"]["reference_id"]}],"source_occurrences":[source],"measurement_ids":[]})}).collect();
         population(
@@ -297,6 +314,10 @@ pub(super) fn build(
             populations,
             memberships,
         );
+        if !capability && let Some(population) = populations.last_mut() {
+            population["completeness"] = json!("partial");
+            population["exclusions"] = json!([{"reason":"Some selected operation families lack this recognition capability; positive classified occurrences are retained, absent occurrences are unknown.","count":null}]);
+        }
     }
     findings.push(fact(format!("{scope}-domain-grouping-unavailable"),scope,"unknown","Domain groupings and relationships outside explicit policy declarations remain unavailable.",Vec::new(),json!({"reason":"Operation names, repeated IDs and timestamp proximity do not establish domain grouping or causal relationships.","supporting_occurrences":[]})));
 }

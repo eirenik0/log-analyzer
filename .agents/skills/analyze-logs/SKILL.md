@@ -76,6 +76,9 @@ Reuse `investigation-evidence` with the report's exact artifact checksum and
 snapshot-bound cursor; it retrieves retained calculations without repeating engine
 work. A changed/missing source affects current verification, not retained facts.
 Honor byte/work/time/cancellation limits and source/rule verification losses.
+Recognition, outcome support and opposite-boundary support are separate. A literal
+success rule cannot establish zero failures; an unavailable end recognizer cannot
+establish a missing end. Inspect per-goal support and partial population coverage.
 Use common JSON budgets advertised by the binary. Read full-scope counts and
 omissions before interpreting detail pages. Follow snapshot-bound cursors with the
 same inputs/profile/query/redaction. Retrieve canonical `evidence_records` and

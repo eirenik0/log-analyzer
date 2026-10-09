@@ -829,7 +829,16 @@ fn declared_domain_observations_keep_attempts_polls_cached_failures_and_work_sep
             .iter()
             .all(|f| f["evidence"].as_array().unwrap().len() == 2)
     );
-    assert_eq!(count(&report, "paired-lifecycles"), 0);
+    assert!(
+        report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|population| !population["id"]
+                .as_str()
+                .unwrap()
+                .ends_with("paired-lifecycles"))
+    );
     assert!(
         report["populations"]
             .as_array()
@@ -1398,7 +1407,7 @@ fn identity_only_semantics_do_not_authorize_lifecycle_support_or_zero_counts() {
         assert_eq!(
             failure["status"],
             if mixed && !selected_only {
-                "supported"
+                "insufficient_evidence"
             } else {
                 "unsupported"
             }
@@ -1417,11 +1426,11 @@ fn identity_only_semantics_do_not_authorize_lifecycle_support_or_zero_counts() {
         }
         if mixed && !selected_only {
             assert!(
-                report["populations"]
+                report["findings"]
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|p| p["id"] == "scope-0-failures")
+                    .any(|f| f["id"] == "scope-0-failures-unavailable" && f["kind"] == "unknown")
             );
         }
     }
@@ -1595,6 +1604,542 @@ fn mixed_timestamp_provenance_retains_pairs_without_partial_population_distribut
             assert!(findings.iter().any(|f| {
                 f["id"].as_str().unwrap().contains("interval-unavailable") && f["kind"] == "unknown"
             }));
+        }
+    }
+}
+
+#[test]
+fn outcome_capabilities_distinguish_literals_and_structured_field_constraints() {
+    for (index, (mapping, restriction, outcome, failures, successes)) in [
+        ("literal", "", "success", false, true),
+        ("literal", "", "failure", true, false),
+        ("field", "success", "success", false, true),
+        ("field", "failure", "failure", true, false),
+        ("field", "", "success", true, true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("outcomes.toml");
+        let mut config =
+            fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap();
+        if mapping == "literal" {
+            config = config.replace(
+                "outcome = {from = \"field\", field = \"outcome\"}",
+                &format!("outcome = {{from = \"literal\", value = {outcome:?}}}"),
+            );
+        }
+        if !restriction.is_empty() {
+            config=config.replace("conditions = [{field = \"phase\", equals = \"end\"}]",&format!("conditions = [{{field = \"phase\", equals = \"end\"}}, {{field = \"outcome\", equals = {restriction:?}}}]"));
+        }
+        fs::write(&profile, config).unwrap();
+        let source = temp.path().join("outcomes.jsonl");
+        let rows:Vec<_>=[("start",0),("end",1)].into_iter().map(|(phase,second)|json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"message":"outcome boundary","operation":"run","phase":phase,"id":"one","session":"a","outcome":outcome}).to_string()).collect();
+        fs::write(&source, rows.join("\n") + "\n").unwrap();
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        for (suffix, capable) in [("failures", failures), ("successes", successes)] {
+            let population = report["populations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["id"] == format!("scope-0-{suffix}"));
+            assert_eq!(population.is_some(), capable, "{index} {suffix}");
+            if let Some(population) = population {
+                assert_eq!(
+                    population["count"],
+                    u64::from(
+                        (suffix == "failures" && outcome == "failure")
+                            || (suffix == "successes" && outcome == "success")
+                    )
+                );
+            } else {
+                assert!(
+                    report["findings"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|f| f["id"] == format!("scope-0-{suffix}-unavailable")
+                            && f["kind"] == "unknown")
+                );
+            }
+        }
+        assert_eq!(
+            report["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["goal"] == "failures")
+                .unwrap()["status"],
+            if failures { "supported" } else { "unsupported" }
+        );
+    }
+}
+
+#[test]
+fn opposite_boundary_recognition_is_required_for_absence_claims() {
+    let original = fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap();
+    let begin = original.find("[[event_rules.rules]]").unwrap();
+    let finish = original
+        .find("[[event_rules.rules]]\nid = \"finish\"")
+        .unwrap();
+    for (index, config, selection) in [
+        (0, original[..finish].to_string(), None),
+        (1, original[..begin].to_string() + &original[finish..], None),
+        (
+            2,
+            original.replacen(
+                    "name = {from = \"field\", field = \"operation\"}",
+                    "name = {from = \"literal\", value = \"unrelated\"}",
+                    1,
+                ),
+            Some(r#"{"name":"run"}"#),
+        ),
+        (3, original.replace("conditions = [{field = \"phase\", equals = \"end\"}]", "conditions = [{field = \"phase\", equals = \"end\"}, {field = \"operation\", equals = \"other\"}]"), None),
+        (4, original.replace("conditions = [{field = \"phase\", equals = \"end\"}]", "conditions = [{field = \"phase\", equals = \"end\"}, {field = \"session\", equals = \"other\"}]"), None),
+        (5, original.replace("conditions = [{field = \"phase\", equals = \"end\"}]", "conditions = [{field = \"phase\", equals = \"end\"}, {field = \"id\", equals = \"other\"}]"), None),
+        (6, original.replace("conditions = [{field = \"phase\", equals = \"end\"}]", "conditions = [{field = \"phase\", equals = \"end\"}, {field = \"mode\", equals = \"a\"}, {field = \"mode\", equals = \"b\"}]"), None),
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("boundaries.toml");
+        fs::write(&profile, config).unwrap();
+        let source = temp.path().join("boundaries.jsonl");
+        let rows:Vec<_>=[("start",0),("end",1)].into_iter().map(|(phase,second)|json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"message":"boundary","operation":"run","phase":phase,"id":"one","session":"a","outcome":"success"}).to_string()).collect();
+        fs::write(&source, rows.join("\n") + "\n").unwrap();
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let mut args = vec![
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ];
+        if let Some(selection) = selection {
+            args.extend(["--select", selection]);
+        }
+        let report = success(&args);
+        check(&report, &artifact);
+        assert_eq!(
+            report["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["goal"] == "incomplete_lifecycles")
+                .unwrap()["status"],
+            "unsupported"
+        );
+        assert!(
+            !report["populations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["id"] == "scope-0-paired-lifecycles")
+        );
+        assert!(
+            !report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["kind"] == "observation"
+                    && f["claim"].as_str().unwrap().contains("no observed"))
+        );
+        assert!(
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["kind"] == "unknown"
+                    && f["claim"].as_str().unwrap().contains("Opposite-boundary"))
+        );
+    }
+}
+
+#[test]
+fn mixed_outcome_families_retain_positive_counts_without_complete_zero_claims() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("mixed.toml");
+    let mut config = String::from(
+        "extends = \"base\"\n[parser]\nformat = \"json-lines\"\n[event_rules]\nversion = 2\n",
+    );
+    for (name, outcome) in [("a", "success"), ("b", "failure")] {
+        for phase in ["start", "end"] {
+            config += &format!(
+                "[[event_rules.rules]]\nid = \"{name}-{phase}\"\n[event_rules.rules.adapter]\ntype = \"structured\"\nconditions = [{{field = \"operation\", equals = {name:?}}}, {{field = \"phase\", equals = {phase:?}}}]\n[event_rules.rules.mapping]\nkind = \"request\"\nname = {{from = \"literal\", value = {name:?}}}\nphase = {{from = \"literal\", value = {phase:?}}}\ncorrelation_id = {{from = \"field\", field = \"id\"}}\nscope = [{{from = \"field\", field = \"session\"}}]\n"
+            );
+            if phase == "end" {
+                config += &format!("outcome = {{from = \"literal\", value = {outcome:?}}}\n");
+            }
+        }
+    }
+    fs::write(&profile, config).unwrap();
+    let source = temp.path().join("mixed.jsonl");
+    let rows:Vec<_>=[("a","start",0),("a","end",1),("b","start",2),("b","end",3)].into_iter().map(|(name,phase,second)|json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"message":"mixed boundary","operation":name,"phase":phase,"id":name,"session":"a"}).to_string()).collect();
+    fs::write(&source, rows.join("\n") + "\n").unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    for suffix in ["failures", "successes"] {
+        let population = report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == format!("scope-0-{suffix}"))
+            .unwrap();
+        assert_eq!(population["count"], 1);
+        assert_eq!(population["completeness"], "partial");
+        assert!(population["exclusions"][0]["count"].is_null());
+    }
+    assert_eq!(
+        report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["goal"] == "failures")
+            .unwrap()["status"],
+        "insufficient_evidence"
+    );
+    assert_eq!(count(&report, "paired-lifecycles"), 2);
+}
+
+#[test]
+fn dynamic_phase_mapping_respects_structured_equality_constraints() {
+    for constrained in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("dynamic.toml");
+        let condition = if constrained { "phase" } else { "component" };
+        let value = if constrained { "start" } else { "worker" };
+        fs::write(&profile,format!("extends = \"base\"\n[parser]\nformat = \"json-lines\"\n[event_rules]\nversion = 2\n[[event_rules.rules]]\nid = \"dynamic\"\n[event_rules.rules.adapter]\ntype = \"structured\"\nconditions = [{{field = {condition:?}, equals = {value:?}}}]\n[event_rules.rules.mapping]\nkind = \"request\"\nname = {{from = \"field\", field = \"operation\"}}\nphase = {{from = \"field\", field = \"phase\"}}\ncorrelation_id = {{from = \"field\", field = \"id\"}}\nscope = [{{from = \"field\", field = \"session\"}}]\n")).unwrap();
+        let source = temp.path().join("dynamic.jsonl");
+        let rows:Vec<_>=[("start",0),("end",1)].into_iter().map(|(phase,second)|json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"component":"worker","message":"dynamic boundary","operation":"run","phase":phase,"id":"one","session":"a"}).to_string()).collect();
+        fs::write(&source, rows.join("\n") + "\n").unwrap();
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(
+            report["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["goal"] == "incomplete_lifecycles")
+                .unwrap()["status"],
+            if constrained {
+                "unsupported"
+            } else {
+                "supported"
+            }
+        );
+        if !constrained {
+            assert_eq!(count(&report, "paired-lifecycles"), 1);
+        }
+    }
+}
+
+#[test]
+fn mixed_pair_capabilities_preserve_known_pairs_and_withhold_complete_zeros() {
+    for paired in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("mixed-boundaries.toml");
+        let mut config =
+            fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap();
+        config.push_str("\n[[event_rules.rules]]\nid = \"notice\"\n[event_rules.rules.adapter]\ntype = \"structured\"\nconditions = [{field = \"observation\", equals = \"notice\"}]\n[event_rules.rules.mapping]\nkind = \"request\"\nname = {from = \"literal\", value = \"notice\"}\nphase = {from = \"literal\", value = \"start\"}\ncorrelation_id = {from = \"field\", field = \"id\"}\nscope = [{from = \"field\", field = \"session\"}]\n");
+        fs::write(&profile, config).unwrap();
+        let source = temp.path().join("mixed.jsonl");
+        let mut rows = vec![
+            json!({"ts":"2026-01-01T00:00:00+02:00","message":"start","operation":"run","phase":"start","id":"run","session":"a"}),
+            json!({"ts":"2026-01-01T00:00:01+02:00","message":"notice","observation":"notice","id":"notice","session":"a"}),
+        ];
+        if paired {
+            rows.push(json!({"ts":"2026-01-01T00:00:02+02:00","message":"end","operation":"run","phase":"end","id":"run","session":"a","outcome":"success"}));
+        }
+        fs::write(
+            &source,
+            rows.iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        let population = report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == "scope-0-paired-lifecycles");
+        if paired {
+            let population = population.unwrap();
+            assert_eq!(population["count"], 1);
+            assert_eq!(population["completeness"], "partial");
+            assert!(
+                report["findings"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|f| f["kind"] == "measurement")
+            );
+        } else {
+            assert!(population.is_none());
+        }
+        assert_eq!(
+            report["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["goal"] == "incomplete_lifecycles")
+                .unwrap()["status"],
+            "insufficient_evidence"
+        );
+    }
+}
+
+#[test]
+fn outcome_capability_requires_a_compatible_end_phase() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("contradictory.toml");
+    let mut config = fs::read_to_string(root().join("examples/investigations/profile.toml"))
+        .unwrap()
+        .replace("outcome = {from = \"field\", field = \"outcome\"}\n", "");
+    config.push_str("\n[[event_rules.rules]]\nid = \"not-an-end\"\n[event_rules.rules.adapter]\ntype = \"structured\"\nconditions = [{field = \"phase\", equals = \"start\"}, {field = \"component\", equals = \"other\"}]\n[event_rules.rules.mapping]\nkind = \"request\"\nname = {from = \"field\", field = \"operation\"}\nphase = {from = \"field\", field = \"phase\"}\noutcome = {from = \"literal\", value = \"failure\"}\ncorrelation_id = {from = \"field\", field = \"id\"}\nscope = [{from = \"field\", field = \"session\"}]\n");
+    fs::write(&profile, config).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        profile.to_str().unwrap(),
+        "investigate",
+        "examples/investigations/slow.jsonl",
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    assert_eq!(
+        report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["goal"] == "failures")
+            .unwrap()["status"],
+        "unsupported"
+    );
+    assert!(
+        !report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["id"] == "scope-0-failures")
+    );
+}
+
+#[test]
+fn observed_capabilities_do_not_cross_constrained_correlation_ids() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("ids.toml");
+    let mut config = String::from(
+        "extends = \"base\"\n[parser]\nformat = \"json-lines\"\n[event_rules]\nversion = 2\n",
+    );
+    for (id, outcome) in [("a", "success"), ("b", "failure")] {
+        for phase in ["start", "end"] {
+            config += &format!(
+                "[[event_rules.rules]]\nid = \"{id}-{phase}\"\n[event_rules.rules.adapter]\ntype = \"structured\"\nconditions = [{{field = \"id\", equals = {id:?}}}, {{field = \"phase\", equals = {phase:?}}}]\n[event_rules.rules.mapping]\nkind = \"request\"\nname = {{from = \"field\", field = \"operation\"}}\nphase = {{from = \"literal\", value = {phase:?}}}\ncorrelation_id = {{from = \"field\", field = \"id\"}}\nscope = [{{from = \"field\", field = \"session\"}}]\n"
+            );
+            if phase == "end" {
+                config += &format!("outcome = {{from = \"literal\", value = {outcome:?}}}\n");
+            }
+        }
+    }
+    fs::write(&profile, config).unwrap();
+    let source = temp.path().join("ids.jsonl");
+    let rows:Vec<_>=[("a","start",0),("a","end",1),("b","start",2),("b","end",3)].into_iter().map(|(id,phase,second)|json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"message":"id boundary","operation":"run","phase":phase,"id":id,"session":"same"}).to_string()).collect();
+    fs::write(&source, rows.join("\n") + "\n").unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    for suffix in ["failures", "successes"] {
+        let population = report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == format!("scope-0-{suffix}"))
+            .unwrap();
+        assert_eq!(population["count"], 1);
+        assert_eq!(population["completeness"], "partial");
+    }
+    assert_eq!(
+        report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["goal"] == "failures")
+            .unwrap()["status"],
+        "insufficient_evidence"
+    );
+}
+
+#[test]
+fn mutually_exclusive_shared_field_mappings_do_not_authorize_capability() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("shared-field.toml");
+    let mut config = fs::read_to_string(root().join("examples/investigations/profile.toml"))
+        .unwrap()
+        .replace("outcome = {from = \"field\", field = \"outcome\"}\n", "");
+    config.push_str("\n[[event_rules.rules]]\nid = \"impossible-end\"\n[event_rules.rules.adapter]\ntype = \"structured\"\nconditions = [{field = \"component\", equals = \"other\"}]\n[event_rules.rules.mapping]\nkind = \"request\"\nname = {from = \"field\", field = \"operation\"}\nphase = {from = \"field\", field = \"boundary\"}\noutcome = {from = \"field\", field = \"boundary\"}\ncorrelation_id = {from = \"field\", field = \"id\"}\nscope = [{from = \"field\", field = \"session\"}]\n");
+    fs::write(&profile, config).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        profile.to_str().unwrap(),
+        "investigate",
+        "examples/investigations/slow.jsonl",
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    assert_eq!(
+        report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["goal"] == "failures")
+            .unwrap()["status"],
+        "unsupported"
+    );
+    assert!(
+        !report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["id"] == "scope-0-failures")
+    );
+}
+
+#[test]
+fn restrictive_end_outcomes_withhold_absence_claims_but_complementary_rules_cover_them() {
+    let original = fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap();
+    let finish = original
+        .find("[[event_rules.rules]]\nid = \"finish\"")
+        .unwrap();
+    let success_rule=original[finish..].replace("conditions = [{field = \"phase\", equals = \"end\"}]","conditions = [{field = \"phase\", equals = \"end\"}, {field = \"outcome\", equals = \"success\"}]").replace("outcome = {from = \"field\", field = \"outcome\"}","outcome = {from = \"literal\", value = \"success\"}");
+    for mode in 0..4 {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("end-outcomes.toml");
+        let mut config = original[..finish].to_string();
+        if mode == 2 {
+            config += &original[finish..]
+                .replace("outcome = {from = \"field\", field = \"outcome\"}\n", "");
+        } else {
+            config += &success_rule;
+            if mode == 1 {
+                config += &success_rule
+                    .replace("id = \"finish\"", "id = \"failure-finish\"")
+                    .replace("\"success\"", "\"failure\"");
+            }
+        }
+        fs::write(&profile, config).unwrap();
+        let source = temp.path().join("end-outcomes.jsonl");
+        let mut rows = vec![
+            json!({"ts":"2026-01-01T00:00:00+02:00","message":"start","operation":"run","phase":"start","id":"one","session":"a"}),
+        ];
+        if mode == 0 || mode == 3 {
+            rows.push(json!({"ts":"2026-01-01T00:00:01+02:00","message":"end","operation":"run","phase":"end","id":"one","session":"a","outcome":if mode==0 {"failure"}else{"success"}}));
+        }
+        fs::write(
+            &source,
+            rows.iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(
+            report["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["goal"] == "incomplete_lifecycles")
+                .unwrap()["status"],
+            if mode == 0 {
+                "unsupported"
+            } else {
+                "supported"
+            }
+        );
+        if mode == 0 {
+            assert!(
+                !report["populations"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p["id"] == "scope-0-ends")
+            );
+            assert!(
+                !report["findings"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|f| f["kind"] == "observation"
+                        && f["claim"].as_str().unwrap().contains("no observed end"))
+            );
+        } else {
+            assert_eq!(count(&report, "ends"), u64::from(mode == 3));
         }
     }
 }

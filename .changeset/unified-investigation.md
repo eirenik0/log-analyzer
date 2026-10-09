@@ -33,3 +33,8 @@ retaining exact processed facts and explicitly partial populations and scopes.
 Withhold paired-population elapsed distributions when some pairs lack source
 timestamp provenance, preserving reliable individual measurements and unavailable
 interval findings.
+
+Check outcome and opposite-boundary recognition per selected operation family,
+respecting literal mappings and structured identity/value constraints. Withhold
+unsupported zeros and missing-boundary claims; retain positive facts with explicit
+partial coverage when recognition capabilities differ.
