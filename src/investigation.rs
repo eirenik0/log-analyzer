@@ -106,6 +106,43 @@ pub fn validate_relations(
     let manifest = get(metadata, "/evidence")?;
     let snapshot = get(manifest, "/snapshot_id")?;
     let inputs = list(manifest, "/inputs")?;
+    // Manifest digests describe original identities, before presentation redaction.
+    let input_ids: Vec<_> = inputs.iter().map(|input| &input["input_id"]).collect();
+    let expected_snapshot = if inputs.is_empty() {
+        Value::Null
+    } else {
+        Value::String(digest(
+            serde_json::to_string(&input_ids)
+                .map_err(|e| error("/report_metadata/evidence/snapshot_id", e.to_string()))?
+                .as_bytes(),
+        ))
+    };
+    require(
+        *snapshot == expected_snapshot,
+        "/report_metadata/evidence/snapshot_id",
+        "snapshot identity digest mismatch",
+    )?;
+    if manifest["redaction"]["applied"] == true
+        || !list(manifest, "/redaction/masked_id_fields")?.is_empty()
+    {
+        summary
+            .deferred_relations
+            .push("unredacted_query_and_input_identity".into());
+    } else {
+        require(
+            manifest["query_sha256"] == digest(get(manifest, "/query")?.to_string().as_bytes()),
+            "/report_metadata/evidence/query_sha256",
+            "query identity digest mismatch",
+        )?;
+        for input in inputs {
+            let identity = serde_json::json!([input["file"], input["sha256"]]);
+            require(
+                input["input_id"] == digest(identity.to_string().as_bytes()),
+                "/report_metadata/evidence/inputs/input_id",
+                "input identity digest mismatch",
+            )?;
+        }
+    }
     let progress = list(report, "/processing/inputs")?;
     require(
         progress.len() >= inputs.len(),
@@ -132,6 +169,23 @@ pub fn validate_relations(
                 "captured input missing from manifest",
             )?;
         }
+    }
+    if !report["processing"]["usage"]["input_bytes"].is_null() {
+        let consumed = progress.iter().try_fold(0u64, |total, input| {
+            total
+                .checked_add(number(input, "/consumed_bytes")?)
+                .ok_or_else(|| {
+                    error(
+                        "/processing/usage/input_bytes",
+                        "consumed byte count overflow",
+                    )
+                })
+        })?;
+        require(
+            number(report, "/processing/usage/input_bytes")? == consumed,
+            "/processing/usage/input_bytes",
+            "input byte usage differs from consumed inputs",
+        )?;
     }
     if report["processing"]["status"] == "complete" {
         require(
@@ -815,6 +869,12 @@ pub fn validate_relations(
                 )?;
                 let start = get(details, "/boundaries/start")?;
                 let end = get(details, "/boundaries/end")?;
+                require(
+                    occurrence(get(start, "/occurrence")?)?
+                        != occurrence(get(end, "/occurrence")?)?,
+                    "/findings/details/boundaries",
+                    "measurement requires distinct boundary occurrences",
+                )?;
                 let start_time =
                     DateTime::parse_from_rfc3339(text(start, "/timestamp")?).map_err(|e| {
                         error(
@@ -1022,6 +1082,13 @@ pub fn validate_relations(
         let scope = scopes
             .get(text(assessment, "/scope_id")?)
             .ok_or_else(|| error("/assessments/scope_id", "unknown scope"))?;
+        if assessment["status"] == "supported" {
+            require(
+                !list(assessment, "/finding_ids")?.is_empty(),
+                "/assessments/finding_ids",
+                "supported assessment requires a finding",
+            )?;
+        }
         if assessment["status"] == "supported" && scope["extent"] == "declared_input" {
             require(
                 scope["completeness"] == "complete" && scope["analysis_completion"] == "complete",

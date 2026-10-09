@@ -189,3 +189,11 @@ These are contract fixtures, not output from an already implemented unified comm
 
 Distinct resource identities use only the population’s declared identity fields
 and correlation scope; extra descriptive fields cannot create another resource.
+
+Manifest validation recomputes query, input and ordered snapshot identities using
+existing evidence-contract serialization. When paths or queries are redacted or
+masked, original query/input identity checks are explicitly deferred; the ordered
+snapshot digest remains checkable. Reported non-null input-byte usage must equal
+the checked sum of consumed input bytes. A supported assessment references at least
+one finding. Measured intervals require distinct boundary occurrences, even when
+the observed timestamps are equal.

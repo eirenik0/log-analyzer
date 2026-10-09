@@ -7,3 +7,6 @@ through capabilities, preserving existing report and investigation v1 behavior.
 Add occurrence-aware Rust relational validation, typed calculation/coverage/omission
 schemas, synthetic examples and adversarial conformance tests. Unified investigation
 and artifact retrieval remain explicitly unavailable pending implementation.
+
+Reject reused measurement boundaries, inconsistent manifest identity digests,
+unsupported evidence-free assessments, and mismatched consumed-byte usage.

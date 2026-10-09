@@ -93,7 +93,14 @@ fn published_reports_and_artifacts_validate_shape_and_semantics() {
         let summary =
             validate_relations(&report, Some(&raw)).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert!(summary.artifact_checked);
-        assert!(summary.deferred_relations.is_empty());
+        if name == "redacted" {
+            assert_eq!(
+                summary.deferred_relations,
+                vec!["unredacted_query_and_input_identity"]
+            );
+        } else {
+            assert!(summary.deferred_relations.is_empty());
+        }
     }
 }
 #[test]
@@ -458,4 +465,80 @@ fn undeclared_identity_fields_do_not_create_distinct_resources() {
     refresh_membership(&mut artifact, 0);
     report["populations"] = artifact["populations"].clone();
     reject(report, artifact, "distinct resource identity");
+}
+
+#[test]
+fn one_boundary_cannot_create_a_measured_zero() {
+    let (mut report, mut artifact) = fixture("measured-zero");
+    for value in [&mut report, &mut artifact] {
+        value["findings"][0]["details"]["boundaries"]["end"] =
+            value["findings"][0]["details"]["boundaries"]["start"].clone();
+    }
+    reject(report, artifact, "distinct boundary occurrences");
+}
+#[test]
+fn manifest_identity_digests_are_recomputed() {
+    for (pointer, value, expected) in [
+        (
+            "/query/filter",
+            json!("message:changed"),
+            "query identity digest mismatch",
+        ),
+        (
+            "/inputs/0/input_id",
+            json!("a".repeat(64)),
+            "snapshot identity digest mismatch",
+        ),
+        (
+            "/snapshot_id",
+            json!("a".repeat(64)),
+            "snapshot identity digest mismatch",
+        ),
+        (
+            "/inputs/0/file",
+            json!("changed.jsonl"),
+            "input identity digest mismatch",
+        ),
+    ] {
+        let (mut report, mut artifact) = fixture("supported");
+        for document in [&mut report, &mut artifact] {
+            *document["report_metadata"]["evidence"]
+                .pointer_mut(pointer)
+                .unwrap() = value.clone();
+        }
+        reject(report, artifact, expected);
+    }
+}
+#[test]
+fn forged_input_id_with_a_consistent_snapshot_is_rejected() {
+    let (mut report, mut artifact) = fixture("supported");
+    let fake = "a".repeat(64);
+    let snapshot = digest(serde_json::to_vec(&json!([fake])).unwrap().as_slice());
+    for document in [&mut report, &mut artifact] {
+        document["report_metadata"]["evidence"]["inputs"][0]["input_id"] = json!(fake);
+        document["report_metadata"]["evidence"]["snapshot_id"] = json!(snapshot);
+    }
+    reject(report, artifact, "input identity digest mismatch");
+}
+#[test]
+fn supported_assessment_requires_a_finding() {
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["assessments"][0]["finding_ids"] = json!([]);
+    }
+    reject(report, artifact, "supported assessment requires a finding");
+}
+#[test]
+fn byte_usage_matches_consumed_inputs_or_is_explicitly_unavailable() {
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["processing"]["usage"]["input_bytes"] = json!(0);
+    }
+    reject(report, artifact, "input byte usage differs");
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["processing"]["usage"]["input_bytes"] = Value::Null;
+    }
+    let raw = refresh(&mut report, &artifact);
+    validate_relations(&report, Some(&raw)).unwrap();
 }
