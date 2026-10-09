@@ -110,7 +110,7 @@ fn remember_reuse_move_replace_and_forget_without_private_evidence() {
     assert!(!saved.contains(root.to_str().unwrap()));
     assert_eq!(entry["entry"]["profile"]["config"], "candidate.toml");
     let (v, o) = resolve(&root, &file, &f);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert_eq!(
         v["profile_resolution"]["selection_provenance"],
         "project_mapping"
@@ -135,7 +135,7 @@ fn remember_reuse_move_replace_and_forget_without_private_evidence() {
     let p = moved.join("candidate.toml");
     let f = moved.join("expected.json");
     let (v, o) = resolve(&moved, file.to_str().unwrap(), f.to_str().unwrap());
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert_eq!(
         v["profile_resolution"]["selection_provenance"],
         "project_mapping"
@@ -177,14 +177,14 @@ fn remember_reuse_move_replace_and_forget_without_private_evidence() {
             entry["digest"].as_str().unwrap(),
         ],
     );
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let (view, o) = run(&[
         "profile-mappings",
         "--project-root",
         moved.to_str().unwrap(),
         "inspect",
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     fs::remove_file(&file).unwrap();
     fs::remove_file(&p).unwrap();
     let (_, o) = run(&[
@@ -199,7 +199,7 @@ fn remember_reuse_move_replace_and_forget_without_private_evidence() {
             .as_str()
             .unwrap(),
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
 }
 #[test]
 fn lookup_is_read_only_and_invalid_or_ambiguous_mappings_never_override_explicit_choices() {
@@ -217,10 +217,10 @@ fn lookup_is_read_only_and_invalid_or_ambiguous_mappings_never_override_explicit
         root.to_str().unwrap(),
         "inspect",
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(!root.join(".log-analyzer").exists());
     let (_, o) = manage(root, &p, "remember", &file, &f, &[]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let registry = root.join(".log-analyzer/profile-mappings.json");
     let saved = fs::read(&registry).unwrap();
     let (_, o) = run(&[
@@ -277,7 +277,7 @@ fn lookup_is_read_only_and_invalid_or_ambiguous_mappings_never_override_explicit
         "--project-root",
         root.to_str().unwrap(),
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert_eq!(v["profile_resolution"]["selection_provenance"], "explicit");
     fs::write(&registry, &saved).unwrap();
     let config = fs::read_to_string(&p).unwrap();
@@ -358,7 +358,7 @@ fn native_at_prefixed_profile_paths_and_user_precedence_survive_round_trips() {
         "--expected",
         &f,
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let args = [
         "resolve-profile",
         &file,
@@ -372,7 +372,7 @@ fn native_at_prefixed_profile_paths_and_user_precedence_survive_round_trips() {
         user.to_str().unwrap(),
     ];
     let (v, o) = run(&args);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert_eq!(
         v["profile_resolution"]["selection_provenance"],
         "project_mapping"
@@ -389,7 +389,7 @@ fn native_at_prefixed_profile_paths_and_user_precedence_survive_round_trips() {
     assert_eq!(v["profile_resolution"]["status"], "ambiguous");
     fs::write(&registry, "{malformed\n").unwrap();
     let (v, o) = run(&args);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert_eq!(
         v["profile_resolution"]["selection_provenance"],
         "user_mapping"
@@ -425,7 +425,7 @@ fn registry_alias_mutations_and_escaped_project_profiles_are_rejected() {
     let p = profile(&root, "candidate", "session");
     let f = facts(&root, "a");
     let (_, o) = manage(&root, &p, "remember", &file, &f, &[]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let registry = root.join(".log-analyzer/profile-mappings.json");
     let saved = fs::read(&registry).unwrap();
     let alias = root.join("alias.json");
@@ -484,7 +484,7 @@ fn saving_requires_current_independent_proof_and_reuse_reports_changed_structure
     assert!(!root.join(".log-analyzer").exists());
     fs::write(&f, &full_facts).unwrap();
     let (_, o) = manage(root, &p, "remember", &file, &f, &[]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let registry = root.join(".log-analyzer/profile-mappings.json");
     let saved = fs::read(&registry).unwrap();
     let rows = fs::read_to_string(&file).unwrap();
@@ -522,7 +522,7 @@ fn saving_requires_current_independent_proof_and_reuse_reports_changed_structure
         "--project-root",
         root.join("missing-root").to_str().unwrap(),
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert_eq!(
         v["profile_resolution"]["selection_provenance"],
         "association"
@@ -539,7 +539,7 @@ fn saving_requires_current_independent_proof_and_reuse_reports_changed_structure
         "--project-root",
         root.join("missing-root").to_str().unwrap(),
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
 }
 #[test]
 fn redacted_mapping_reports_keep_contract_types_and_hide_embedded_path_ids() {
@@ -583,7 +583,7 @@ fn redacted_mapping_reports_keep_contract_types_and_hide_embedded_path_ids() {
         "--expected",
         &f,
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(v["profile_mappings"]["entries"].is_array());
     assert!(!String::from_utf8_lossy(&o.stdout).contains("private-id"));
     assert!(!fs::read_to_string(&output).unwrap().contains("private-id"));
@@ -620,7 +620,7 @@ fn resolution_v1_schema_remains_valid() {
         "--kind",
         "request",
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     v["profile_resolution"]["version"] = json!(1);
     v["profile_resolution"]
         .as_object_mut()
@@ -646,7 +646,11 @@ fn management_reports_cannot_overwrite_the_registry_or_lock() {
             "inspect",
         ]);
         assert_eq!(o.status.code(), Some(1));
-        assert!(String::from_utf8_lossy(&o.stderr).contains("conflicts"));
+        assert!(
+            String::from_utf8_lossy(&o.stderr).contains("conflicts"),
+            "{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
         assert!(!root.join(".log-analyzer").exists());
     }
     let case_alias = root.join(".LOG-ANALYZER/PROFILE-MAPPINGS.JSON");
@@ -682,7 +686,7 @@ fn management_reports_cannot_overwrite_the_registry_or_lock() {
     assert_eq!(o.status.code(), Some(1));
     assert!(!root.join(".log-analyzer").exists());
     let (_, o) = manage(root, &p, "remember", &file, &f, &[]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let saved = fs::read(&registry).unwrap();
     for output in [&registry, &lock] {
         let (_, o) = run(&[
@@ -718,7 +722,7 @@ fn management_reports_cannot_overwrite_the_registry_or_lock() {
         root.to_str().unwrap(),
         "inspect",
     ]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert_eq!(saved, fs::read(&registry).unwrap());
     let hard = root.join("hard-report.json");
     fs::hard_link(&registry, &hard).unwrap();

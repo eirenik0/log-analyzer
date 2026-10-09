@@ -341,6 +341,10 @@ fn destination_identity(path: &Path) -> Result<PathBuf> {
     let mut resolved = PathBuf::new();
     for component in absolute.components() {
         match component {
+            std::path::Component::Prefix(_) => {
+                resolved.push(component.as_os_str());
+                continue;
+            }
             std::path::Component::CurDir => continue,
             std::path::Component::ParentDir => {
                 resolved.pop();
@@ -825,5 +829,25 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), b"old registry");
         drop(reader);
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn destination_guard_resolves_drive_prefixes_before_probing_filesystem() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+        let expected = root.join("new").join("report.json");
+        assert_eq!(
+            destination_identity(&dir.path().join("new/report.json")).unwrap(),
+            expected
+        );
+        assert_eq!(
+            destination_identity(&root.join("new/report.json")).unwrap(),
+            expected
+        );
+        assert_eq!(
+            destination_identity(&root.join("other/../new/report.json")).unwrap(),
+            expected
+        );
+        assert!(!root.join("new").exists());
     }
 }
