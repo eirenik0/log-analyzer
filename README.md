@@ -94,7 +94,8 @@ and sorting reservations; it is not a CPU instruction count. Rejected candidates
 consume attempt capacity; reported record usage counts successfully parsed records.
 Input cutoffs retain consumed-prefix hashes, never a full-file hash claim; final
 JSONL fragments and unclosed multiline candidates are left open. Expansion checks
-run before row cloning. `--cancel-file path` requests cooperative cancellation when
+run before row cloning; ordinary normalization consumes only the general record
+budget when array expansion is disabled. `--cancel-file path` requests cooperative cancellation when
 the file appears. Interrupted correlation publishes no tentative missing-end results.
 A cutoff makes affected full-input assessments insufficient while preserving completed
 processed-population facts. Independent inputs have separate scope completion;

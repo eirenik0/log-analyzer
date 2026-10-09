@@ -1174,3 +1174,47 @@ fn payload_identity_and_relationship_keys_accept_numeric_and_boolean_scalars() {
         2
     );
 }
+
+#[test]
+fn ordinary_normalization_does_not_consume_array_expansion_capacity() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("normalization.toml");
+    fs::write(&profile, "extends = \"base\"\n[parser]\nformat = \"json-lines\"\n[normalization]\nexpand_rows = false\n[normalization.fields]\ntimestamp = \"/ts\"\nmessage = \"/message\"\n").unwrap();
+    let source = temp.path().join("ordinary.jsonl");
+    let rows:Vec<_>=(0..3).map(|second|json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"message":"ordinary normalized record"}).to_string()).collect();
+    fs::write(&source, rows.join("\n") + "\n").unwrap();
+    for (index, limited) in [false, true].into_iter().enumerate() {
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let mut args = vec![
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--processing-max-expanded-records",
+            "0",
+        ];
+        if limited {
+            args.extend(["--processing-max-records", "1"]);
+        }
+        let report = success(&args);
+        check(&report, &artifact);
+        assert_eq!(report["processing"]["usage"]["expanded_records"], 0);
+        assert_eq!(
+            report["processing"]["usage"]["records"],
+            if limited { 1 } else { 3 }
+        );
+        assert_eq!(
+            count(&report, "normalized-records"),
+            if limited { 1 } else { 3 }
+        );
+        assert_eq!(
+            report["processing"]["status"],
+            if limited { "partial" } else { "complete" }
+        );
+        if limited {
+            assert_eq!(report["processing"]["stop"]["limit_name"], "records");
+        }
+    }
+}

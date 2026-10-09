@@ -16,3 +16,6 @@ decoded-first nested payload extraction for declared population and relationship
 Keep canonical retained records and manifest counts exact-selected, preserve completed
 independent scopes and their source verification when later inputs fail, and support
 canonical numeric/boolean payload identity and join values.
+
+Apply the expanded-row budget only when normalization expands arrays; ordinary
+normalized records continue to consume the general record budget.

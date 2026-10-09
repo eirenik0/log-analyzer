@@ -276,9 +276,9 @@ fn finish_candidate(
             line_number,
             rules,
             |_, _| {
-                controls
-                    .as_deref_mut()
-                    .is_none_or(|budget| budget.record(text.len(), rules.fields.len(), true))
+                controls.as_deref_mut().is_none_or(|budget| {
+                    budget.record(text.len(), rules.fields.len(), rules.expand_rows)
+                })
             },
             |row_path, row| {
                 let parsed = row.and_then(|value| {
