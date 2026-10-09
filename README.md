@@ -1112,6 +1112,13 @@ lock, including resolved aliases; use a separate `--output` report path.
 Management returns full JSON and rejects common report budgets/cursors, so a
 retrieval request cannot repeat a mutation.
 
+Mapping management reports `mutation.status` separately from `report_save.status`.
+An invalid `--output` destination fails before registry mutation. If report delivery
+fails after the registry commits, the command succeeds with a warning and
+`report_save.status: "failed"`; do not retry the mutation. Recover the report with
+`profile-mappings inspect --output <separate-report-path>`. Inspection save failures
+remain errors. Report destinations are staged without truncating existing reports.
+
 ## Profile Configuration
 
 Use profile TOML files to keep the binary generic and push case-specific knowledge into config.

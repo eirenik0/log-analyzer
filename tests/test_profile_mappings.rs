@@ -752,3 +752,79 @@ fn management_reports_cannot_overwrite_the_registry_or_lock() {
         assert_eq!(saved, fs::read(&registry).unwrap());
     }
 }
+
+#[test]
+fn invalid_report_destinations_cannot_commit_registry_mutations() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let file = fixture(root);
+    let p = profile(root, "candidate", "session");
+    let facts = facts(root, "a");
+    let missing = root.join("absent/report.json");
+    let (_, result) = manage(
+        root,
+        &p,
+        "remember",
+        &file,
+        &facts,
+        &["--output", missing.to_str().unwrap()],
+    );
+    assert!(!result.status.success());
+    let registry = root.join(".log-analyzer/profile-mappings.json");
+    assert!(!registry.exists());
+    let report = root.join("saved.json");
+    let (saved, result) = manage(
+        root,
+        &p,
+        "remember",
+        &file,
+        &facts,
+        &["--output", report.to_str().unwrap()],
+    );
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(saved["profile_mappings"]["mutation"]["status"], "committed");
+    assert_eq!(
+        saved["profile_mappings"]["report_save"]["status"],
+        "succeeded"
+    );
+    let before = fs::read(&registry).unwrap();
+    let entry = &saved["profile_mappings"]["entries"][0];
+    let (_, result) = run(&[
+        "--output",
+        missing.to_str().unwrap(),
+        "profile-mappings",
+        "--project-root",
+        root.to_str().unwrap(),
+        "forget",
+        "--entry-id",
+        entry["entry"]["id"].as_str().unwrap(),
+        "--if-digest",
+        entry["digest"].as_str().unwrap(),
+    ]);
+    assert!(!result.status.success());
+    assert_eq!(fs::read(&registry).unwrap(), before);
+    let original_permissions = fs::metadata(&report).unwrap().permissions();
+    let mut permissions = original_permissions.clone();
+    permissions.set_readonly(true);
+    fs::set_permissions(&report, permissions).unwrap();
+    let (_, result) = run(&[
+        "--output",
+        report.to_str().unwrap(),
+        "profile-mappings",
+        "--project-root",
+        root.to_str().unwrap(),
+        "forget",
+        "--entry-id",
+        entry["entry"]["id"].as_str().unwrap(),
+        "--if-digest",
+        entry["digest"].as_str().unwrap(),
+    ]);
+    assert!(!result.status.success());
+    assert_eq!(fs::read(&registry).unwrap(), before);
+    assert!(fs::read_to_string(&report).unwrap().contains("succeeded"));
+    fs::set_permissions(&report, original_permissions).unwrap();
+}

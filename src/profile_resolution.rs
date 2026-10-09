@@ -260,6 +260,7 @@ pub(crate) fn resolve(
                             if origin == "association" {
                                 mapping = json!({"status":"invalid","reason":"source_structure_unavailable"});
                             }
+                            failed_mapping_read(&mut mapping_diagnostics, &origin);
                             candidates.push(json!({"origin":origin,"choice":choice,"identity":identity(&config,&origin,choice.clone()),"status":"input_structure_unavailable","error":crate::output::source_path(&format!("{error:?}")),"eligible":false}));
                             continue 'candidate;
                         }
@@ -335,9 +336,7 @@ pub(crate) fn resolve(
                         .collect();
                     let incompatible = coverage.iter().enumerate().any(|(i, f)| {
                         f.nonempty_lines > 0
-                            && (f.is_unparsed()
-                                || f.rejected_candidates > 0
-                                || f.structural_diagnostics.diagnostic_count > 0
+                            && (source_structure_failed(f)
                                 || choice["expected_shapes"][i] != shapes[i])
                     });
                     association_valid = !incompatible && empty_sources.is_empty() && complete;
@@ -558,4 +557,62 @@ fn load_association(
         return Err("association_profile_digest_changed".into());
     }
     Ok((saved, config, choice))
+}
+
+fn source_structure_failed(coverage: &parser::ParseCoverage) -> bool {
+    coverage.is_unparsed()
+        || coverage.rejected_candidates > 0
+        || coverage.structural_diagnostics.diagnostic_count > 0
+        || coverage.structural_diagnostics.unsupported_python_headers > 0
+}
+
+fn failed_mapping_read(diagnostics: &mut Value, origin: &str) {
+    if let Some(items) = diagnostics.as_array_mut() {
+        for item in items.iter_mut().filter(|item| item["origin"] == origin) {
+            item["status"] = json!("invalid");
+            item["revalidation"] =
+                json!({"status":"invalid","reason":"source_structure_unavailable"});
+            item["eligible"] = json!(false);
+        }
+    }
+}
+#[cfg(test)]
+mod mapping_failure_tests {
+    #[test]
+    fn unsupported_headers_fail_revalidation_even_without_rejected_candidates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.jsonl");
+        std::fs::write(
+            &path,
+            "{\"ts\":\"2026-01-01T00:00:00Z\",\"message\":\"generic\"}\n",
+        )
+        .unwrap();
+        let mut coverage =
+            crate::parser::parse_log_file_report(&path, &crate::config::default_config())
+                .unwrap()
+                .coverage;
+        assert_eq!(coverage.rejected_candidates, 0);
+        assert_eq!(coverage.structural_diagnostics.diagnostic_count, 0);
+        assert!(!super::source_structure_failed(&coverage));
+        coverage.structural_diagnostics.unsupported_python_headers = 1;
+        assert!(super::source_structure_failed(&coverage));
+    }
+    #[test]
+    fn failed_reads_terminate_only_the_matching_mapping_diagnostic() {
+        let mut diagnostics = serde_json::json!([
+            {"origin":"project_mapping","status":"requires_current_input_validation"},
+            {"origin":"user_mapping","status":"requires_current_input_validation"}
+        ]);
+        super::failed_mapping_read(&mut diagnostics, "project_mapping");
+        assert_eq!(diagnostics[0]["status"], "invalid");
+        assert_eq!(
+            diagnostics[0]["revalidation"]["reason"],
+            "source_structure_unavailable"
+        );
+        assert_eq!(diagnostics[0]["eligible"], false);
+        assert_eq!(
+            diagnostics[1]["status"],
+            "requires_current_input_validation"
+        );
+    }
 }

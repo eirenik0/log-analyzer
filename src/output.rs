@@ -989,7 +989,13 @@ impl OutputState {
                 }
             }
             if let Some(mappings) = original.get("profile_mappings") {
-                for key in ["version", "scope", "raw_evidence_persisted"] {
+                for key in [
+                    "version",
+                    "scope",
+                    "raw_evidence_persisted",
+                    "mutation",
+                    "report_save",
+                ] {
                     value["profile_mappings"][key] = mappings[key].clone();
                 }
                 if let Some(entries) = mappings["entries"].as_array() {

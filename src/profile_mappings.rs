@@ -217,7 +217,7 @@ impl Store {
             },
         })
     }
-    fn mutate(&self, replacement: Option<Entry>, prior: Option<(&str, &str)>) -> Result<Value> {
+    fn mutate(&self, replacement: Option<Entry>, prior: Option<(&str, &str)>) -> Result<Committed> {
         let parent = self
             .path
             .parent()
@@ -288,13 +288,14 @@ impl Store {
             registry.entries.push(entry);
         }
         registry.entries.sort_by(|a, b| a.id.cmp(&b.id));
+        let report = self.view(&registry)?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
         temporary.write_all(&serde_json::to_vec_pretty(&registry)?)?;
         temporary.write_all(b"\n")?;
         temporary.as_file().sync_all()?;
         persist_registry(temporary, &self.path)?;
         drop(lock);
-        self.view(&registry)
+        Ok(Committed { report })
     }
     fn view(&self, registry: &Registry) -> Result<Value> {
         let entries = registry
@@ -306,6 +307,70 @@ impl Store {
             json!({"profile_mappings":{"version":1,"scope":self.scope,"registry":evidence::path_label(&self.path),"project_root":evidence::path_label(&self.root),"entries":entries,"raw_evidence_persisted":false}}),
         )
     }
+}
+struct Committed {
+    report: Value,
+}
+struct StagedReport {
+    path: PathBuf,
+    temporary: tempfile::NamedTempFile,
+}
+impl StagedReport {
+    fn prepare(path: &Path) -> Result<Self> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                if !metadata.is_file()
+                    || metadata.file_type().is_symlink()
+                    || metadata.permissions().readonly()
+                {
+                    return Err(
+                        "Report destination must be a writable regular file or a new file".into(),
+                    );
+                }
+                OpenOptions::new().write(true).open(path)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => return Err(error.into()),
+        }
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        Ok(Self {
+            path: path.to_owned(),
+            temporary: tempfile::NamedTempFile::new_in(parent)?,
+        })
+    }
+    fn save(mut self, report: &Value) -> Result<()> {
+        let rendered = serde_json::to_string_pretty(report)?;
+        self.temporary
+            .write_all(crate::output::format_report(&rendered).as_bytes())?;
+        self.temporary.as_file().sync_all()?;
+        persist_registry(self.temporary, &self.path)?;
+        Ok(())
+    }
+}
+fn deliver_report(
+    mut report: Value,
+    committed: bool,
+    staged: Option<StagedReport>,
+) -> Result<Value> {
+    report["profile_mappings"]["mutation"] =
+        json!({"status":if committed {"committed"} else {"not_requested"}});
+    report["profile_mappings"]["report_save"] =
+        json!({"status":if staged.is_some() {"succeeded"} else {"not_requested"}});
+    if let Some(staged) = staged
+        && let Err(error) = staged.save(&report)
+    {
+        if !committed {
+            return Err(error);
+        }
+        report["profile_mappings"]["report_save"]["status"] = json!("failed");
+        eprintln!(
+            "Warning: registry mutation committed, but report saving failed. Do not retry the mutation; rerun profile-mappings inspect with a separate --output path."
+        );
+    }
+    Ok(report)
 }
 #[cfg(not(windows))]
 fn persist_registry(temporary: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
@@ -557,12 +622,18 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
     };
     let store = Store::new(*scope, root(project_root.as_deref())?, registry.as_deref())?;
     protect_output(&store, cli.output.as_deref())?;
+    let staged = cli
+        .output
+        .as_deref()
+        .map(StagedReport::prepare)
+        .transpose()?;
+    let committed = !matches!(action, MappingAction::Inspect);
     let report = match action {
         MappingAction::Inspect => store.view(&store.read()?)?,
         MappingAction::Forget {
             entry_id,
             if_digest,
-        } => store.mutate(None, Some((entry_id, if_digest)))?,
+        } => store.mutate(None, Some((entry_id, if_digest)))?.report,
         MappingAction::Remember {
             files,
             kind,
@@ -600,16 +671,14 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
                 } => Some((entry_id.as_str(), if_digest.as_str())),
                 _ => None,
             };
-            store.mutate(Some(entry), prior)?
+            store.mutate(Some(entry), prior)?.report
         }
     };
     crate::output::clear_evidence();
     crate::output::set_metadata(crate::build_info::metadata("profile-mappings"), false);
+    let report = deliver_report(report, committed, staged)?;
     let rendered = serde_json::to_string_pretty(&report)?;
     crate::output::print(format_args!("{rendered}\n"));
-    if let Some(path) = &cli.output {
-        crate::write_output_file(path, &rendered)?;
-    }
     Ok(())
 }
 
@@ -849,5 +918,41 @@ mod tests {
             expected
         );
         assert!(!root.join("new").exists());
+    }
+    #[test]
+    fn postcommit_report_failure_is_explicit_and_inspection_failure_remains_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let report_path = dir.path().join("report.json");
+        let staged = StagedReport::prepare(&report_path).unwrap();
+        fs::create_dir(&report_path).unwrap();
+        let store = Store::new(
+            MappingScope::Project,
+            dir.path().to_owned(),
+            Some(&dir.path().join("registry.json")),
+        )
+        .unwrap();
+        let committed = store.mutate(Some(entry("a.jsonl")), None).unwrap();
+        let report = deliver_report(committed.report, true, Some(staged)).unwrap();
+        assert_eq!(
+            report["profile_mappings"]["mutation"]["status"],
+            "committed"
+        );
+        assert_eq!(
+            report["profile_mappings"]["report_save"]["status"],
+            "failed"
+        );
+        assert_eq!(store.read().unwrap().entries.len(), 1);
+        assert!(report_path.is_dir());
+        let inspect_path = dir.path().join("inspection.json");
+        let staged = StagedReport::prepare(&inspect_path).unwrap();
+        fs::create_dir(&inspect_path).unwrap();
+        assert!(
+            deliver_report(
+                store.view(&store.read().unwrap()).unwrap(),
+                false,
+                Some(staged)
+            )
+            .is_err()
+        );
     }
 }

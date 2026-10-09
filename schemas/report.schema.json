@@ -3448,6 +3448,37 @@
             },
             "raw_evidence_persisted": {
               "const": false
+            },
+            "mutation": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "committed",
+                    "not_requested"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "report_save": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "succeeded",
+                    "failed",
+                    "not_requested"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
