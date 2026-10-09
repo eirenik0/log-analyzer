@@ -1647,9 +1647,40 @@ fn numeric_spelling_discount(value: &Value) -> usize {
     match value {
         Value::Number(number) if number.is_f64() => {
             let decimal = number.to_string();
-            let scientific = format!("{:e}", number.as_f64().unwrap());
-            let integral = decimal.strip_suffix(".0").unwrap_or(&decimal);
-            let shortest = decimal.len().min(scientific.len()).min(integral.len());
+            let value = number.as_f64().unwrap();
+            let scientific = format!("{value:e}");
+            let (coefficient, exponent) = scientific.split_once('e').unwrap();
+            let exponent: i32 = exponent.parse().unwrap();
+            let sign = if coefficient.starts_with('-') {
+                "-"
+            } else {
+                ""
+            };
+            let digits = coefficient.trim_start_matches('-').replace('.', "");
+            let mut shortest = decimal.len();
+            for point in 1..=digits.len() {
+                let mantissa = if point == digits.len() {
+                    digits.clone()
+                } else {
+                    format!("{}.{}", &digits[..point], &digits[point..])
+                };
+                let exponent = exponent + 1 - point as i32;
+                let candidate = if exponent == 0 {
+                    format!("{sign}{mantissa}")
+                } else {
+                    format!("{sign}{mantissa}e{exponent}")
+                };
+                if serde_json::from_str::<Value>(&candidate)
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .is_some_and(|v| v.to_bits() == value.to_bits())
+                {
+                    shortest = shortest.min(candidate.len());
+                }
+            }
+            if let Some(integral) = decimal.strip_suffix(".0") {
+                shortest = shortest.min(integral.len());
+            }
             decimal.len() - shortest
         }
         Value::Array(values) => values.iter().map(numeric_spelling_discount).sum(),
@@ -1758,8 +1789,35 @@ fn raw_lines_match(source_lines: &[&str], line: usize, raw: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_distribution_value, raw_lines_match};
+    use super::{check_distribution_value, numeric_spelling_discount, raw_lines_match};
     use serde_json::json;
+
+    #[test]
+    fn numeric_size_uses_shortest_equivalent_radix_placement() {
+        for (value, shortest) in [
+            (12000.0, "12e3"),
+            (120000.0, "12e4"),
+            (1.2e100, "12e99"),
+            (1.0, "1"),
+            (-0.0, "-0"),
+        ] {
+            let value = json!(value);
+            assert_eq!(
+                value.to_string().len() - numeric_spelling_discount(&value),
+                shortest.len()
+            );
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(shortest)
+                    .unwrap()
+                    .as_f64()
+                    .unwrap()
+                    .to_bits(),
+                value.as_f64().unwrap().to_bits()
+            );
+        }
+        assert_eq!(numeric_spelling_discount(&json!(u64::MAX)), 0);
+        assert_eq!(numeric_spelling_discount(&json!(-12000)), 0);
+    }
 
     #[test]
     fn integer_statistics_do_not_round_large_values() {
