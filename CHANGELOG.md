@@ -24,6 +24,7 @@ reports, and explicit limits on what the logs can establish.
 
 ### Added
 
+- An opt-in crates.io publishing workflow with release validation and package dry runs.
 - Source citations and JSON schemas that let agents verify findings against the
   original records, with input, profile and query identities.
 - Paged JSON reports with byte, character and item budgets, resumable cursors,
@@ -41,6 +42,8 @@ reports, and explicit limits on what the logs can establish.
 
 ### Fixed
 
+- Standalone skill installation, plugin invocation and portable references; documented
+  investigation examples are checked against executable workflow fixtures.
 - Nonempty unparsed input now fails with coverage diagnostics. Empty selections,
   zero errors and unavailable analysis remain distinguishable.
 - Correlation respects scope and reused IDs, preserves timestamp offsets, and
