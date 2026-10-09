@@ -1,242 +1,118 @@
 # Changelog
 
+User-visible changes, newest first. See the [README](README.md) for current usage
+and [GitHub Releases](https://github.com/eirenik0/log-analyzer/releases) for published downloads.
+
 ## Unreleased
+
+See [pending release notes](.changeset/) for changes awaiting the next version.
 
 ## 0.3.0 (2026-10-09)
 
-Log Analyzer now provides compact, verifiable evidence for AI-assisted log
-investigations, with explicit coverage, source citations and analysis limits.
+Investigate failures and slow runs with verifiable source references, bounded
+reports, and explicit limits on what the logs can establish.
 
-### Migration notes
+### Upgrading
 
-- The default `base` profile is now generic. Select `--preset eyes` for the
-  specialized Eyes/Applitools grammar, or use a validated custom profile.
-- Shipped lifecycle profiles use version-2 `event_rules` and whole-message
-  recognition. Review custom grammar before migrating; legacy-only profiles
-  remain supported. See [classification and migration](docs/design/event-classification.md).
-- Rust callers constructing operation records must supply classification evidence.
-  Timing requires valid scoped boundaries; missing or ambiguous evidence does not
-  establish completion or duration.
+- **Eyes/Applitools logs:** select `--preset eyes`. The default `base` profile is
+  now generic.
+- **Custom profiles:** shipped profiles now use version-2 `event_rules` with
+  whole-message recognition. Review the [migration guide](docs/design/event-classification.md);
+  legacy-only profiles remain supported.
+- **Rust integrations:** constructed operation records must include classification
+  evidence. Timing requires valid, scoped start/end boundaries.
 
-### New capabilities
+### Added
 
-- Snapshot-scoped source citations, input/profile/query identities, published JSON
-  schemas and build capabilities for reproducible investigations.
-- Bounded JSON retrieval with byte, character and item budgets, deterministic
-  cursors, complete-output mode, and explicit omissions or stopping conditions.
-- `validate-profile` checks recognition, scope and timing against sample evidence
-  and optional expected facts, without activating generated candidates.
-- TOML profile inheritance; configurable request/event timing and start-only
+- Source citations and JSON schemas that let agents verify findings against the
+  original records, with input, profile and query identities.
+- Paged JSON reports with byte, character and item budgets, resumable cursors,
+  and explicit omitted-detail counts. See [bounded output](README.md#bounded-investigation-output).
+- `validate-profile` to check parsing, recognition and timing against sample logs
+  and optional known facts before using a custom profile.
+- Profile inheritance, configurable timing boundaries and intentional start-only
   events; structured-export normalization and correlated field extraction with
-  line/row provenance.
-- Rust tracing, syslog and JSON-lines parser detection, plus browser-console
-  prefixes on classic logs. Check coverage on the actual capture.
-- Maintained failure, slow-run and lifecycle workflows, with synthetic evaluation
-  checks for citation validity, abstention and unsupported causal claims.
-  [Published results](evals/README.md) are scripted harness baselines; model-quality
-  improvement and token savings remain unmeasured.
+  source line/row references.
+- Rust tracing, syslog and JSON-lines detection, plus browser-console prefixes
+  on classic logs.
+- Failure, slow-run and lifecycle investigation workflows with synthetic checks.
+  [Evaluation results](evals/README.md) validate the scripted harness; model-quality
+  improvements and token savings remain unmeasured.
 
-### Important fixes
+### Fixed
 
-- Nonempty unparsed input fails visibly with coverage diagnostics; zero errors
-  and unavailable analysis remain distinct.
+- Nonempty unparsed input now fails with coverage diagnostics. Empty selections,
+  zero errors and unavailable analysis remain distinguishable.
 - Correlation respects scope and reused IDs, preserves timestamp offsets, and
-  reports incomplete, conflicting and ambiguous lifecycle evidence.
-- Filters, sorting, limits and saved output agree across text/JSON reports.
-  Unicode compaction is safe; optional redaction retains analytic counts and
+  reports missing, conflicting or ambiguous lifecycle evidence.
+- Filters, sorting, limits and saved output agree across text and JSON reports.
+- Unicode compaction is safe; optional redaction retains analytic counts and
   typed evidence metadata.
-
-Versions are synchronized across the CLI, lockfile and plugin. A prepared version
-can be published without another bump, with release jobs pinned to one commit.
 
 ## 0.2.0 (2026-02-25)
 
-### Breaking Changes
+Inspect related logs together and follow failures, fields and session activity.
 
-#### Remove legacy `[profile.session_prefixes]` configuration in favor of `[[sessions.levels]]` only.
+### Upgrading
 
-- `AnalyzerConfig` session insights now read only from `sessions.levels`.
-- `generate-config` no longer writes `profile.session_prefixes` and uses `level-1`, `level-2`, ... for inferred generic level names.
-- Built-in templates, README examples, and Claude skill templates/docs now use `[[sessions.levels]]` exclusively.
+Replace `[profile.session_prefixes]` with `[[sessions.levels]]`. Generated profiles
+now use generic level names such as `level-1`; template-defined levels are preserved.
 
-### Features
+### Added
 
-- add multi-file support for `info` and `perf` commands
-- add `trace` command to track operation/session lifecycle across log files
-- add `search` command for structured log inspection with filtering, context, and grouped counting
-- add `extract` command for aggregating JSON field values from matching log entries
-- add session lifecycle insights in profiles and `info` command outputs
-- allow `generate-config` to process multiple log files and merge entries for profile inference
-- add `errors` command for clustering log patterns and session analysis
-
-#### Add an `errors` command for single-command failure diagnosis across one or more log files.
-
-- Clusters ERROR entries (and optionally WARN entries via `--warn`) by normalized message pattern.
-- Shows per-cluster severity, counts, emitting components, first/last timestamps, and a sample message.
-- Optionally cross-references affected `component_id` sessions via `--sessions`, including `completed` vs `orphaned` outcomes using perf-style orphan detection heuristics.
-- Adds impact-oriented cluster sorting (`--sort-by impact`) plus blocking-span estimates in the summary.
-
-#### Add an `extract` command for aggregating payload field values from matching log entries.
-
-- `log-analyzer extract <file> --field <name>` extracts a JSON payload/settings field and groups by value occurrences.
-- Works with the existing global `-f/--filter` expression syntax to scope extraction to specific messages/components.
-- Supports JSON output via global `-F json` / `-j` and dot-path field access (for example `settings.retryTimeout`).
-
-#### Add multi-file input support to `generate-config`.
-
-- `log-analyzer generate-config` now accepts one or more log files and merges them before inferring profile hints.
-- This improves profile generation for split/rotated logs from the same run by combining observed components, commands, requests, and session prefixes.
-- Generated output now includes a multi-source header when multiple files are provided.
-
-#### Add multi-file input support for `info` and `perf` commands.
-
-- `log-analyzer info` now accepts one or more log files and aggregates analysis across all inputs.
-- `log-analyzer perf` now accepts one or more log files and analyzes them as a single timeline.
-- Parsed entries from all provided files are concatenated and sorted by timestamp before analysis, which improves cross-file operation pairing (including orphan detection).
-
-#### Add a `search` command for structured grep-style log inspection.
-
-- `log-analyzer search <file>` prints matching log entries using the existing `-f/--filter` expression syntax.
-- Supports entry-based context windows via `--context <n>` and optional parsed payload display with `--payloads`.
-- Supports grouped counting mode via `--count-by <matches|component|level|type|payload>` (including payload-based occurrence grouping).
-
-#### Add profile-driven hierarchical session insights for `info` using a new optional `[[sessions.levels]]` config format.
-
-- Supports named session levels with `segment_prefix`, `create_command`, `complete_commands`, and `summary_fields`.
-- Upgrades profile analysis to build per-session lifecycle state (created/completed), parent-child links, operation counts, and create-time summary field extraction in a single pass.
-- `info` now renders per-level session completion health summaries (completed vs incomplete) and stable configured summary field values when available.
-- `generate-config` now emits detected session prefixes as generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...) while preserving template-defined session levels.
-
-#### Add a `trace` command for following a single operation/session lifecycle across log files.
-
-- `log-analyzer trace` accepts one or more log files and merges/sorts entries by timestamp.
-- Supports `--id <substring>` to trace by correlation/request ID fragments and `--session <substring>` to trace by `component_id` hierarchy.
-- Text output shows chronological entries with per-step timing deltas; JSON output is also available via global `-F json` / `-j`.
+- `info`, `perf` and `generate-config` accept multiple related files, including
+  split or rotated logs from one run. `perf` can pair boundaries across files.
+- `search` supports filters, surrounding-entry context, parsed payloads and grouped counts.
+- `extract` aggregates payload/settings fields, including nested dot paths.
+- `errors` groups ERROR messages and optional WARNs, with affected-session details,
+  impact sorting and estimated blocking spans.
+- `trace` follows ID or session-path substrings across files in chronological
+  order, with per-step deltas. A substring match can include multiple lifecycles.
+- Profile-defined session levels let `info` show completion summaries, hierarchy
+  and configured create-time fields.
 
 ## 0.1.3 (2026-02-19)
 
-### Features
+### Added
 
-- add source line tracking for log parsing and validation
-- add unified filter module with expression-based log filtering
-- enhance comparison output with table formatting and JSON shorthand support
-- introduce CLI enhancements and output improvements
-- add support for config file via `--config` flag in CLI
-- improve filtering logic
-- add `generate-config` command with embedded templates for profile generation
-- ensure unique/unpaired entries are included in JSON and text diff outputs
+- Custom TOML profiles through `--config`, embedded starter templates, and
+  `generate-config` to create an editable profile from sample logs.
+- Unified `--filter` expressions for component, level, text and direction,
+  including exclusions. Different fields use AND; values of the same field use OR.
+- `-j` as shorthand for compact JSON output (`-F json -c`).
+- Clearer diffs with added/removed/modified labels, summary counts and source lines.
 
-#### Improve CLI usability with new global flags:
+### Fixed
 
-- Added `-j, --json` as shorthand for `-F json -c` for compact machine-readable output.
-- Added `-f, --filter` for unified filter expressions (for example: `c:core l:ERROR !t:timeout`).
-- `-f, --filter` can also be set with `LOG_ANALYZER_FILTER`.
-- `--json` conflicts with explicit `-F, --format` to avoid ambiguous output settings.
-
-#### Add configurable profiles and starter templates for custom log formats:
-
-- Added runtime profile loading via `--config <path>` or `LOG_ANALYZER_CONFIG`.
-- Parser markers, pairing markers, and correlation keys are now configurable through profiles.
-- Added profile-aware `info` insights for unknown components, commands, requests, and session prefixes.
-- Added reusable templates: `base`, `custom-start`, `service-api`, and `event-pipeline`.
-
-#### Improve `diff` output readability and diagnostics:
-
-- Differences are now classified as added, removed, or modified (`+`, `-`, `~`).
-- Summary output now includes counts of additions, removals, and modifications.
-- Diff entries now include source line numbers for faster navigation to original logs.
-- JSON diff output now includes `change_type`, and text diffs are split into `text1`/`text2`.
-
-#### Add profile generation command and built-in template support:
-
-- Added `generate-config` (`gen-config`) to create a TOML profile from a log file.
-- Generated profiles include discovered components, commands, requests, and session prefix hints.
-- Supports `--profile-name`, `--template`, and `-o, --output`.
-- `--template` now accepts either a file path or built-in template name (`base`, `custom-start`, `service-api`, `event-pipeline`).
-- Embedded built-in templates into the binary and use embedded `base` as default for better portability.
-
-#### Add unified filter expression syntax:
-
-- Added expression-based filtering via `-f, --filter`.
-- Supports `component`, `level`, `text`, and `direction` terms (with short aliases like `c:`, `l:`, `t:`, `d:`).
-- Supports exclusions with `!` (for example: `!l:DEBUG`).
-- Multiple terms are combined with AND semantics.
-- Matching for `level` and `direction` values is case-insensitive.
-- Unknown filter values now produce warnings to catch typos.
-
-### Fixes
-
-#### Fix regressions in compare/diff filtering and output:
-
-- Repeated shared keys are now paired one-to-one; unmatched occurrences are kept as unique entries.
-- `--sort-by time/component/level/type` now sorts correctly.
-- `--full` now prints full payload JSON in comparison output.
-- `-o, --output` now writes the correct output for `compare`, `diff`, `llm-diff`, `process`, and `perf` (text and JSON).
-- Filter logic is now consistent: different filter types are AND-ed, multiple values of the same type are OR-ed.
-- `diff` output now includes unpaired unique entries in both text and JSON modes.
-- Parser no longer panics when profile config has empty `command_payload_markers`.
-
-#### Improve output formatting for summaries:
-
-- Summary statistics now render as styled, width-aware tables.
-- Table formatting is applied consistently across console and file output.
-- Improves readability of command output for large result sets.
+- Repeated shared keys pair one-to-one; unmatched entries remain visible in both
+  text and JSON diffs.
+- Sorting, full-payload output and saved reports work consistently across the
+  comparison and processing commands.
+- Empty `command_payload_markers` no longer cause a parser panic.
+- Summary tables adapt to output width and work in saved reports.
 
 ## 0.1.2 (2026-01-22)
 
-### Features
+### Added
 
-- Add filter for connection direction
-- Add advanced filtering, sorting, and CLI enhancements
-- Enhance `info` command with detailed analysis options
-- Add individual llm log preparation
-- Sanitize by default
-- Improve request parsing for name, ID, and direction detection
-- Add performance analysis command to CLI
-- Add installation scripts and Claude Code skill for log analysis
-- Improve install script for user-friendliness and compatibility
-- Add plugin support for Claude Code and update documentation
+- Claude Code marketplace/plugin installation for use across projects.
 
-#### Add Claude Code plugin support for cross-project skill installation:
+### Fixed
 
-- Add `.claude-plugin/plugin.json` manifest to enable plugin distribution
-- Add `.claude-plugin/marketplace.json` for plugin marketplace discovery
-- Create `skills/` symlink to support both plugin and project-level usage
-- Users can install with `/plugin marketplace add` then `/plugin install log-analyzer`
-- Update documentation with plugin installation instructions in README.md and CLAUDE.md
-
-### Fixes
-
-#### Improve installation workflow and documentation:
-
-- Fix `scripts/install-skill.sh` to use repository directory instead of current working directory
-- Change default install location from `/usr/local/bin` to `$HOME/bin` (no sudo required)
-- Add automatic PATH setup instructions for zsh, bash, and fish shells
-- Recommend WSL for Windows users instead of native binary
-- Rewrite README.md to be more compact and user-friendly (~50% smaller)
-- Add Claude Code Integration section with `/analyze-logs` skill examples
+- The CLI installer defaults to `~/bin`, avoiding a `sudo` requirement, and
+  provides PATH setup guidance for zsh, Bash and fish.
+- Installation documentation includes WSL guidance for Windows users.
 
 ## 0.1.1 (2026-01-21)
 
-### Features
-
-- Add filter for connection direction
-- Add advanced filtering, sorting, and CLI enhancements
-- Enhance `info` command with detailed analysis options
-- Add individual llm log preparation
-- Sanitize by default
-- Improve request parsing for name, ID, and direction detection
-- Add performance analysis command to CLI
-- Add installation scripts and Claude Code skill for log analysis
+- Added installation scripts and the Claude Code analysis skill.
+- Expanded filtering, sorting and `info` inspection options.
+- Improved request name, ID and direction parsing.
+- Added individual-log preparation with default sanitization and the `perf`
+  command for operation timing analysis.
 
 ## 0.1.0
 
-### Features
-
-- Initial release of log-analyzer
-- Compare two log files and show differences between JSON objects
-- Display information about log files (components, event types, log levels)
-- Generate LLM-friendly compact JSON output with sanitization
-- Performance analysis for operation timing and bottleneck identification
-- Support for filtering by component, level, text, and direction
-- Multiple output formats (text, JSON) with color support
+Initial release: compare JSON payloads across logs, inspect components and log
+levels, prepare compact sanitized output, analyze operation timing, and filter
+results by component, level, text or direction. Supports text and JSON output.
