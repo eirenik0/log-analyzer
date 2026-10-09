@@ -122,7 +122,8 @@ exact model tokens.
 
 Shared evidence contract 1, snapshot-scoped source references, deterministic bounded
 retrieval, profile validation and the CLI/skill workflow are implemented on `main`.
-Check your executable's `capabilities` and build identity: an older installed
+These capabilities are included in the prepared `0.3.0` version. Check your
+executable's `--version`, `capabilities` and build identity: an older installed
 release may lack them. Use the advertised schema and retrieval/profile versions;
 incompatibility is an explicit stopping condition.
 

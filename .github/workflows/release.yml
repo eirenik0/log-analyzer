@@ -3,6 +3,11 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      prepared-version:
+        description: 'Publish an already prepared stable version without another bump (e.g. 0.3.0)'
+        required: false
+        type: string
+        default: ''
       dry-run:
         description: 'Run without creating release (for testing)'
         required: false
@@ -21,9 +26,11 @@ jobs:
     outputs:
       version: ${{ steps.knope.outputs.version }}
       created: ${{ steps.knope.outputs.created }}
+      revision: ${{ steps.knope.outputs.revision }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.PAT }}
 
@@ -34,35 +41,71 @@ jobs:
 
       - name: Install Knope
         uses: knope-dev/action@v2.1.2
+        with:
+          version: 0.22.4
 
-      - name: Run Knope prepare-release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Select or prepare release
         id: knope
+        env:
+          PREPARED_VERSION: ${{ inputs.prepared-version }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if knope prepare-release --dry-run 2>&1 | grep -q "No changes"; then
-            echo "No changes to release"
-            echo "created=false" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          if [ -n "$PREPARED_VERSION" ]; then
+            VERSION=$(python scripts/check-prepared-release.py "$PREPARED_VERSION")
+            release_tag=$(git tag --list "v$VERSION")
+            if [ -n "$release_tag" ]; then
+              echo "Version $VERSION is already tagged"
+              exit 1
+            fi
+          else
+            prepare_log=$(mktemp)
+            prepare_error=$(mktemp)
+            trap 'rm -f "$prepare_log" "$prepare_error"' EXIT
+            prepare_args=(prepare-release)
+            if [ "$DRY_RUN" = "true" ]; then
+              prepare_args+=(--dry-run --verbose)
+            fi
+            if knope "${prepare_args[@]}" > "$prepare_log" 2> "$prepare_error"; then
+              cat "$prepare_log" "$prepare_error"
+            else
+              prepare_status=$?
+              cat "$prepare_log" "$prepare_error"
+              # Only Knope's pinned no-release diagnostic is a clean stop.
+              if grep -Fxq 'Error: releases::no_release (https://knope.tech/reference/config-file/steps/prepare-release/#errors)' "$prepare_error" && git diff --cached --quiet; then
+                echo "created=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              exit "$prepare_status"
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "created=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if git diff --cached --quiet; then
+              echo "No changes to release"
+              echo "created=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            python scripts/check-prepared-release.py "$VERSION"
+            git add Cargo.toml Cargo.lock .claude-plugin CHANGELOG.md .changeset
+            git commit -m "chore: prepare release $VERSION"
+            git push origin HEAD:main
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Validated prepared $VERSION; dry run skips publication"
+            echo "created=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          if [ "${{ inputs.dry-run }}" = "true" ]; then
-            echo "Dry run - not committing changes"
-            knope prepare-release --dry-run
-            echo "created=false" >> $GITHUB_OUTPUT
-          else
-            knope prepare-release
-
-            # Get the new version from Cargo.toml
-            VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "created=true" >> $GITHUB_OUTPUT
-
-            # Commit and push the changes
-            git add .
-            git commit -m "chore: prepare release $VERSION"
-            git push
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "created=true" >> "$GITHUB_OUTPUT"
 
   # Run tests to ensure the release is valid
   test:
@@ -73,11 +116,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.prepare-release.outputs.revision }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test
-      - run: cargo clippy -- -D warnings
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: python -m unittest discover -s scripts -p 'test_*.py'
+      - run: python -m unittest discover -s evals -p 'test_*.py'
+      - run: cargo test --locked
+      - run: cargo clippy --locked -- -D warnings
 
   # Build binaries for all platforms
   build:
@@ -116,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.prepare-release.outputs.revision }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -140,9 +188,13 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
       - name: Check maintained examples against release binary
         shell: bash
@@ -197,7 +249,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.prepare-release.outputs.revision }}
           fetch-depth: 0
 
       - name: Download all artifacts
@@ -214,6 +266,8 @@ jobs:
 
       - name: Install Knope
         uses: knope-dev/action@v2.1.2
+        with:
+          version: 0.22.4
 
       - name: Create GitHub Release
         run: knope release

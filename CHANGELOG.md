@@ -2,9 +2,52 @@
 
 ## Unreleased
 
-### Features
+## 0.3.0 (2026-10-09)
 
-- add top-level `extends` to profile files: a built-in name or a relative file path, merged table by table with the child winning
+Log Analyzer now provides compact, verifiable evidence for AI-assisted log
+investigations, with explicit coverage, source citations and analysis limits.
+
+### Migration notes
+
+- The default `base` profile is now generic. Select `--preset eyes` for the
+  specialized Eyes/Applitools grammar, or use a validated custom profile.
+- Shipped lifecycle profiles use version-2 `event_rules` and whole-message
+  recognition. Review custom grammar before migrating; legacy-only profiles
+  remain supported. See [classification and migration](docs/design/event-classification.md).
+- Rust callers constructing operation records must supply classification evidence.
+  Timing requires valid scoped boundaries; missing or ambiguous evidence does not
+  establish completion or duration.
+
+### New capabilities
+
+- Snapshot-scoped source citations, input/profile/query identities, published JSON
+  schemas and build capabilities for reproducible investigations.
+- Bounded JSON retrieval with byte, character and item budgets, deterministic
+  cursors, complete-output mode, and explicit omissions or stopping conditions.
+- `validate-profile` checks recognition, scope and timing against sample evidence
+  and optional expected facts, without activating generated candidates.
+- TOML profile inheritance; configurable request/event timing and start-only
+  events; structured-export normalization and correlated field extraction with
+  line/row provenance.
+- Rust tracing, syslog and JSON-lines parser detection, plus browser-console
+  prefixes on classic logs. Check coverage on the actual capture.
+- Maintained failure, slow-run and lifecycle workflows, with synthetic evaluation
+  checks for citation validity, abstention and unsupported causal claims.
+  [Published results](evals/README.md) are scripted harness baselines; model-quality
+  improvement and token savings remain unmeasured.
+
+### Important fixes
+
+- Nonempty unparsed input fails visibly with coverage diagnostics; zero errors
+  and unavailable analysis remain distinct.
+- Correlation respects scope and reused IDs, preserves timestamp offsets, and
+  reports incomplete, conflicting and ambiguous lifecycle evidence.
+- Filters, sorting, limits and saved output agree across text/JSON reports.
+  Unicode compaction is safe; optional redaction retains analytic counts and
+  typed evidence metadata.
+
+Versions are synchronized across the CLI, lockfile and plugin. A prepared version
+can be published without another bump, with release jobs pinned to one commit.
 
 ## 0.2.0 (2026-02-25)
 
