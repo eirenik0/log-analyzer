@@ -18,6 +18,9 @@ class Attempt:
         self.frames = []
         self.responses_started = 0
 
+    def start_response(self):
+        self.responses_started += 1
+
     def receive(self, frame):
         # Observe before protocol, process-exit and deadline checks. Invalid
         # answers remain available for independent factual/validation scoring.

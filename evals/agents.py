@@ -25,11 +25,12 @@ BUDGETS = {'tool_calls': 80, 'output_bytes': 2_000_000, 'wall_seconds': 60}
 TOOL_CONTRACT = {'common': {'tools': ['profile'], 'scope': 'read selected profile and its permitted parents only'}, 'analyzer': {'commands': ['info', 'errors', 'perf', 'trace', 'search', 'validate-profile'], 'options': ['--id', '--session', '--field', '--filter', '--kind', '--purpose', '--op-type', '--report-cursor'], 'page_items': 5}, 'search-script': {'tools': ['read', 'search', 'interval'], 'page_records': 5, 'interval_end_input': 'optional end input ordinal within same related group'}}
 
 
-def adapter_call(argv, payload, timeout, limit=262144, on_frame=None):
+def adapter_call(argv, payload, timeout, limit=262144, on_frame=None, on_started=None):
     encoded = json.dumps(payload).encode()
     require(len(encoded) <= 2_000_000, 'adapter request exceeds protocol budget')
     deadline = time.monotonic() + timeout
     process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=ROOT, bufsize=0, start_new_session=os.name != 'nt')
+    if on_started is not None: on_started()
     output, writer_errors = [], []
     stopped = threading.Event()
     received, receive_lock = bytearray(), threading.Lock()
@@ -116,8 +117,7 @@ def external(tools, public, adapter, model, config, attempt=None, allocated_budg
         provider_remaining = None if allocated_budget_usd is None else allocated_budget_usd - (attempt.usage()['provider_cost_usd_known_total'] or 0)
         if provider_remaining is not None and provider_remaining <= 0:
             raise BudgetExceeded('allocated provider budget exhausted before next response')
-        attempt.responses_started += 1
-        response = adapter_call(adapter, {'protocol_version': 1, 'base_prompt': BASE_PROMPT, 'model': model, 'configuration': config, 'task': public, 'tool_arm': tools.arm, 'tool_contract': getattr(tools, 'contract', TOOL_CONTRACT), 'history': history, 'remaining': {'tool_calls': tools.budgets['tool_calls'] - len(tools.calls), 'output_bytes': tools.budgets['output_bytes'] - tools.output_bytes, 'wall_seconds': tools.remaining(), 'provider_cost_usd': provider_remaining}}, tools.remaining(), on_frame=attempt.receive)
+        response = adapter_call(adapter, {'protocol_version': 1, 'base_prompt': BASE_PROMPT, 'model': model, 'configuration': config, 'task': public, 'tool_arm': tools.arm, 'tool_contract': getattr(tools, 'contract', TOOL_CONTRACT), 'history': history, 'remaining': {'tool_calls': tools.budgets['tool_calls'] - len(tools.calls), 'output_bytes': tools.budgets['output_bytes'] - tools.output_bytes, 'wall_seconds': tools.remaining(), 'provider_cost_usd': provider_remaining}}, tools.remaining(), on_frame=attempt.receive, on_started=attempt.start_response)
         require(isinstance(response, dict) and set(response) <= {'tool_call', 'final', 'usage'} and ('tool_call' in response) != ('final' in response), 'invalid adapter response')
         usage = response.get('usage', {})
         require(isinstance(usage, dict), 'usage must be an object')

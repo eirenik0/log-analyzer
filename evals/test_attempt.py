@@ -115,6 +115,7 @@ class RetainedAttemptTests(unittest.TestCase):
         attempt = Attempt()
         def reply(*args, **kwargs):
             frame = {'final': {'finding': 'known'}, 'usage': {'tokens': 3}}
+            kwargs['on_started']()
             kwargs['on_frame'](frame)
             return frame
         with patch('agents.adapter_call', side_effect=reply):
@@ -157,6 +158,7 @@ class RetainedAttemptTests(unittest.TestCase):
         attempt = Attempt()
         def reply(*args, **kwargs):
             frame = {'final': {'finding': 'known'}, 'usage': {'tokens': 3, 'provider_cost_usd': 2}}
+            kwargs['on_started']()
             kwargs['on_frame'](frame)
             return frame
         with patch('agents.adapter_call',side_effect=reply):
@@ -177,9 +179,10 @@ class RetainedAttemptTests(unittest.TestCase):
                 self.calls.append(request)
                 return {}
         attempt, budgets = Attempt(), []
-        def reply(command, payload, timeout, on_frame):
+        def reply(command, payload, timeout, on_frame, on_started):
             budgets.append(payload['remaining']['provider_cost_usd'])
             frame = {'tool_call': {}, 'usage': {'provider_cost_usd': 0.25}} if len(budgets) == 1 else {'final': {'finding': 'known'}, 'usage': {'provider_cost_usd': 0.1}}
+            on_started()
             on_frame(frame)
             return frame
         with patch('agents.adapter_call', side_effect=reply):
@@ -197,8 +200,9 @@ class RetainedAttemptTests(unittest.TestCase):
             def remaining(self): return 2
             def invoke(self, request): self.calls.append(request); return {}
         attempt = Attempt()
-        def reply(command, payload, timeout, on_frame):
+        def reply(command, payload, timeout, on_frame, on_started):
             frame = {'tool_call': {}, 'usage': {'provider_cost_usd': 1}}
+            on_started()
             on_frame(frame)
             return frame
         with patch('agents.adapter_call', side_effect=reply) as adapter:
@@ -207,3 +211,40 @@ class RetainedAttemptTests(unittest.TestCase):
         self.assertEqual(attempt.responses_started, 1)
         self.assertEqual(result['budget_compliance'], 'exceeded')
         self.assertEqual(attempt.usage()['provider_cost_usd'], 1)
+
+    def test_prelaunch_wall_failure_does_not_poison_global_allocation(self):
+        from agents import external
+        from attempt import Allocation
+        from unittest.mock import patch
+        class Tools:
+            budgets = {'tool_calls': 1, 'output_bytes': 1000}
+            output_bytes, arm, calls = 0, 'analyzer', []
+            def remaining(self): raise BudgetExceeded('preflight consumed wall ceiling')
+        attempt, allocation = Attempt(), Allocation(1)
+        with patch('agents.adapter_call') as adapter:
+            result = self.assess(attempt, lambda: external(Tools(), {}, ['adapter'], 'model', {}, attempt, allocation.remaining()))
+        allocation.record(attempt)
+        adapter.assert_not_called()
+        self.assertEqual(attempt.responses_started, 0)
+        self.assertEqual(allocation.remaining(), 1)
+        self.assertEqual(result['budget_compliance'], 'exceeded')
+
+    def test_process_start_failure_does_not_count_a_response(self):
+        from unittest.mock import patch
+        from attempt import Allocation
+        attempt, allocation = Attempt(), Allocation(1)
+        with patch('agents.subprocess.Popen', side_effect=OSError('cannot launch')):
+            with self.assertRaises(OSError):
+                adapter_call(['adapter'], {}, 2, on_started=attempt.start_response, on_frame=attempt.receive)
+        allocation.record(attempt)
+        self.assertEqual(attempt.responses_started, 0)
+        self.assertEqual(allocation.remaining(), 1)
+
+    def test_launched_response_without_usage_still_stops_paid_calls(self):
+        from attempt import Allocation, BudgetUnknown
+        attempt, allocation = Attempt(), Allocation(1)
+        with self.assertRaisesRegex(AssertionError, 'execution failed'):
+            adapter_call([sys.executable, '-c', 'raise SystemExit(3)'], {}, 2, on_started=attempt.start_response, on_frame=attempt.receive)
+        allocation.record(attempt)
+        self.assertEqual(attempt.responses_started, 1)
+        with self.assertRaises(BudgetUnknown): allocation.remaining()

@@ -3,7 +3,7 @@ import json
 import unittest
 from pathlib import Path
 from attempt import Attempt, evaluate_attempt
-from layers import classification_truth, frozen_cases, verified_packet
+from layers import timestamp_truth, classification_truth, frozen_cases, verified_packet
 from schema import InvalidValue, validate
 from unified import UnifiedTools
 
@@ -83,3 +83,16 @@ class LayeredHarnessTests(unittest.TestCase):
         classification_truth(incomplete, {'operations':[]}, tuple, [operation['start']])
         incomplete['findings'][0]['details']['supporting_occurrences'][0]['evidence_ref'] = operation['end']
         with self.assertRaisesRegex(AssertionError, 'missing-end evidence differs'):classification_truth(incomplete, {'operations':[]}, tuple, [operation['start']])
+
+    def test_tool_oracle_rejects_offset_loss_with_unchanged_elapsed_time(self):
+        start, end = ['fixture',1,None], ['fixture',2,None]
+        times = ['2026-06-04T12:30:00+03:00','2026-06-04T12:30:01.250+03:00']
+        artifact = {'records':[{'occurrence':{'evidence_ref':source},'timestamp':time} for source,time in zip((start,end),times)], 'findings':[{'kind':'measurement','details':{'value':1250,'boundaries':{phase:{'occurrence':{'evidence_ref':source},'timestamp':time} for phase,source,time in zip(('start','end'),(start,end),times)}}}]}
+        truth = {'rows':[{'source':source,'fields':{'ts':time}} for source,time in zip((start,end),times)], 'operations':[{'start':start,'end':end,'start_time':times[0],'end_time':times[1]}]}
+        timestamp_truth(artifact, truth, tuple)
+        altered = copy.deepcopy(artifact)
+        altered['records'][0]['timestamp'] = '2026-06-04T09:30:00Z'
+        with self.assertRaisesRegex(AssertionError, 'offset differs'):timestamp_truth(altered, truth, tuple)
+        altered = copy.deepcopy(artifact)
+        altered['findings'][0]['details']['boundaries']['end']['timestamp'] = '2026-06-04T09:30:01.250Z'
+        with self.assertRaisesRegex(AssertionError, 'offset differs'):timestamp_truth(altered, truth, tuple)

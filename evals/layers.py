@@ -51,6 +51,22 @@ def verified_packet(facts, contexts):
     return observations
 
 
+def timestamp_truth(artifact, truth, coordinate):
+    def check(actual, expected):
+        value, source = timestamp(actual), timestamp(expected)
+        require(value == source and value.utcoffset() == source.utcoffset(), 'retained source timestamp or offset differs from literal truth')
+    records = {coordinate(r['occurrence']['evidence_ref']):r for r in artifact['records']}
+    for row in truth['rows']:
+        if row['fields'] is not None:
+            fields = row['fields']
+            check(records[tuple(row['source'])]['timestamp'], fields.get('ts', fields.get('timestamp')))
+    measurements = {tuple(coordinate(f['details']['boundaries'][phase]['occurrence']['evidence_ref']) for phase in ('start','end')):f for f in artifact['findings'] if f['kind'] == 'measurement'}
+    for operation in truth['operations']:
+        measurement = measurements[tuple(operation['start']),tuple(operation['end'])]
+        for phase in ('start','end'):
+            check(measurement['details']['boundaries'][phase]['timestamp'], operation[phase+'_time'])
+
+
 def classification_truth(artifact, truth, coordinate, unmatched_starts=(), unsupported=False, unsuitable=False):
     records = {coordinate(r['occurrence']['evidence_ref']): r for r in artifact['records']}
     expected = {(tuple(o['start']), tuple(o['end'])): o for o in truth['operations']}
@@ -106,6 +122,7 @@ def tool_truth(tools, public, facts):
             wanted = {(tuple(o['start']),tuple(o['end']),o['duration']) for o in truth['operations']}
             actual = {(address(f['details']['boundaries']['start']['occurrence']['evidence_ref'], tools.contexts[group]), address(f['details']['boundaries']['end']['occurrence']['evidence_ref'], tools.contexts[group]),f['details']['value']) for f in measurements}
             require(actual == wanted, 'source-backed timings/boundaries differ from independent truth')
+            timestamp_truth(artifact, truth, lambda ref:address(ref, tools.contexts[group]))
             unmatched = [truth['rows'][0]['source']] if public['id'] in {'incomplete-capture','heldout-incomplete'} else []
             classification_truth(artifact, truth, lambda ref:address(ref, tools.contexts[group]), unmatched, unsupported=parsed == 0, unsuitable=public['id'] == 'unsuitable-profile')
         else:
