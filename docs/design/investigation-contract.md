@@ -206,3 +206,8 @@ establish support. A bounded page may defer that check to explicitly retrievable
 Applied redaction requires redacted artifact content and unavailable independent
 source/rule verification; original captured byte streams and effective rules must
 not be persisted. Descriptor retention must match the retained artifact's policy.
+
+Applied redaction omits captured stream data and its stored-byte digest entirely;
+a changed declared original hash is not proof of sanitization. Presentation collection
+counts reconcile prior, displayed and remaining items against totals, actual arrays
+and retained artifact collections. A complete presentation has known zero omissions.

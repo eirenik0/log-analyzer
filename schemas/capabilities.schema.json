@@ -12,7 +12,8 @@
     "event_classification",
     "report_schemas",
     "bounded_reports",
-    "profile_validation"
+    "profile_validation",
+    "investigation_contracts"
   ],
   "properties": {
     "schema_version": {
@@ -172,7 +173,9 @@
         "capabilities",
         "investigation",
         "evidence_contract_version",
-        "profile_expectations"
+        "profile_expectations",
+        "evidence_artifact",
+        "investigation_contract_versions"
       ]
     },
     "bounded_reports": {

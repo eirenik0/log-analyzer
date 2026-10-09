@@ -456,6 +456,15 @@ pub fn validate_relations(
                 "/artifact/captured_inputs",
                 "capture identity or extent differs",
             )?;
+            if manifest["redaction"]["applied"] == true {
+                require(
+                    capture["data_omitted"] == true
+                        && capture["data"].is_null()
+                        && capture["stored_sha256"].is_null(),
+                    "/artifact/captured_inputs",
+                    "applied redaction must omit captured data regardless of claimed digests",
+                )?;
+            }
             if capture["data_omitted"] == false {
                 let bytes = match text(capture, "/encoding")? {
                     "utf8" => get(capture, "/data")?
@@ -509,13 +518,6 @@ pub fn validate_relations(
                     "original captured input was omitted",
                 )?;
             }
-        }
-        if manifest["redaction"]["applied"] == true {
-            require(
-                original_captures.is_empty(),
-                "/artifact/captured_inputs",
-                "applied redaction cannot persist original captured bytes",
-            )?;
         }
         let mut retained_sources: BTreeMap<u64, BTreeSet<(u64, String)>> = BTreeMap::new();
         for record in list(artifact, "/records")? {
@@ -1286,6 +1288,82 @@ pub fn validate_relations(
                 "total differs from retained findings",
             )?;
         }
+    }
+    let mut collection_paths = BTreeSet::new();
+    let mut omitted_collection_items = false;
+    for collection in list(report, "/presentation/collections")? {
+        let path = text(collection, "/path")?;
+        require(
+            collection_paths.insert(path),
+            "/presentation/collections",
+            "duplicate presentation collection",
+        )?;
+        let total = number(collection, "/total")?;
+        let prior = number(collection, "/prior")?;
+        let displayed = number(collection, "/displayed")?;
+        let remaining = number(collection, "/remaining")?;
+        require(
+            prior
+                .checked_add(displayed)
+                .and_then(|n| n.checked_add(remaining))
+                == Some(total),
+            "/presentation/collections",
+            "collection counts do not reconcile",
+        )?;
+        require(
+            list(report, path)?.len() as u64 == displayed,
+            "/presentation/collections",
+            "collection displayed count differs from report",
+        )?;
+        omitted_collection_items |= prior > 0 || remaining > 0;
+        if path == "/findings" {
+            require(
+                report["presentation"]["total_findings"] == total
+                    && report["presentation"]["displayed_findings"] == displayed
+                    && report["presentation"]["omitted_findings"]
+                        == prior
+                            .checked_add(remaining)
+                            .map(Value::from)
+                            .unwrap_or(Value::Null),
+                "/presentation/collections",
+                "finding collection differs from top-level counts",
+            )?;
+        }
+        if let Some(artifact) = artifact.as_ref() {
+            require(
+                list(artifact, path)?.len() as u64 == total,
+                "/presentation/collections",
+                "collection total differs from retained artifact",
+            )?;
+        }
+    }
+    let total_known = !report["presentation"]["total_findings"].is_null();
+    require(
+        total_known == !report["presentation"]["omitted_findings"].is_null(),
+        "/presentation",
+        "finding total and omission availability differ",
+    )?;
+    require(
+        !total_known || collection_paths.contains("/findings"),
+        "/presentation/collections",
+        "known finding totals require a collection entry",
+    )?;
+    let has_omissions = omitted_collection_items
+        || report["presentation"]["omitted_findings"]
+            .as_u64()
+            .is_some_and(|v| v > 0);
+    if report["presentation"]["status"] == "complete" {
+        require(
+            total_known && !has_omissions,
+            "/presentation/status",
+            "complete presentation has omitted or unknown findings",
+        )?;
+    } else if report["presentation"]["status"] == "page" {
+        require(
+            has_omissions,
+            "/presentation/status",
+            "page presentation has no omissions",
+        )?;
     }
     if report["retrieval"]["status"] == "available" {
         require(

@@ -614,7 +614,7 @@ fn redacted_artifact_cannot_retain_original_capture_or_profile() {
     let (report, mut artifact) = fixture("redacted");
     let (_, original) = fixture("supported");
     artifact["captured_inputs"] = original["captured_inputs"].clone();
-    reject(report, artifact, "cannot persist original captured bytes");
+    reject(report, artifact, "must omit captured data");
     let (report, mut artifact) = fixture("redacted");
     artifact["effective_profile"] = original["effective_profile"].clone();
     artifact["effective_profile_omitted"] = json!(false);
@@ -648,4 +648,60 @@ fn artifact_retention_matches_the_descriptor() {
         let raw = refresh(&mut report, &artifact);
         validate_relations(&report, Some(&raw)).unwrap();
     }
+}
+
+#[test]
+fn redaction_cannot_be_proved_by_replacing_original_digests() {
+    let (mut report, mut artifact) = fixture("redacted");
+    let (_, original) = fixture("supported");
+    artifact["captured_inputs"] = original["captured_inputs"].clone();
+    for document in [&mut report, &mut artifact] {
+        document["report_metadata"]["evidence"]["inputs"][0]["sha256"] = json!("a".repeat(64));
+        document["report_metadata"]["evidence"]["inputs"][0]["coverage"]["snapshot_sha256"] =
+            json!("a".repeat(64));
+        document["processing"]["inputs"][0]["consumed_sha256"] = json!("a".repeat(64));
+    }
+    artifact["captured_inputs"][0]["original_consumed_sha256"] = json!("a".repeat(64));
+    reject(report, artifact, "must omit captured data");
+}
+#[test]
+fn capabilities_require_investigation_discovery_metadata() {
+    let caps = invoke(&["capabilities"]);
+    let validator = jsonschema::validator_for(&schema("capabilities.schema.json")).unwrap();
+    for (parent, key) in [
+        ("", "investigation_contracts"),
+        ("/report_schemas", "evidence_artifact"),
+        ("/report_schemas", "investigation_contract_versions"),
+    ] {
+        let mut missing = caps.clone();
+        missing
+            .pointer_mut(parent)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove(key);
+        assert!(!validator.is_valid(&missing), "missing {key} was accepted");
+    }
+}
+#[test]
+fn pagination_metadata_agrees_with_findings_and_omissions() {
+    for (field, value, expected) in [
+        ("total", 0, "collection counts do not reconcile"),
+        ("displayed", 0, "collection counts do not reconcile"),
+        ("prior", u64::MAX, "collection counts do not reconcile"),
+    ] {
+        let (mut report, artifact) = fixture("supported");
+        report["presentation"]["collections"][0][field] = json!(value);
+        reject(report, artifact, expected);
+    }
+    let (mut report, artifact) = fixture("supported");
+    report["presentation"]["collections"][0] =
+        json!({"path":"/findings","total":0,"prior":0,"displayed":0,"remaining":0});
+    reject(report, artifact, "collection displayed count differs");
+    let (mut report, artifact) = fixture("output-limited");
+    report["presentation"]["status"] = json!("complete");
+    reject(report, artifact, "complete presentation has omitted");
+    let (mut report, artifact) = fixture("supported");
+    report["presentation"]["status"] = json!("page");
+    reject(report, artifact, "page presentation has no omissions");
 }

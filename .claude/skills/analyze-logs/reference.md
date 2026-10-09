@@ -54,7 +54,8 @@ occurrence identity as well as source references; partial processing does not ju
 full-input counts or completion, and redaction may prevent source/rule verification.
 Supported assessments require positive findings; unknowns alone cannot establish support.
 Check coverage against retained evidence and artifact retention against its descriptor.
-Applied redaction must be reflected in persisted content and verification losses.
+Applied redaction omits captured stream data and is reflected in verification losses.
+Check collection pagination against displayed findings and declared omissions.
 
 The evidence-engine workflow is included in the prepared `0.3.0` version. Check
 `--version` and `capabilities` on the actual executable before relying on it.
