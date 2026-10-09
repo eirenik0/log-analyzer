@@ -1369,7 +1369,13 @@ pub fn validate_relations(
             _ => return Err(error("/findings/kind", "unsupported finding kind")),
         }
     }
+    let mut assessment_keys = BTreeSet::new();
     for assessment in list(report, "/assessments")? {
+        require(
+            assessment_keys.insert((text(assessment, "/goal")?, text(assessment, "/scope_id")?)),
+            "/assessments",
+            "duplicate assessment for goal and scope",
+        )?;
         let scope = scopes
             .get(text(assessment, "/scope_id")?)
             .ok_or_else(|| error("/assessments/scope_id", "unknown scope"))?;
@@ -1608,8 +1614,8 @@ pub fn validate_relations(
         || !presentation["serialized_characters"].is_null()
     {
         let compact = report.to_string();
-        // Equivalent JSON may use shorter scientific notation. Discount every
-        // numeric spelling to one character for a conservative syntax lower bound.
+        // Equivalent floating-point values may use shorter scientific notation.
+        // Integer spellings retain all digits required by exact integer checks.
         let discount = numeric_spelling_discount(report);
         for (key, minimum) in [
             ("serialized_bytes", compact.len() - discount + 1),
@@ -1639,7 +1645,13 @@ pub fn validate_relations(
 
 fn numeric_spelling_discount(value: &Value) -> usize {
     match value {
-        Value::Number(number) => number.to_string().len().saturating_sub(1),
+        Value::Number(number) if number.is_f64() => {
+            let decimal = number.to_string();
+            let scientific = format!("{:e}", number.as_f64().unwrap());
+            let integral = decimal.strip_suffix(".0").unwrap_or(&decimal);
+            let shortest = decimal.len().min(scientific.len()).min(integral.len());
+            decimal.len() - shortest
+        }
         Value::Array(values) => values.iter().map(numeric_spelling_discount).sum(),
         Value::Object(values) => values.values().map(numeric_spelling_discount).sum(),
         _ => 0,

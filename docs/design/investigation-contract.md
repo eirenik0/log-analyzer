@@ -249,6 +249,9 @@ remaining items. `mandatory_metadata_over_budget` requires an exceeded size budg
 and no displayed items. A `page` makes progress while declaring omissions.
 
 Declared serialized usage cannot be smaller than a conservative JSON syntax lower
-bound plus its final newline. The bound discounts each number to one character,
-allowing shorter scientific notation than the validator’s numeric spelling. Exact pretty-printed wire size requires
+bound plus its final newline. Integer spellings preserve mandatory digits; floating
+point values use the shortest equivalent decimal or scientific spelling. Exact pretty-printed wire size requires
 the original report bytes; relational validation cannot reconstruct those spaces.
+
+Assessments are unique by `(goal, scope_id)`; duplicate or conflicting answers for
+the same question are invalid. Different goals can assess the same scope.

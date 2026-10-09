@@ -30,3 +30,6 @@ to source omission markers, including report-only validation.
 
 Omit manifest paths and queries under applied redaction, reconcile every presentation
 limit status, and clarify that explicit event rules cannot coexist with legacy markers.
+
+Preserve required integer digits in serialized-size checks and reject duplicate
+assessments for the same goal and scope.

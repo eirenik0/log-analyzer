@@ -1229,3 +1229,58 @@ fn presentation_usage_accepts_shorter_scientific_number_spelling() {
     shape(&parsed, "investigation.schema.json");
     validate_relations(&parsed, Some(&bytes(&artifact))).unwrap();
 }
+
+#[test]
+fn assessments_are_unique_per_goal_and_scope() {
+    for status in ["supported", "unsupported"] {
+        let (mut report, mut artifact) = fixture("supported");
+        let mut duplicate = report["assessments"][0].clone();
+        duplicate["status"] = json!(status);
+        for document in [&mut report, &mut artifact] {
+            document["assessments"]
+                .as_array_mut()
+                .unwrap()
+                .push(duplicate.clone());
+        }
+        assert!(
+            validate_relations(&report, None)
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate assessment for goal and scope")
+        );
+        reject(report, artifact, "duplicate assessment for goal and scope");
+    }
+    let (mut report, mut artifact) = fixture("supported");
+    let mut other = report["assessments"][0].clone();
+    other["goal"] = json!("inspection");
+    for document in [&mut report, &mut artifact] {
+        document["assessments"]
+            .as_array_mut()
+            .unwrap()
+            .push(other.clone());
+    }
+    let raw = refresh(&mut report, &artifact);
+    validate_relations(&report, Some(&raw)).unwrap();
+}
+
+#[test]
+fn presentation_usage_preserves_mandatory_integer_digits() {
+    for usage in ["serialized_bytes", "serialized_characters"] {
+        let (mut report, artifact) = fixture("supported");
+        refresh(&mut report, &artifact);
+        report["presentation"][usage] = json!(0);
+        for _ in 0..4 {
+            let compact = report.to_string();
+            let size = if usage == "serialized_bytes" {
+                compact.len()
+            } else {
+                compact.chars().count()
+            };
+            report["presentation"][usage] = json!(size + 1);
+        }
+        validate_relations(&report, Some(&bytes(&artifact))).unwrap();
+        let size = report["presentation"][usage].as_u64().unwrap();
+        report["presentation"][usage] = json!(size - 1);
+        reject(report, artifact, "below minimum document size");
+    }
+}
