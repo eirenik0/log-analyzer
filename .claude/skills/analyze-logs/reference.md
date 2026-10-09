@@ -43,8 +43,9 @@ blocking spans are estimates to the last observed session record, not proof of
 completion or blocking work. `process --limit 0` still compacts payloads; use
 `search --payloads` for original parsed payload evidence.
 
-The version-2 investigation contract is embedded as
-`report_schemas.investigation`; retained artifact contract 1 is `evidence_artifact`.
+Investigation schema 1 accepts both the existing agent-result shape and the retained
+report shape. It is embedded as `report_schemas.investigation`; retained artifact
+contract 1 is `evidence_artifact`.
 See [`investigation-contract.md`](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/investigation-contract.md).
 Check `capabilities.investigation_contracts` for actual command/retrieval availability;
 schema publication alone is not feature availability. Continue the existing version-1
