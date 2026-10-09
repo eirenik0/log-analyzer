@@ -224,7 +224,8 @@ summed as disjoint sets. Raw-source comparison preserves blank continuation line
 Record usage, when available, equals parsed-entry coverage. Declared mask fields
 without applied redaction do not disable identity verification. Contrary evidence
 can target only a finding in the same scope. An unavailable artifact declares its
-integrity unavailable. Integral statistics (sum, minimum, maximum and percentiles)
+integrity unavailable, as do every finding and excerpt referring to it. Other
+verification dimensions remain independently assessed. Integral statistics (sum, minimum, maximum and percentiles)
 use exact JSON integers; sums use checked arithmetic. Only means use floating point.
 
 Source verification indexes each consumed text stream once. Physical witnesses and

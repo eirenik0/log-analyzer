@@ -106,6 +106,14 @@ pub fn validate_relations(
     let manifest = get(metadata, "/evidence")?;
     let snapshot = get(manifest, "/snapshot_id")?;
     let inputs = list(manifest, "/inputs")?;
+    if report["artifact"]["status"] == "unavailable" {
+        require(
+            report["artifact"]["verification"]["artifact_integrity"] == "unavailable",
+            "/artifact/verification/artifact_integrity",
+            "unavailable artifact cannot claim available integrity",
+        )?;
+    }
+
     // Manifest digests describe original identities, before presentation redaction.
     let input_ids: Vec<_> = inputs.iter().map(|input| &input["input_id"]).collect();
     let expected_snapshot = if inputs.is_empty() {
@@ -968,6 +976,13 @@ pub fn validate_relations(
         }
     }
     for finding in findings.values() {
+        if report["artifact"]["status"] == "unavailable" {
+            require(
+                finding["verification"]["artifact_integrity"] == "unavailable",
+                "/findings/verification/artifact_integrity",
+                "finding claims integrity of unavailable artifact",
+            )?;
+        }
         check_bundle(finding, &occurrence)?;
         let scope = scopes
             .get(text(finding, "/scope_id")?)
@@ -1039,6 +1054,13 @@ pub fn validate_relations(
             }
         }
         for excerpt in list(finding, "/evidence")? {
+            if report["artifact"]["status"] == "unavailable" {
+                require(
+                    excerpt["verification"]["artifact_integrity"] == "unavailable",
+                    "/findings/evidence/verification/artifact_integrity",
+                    "excerpt claims integrity of unavailable artifact",
+                )?;
+            }
             let source = get(excerpt, "/occurrence")?;
             let id = occurrence(source)?;
             require(
@@ -1396,13 +1418,6 @@ pub fn validate_relations(
                 "total differs from retained findings",
             )?;
         }
-    }
-    if report["artifact"]["status"] == "unavailable" {
-        require(
-            report["artifact"]["verification"]["artifact_integrity"] == "unavailable",
-            "/artifact/verification/artifact_integrity",
-            "unavailable artifact cannot claim available integrity",
-        )?;
     }
     let mut collection_paths = BTreeSet::new();
     let mut omitted_collection_items = false;

@@ -996,5 +996,28 @@ fn unavailable_artifact_cannot_advertise_integrity_verification() {
     report["artifact"]["verification"]["artifact_integrity"] = json!("unavailable");
     report["artifact"]["verification"]["losses"] = json!(["artifact not retained"]);
     shape(&report, "investigation.schema.json");
+    assert!(
+        validate_relations(&report, None)
+            .unwrap_err()
+            .to_string()
+            .contains("finding claims integrity of unavailable artifact")
+    );
+    for finding in report["findings"].as_array_mut().unwrap() {
+        finding["verification"]["artifact_integrity"] = json!("unavailable");
+        finding["verification"]["losses"] = json!(["artifact not retained"]);
+    }
+    assert!(
+        validate_relations(&report, None)
+            .unwrap_err()
+            .to_string()
+            .contains("excerpt claims integrity of unavailable artifact")
+    );
+    for finding in report["findings"].as_array_mut().unwrap() {
+        for excerpt in finding["evidence"].as_array_mut().unwrap() {
+            excerpt["verification"]["artifact_integrity"] = json!("unavailable");
+            excerpt["verification"]["losses"] = json!(["artifact not retained"]);
+        }
+    }
+    shape(&report, "investigation.schema.json");
     validate_relations(&report, None).unwrap();
 }
