@@ -14,6 +14,8 @@ pub(super) struct View<'a> {
     sources: BTreeSet<(usize, Option<&'a str>)>,
     pub relevant: usize,
     pub classified: usize,
+    pub boundaries: usize,
+    pub identity_only: usize,
     pub conflicting: usize,
     pub pairs: usize,
     pub unmatched: usize,
@@ -36,6 +38,8 @@ impl<'a> View<'a> {
             sources: BTreeSet::new(),
             relevant: 0,
             classified: 0,
+            boundaries: 0,
+            identity_only: 0,
             conflicting: 0,
             pairs: 0,
             unmatched: 0,
@@ -56,8 +60,17 @@ impl<'a> View<'a> {
             view.sources
                 .insert((entry.source_line_number, entry.source_row_path.as_deref()));
             match &entry.classification {
-                Some(ClassifiedRecord::Event { rule_ids, .. }) => {
+                Some(ClassifiedRecord::Event {
+                    rule_ids,
+                    semantics,
+                    ..
+                }) => {
                     view.classified += 1;
+                    if semantics.phase.is_some() {
+                        view.boundaries += 1;
+                    } else {
+                        view.identity_only += 1;
+                    }
                     view.relevant += 1;
                     view.outcomes_supported |=
                         config.event_classifier().is_some_and(|classifier| {

@@ -174,7 +174,7 @@ pub(super) fn build(
     }
     // An empty observation can be a measured zero only when the profile supplies rules.
     if operation_rules.is_empty() {
-        operation_rules.extend(retained.iter().flat_map(|entry| rules(entry)));
+        operation_rules.extend(retained.iter().filter(|entry| matches!(&entry.classification, Some(ClassifiedRecord::Event { semantics, .. }) if semantics.phase.is_some())).flat_map(|entry| rules(entry)));
     }
     if !operation_rules.is_empty() {
         let population_id = population(
@@ -232,6 +232,9 @@ pub(super) fn build(
         }
         findings.push(fact(format!("{scope}-unmatched-{index}"),scope,"observation",match event.reason.as_str(){"missing_end"=>"A start has no observed end in this selected capture; this does not establish a hang.","missing_start"=>"An end has no observed start in this selected capture.","overlapping_starts"=>"Repeated overlapping starts prevent an unambiguous lifecycle pairing.","conflicting_event_rules"=>"Explicit rules assign conflicting event semantics.",_=>"The event could not form a reliable scoped lifecycle pair."},vec![excerpt(entry,context,snapshot)],json!({"supporting_occurrences":[occurrence(entry,context,snapshot)]})));
     }
+    if view.boundaries == 0 {
+        findings.push(fact(format!("{scope}-lifecycle-unavailable"),scope,"unknown","Lifecycle calculations are unavailable without selected boundary semantics.",Vec::new(),json!({"reason":"Selected identity-only rules do not define lifecycle phases.","supporting_occurrences":[]})));
+    }
     for (suffix, description) in [
         (
             "starts",
@@ -250,6 +253,9 @@ pub(super) fn build(
             "Explicit success outcomes; this is an event count, not a distinct-resource count.",
         ),
     ] {
+        if matches!(suffix, "starts" | "ends") && view.boundaries == 0 {
+            continue;
+        }
         if matches!(suffix, "failures" | "successes") && !view.outcomes_supported {
             findings.push(fact(format!("{scope}-{suffix}-unavailable"), scope, "unknown", "Outcome counts are unavailable without an applicable selected outcome mapping.", Vec::new(), json!({"reason":"No selected classification rule declares outcome semantics for this processed population.","supporting_occurrences":[]})));
             continue;

@@ -22,3 +22,7 @@ normalized records continue to consume the general record budget.
 
 Charge early normalization rejections against the general record limit and report
 verification availability for every declared input, including unread sources.
+
+Keep identity recognition separate from lifecycle support: identity-only selections
+withhold lifecycle populations, while mixed selections retain observed boundaries
+and declare incomplete lifecycle coverage.

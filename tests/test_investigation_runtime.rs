@@ -1335,3 +1335,129 @@ fn source_verification_reports_every_declared_input_including_unread_sources() {
         assert_eq!(page["artifact_retrieval"]["parse_passes"], 0);
     }
 }
+
+#[test]
+fn identity_only_semantics_do_not_authorize_lifecycle_support_or_zero_counts() {
+    for (index, (mixed, selected_only)) in [(false, false), (true, false), (true, true)]
+        .into_iter()
+        .enumerate()
+    {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("identity.toml");
+        let mut config =
+            fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap();
+        config.push_str("\n[[event_rules.rules]]\nid = \"identity\"\n[event_rules.rules.adapter]\ntype = \"structured\"\nconditions = [{field = \"phase\", equals = \"identity\"}]\n[event_rules.rules.mapping]\nkind = \"request\"\nname = {from = \"field\", field = \"operation\"}\ncorrelation_id = {from = \"field\", field = \"id\"}\nscope = [{from = \"field\", field = \"session\"}]\n");
+        fs::write(&profile, config).unwrap();
+        let source = temp.path().join("identity.jsonl");
+        let identity = json!({"timestamp":"2026-01-01T00:00:00+02:00","level":"INFO","message":"identity observation","operation":"identity","phase":"identity","id":"unpaired","session":"a","outcome":"failure"});
+        let mut data = identity.to_string() + "\n";
+        if mixed {
+            data.push_str(
+                &fs::read_to_string(root().join("examples/investigations/slow.jsonl")).unwrap(),
+            );
+        }
+        fs::write(&source, data).unwrap();
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let mut args = vec![
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ];
+        if selected_only {
+            args.extend(["--select", r#"{"name":"identity"}"#]);
+        }
+        let report = success(&args);
+        check(&report, &artifact);
+        for goal in ["slow_operations", "incomplete_lifecycles"] {
+            let assessment = report["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["goal"] == goal)
+                .unwrap();
+            assert_eq!(
+                assessment["status"],
+                if mixed && !selected_only {
+                    "insufficient_evidence"
+                } else {
+                    "unsupported"
+                },
+                "{goal}"
+            );
+        }
+        let failure = report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["goal"] == "failures")
+            .unwrap();
+        assert_eq!(
+            failure["status"],
+            if mixed && !selected_only {
+                "supported"
+            } else {
+                "unsupported"
+            }
+        );
+        if !mixed || selected_only {
+            assert!(report["populations"].as_array().unwrap().iter().all(|p| {
+                ![
+                    "scope-0-starts",
+                    "scope-0-ends",
+                    "scope-0-paired-lifecycles",
+                ]
+                .contains(&p["id"].as_str().unwrap())
+            }));
+        } else {
+            assert_eq!(count(&report, "paired-lifecycles"), 3);
+        }
+        if mixed && !selected_only {
+            assert!(
+                report["populations"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p["id"] == "scope-0-failures")
+            );
+        }
+    }
+}
+
+#[test]
+fn intentional_start_only_semantics_preserve_counts_without_missing_end_claims() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("start-only.toml");
+    let config = fs::read_to_string(root().join("examples/investigations/profile.toml"))
+        .unwrap()
+        .replacen(
+            "phase = {from = \"literal\", value = \"start\"}",
+            "phase = {from = \"literal\", value = \"start\"}\nend_expected = false",
+            1,
+        );
+    fs::write(&profile, config).unwrap();
+    let source = temp.path().join("start.jsonl");
+    fs::write(&source,"{\"timestamp\":\"2026-01-01T00:00:00+02:00\",\"level\":\"INFO\",\"message\":\"standalone start\",\"phase\":\"start\",\"operation\":\"notice\",\"id\":\"one\",\"session\":\"a\"}\n").unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    assert_eq!(count(&report, "starts"), 1);
+    assert!(
+        !report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["claim"].as_str().unwrap().contains("no observed end"))
+    );
+}

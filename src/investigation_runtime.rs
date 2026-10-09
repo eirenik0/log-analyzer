@@ -379,10 +379,17 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &mut findings,
             );
         }
-        let timing_status = if semantic_status == "not_performed" {
+        let lifecycle_status = if semantic_status == "supported" && view.boundaries == 0 {
+            "unsupported"
+        } else if semantic_status == "supported" && view.identity_only > 0 {
             "insufficient_evidence"
-        } else if semantic_status != "supported" {
+        } else {
             semantic_status
+        };
+        let timing_status = if lifecycle_status == "not_performed" {
+            "insufficient_evidence"
+        } else if lifecycle_status != "supported" {
+            lifecycle_status
         } else if view.pairs == 0
             || view.unmatched > 0
             || view.excluded_boundaries > 0
@@ -401,7 +408,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "slow_operations",
             "incomplete_lifecycles",
         ] {
-            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if parsed.coverage.is_unparsed(){"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="failures" && !view.entries.is_empty() && !view.outcomes_supported{"unsupported"}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
+            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if parsed.coverage.is_unparsed(){"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && !view.entries.is_empty() && !view.outcomes_supported{"unsupported"}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
         }
     }
     // Unread independent inputs retain their own unavailable analysis scopes.

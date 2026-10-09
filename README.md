@@ -101,7 +101,10 @@ budget when array expansion is disabled. `--cancel-file path` requests cooperati
 the file appears. Interrupted correlation publishes no tentative missing-end results.
 A cutoff makes affected full-input assessments insufficient while preserving completed
 processed-population facts. Independent inputs have separate scope completion;
-a later capture failure does not downgrade an earlier completed input. Reading exactly the input byte cap conservatively
+a later capture failure does not downgrade an earlier completed input. Identity-only
+classification does not establish lifecycle support or authorize zero lifecycle
+counts. Mixed identity-only and boundary evidence retains observed boundary facts
+while declaring incomplete lifecycle coverage. Reading exactly the input byte cap conservatively
 reports a prefix if physical EOF was not observed.
 
 The memory setting bounds a conservative reservation model for buffered/retained
