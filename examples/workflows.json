@@ -79,7 +79,7 @@
           "checks": []
         }
       ],
-      "skill_example": ".claude/skills/analyze-logs/examples/debug-failure.md"
+      "skill_example": ".agents/skills/analyze-logs/examples/debug-failure.md"
     },
     {
       "id": "slow-info-comparison",
@@ -204,7 +204,7 @@
           "checks": []
         }
       ],
-      "skill_example": ".claude/skills/analyze-logs/examples/performance.md"
+      "skill_example": ".agents/skills/analyze-logs/examples/performance.md"
     },
     {
       "id": "reused-id-lifecycle",

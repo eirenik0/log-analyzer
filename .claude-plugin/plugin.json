@@ -5,5 +5,8 @@
   "author": {
     "name": "eirenik0",
     "url": "https://github.com/eirenik0/log-analyzer"
-  }
+  },
+  "skills": [
+    "./.claude/skills"
+  ]
 }

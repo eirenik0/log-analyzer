@@ -1,0 +1,32 @@
+profile_name = "base"
+
+[parser]
+format = "auto"
+event_emit_markers = []
+event_receive_markers = []
+event_payload_separator = "payload"
+command_prefix = ""
+command_start_marker = ""
+command_payload_markers = []
+request_prefix = ""
+request_send_markers = []
+request_receive_markers = []
+request_payload_markers = []
+request_endpoint_marker = ""
+json_indicators = []
+module_depth = 2
+module_strip_prefix = ""
+
+[perf]
+command_start_markers = []
+command_completion_markers = []
+event_correlation_keys = ["trace_id", "traceId", "request_id", "requestId", "id", "key"]
+
+[profile]
+known_components = []
+known_commands = []
+known_requests = []
+
+[event_rules]
+version = 2
+rules = []

@@ -3,7 +3,8 @@
 This portable workflow works with a CLI-consuming agent or a person. The binary
 parses, classifies, correlates and calculates; the consumer chooses queries and
 explains their implications. It does not call a model or decide a root cause.
-The Claude skill adapts these steps without maintaining a second command catalog.
+The shared Codex, Pi and Claude skill adapts these steps without maintaining a
+second command catalog. See [host setup](../.agents/skills/analyze-logs/hosts.md).
 Use the actual binary's help and capabilities for syntax and compatibility.
 
 ## Establish the investigation

@@ -1,0 +1,227 @@
+# Template: custom-start
+#
+# 1) Copy this file to config/profiles/<your-team>.toml
+# 2) Customize whole-message event_rules and declared payload positions
+# 3) Add known components/commands/requests for profile insights
+
+profile_name = "custom-start"
+
+[parser]
+# Event patterns (examples: Emit event of type "X" with payload {...})
+event_payload_separator = "with payload"
+
+# Command pattern (example: Command "sync" is called with settings {...})
+command_payload_markers = ["with settings"]
+
+# Request pattern (example: Request "fetchUser" will be sent ... with body {...})
+request_payload_markers = ["with body"]
+request_endpoint_marker = "address \"["
+
+# JSON extraction hints
+json_indicators = [
+  "with settings {",
+  "with body [",
+  "with body {",
+  "with body",
+  "with body "
+]
+
+[perf]
+# Lifecycle phases are declared by event_rules below.
+
+# Legacy adapter keys; explicit rules below declare their own correlation fields
+event_correlation_keys = ["key"]
+
+[profile]
+# Optional: known entities (used by `info` profile insights)
+known_components = ["api", "worker"]
+known_commands = ["sync", "publish"]
+known_requests = ["fetchUser", "createOrder"]
+
+[[sessions.levels]]
+# Optional: generic session hierarchy inferred from component_id path segments
+name = "level-1"
+segment_prefix = "trace-"
+
+[[sessions.levels]]
+name = "level-2"
+segment_prefix = "span-"
+
+# Whole-message lifecycle grammar. Correlation also requires [perf] scope fields.
+[event_rules]
+version = 2
+
+[[event_rules.rules]]
+id = "command-start"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:is called)(?: (?:with settings) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "command-end"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:finished|finished successfully|returned|completed)(?: (?:with settings) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "success" }
+
+[[event_rules.rules]]
+id = "command-identity"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*")'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-start-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:will be sent)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "send" }
+correlation_id = { from = "capture", capture = "id" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-start-missing-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:will be sent)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "send" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-end-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "capture", capture = "id" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-end-missing-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-identity"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*")'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "event-start"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Received event of type) (?P<name>"(?:[^"\\]|\\.)*")(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "event-start-object"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Received event of type) \{"name":(?P<name>"(?:[^"\\]|\\.)*")\}(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "event-end"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Emit event of type) (?P<name>"(?:[^"\\]|\\.)*")(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "emit" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "event-end-object"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Emit event of type) \{"name":(?P<name>"(?:[^"\\]|\\.)*")\}(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "emit" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "structured-command"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "command" }]
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+
+[[event_rules.rules]]
+id = "structured-request"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "request" }]
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+direction = { from = "field", field = "operation_direction" }
+
+[[event_rules.rules]]
+id = "structured-event"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "event" }]
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+direction = { from = "field", field = "operation_direction" }

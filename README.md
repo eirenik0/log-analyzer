@@ -1029,44 +1029,67 @@ When `sessions.levels` is configured, `info` automatically summarizes session co
 
 `generate-config` also detects session-like prefixes from `component_id` paths and embeds them as generic `[[sessions.levels]]` entries (`level-1`, `level-2`, ...).
 
-## Claude Code Integration
+## Agent Skills: Codex, Pi and Claude Code
 
-### Installation
+The canonical [analyze-logs skill](.agents/skills/analyze-logs/SKILL.md) supplies
+one investigation workflow and shared references, examples and profile templates.
+Claude's wrapper and bundle are generated from it; Codex and Pi use portable
+frontmatter without Claude-specific permissions or fork settings. Install the
+[Rust executable](#installation) separately; a skill or Pi package does not include it.
 
-Install the Claude Code skill to consume the same local evidence engine from an
-agent. It follows the [portable workflow](docs/investigation-workflow.md); the
-agent chooses queries and explains findings:
+Run the installer from the destination project:
 
 ```bash
-/plugin marketplace add https://github.com/eirenik0/log-analyzer
-/plugin install log-analyzer
+/path/to/log-analyzer/scripts/install-skill.sh --host codex --scope project
+/path/to/log-analyzer/scripts/install-skill.sh --host pi --scope user
+/path/to/log-analyzer/scripts/install-skill.sh --host claude --scope project
 ```
 
-### Usage
+Defaults remain `--host claude --scope project`; `--global`/`-g` means user scope.
+Codex/Pi share `.agents/skills/` (project) and `~/.agents/skills/` (user); Claude
+uses `.claude/skills/` and `~/.claude/skills/`. Project means the current directory.
+An identical source installation is a safe no-op; overlapping destinations and
+destination child symlinks are rejected before copying. Repeat installs update
+bundle files and retain unrelated destination files.
 
-Marketplace plugin installations use `/log-analyzer:analyze-logs` in
-[Claude Code](https://code.claude.com/docs/en/plugins/components#skills).
-Project and personal skill installations use `/analyze-logs` instead.
-External data handling follows the agent's configuration; see
-[local data flow](#local-data-flow-and-external-agents).
+Explicit invocation in each host:
 
 ```text
-/log-analyzer:analyze-logs What failed in this capture, and can it establish why? /logs/failure.log --config /profiles/my-team.toml
-/log-analyzer:analyze-logs perf /logs/run.log --preset eyes --threshold-ms 500
-/log-analyzer:analyze-logs trace /logs/run.log --preset eyes --id request-7
+$analyze-logs What failed in /logs/capture.jsonl? --config /profiles/my-team.toml
+/skill:analyze-logs What failed in /logs/capture.jsonl? --config /profiles/my-team.toml
+/analyze-logs What failed in /logs/capture.jsonl? --config /profiles/my-team.toml
 ```
 
-Replace these paths and select a profile suited to the actual log format.
-The skill checks capabilities, coverage and profile suitability before drawing
-conclusions. Its [failure](.claude/skills/analyze-logs/examples/debug-failure.md)
-and [performance](.claude/skills/analyze-logs/examples/performance.md) examples use
-the maintained synthetic fixtures; their documented commands are checked by CI.
+The lines above are for Codex, Pi and Claude standalone respectively. Confirm
+Codex discovery with `/skills`; confirm Pi startup discovery and use `/reload`
+after edits. Pi project resources may require project trust. Install the Pi Git
+package with `pi install git:github.com/eirenik0/log-analyzer` (add `--local` for
+project scope; pin a tag/commit containing the skill for reproducibility).
 
-For a standalone skill, run `/path/to/log-analyzer/scripts/install-skill.sh`
-from the destination project, or add `--global` for personal installation.
-Running it from the source repository is a safe no-op; other overlapping source
-and destination directories are rejected before copying. Install the CLI separately;
-the skill's capability check detects whether the executable supports the workflow.
+Claude plugin paths and invocation remain:
+
+```text
+/plugin marketplace add https://github.com/eirenik0/log-analyzer
+/plugin install log-analyzer
+/log-analyzer:analyze-logs What failed in /logs/capture.jsonl? --config /profiles/my-team.toml
+```
+
+Supply an absolute executable path if `log-analyzer` is unavailable on the host's
+PATH. The skill checks `capabilities` for schema/evidence contract 1 and version-1
+bounded retrieval/profile validation, then checks coverage and profile suitability.
+Missing binaries or unsupported contracts stop with installation/upgrade guidance.
+Input and profile paths must be accessible to the agent and executable.
+See [host setup](.agents/skills/analyze-logs/hosts.md) for discovery and compatibility,
+the checked [failure](.agents/skills/analyze-logs/examples/debug-failure.md) and
+[performance](.agents/skills/analyze-logs/examples/performance.md) examples,
+and the [host validation record](docs/skill-host-validation.md) for tested versions
+and explicit gaps. External data handling follows the agent's configuration; see
+[local data flow](#local-data-flow-and-external-agents).
+
+To change the skill, edit `.agents/skills/analyze-logs/`, run
+`python3 scripts/sync-skills.py`, and commit the generated Claude bundle too.
+Tests reject drift. Scripted workflow checks do not measure model accuracy or
+claim token savings.
 
 ## Development
 

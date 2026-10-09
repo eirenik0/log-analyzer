@@ -1,0 +1,10 @@
+{
+  "name": "log-analyzer-skills",
+  "private": true,
+  "description": "Shared investigation skill; install the Rust log-analyzer executable separately.",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "pi": {
+    "skills": ["./.agents/skills/analyze-logs"]
+  }
+}

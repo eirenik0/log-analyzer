@@ -1,0 +1,4 @@
+interface:
+  display_name: "Investigate logs"
+  short_description: "Investigate logs with bounded, verifiable evidence"
+  default_prompt: "Use $analyze-logs to investigate this local capture with source citations and explicit uncertainty."
