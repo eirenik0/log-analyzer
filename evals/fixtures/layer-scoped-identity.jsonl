@@ -1,0 +1,4 @@
+{"ts":"2026-06-04T12:30:00.000-04:00","level":"INFO","message":"synthetic boundary","operation":"probe","phase":"start","id":"shared-heldout","session":"east"}
+{"ts":"2026-06-04T12:30:00.750-04:00","level":"INFO","message":"synthetic boundary","operation":"probe","phase":"end","id":"shared-heldout","session":"east","outcome":"success"}
+{"ts":"2026-06-04T12:30:01.000-04:00","level":"INFO","message":"synthetic boundary","operation":"probe","phase":"start","id":"shared-heldout","session":"west"}
+{"ts":"2026-06-04T12:30:02.750-04:00","level":"INFO","message":"synthetic boundary","operation":"probe","phase":"end","id":"shared-heldout","session":"west","outcome":"success"}

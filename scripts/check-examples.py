@@ -11,6 +11,7 @@ import re
 import shlex
 import subprocess
 import time
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -251,6 +252,8 @@ def findings_for(example, reports):
 
 def skill_commands(example, document):
     """Bind the published command sequence to the fixture's semantic assertions."""
+    if '## Explicit compatibility path' in document:
+        document = document.split('## Explicit compatibility path', 1)[1]
     blocks = re.findall(r'^```sh\n(.*?)^```$', document, re.MULTILINE | re.DOTALL)
     commands = [shlex.split(block.replace('\\\n', '')) for block in blocks]
     expected = [['log-analyzer', 'capabilities']]
@@ -260,12 +263,58 @@ def skill_commands(example, document):
     return [command[1:] for command in commands[1:]]
 
 
+def run_primary_skill(binary, document):
+    if '## Explicit compatibility path' not in document: return None
+    primary = document.split('## Explicit compatibility path', 1)[0]
+    blocks = re.findall(r'^```sh\n(.*?)^```$', primary, re.MULTILINE | re.DOTALL)
+    commands = [shlex.split(line) for block in blocks for line in block.replace('\\\n', '').splitlines() if line.strip()]
+    runner, saved = Runner(binary), {}
+    with tempfile.TemporaryDirectory() as directory:
+        for command in commands:
+            require(command[0] == 'log-analyzer', 'unsupported primary skill executable')
+            args = command[1:]
+            if 'investigate' in args:
+                destination = args[args.index('--artifact') + 1]
+                path = str(Path(directory) / Path(destination).name)
+                args = [path if arg == destination else arg for arg in args]
+                report = runner.invoke(args)
+                require(report['artifact']['status'] == 'complete', 'primary skill artifact incomplete')
+                raw = Path(path).read_bytes()
+                sha = hashlib.sha256(raw).hexdigest()
+                require(sha == report['artifact']['stored_sha256'], 'primary skill artifact checksum mismatch')
+                saved[destination] = path, sha, json.loads(raw)
+            else:
+                require(args[0] == 'investigation-evidence' and args[1] in saved, 'primary skill retrieval precedes calculation')
+                path, sha, artifact = saved[args[1]]
+                args[1] = path
+                args[args.index('--expected-sha256') + 1] = sha
+                collection = args[args.index('--collection') + 1][1:]
+                consumed, items = 0, artifact[collection]
+                for _ in range(runner.max_pages):
+                    page = runner.invoke(args)['artifact_retrieval']
+                    require(page['artifact_sha256'] == sha and page['parse_passes'] == page['correlation_passes'] == 0, 'primary skill retrieval changed artifact or repeated analysis')
+                    require(page['prior'] == consumed and page['total'] == len(items), 'primary skill retrieval count mismatch')
+                    require(page['items'] == items[consumed:consumed + page['displayed']], 'primary skill retrieval changed retained facts')
+                    consumed += page['displayed']
+                    if page['next_cursor'] is None:
+                        require(consumed == len(items), 'primary skill omitted retained facts')
+                        break
+                    require(page['displayed'] > 0, 'primary skill retrieval made no progress')
+                    args = args[:args.index('--report-cursor')] if '--report-cursor' in args else args
+                    args += ['--report-cursor', page['next_cursor']]
+                else: raise BudgetExhausted('primary_skill_page_budget')
+    return {'tool_calls': runner.calls, 'output_bytes': runner.output_bytes}
+
+
 def run_workflow(binary, example):
     runner = Runner(binary, **example.get('budgets', {}))
     reports, stop = {}, None
     commands = [step['args'] for step in example['steps']]
+    primary = None
     if example.get('skill_example'):
-        commands = skill_commands(example, (ROOT / example['skill_example']).read_text(encoding='utf-8'))
+        document = (ROOT / example['skill_example']).read_text(encoding='utf-8')
+        primary = run_primary_skill(binary, document)
+        commands = skill_commands(example, document)
     try:
         for step, command in zip(example['steps'], commands):
             args = [a.replace('{root}', str(ROOT)) for a in command]
@@ -285,7 +334,7 @@ def run_workflow(binary, example):
     else:
         require(stop is None, f'unexpected exhausted workflow: {stop}')
         investigations, comparison = findings_for(example, reports)
-    return {'id': example['id'], 'status': 'pass', 'stop_reason': stop, 'tool_calls': runner.calls, 'investigations': investigations, 'comparison': comparison}
+    return {'id': example['id'], 'status': 'pass', 'stop_reason': stop, 'tool_calls': runner.calls, 'investigations': investigations, 'comparison': comparison, 'primary_unified': primary}
 
 
 def run(binary, report_path=None):
