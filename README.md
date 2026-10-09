@@ -1044,6 +1044,10 @@ coverage to construct it deliberately. No raw log content belongs in this file.
 Changed digest, missing profile, contract mismatch or source scope/structure
 invalidates it and falls back to candidate discovery. It still requires fresh
 sample validation and independent semantic assertions for an automatic choice.
+A zero-match filter leaves successful parsing and structural revalidation intact,
+while analysis remains insufficient. Empty sources have unverified structure and
+cannot revalidate an association; a genuinely incompatible nonempty source remains
+invalid even when another source is empty.
 An explicit CLI choice bypasses the association. Project/user discovery and atomic
 remember/inspect/replace/forget management are separate follow-on work.
 

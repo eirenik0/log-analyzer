@@ -153,16 +153,26 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
                     context.observe(&parsed.coverage,&parsed.entries);
                     coverage.push(parsed.coverage);inputs.push(parsed.entries);
                 }
-                let parsed=coverage.iter().all(|f| !f.is_unparsed()) && inputs.iter().flatten().any(|e|filter.matches(e));
+                let parsed=coverage.iter().all(|f| !f.is_unparsed());
+                let has_entries=inputs.iter().flatten().next().is_some();
+                let selected_population=inputs.iter().flatten().any(|e|filter.matches(e));
                 let complete=parsed && coverage.iter().all(|f|f.rejected_candidates==0 && f.structural_diagnostics.unsupported_python_headers==0 && f.structural_diagnostics.diagnostic_count==0);
                 let mut validation=profile_validation::analyze(&inputs,&config,&filter,kind,*purpose,facts.as_ref(),facts_digest.clone());
-                if !parsed {validation["profile_validation"]["suitability"]=json!({"status":"insufficient_evidence","reason":"input_structure_or_selected_population_unavailable","basis":"observed_sample_only","semantic_correctness":"not_established_by_match_count"});}
+                if !parsed {validation["profile_validation"]["suitability"]=json!({"status":"insufficient_evidence","reason":"input_structure_unavailable","basis":"observed_sample_only","semantic_correctness":"not_established_by_match_count"});}
+                if parsed && has_entries && !selected_population && validation["profile_validation"]["expected_facts"]["status"]!="failed" {
+                    validation["profile_validation"]["suitability"]["reason"]=json!("zero_filter_matches");
+                }
                 let semantic=profile_validation::selection_evidence(&inputs,&filter,kind,*purpose,facts.as_ref(),&validation["profile_validation"]);
                 let mut association_valid=true;
                 if origin=="association" {
                     let shapes:Vec<_>=coverage.iter().map(|f|json!({"file":f.file,"selected_parser":f.selected_parser})).collect();
-                    association_valid=choice["expected_shapes"]==json!(shapes) && complete;
-                    mapping=json!({"status":if association_valid{"revalidated"}else{"invalid"},"reason":if association_valid{Value::Null}else{json!("source_structure_changed_or_incompatible")},"semantic_proof":"independent_assertions_required_for_automatic_selection"});
+                    let empty_sources:Vec<_>=coverage.iter().enumerate().filter_map(|(i,f)|(f.nonempty_lines==0).then_some(i)).collect();
+                    let incompatible=coverage.iter().enumerate().any(|(i,f)|f.nonempty_lines>0 && (f.is_unparsed() || f.rejected_candidates>0 || f.structural_diagnostics.diagnostic_count>0 || choice["expected_shapes"][i]!=shapes[i]));
+                    association_valid=!incompatible && empty_sources.is_empty() && complete;
+                    mapping=if incompatible {json!({"status":"invalid","reason":"source_structure_changed_or_incompatible"})}
+                        else if !empty_sources.is_empty() {json!({"status":"insufficient_evidence","reason":"empty_source_structure_unverified","input_ordinals":empty_sources})}
+                        else {json!({"status":"revalidated","reason":null})};
+                    mapping["semantic_proof"]=json!("independent_assertions_required_for_automatic_selection");
                 }
                 let eligible=complete && association_valid && semantic["status"]=="sufficient_on_assertion_covered_sample";
                 context.annotate(&mut validation);
@@ -172,7 +182,7 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
                 let candidate_evidence=context.metadata(&validation,cli.redact,&cli.mask_id);
                 let id=identity(&config,&origin,choice.clone());
                 candidates.push(json!({"origin":origin,"choice":choice,"identity":id,"status":"evaluated","eligible":eligible,
-                    "parsing":{"status":if complete{"no_reported_structural_rejections"}else if parsed{"reported_structural_rejections"}else{"unavailable"},"coverage":coverage},
+                    "parsing":{"status":if parsed && !has_entries{"empty_input"}else if complete{"no_reported_structural_rejections"}else if parsed{"reported_structural_rejections"}else{"unavailable"},"coverage":coverage},
                     "support":support,"evidence_records":context.records(),"semantic_evidence":semantic,"profile_validation":validation["profile_validation"],"evidence":candidate_evidence}));
             }
         }

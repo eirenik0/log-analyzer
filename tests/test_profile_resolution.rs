@@ -733,3 +733,129 @@ fn candidate_limit_applies_to_deduplicated_alternatives() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("At most 16"));
 }
+#[test]
+fn zero_filter_matches_preserve_structural_success_and_association_revalidation() {
+    let dir = tempdir().unwrap();
+    let file = fixture(dir.path());
+    let p = profile(dir.path(), "candidate", "session");
+    let (v, _) = run(&[
+        "--config",
+        &p,
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+    ]);
+    let saved = json!({"version":1,"profile":{"config":"candidate.toml","sha256":v["profile_resolution"]["selected"]["sha256"]},"sources":[{"file":file,"selected_parser":"json-lines"}],"event_contract":2,"structural_contract":1});
+    let path = dir.path().join("association.json");
+    fs::write(&path, saved.to_string()).unwrap();
+    let path = path.to_str().unwrap();
+    let (v, o) = run(&[
+        "--filter",
+        "component:absent",
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+        "--association",
+        path,
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(v["coverage"]["status"], "zero_filter_matches");
+    assert_eq!(v["coverage"]["parsed_entries"], 2);
+    assert_eq!(
+        v["profile_resolution"]["association"]["status"],
+        "revalidated"
+    );
+    let c = candidate(&v, "candidate");
+    assert_eq!(c["parsing"]["status"], "no_reported_structural_rejections");
+    assert_eq!(c["parsing"]["coverage"][0]["parsed_entries"], 2);
+    assert_eq!(
+        c["profile_validation"]["suitability"]["status"],
+        "insufficient_evidence"
+    );
+    assert_eq!(
+        c["profile_validation"]["suitability"]["reason"],
+        "zero_filter_matches"
+    );
+    assert_eq!(c["eligible"], false);
+    assert_eq!(c["evidence"]["scope"]["status"], "zero_filter_matches");
+    fs::write(&file, "\n\n").unwrap();
+    let (v, o) = run(&[
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+        "--association",
+        path,
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(v["coverage"]["status"], "empty_input");
+    assert_eq!(
+        v["profile_resolution"]["association"]["status"],
+        "insufficient_evidence"
+    );
+    assert_eq!(
+        candidate(&v, "candidate")["parsing"]["status"],
+        "empty_input"
+    );
+}
+#[test]
+fn multi_source_associations_distinguish_empty_evidence_from_observed_incompatibility() {
+    let dir = tempdir().unwrap();
+    let file = fixture(dir.path());
+    let empty = dir.path().join("empty.jsonl");
+    fs::write(&empty, "").unwrap();
+    let empty = empty.to_str().unwrap();
+    let (v, _) = run(&[
+        "--preset",
+        "base",
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+    ]);
+    let path = dir.path().join("association.json");
+    fs::write(&path,json!({"version":1,"profile":{"preset":"base","sha256":v["profile_resolution"]["selected"]["sha256"]},"sources":[{"file":file,"selected_parser":"json-lines"},{"file":empty,"selected_parser":"json-lines"}],"event_contract":2,"structural_contract":1}).to_string()).unwrap();
+    let path = path.to_str().unwrap();
+    let args = [
+        "resolve-profile",
+        &file,
+        empty,
+        "--kind",
+        "request",
+        "--association",
+        path,
+    ];
+    let (v, o) = run(&args);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(
+        v["profile_resolution"]["association"]["status"],
+        "insufficient_evidence"
+    );
+    assert_eq!(
+        v["profile_resolution"]["association"]["reason"],
+        "empty_source_structure_unverified"
+    );
+    assert_eq!(
+        v["profile_resolution"]["association"]["input_ordinals"],
+        json!([1])
+    );
+    assert_eq!(
+        candidate(&v, "base")["parsing"]["status"],
+        "no_reported_structural_rejections"
+    );
+    assert_eq!(v["coverage"]["parsed_entries"], 2);
+    fs::write(
+        &file,
+        "2026-01-01 00:00:00 INFO unsupported Python\ntraceback\n",
+    )
+    .unwrap();
+    let (v, o) = run(&args);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(v["profile_resolution"]["association"]["status"], "invalid");
+    assert_eq!(
+        v["profile_resolution"]["association"]["reason"],
+        "source_structure_changed_or_incompatible"
+    );
+}
