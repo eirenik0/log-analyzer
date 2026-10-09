@@ -64,12 +64,29 @@ jobs:
               exit 1
             fi
           else
+            prepare_log=$(mktemp)
+            prepare_error=$(mktemp)
+            trap 'rm -f "$prepare_log" "$prepare_error"' EXIT
+            prepare_args=()
             if [ "$DRY_RUN" = "true" ]; then
-              knope prepare-release --dry-run --verbose
+              prepare_args=(--dry-run --verbose)
+            fi
+            if knope prepare-release "${prepare_args[@]}" > "$prepare_log" 2> "$prepare_error"; then
+              cat "$prepare_log" "$prepare_error"
+            else
+              prepare_status=$?
+              cat "$prepare_log" "$prepare_error"
+              # Only Knope's pinned no-release diagnostic is a clean stop.
+              if grep -Fxq 'Error: releases::no_release (https://knope.tech/reference/config-file/steps/prepare-release/#errors)' "$prepare_error" && git diff --cached --quiet; then
+                echo "created=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              exit "$prepare_status"
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
               echo "created=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            knope prepare-release
             if git diff --cached --quiet; then
               echo "No changes to release"
               echo "created=false" >> "$GITHUB_OUTPUT"

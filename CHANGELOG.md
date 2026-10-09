@@ -4,126 +4,50 @@
 
 ## 0.3.0 (2026-10-09)
 
-### Breaking Changes
+Log Analyzer now provides compact, verifiable evidence for AI-assisted log
+investigations, with explicit coverage, source citations and analysis limits.
 
-- integrate explicit lifecycle evidence (#38)
-- unify lifecycle classification and coverage (#39)
+### Migration notes
 
-### Features
+- The default `base` profile is now generic. Select `--preset eyes` for the
+  specialized Eyes/Applitools grammar, or use a validated custom profile.
+- Shipped lifecycle profiles use version-2 `event_rules` and whole-message
+  recognition. Review custom grammar before migrating; legacy-only profiles
+  remain supported. See [classification and migration](docs/design/event-classification.md).
+- Rust callers constructing operation records must supply classification evidence.
+  Timing requires valid scoped boundaries; missing or ambiguous evidence does not
+  establish completion or duration.
 
-- add parser auto-detection for Rust tracing, syslog, and JSON lines
-- add `--preset` option for built-in profiles and integrate `eyes` preset across codebase
-- add configurable event timing boundaries (#25)
-- normalize structured log exports explicitly (#26)
-- retain correlated fields and source provenance (#27)
-- apply consistent optional redaction (#28)
-- expose build identity and capabilities (#29)
-- add deterministic event rule module (#37)
-- support profile inheritance (#40)
-- support starts with no expected end (#42)
-- define snapshot-scoped evidence contract
-- add bounded evidence retrieval (#53)
-- validate profile suitability
-- add evidence-backed investigation workflows
-- Fix #3: add bounded errors reports with configurable sample-character, stack-frame, and total text-output limits. Keep parse coverage, scope, counts and impact ahead of examples; share detail space across clusters and report explicit omissions. Preserve full output with --complete and keep JSON analysis totals independent of displayed details.
-- Expose source revision/state, JSON capabilities, and build/profile metadata in reports. Validate maintained examples against native release binaries.
-- Add an opt-in, versioned event-rule configuration and deterministic classification module with whole-message regex and typed structured adapters. Compile rules once at profile loading, retain identity and provenance, and report conflicts, invalid data and unclassified records explicitly. Reject unsupported schemas, invalid mappings and mixed legacy lifecycle markers. Production analysis remains unchanged until command/request integration; document the contract and custom-profile migration policy.
-- Add configurable event rules and explicit measured, inferred-sleep, or unknown timing pairs to perf and trace. Preserve source evidence, ambiguous/incomplete groups, sample counts, gaps, and capture windows while separating measured work from elapsed time.
-- Add correlated multi-field extraction rows, explicit single-array expansion, missing/null distinctions, and source provenance while preserving single-field aggregates.
-- Make the embedded `base` profile genuinely generic and add an explicit built-in `eyes` preset for the current specialized log grammar. The CLI now supports `--preset` for selecting built-in profiles without a repo-local config file, and the docs/skill examples now show pinning a preset or config explicitly in repo workflows.
-- Prepare 0.3.0 for the evidence-engine CLI and maintained skill, synchronizing binary/plugin versions and enabling publication of a reviewed prepared version without a second bump.
-- Add top-level `extends` to TOML profiles for inheriting built-in profiles or files relative to the child. Tables merge key by key with the child winning; arrays and scalars replace inherited values. Reject cycles, unreadable parents, invalid references, and chains exceeding eight profiles, including the root and any built-in parent. Document inheritance in `--config` help as well as the README and analysis skill.
-- Add parser auto-detection for Rust tracing, syslog, and JSON lines, plus structured field extraction for tracing-style `key=value` logs. Structured fields now participate in filtering, extraction, trace matching, and generated parser profiles.
-- Add `end_expected = false` to version-2 event-rule mappings for start records that never get an end record. `perf` counts them as `start_only_events` instead of `missing_end` orphans, without measuring durations, and session levels can create and complete on them. Operation-type filters count excluded start-only records as suppressed while preserving relevant-event totals. The option is rejected in version 1 and on rules without a start phase. Document the behavior in CLI help and the analysis skill.
-- Add explicit structured-export row expansion, JSON Pointer field mapping, integer timestamp units, and JSON-string decoding with row provenance and skipped-row diagnostics. Add a bounded schema preview command.
+### New capabilities
 
-#### Add common compact-JSON byte, Unicode-character and item budgets with deterministic
+- Snapshot-scoped source citations, input/profile/query identities, published JSON
+  schemas and build capabilities for reproducible investigations.
+- Bounded JSON retrieval with byte, character and item budgets, deterministic
+  cursors, complete-output mode, and explicit omissions or stopping conditions.
+- `validate-profile` checks recognition, scope and timing against sample evidence
+  and optional expected facts, without activating generated candidates.
+- TOML profile inheritance; configurable request/event timing and start-only
+  events; structured-export normalization and correlated field extraction with
+  line/row provenance.
+- Rust tracing, syslog and JSON-lines parser detection, plus browser-console
+  prefixes on classic logs. Check coverage on the actual capture.
+- Maintained failure, slow-run and lifecycle workflows, with synthetic evaluation
+  checks for citation validity, abstention and unsupported causal claims.
+  [Published results](evals/README.md) are scripted harness baselines; model-quality
+  improvement and token savings remain unmeasured.
 
-snapshot/profile/query/redaction-bound cursors. Preserve full-scope coverage and
-totals, report oversized metadata/items explicitly, and provide complete-output
-and canonical source-record retrieval. Keep legacy bounded-error behavior and
-add deterministic comparison/source ordering plus synthetic resource measurements.
+### Important fixes
 
-#### BREAKING CHANGE (pre-1.0): shipped command profiles now use explicit whole-message grammar instead of incidental substring matches. Migrate custom formats by authoring command_rules and removing legacy command identity/phase fields; legacy-only custom marker grammar is retained without automatic translation. LogEntry now exposes cached classification evidence; caller-constructed command records must provide evidence (or explicitly attach legacy compatibility evidence) for timing analysis. All command pairing requires nonempty correlation scope.
+- Nonempty unparsed input fails visibly with coverage diagnostics; zero errors
+  and unavailable analysis remain distinct.
+- Correlation respects scope and reused IDs, preserves timestamp offsets, and
+  reports incomplete, conflicting and ambiguous lifecycle evidence.
+- Filters, sorting, limits and saved output agree across text/JSON reports.
+  Unicode compaction is safe; optional redaction retains analytic counts and
+  typed evidence metadata.
 
-Recognize independent command start/completion records across shipped profiles, fixing the service-api 1500 ms reproduction. Cache phases before payload cleanup and consume normalized evidence in the existing correlation engine. Report start-only, end-only, identity-only, conflicting, invalid and unknown evidence honestly. Preserve offsets, scoped ambiguity safeguards and text/JSON selection. Explicit session completion requires a nonfailed end; command names/starts alone do not complete sessions. Bound new command payload decoding with multi-pattern scanning and retain malformed/deep payloads or trailing noncomment content without changing legacy payload parsing. Synchronize profile/skill templates, migration documentation, generated-profile mode and CLI help.
-
-#### Deliver a portable evidence-backed investigation loop and aligned Claude skill,
-
-with capability/coverage/profile preflight, scoped citation retrieval, distinct
-findings, and explicit insufficiency/budget stops. Extend the maintained example
-runner with synthetic multi-step failure, INFO-only comparison, reused-identity,
-truncated/unsupported input, instruction-like context and budget cases.
-
-#### Add sample-scoped profile validation with separate parsing/classification/timing
-
-coverage, rule and source witnesses, identity/scope diagnostics, and strict
-positive/negative expected facts and exact pair assertions. Validate inherited or
-generated TOML candidates without activation, with shared redaction and retrieval.
-
-#### Add shared presentation redaction for text/JSON reports and files, nested fields and encoded queries, stable optional ID masking, and explicit redaction metadata. Preserve long correlation IDs in compact payloads.
-
-Keep numeric masks out of report metadata, truncate expanded messages on UTF-8 boundaries, and index identifier matching without rescanning the full ID set per entry.
-
-#### Complete shared command/request/event classification and correlation. Shipped profiles and synchronized skill templates now use version-2 global event rules with explicit direction/phase, endpoint and ordered correlation-field mappings; version-1 and legacy custom contracts remain supported. Cache normalized IDs/scopes before analysis and retain pair/orphan provenance. Expose classification coverage independent of operation-type/display selection and parse coverage, with consistent text/JSON redaction and capability metadata. Preserve JSON5 string identities during undefined-value compatibility conversion, support unknown-direction filters, and preserve generic extraction and existing scoped ambiguity/timestamp/ID-reuse safeguards.
-
-Pre-1.0 breaking behavior/API: shipped request/event recognition now follows documented exact grammar; manually constructed operations require cached explicit or legacy evidence, and missing direction remains Unknown. Global rules cannot mix legacy lifecycle markers. Additive report fields retain schema version 1; the former command unknown counter remains a deprecated compatibility alias. See README and docs/design/event-classification.md for migration.
-
-#### Publish CLI report, capabilities and investigation-result JSON Schemas. Add
-
-snapshot-scoped evidence references and effective profile/query identities to
-existing report metadata, preserving source locations across selection and
-presentation. Add comparison and error estimate boundaries and schema conformance
-regressions for redaction, nested rows, partial input and ambiguous timing.
-
-Embed schemas in capability discovery for installed clients. Preserve non-UTF-8
-input path identity and exclude output destinations from query serialization.
-
-Emit coverage-only JSON on unparsed-input failures across report commands,
-including full mixed-input scope and saved-output parity.
-
-### Fixes
-
-- report nonempty unparsed input and parse coverage (#4)
-- parse browser-console prefixes on classic logs (#5)
-- bound error reports while preserving coverage and impact summaries (#7)
-- sort entries before applying limits (#21)
-- preserve complete UTC timestamps (#22)
-- apply selection consistently across output formats (#23)
-- scope correlation and preserve ambiguous events (#24)
-- preserve graphemes and distinct field names (#30)
-- report operation evidence and capture limits (#31)
-- correlate long scopes without summary impersonation (#41)
-- recognize real SDK lifecycle grammar (#43)
-- Fix #2: recognize browser-console source prefixes on classic log entries and multiline continuations. Preserve original raw text and physical source lines, retain locations in the console_source structured field, and support filename/path/URL locations with line and optional column numbers.
-- Fix Clippy warnings on Rust 1.99 by using key-based sorting, guarded request matches, and direct test configuration initialization. Preserve existing ordering and request filtering behavior.
-- Document contribution and code review rules, and configure the standard pre-commit hook for Conventional Commit messages.
-- Correlate record-field scope values longer than 4096 bytes instead of reporting them as `missing_scope_field`. Such a value becomes a readable prefix plus its byte length and a 128-bit FNV-1a digest, so equal long scopes pair. Encode short values containing the reserved digest marker as well, preventing raw summaries from impersonating long scopes. Explicit event-rule scope mappings use the same reserved-marker encoding after validation and retain their existing input limit. Document the bounded keys and digest limitations in the README, CLI help, and analysis skill.
-- Report performance operation evidence separately from parse coverage, including pairing diagnostics, suppressions, observed capture limits, and unknown export completeness. Reject inferred-year measurements and ambiguous equal-timestamp ordering; preserve analytic metadata under redaction.
-- Fix #1: reject nonempty input with no recognized entries (exit 1) and expose per-file parser/profile, byte size, parsed entries, and rejected candidates in info/errors/perf text and JSON reports. Distinguish empty input and zero filter matches from parsing failure, without counting multiline continuations as rejections.
-- Apply performance sorting, per-section limits, and orphan-only selection consistently to text and JSON. Preserve full totals and omitted counts, include threshold violations, and reject completed-operation options in orphan-only mode.
-- Fix process sorting before entry limits, reject diff-only sorting, and calculate returned timestamp bounds independently of display order.
-- Fix process timestamps to emit complete UTC RFC 3339 dates and times rather than labeling local time as UTC or dropping entry dates and offsets.
-- Restore the tracked built-in `eyes` preset so clean clones and CI can compile the embedded config and use `--preset eyes` without a missing file error.
-- Scope operation correlation by kind, name, ID, and configurable composite context fields. Preserve ambiguous and unmatched events with source provenance without inventing durations, and retain valid cross-file matching.
-- Preserve complete Unicode graphemes when shortening report text, and prevent compacted field names or omission metadata from overwriting retained values.
-
-#### Log Analyzer helps AI agents investigate failures and performance problems using
-
-compact, verifiable evidence from logs. Document the local Rust evidence engine,
-verified failure/slow-run/lifecycle workflows, profile validation, external-agent
-data handling and published synthetic evaluation limits; align skill/plugin copy.
-
-#### Restrict Eyes SDK request completion suffixes to recognized response and retry forms so pending prose cannot create measured operations. Decode default-driver command settings using the same payload rules as regular settings. Keep the analysis skill template synchronized and cover both cases with synthetic regression tests.
-
-Validate standalone response body container boundaries with an opt-in version-2 text capture guard. Reject pending prose after object/array bodies, including prose followed by another container, while preserving nested JSON5 bodies and explicit SDK retry tails.
-
-Recognize LF, CR, and Unicode line/paragraph separators as JSON5 line-comment terminators in body scanning, trailing-comment validation, and undefined-value normalization so comments cannot hide pending prose.
-
-#### Integrate the synthetic CLI corpus and executable typed investigation scorer with
-
-exact source support, abstention/cause/omission checks, bounded paired analyzer and
-search-script runs, optional trusted model adapters and sanitized baseline results.
+Versions are synchronized across the CLI, lockfile and plugin. A prepared version
+can be published without another bump, with release jobs pinned to one commit.
 
 ## 0.2.0 (2026-02-25)
 
