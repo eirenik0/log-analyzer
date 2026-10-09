@@ -252,7 +252,10 @@ fn extract_field_value<'a>(value: &'a Value, field_path: &str) -> Option<&'a Val
     Some(current)
 }
 
-fn extract_payload_field<'a>(entry: &'a LogEntry, field_path: &str) -> Option<&'a Value> {
+pub(crate) fn extract_payload_field<'a>(
+    entry: &'a LogEntry,
+    field_path: &str,
+) -> Option<&'a Value> {
     entry
         .payload()
         .and_then(|value| extract_field_value(value, field_path))

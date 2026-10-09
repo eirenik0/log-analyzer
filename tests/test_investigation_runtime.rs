@@ -335,6 +335,22 @@ fn exact_compound_selection_preserves_boundaries_and_substring_filters() {
     let temp = tempfile::tempdir().unwrap();
     let (report, _) = investigate(temp.path(), &["--select", r#"{"scope":["other-run"]}"#]);
     assert_eq!(count(&report, "physical-records"), 0);
+    assert_eq!(
+        report["scopes"][0]["semantic_coverage"]["relevant_records"],
+        0
+    );
+    assert!(
+        report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| a["goal"] != "inspection")
+            .all(|a| a["status"] == "insufficient_evidence"
+                && a["reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains("zero processed records"))
+    );
 }
 #[test]
 fn inputs_are_independent_even_when_paths_and_ids_are_reused() {
@@ -767,4 +783,173 @@ fn declared_domain_observations_keep_attempts_polls_cached_failures_and_work_sep
             .all(|f| f["evidence"].as_array().unwrap().len() == 2)
     );
     assert_eq!(count(&report, "paired-lifecycles"), 0);
+    assert!(
+        report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(
+                |population| !population["id"].as_str().unwrap().ends_with("-failures")
+                    && !population["id"].as_str().unwrap().ends_with("-successes")
+            )
+    );
+    assert!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["id"]
+                .as_str()
+                .unwrap()
+                .ends_with("-failures-unavailable")
+                && finding["kind"] == "unknown")
+    );
+    assert_eq!(
+        report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|assessment| assessment["goal"] == "failures")
+            .unwrap()["status"],
+        "unsupported"
+    );
+}
+
+#[test]
+fn selected_pair_support_ignores_unrelated_orphans_and_preserves_selected_ambiguity() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("selection.jsonl");
+    let mut data = fs::read_to_string(root().join("examples/investigations/slow.jsonl")).unwrap();
+    for (second, id) in [(9, "orphan"), (10, "overlap"), (11, "overlap")] {
+        data += &json!({"ts":format!("2026-01-01T00:00:{second:02}+02:00"),"component":"worker","component_id":"other","message":"start","session":"other-run","operation":"unrelated","id":id,"phase":"start"}).to_string();
+        data += "\n";
+    }
+    for (second, phase, component_id) in [(12, "start", "alias-a"), (13, "end", "alias-b")] {
+        data += &json!({"ts":format!("2026-01-01T00:00:{second:02}+02:00"),"component":"worker","component_id":component_id,"message":phase,"session":"other-run","operation":"alias","id":"aliased","phase":phase,"outcome":"success"}).to_string();
+        data += "\n";
+    }
+    fs::write(&source, data).unwrap();
+    for (index, selector, expected) in [
+        (
+            0,
+            r#"{"name":"run","correlation_id":"parent","scope":["slow-run"]}"#,
+            "supported",
+        ),
+        (
+            1,
+            r#"{"correlation_id":"overlap","scope":["other-run"]}"#,
+            "conflicting",
+        ),
+    ] {
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let report = success(&[
+            "--config",
+            "examples/investigations/profile.toml",
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--select",
+            selector,
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(report["scopes"][0]["semantic_coverage"]["status"], expected);
+        let slow = report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["goal"] == "slow_operations")
+            .unwrap();
+        assert_eq!(slow["status"], expected);
+        assert_eq!(
+            report["scopes"][0]["semantic_coverage"]["relevant_records"],
+            2
+        );
+        assert_eq!(
+            report["scopes"][0]["semantic_coverage"]["unmatched_events"],
+            if index == 0 { 0 } else { 2 }
+        );
+        assert!(
+            !report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["id"].as_str().unwrap().contains("scope-adequacy"))
+        );
+    }
+}
+
+#[test]
+fn policy_payload_paths_use_decoded_payload_then_per_field_envelope_fallback() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("payload-policy.toml");
+    let mut config =
+        fs::read_to_string(root().join("examples/investigations/domain-policy.toml")).unwrap();
+    config = config.replace(
+        "extends = \"profile.toml\"",
+        &format!(
+            "extends = {:?}",
+            root()
+                .join("examples/investigations/profile.toml")
+                .to_str()
+                .unwrap()
+        ),
+    );
+    config = config
+        .replace(
+            "identity_fields = [\"id\"]",
+            "identity_fields = [\"payload.nested.resource\"]",
+        )
+        .replace(
+            "join_fields = [\"id\"]",
+            "join_fields = [\"payload.nested.resource\"]",
+        );
+    fs::write(&profile, config).unwrap();
+    let rows: Vec<_> = [(0,"start"),(1,"end")].into_iter().map(|(second,phase)| json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"component":"worker","component_id":"run","session":"run","operation":"capture","id":"attempt","phase":phase,"outcome":"success","message":r#"event payload {"nested":{"resource":"decoded-resource"}}"#,"payload":{"nested":{"resource":format!("envelope-{second}"),"fallback":"envelope-only"}}}).to_string()).collect();
+    let source = temp.path().join("payload.jsonl");
+    fs::write(&source, rows.join("\n") + "\n").unwrap();
+    let parsed = log_analyzer::parser::parse_log_file_report(
+        &source,
+        &log_analyzer::config::load_config_from_path(&profile).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        parsed.entries[0].payload().unwrap()["nested"]["resource"],
+        "decoded-resource"
+    );
+    for (index, field, expected) in [(0, "resource", 1), (1, "fallback", 1)] {
+        if index == 1 {
+            fs::write(
+                &profile,
+                fs::read_to_string(&profile)
+                    .unwrap()
+                    .replace("payload.nested.resource", "payload.nested.fallback"),
+            )
+            .unwrap();
+        }
+        let artifact = temp.path().join(format!("evidence-{field}.json"));
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(count(&report, "policy-0"), expected);
+        assert_eq!(count(&report, "policy-1"), expected);
+        assert_eq!(
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|f| f["id"].as_str().unwrap().contains("relationship-0-")
+                    && f["kind"] == "observation")
+                .count(),
+            1
+        );
+    }
 }

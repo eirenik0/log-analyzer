@@ -19,11 +19,7 @@ fn has_role(entry: &LogEntry, role: &Role) -> bool {
 }
 fn field(entry: &LogEntry, selector: &str) -> Option<String> {
     if let Some(field) = selector.strip_prefix("payload.") {
-        entry
-            .envelope_payload
-            .as_ref()
-            .or_else(|| entry.payload())?
-            .get(field)?
+        crate::extract::extract_payload_field(entry, field)?
             .as_str()
             .map(str::to_owned)
     } else {

@@ -1,4 +1,4 @@
-use super::{Selector, selected};
+use super::selection::View;
 use crate::{
     event_rules::ClassifiedRecord,
     evidence,
@@ -71,13 +71,12 @@ pub(super) fn population(
 pub(super) fn build(
     entries: &[LogEntry],
     perf: Option<&PerfAnalysisResults>,
-    selectors: &[Selector],
+    view: &View<'_>,
     scope: &str,
     context: &evidence::Context,
     snapshot: &Value,
     profile_digest: &Value,
     threshold: u64,
-    config: &crate::config::AnalyzerConfig,
     budget: &mut crate::processing::Budget,
     findings: &mut Vec<Value>,
     populations: &mut Vec<Value>,
@@ -90,10 +89,7 @@ pub(super) fn build(
     ) {
         return;
     }
-    let retained: Vec<_> = entries
-        .iter()
-        .filter(|entry| selected(entry, selectors, config))
-        .collect();
+    let retained = &view.entries;
     for (entity, suffix) in [
         ("physical_records", "physical-records"),
         ("normalized_records", "normalized-records"),
@@ -156,7 +152,7 @@ pub(super) fn build(
         ) else {
             continue;
         };
-        if !selected(start, selectors, config) || !selected(end, selectors, config) {
+        if !view.contains(start) || !view.contains(end) {
             continue;
         }
         let rule_ids: Vec<_> = rules(start).into_iter().chain(rules(end)).collect();
@@ -231,7 +227,7 @@ pub(super) fn build(
         let Some(entry) = lookup(&event.source) else {
             continue;
         };
-        if !selected(entry, selectors, config) {
+        if !view.contains(entry) {
             continue;
         }
         findings.push(fact(format!("{scope}-unmatched-{index}"),scope,"observation",match event.reason.as_str(){"missing_end"=>"A start has no observed end in this selected capture; this does not establish a hang.","missing_start"=>"An end has no observed start in this selected capture.","overlapping_starts"=>"Repeated overlapping starts prevent an unambiguous lifecycle pairing.","conflicting_event_rules"=>"Explicit rules assign conflicting event semantics.",_=>"The event could not form a reliable scoped lifecycle pair."},vec![excerpt(entry,context,snapshot)],json!({"supporting_occurrences":[occurrence(entry,context,snapshot)]})));
@@ -254,16 +250,8 @@ pub(super) fn build(
             "Explicit success outcomes; this is an event count, not a distinct-resource count.",
         ),
     ] {
-        if matches!(suffix, "failures" | "successes")
-            && !config.event_classifier().is_some_and(|classifier| {
-                classifier
-                    .schema()
-                    .rules
-                    .iter()
-                    .any(|rule| rule.mapping.outcome.is_some())
-            })
-        {
-            findings.push(fact(format!("{scope}-{suffix}-unavailable"), scope, "unknown", "Outcome counts are unavailable without an explicit outcome mapping.", Vec::new(), json!({"reason":"The selected profile does not declare outcome semantics.","supporting_occurrences":[]})));
+        if matches!(suffix, "failures" | "successes") && !view.outcomes_supported {
+            findings.push(fact(format!("{scope}-{suffix}-unavailable"), scope, "unknown", "Outcome counts are unavailable without an applicable selected outcome mapping.", Vec::new(), json!({"reason":"No selected classification rule declares outcome semantics for this processed population.","supporting_occurrences":[]})));
             continue;
         }
         if !budget.checkpoint("calculation", entries.len() as u64) {
@@ -340,6 +328,6 @@ pub(super) fn scope_aliases(
         if witnesses.is_empty() {
             continue;
         }
-        findings.push(fact(format!("{scope}-scope-adequacy-{index}"),scope,"unknown","Different source identities share an effective correlation key; intended scope adequacy is unknown.",witnesses.iter().map(|entry|excerpt(entry,context,snapshot)).collect(),json!({"reason":"Source-identity witnesses do not prove intended domain scope. Review the explicit scope before relying on paired lifecycle meaning.","supporting_occurrences":witnesses.iter().map(|entry|occurrence(entry,context,snapshot)).collect::<Vec<_>>()})));
+        findings.push(fact(format!("{scope}-scope-adequacy-{index}"),scope,"unknown","The selected population intersects a shared effective correlation key; all source-identity witnesses are retained as context, including any outside selection. Intended scope adequacy is unknown.",witnesses.iter().map(|entry|excerpt(entry,context,snapshot)).collect(),json!({"reason":"Source-identity witnesses do not prove intended domain scope. Review the explicit scope before relying on paired lifecycle meaning.","supporting_occurrences":witnesses.iter().map(|entry|occurrence(entry,context,snapshot)).collect::<Vec<_>>()})));
     }
 }

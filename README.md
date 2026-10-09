@@ -41,6 +41,12 @@ log-analyzer investigation-evidence evidence.json \
   --expected-sha256 <artifact.stored_sha256> --collection /findings --report-max-items 5
 ```
 
+Goal support and semantic coverage describe the exact-selected population. Empty
+selection has no supported lifecycle assessment; unrelated orphans and scope aliases
+do not downgrade selected pairs. Outcome counts require a rule applicable to selected
+records. Policy `payload.*` selectors share extraction semantics: decoded payloads
+have precedence, with per-field envelope fallback and nested paths.
+
 The main report's `retrieval.next_cursor` resumes `/findings` through
 `investigation-evidence --report-cursor ...`. Retrieve `/records`, `/populations`,
 `/memberships`, `/memberships/N/members`, `/sequences` or `/sequences/N/events` for

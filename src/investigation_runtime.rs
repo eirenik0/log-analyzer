@@ -2,6 +2,7 @@
 mod artifact;
 mod findings;
 mod policy;
+mod selection;
 use crate::{
     cli::{Cli, Commands, InvestigateArgs},
     config, evidence, parser,
@@ -300,15 +301,21 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         let scope_aliases = crate::profile_validation::scope_adequacy(&entries, &config, |work| {
             budget.checkpoint("calculation", work)
         });
+        budget.begin_stage();
+        let view = selection::View::new(&entries, &selectors, &config, perf.as_ref(), &mut budget);
+        let scope_aliases = scope_aliases.map(|aliases| {
+            aliases
+                .into_iter()
+                .filter(|alias| view.intersects_alias(alias))
+                .collect::<Vec<_>>()
+        });
         let scope_id = format!("scope-{ordinal}");
         let semantic_status = if config.event_classifier().is_none() {
             "unsupported"
-        } else if let Some(perf) = &perf {
-            if perf.operation_coverage.classification.conflicting_records > 0
-                || perf.operation_coverage.ambiguous_events > 0
-            {
+        } else if perf.is_some() {
+            if view.conflicting > 0 || view.ambiguous > 0 {
                 "conflicting"
-            } else if perf.operation_coverage.relevant_events == 0 {
+            } else if view.relevant == 0 || view.rejected > 0 {
                 "insufficient_evidence"
             } else {
                 "supported"
@@ -316,8 +323,8 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         } else {
             "not_performed"
         };
-        let coverage = perf.as_ref().map(|perf| &perf.operation_coverage);
-        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":"complete","analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant_events),"classified_records":coverage.map(|c|c.classification.classified_records),"paired_events":coverage.map(|c|c.paired_events),"unmatched_events":coverage.map(|c|c.unmatched_events),"ambiguous_events":coverage.map(|c|c.ambiguous_events),"rejected_events":coverage.map(|c|c.rejected_events),"reason":"Explicit effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
+        let coverage = perf.as_ref().map(|_| &view);
+        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":"complete","analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Explicit effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
         budget.begin_stage();
         findings::build(
             &entries,
@@ -326,13 +333,12 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             } else {
                 None
             },
-            &selectors,
+            &view,
             &scope_id,
             &context,
             &snapshot,
             &profile_digest,
             args.threshold_ms,
-            &config,
             &mut budget,
             &mut findings,
             &mut populations,
@@ -370,11 +376,10 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "insufficient_evidence"
         } else if semantic_status != "supported" {
             semantic_status
-        } else if perf.as_ref().is_none_or(|perf| {
-            perf.operations.is_empty() || perf.operation_coverage.unmatched_events > 0
-        }) || entries
-            .iter()
-            .any(|entry| entry.timestamp_year_inferred || entry.source_timestamp.is_none())
+        } else if view.pairs == 0
+            || view.unmatched > 0
+            || view.excluded_boundaries > 0
+            || !view.reliable
             || scope_aliases
                 .as_ref()
                 .is_none_or(|aliases| !aliases.is_empty())
@@ -389,7 +394,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "slow_operations",
             "incomplete_lifecycles",
         ] {
-            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if parsed.coverage.is_unparsed(){"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="failures" && !config.event_classifier().is_some_and(|rules|rules.schema().rules.iter().any(|rule|rule.mapping.outcome.is_some())){"unsupported"}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
+            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if parsed.coverage.is_unparsed(){"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="failures" && !view.entries.is_empty() && !view.outcomes_supported{"unsupported"}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
         }
     }
     if scopes.is_empty() {
