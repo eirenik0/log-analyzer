@@ -3,7 +3,7 @@
 Read this when a report is incomplete, a candidate identity is ambiguous, or a
 finding needs source verification. Command syntax belongs to the actual
 executable's `--help` and subcommand `--help`; product details belong to the
-[README](https://github.com/eirenik0/log-analyzer#usage). This bundle does not
+[README](https://github.com/eirenik0/log-analyzer#commands). This bundle does not
 maintain a separate command or option catalog.
 
 ## Interpret bounded pages

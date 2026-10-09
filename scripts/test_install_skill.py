@@ -200,6 +200,15 @@ class StandaloneSkillLinksTests(unittest.TestCase):
         for folder in ('.agents', '.claude'):
             assert_links(self, ROOT / folder / 'skills/analyze-logs')
 
+    def test_bundle_readme_links_target_existing_headings(self):
+        headings = re.findall(r'^#{1,6} (.+)$', (ROOT / 'README.md').read_text(encoding='utf-8'), re.MULTILINE)
+        anchors = {re.sub(r'[^\w -]', '', title.lower()).replace(' ', '-') for title in headings}
+        for folder in ('.agents', '.claude'):
+            for page in (ROOT / folder / 'skills/analyze-logs').rglob('*.md'):
+                for anchor in re.findall(r'\]\(https://github.com/eirenik0/log-analyzer#([^)]+)\)', page.read_text(encoding='utf-8')):
+                    with self.subTest(page=str(page), anchor=anchor):
+                        self.assertIn(anchor, anchors)
+
     def test_claude_generated_bundle_has_no_drift(self):
         result = subprocess.run([os.sys.executable, str(ROOT / 'scripts/sync-skills.py'), '--check'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
