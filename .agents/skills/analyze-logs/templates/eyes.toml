@@ -1,0 +1,283 @@
+profile_name = "eyes"
+
+[parser]
+event_payload_separator = "with payload"
+command_payload_markers = ["with settings", "with default driver and settings"]
+request_payload_markers = ["with body"]
+request_endpoint_marker = "address \"["
+json_indicators = ["with settings {", "with body [", "with body {", "with body", "with body "]
+
+[perf]
+event_correlation_keys = ["key"]
+
+[profile]
+known_components = [
+  "core",
+  "core-base",
+  "core-classic",
+  "core-ufg",
+  "core-universal",
+  "core-autonomous",
+  "core-requests",
+  "core-requests-offline",
+  "driver",
+  "ec-client",
+  "nml-client",
+  "ufg-client",
+  "ufg-requests",
+  "socket",
+  "tunnel-client",
+  "ec-tunnel-manager",
+  "cypress-plugin",
+  "offline-exec",
+  "screenshoter"
+]
+known_commands = [
+  "makeManager",
+  "openEyes",
+  "check",
+  "getResults",
+  "abort",
+  "closeBatch",
+  "close",
+  "deleteTest",
+  "getAccountInfo",
+  "takeSnapshots",
+  "getBaseEyes"
+]
+known_requests = [
+  "openEyes",
+  "openFunctionalSession",
+  "openCheckAndClose",
+  "openCheckAndCloseEyes",
+  "check",
+  "checkAndClose",
+  "close",
+  "closeEyes",
+  "abort",
+  "closeBatch",
+  "deleteTest",
+  "report",
+  "getResults",
+  "getAccountInfo",
+  "updateIfScm",
+  "sendHeartbeat",
+  "heartbeat",
+  "logEvent",
+  "logEventBatch",
+  "matchWindow",
+  "locate",
+  "locateText",
+  "extractText",
+  "startRenders",
+  "getRenderResults",
+  "getActualEnvironments",
+  "getChromeEmulationDevices",
+  "getIOSDevices",
+  "getAndroidDevices",
+  "checkResources",
+  "uploadResource",
+  "preRescaleActivity",
+  "preTakeScreenshot",
+  "takeScreenshots",
+  "takeSnapshots",
+  "reportSelfHealing"
+]
+
+[[sessions.levels]]
+name = "runner"
+segment_prefix = "manager-"
+create_command = "makeManager"
+complete_commands = ["getResults", "closeBatch"]
+summary_fields = ["concurrency", "batch.id"]
+
+[[sessions.levels]]
+name = "test"
+segment_prefix = "eyes-"
+create_command = "openEyes"
+complete_commands = ["close", "abort"]
+
+[[sessions.levels]]
+name = "environment"
+segment_prefix = "environment-"
+
+# Whole-message lifecycle grammar. Correlation also requires [perf] scope fields.
+[event_rules]
+version = 2
+
+[[event_rules.rules]]
+id = "command-start"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:is called)(?: (?:with (?:default driver and )?settings) (?s:.+))?'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "command-end"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*") (?:finished|finished successfully|returned|completed)(?: (?:with settings) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "success" }
+
+[[event_rules.rules]]
+id = "command-identity"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Command (?P<name>"(?:[^"\\]|\\.)*")'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-start-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:will be sent)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body) (?s:.+))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "send" }
+correlation_id = { from = "capture", capture = "id" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-start-missing-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:will be sent)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body) (?s:.+))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "send" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-end-id"
+[event_rules.rules.adapter]
+type = "text"
+complete_payload_capture = "body"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "capture", capture = "id" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-end-missing-id"
+[event_rules.rules.adapter]
+type = "text"
+complete_payload_capture = "body"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-identity"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*")'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "event-start"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Received event of type) (?P<name>"(?:[^"\\]|\\.)*")(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "event-start-object"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Received event of type) \{"name":(?P<name>"(?:[^"\\]|\\.)*")\}(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "event-end"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Emit event of type) (?P<name>"(?:[^"\\]|\\.)*")(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "emit" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "event-end-object"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Emit event of type) \{"name":(?P<name>"(?:[^"\\]|\\.)*")\}(?: with payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "emit" }
+correlation_id = { from = "first_field", fields = ["payload.key"] }
+
+[[event_rules.rules]]
+id = "structured-command"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "command" }]
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+
+[[event_rules.rules]]
+id = "structured-request"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "request" }]
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+direction = { from = "field", field = "operation_direction" }
+
+[[event_rules.rules]]
+id = "structured-event"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "event" }]
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+direction = { from = "field", field = "operation_direction" }

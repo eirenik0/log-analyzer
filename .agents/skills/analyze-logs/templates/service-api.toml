@@ -1,0 +1,239 @@
+# Template: service-api
+#
+# Good for service logs with operation/request wording.
+# Example lines expected by this profile:
+# - gateway | ... [INFO ] Published event "OrderCreated" payload {...}
+# - orders  | ... [INFO ] Request "createOrder" sent with body {...}
+# - orders  | ... [INFO ] Request "createOrder" completed with body {...}
+# - worker  | ... [INFO ] Operation "reconcile" started with settings {...}
+
+profile_name = "service-api"
+
+[parser]
+event_payload_separator = "payload"
+
+command_payload_markers = ["with settings", "settings"]
+
+request_payload_markers = ["with body", "payload"]
+request_endpoint_marker = "to \"["
+
+json_indicators = [
+  "with settings {",
+  "settings {",
+  "with body [",
+  "with body {",
+  "payload [",
+  "payload {",
+  "payload",
+  "with body"
+]
+
+[perf]
+event_correlation_keys = ["key", "traceId", "requestId"]
+
+[profile]
+known_components = ["gateway", "orders", "billing", "worker"]
+known_commands = ["reconcile", "syncCache", "publish"]
+known_requests = ["createOrder", "getOrder", "authorizePayment"]
+
+[[sessions.levels]]
+name = "level-1"
+segment_prefix = "trace-"
+
+[[sessions.levels]]
+name = "level-2"
+segment_prefix = "request-"
+
+# Whole-message lifecycle grammar. Correlation also requires [perf] scope fields.
+[event_rules]
+version = 2
+
+[[event_rules.rules]]
+id = "command-start"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*") (?:started|begin)(?: (?:with settings|settings) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "command-end"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*") (?:completed|finished)(?: (?:with settings|settings) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "success" }
+
+[[event_rules.rules]]
+id = "command-failure"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*") (?:failed)(?: (?:with settings|settings) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+outcome = { from = "literal", value = "failure" }
+
+[[event_rules.rules]]
+id = "command-identity"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Operation (?P<name>"(?:[^"\\]|\\.)*")'
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "capture", capture = "name", decode = "json_string" }
+correlation_id = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-start-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:sent|queued|requested)(?: to (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body|payload) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "send" }
+correlation_id = { from = "capture", capture = "id" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-start-missing-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:sent|queued|requested)(?: to (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body|payload) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "send" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-end-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:completed|responded)(?: to (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body|payload) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "capture", capture = "id" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-end-missing-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:completed|responded)(?: to (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body|payload) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "request-failure-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:failed)(?: to (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body|payload) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "capture", capture = "id" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+outcome = { from = "literal", value = "failure" }
+
+[[event_rules.rules]]
+id = "request-failure-missing-id"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:failed)(?: to (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:with body|payload) (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "receive" }
+endpoint = { from = "capture", capture = "endpoint", decode = "json_string" }
+outcome = { from = "literal", value = "failure" }
+
+[[event_rules.rules]]
+id = "request-identity"
+[event_rules.rules.adapter]
+type = "text"
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*")'
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "capture", capture = "name", decode = "json_string" }
+
+[[event_rules.rules]]
+id = "event-start"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Consumed event|Received event) (?P<name>"(?:[^"\\]|\\.)*")(?: payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "start" }
+direction = { from = "literal", value = "receive" }
+correlation_id = { from = "first_field", fields = ["payload.key", "payload.traceId", "payload.requestId"] }
+
+[[event_rules.rules]]
+id = "event-end"
+[event_rules.rules.adapter]
+type = "text"
+pattern = '(?:Published event) (?P<name>"(?:[^"\\]|\\.)*")(?: payload (?s:\{.*|\[.*))?'
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "capture", capture = "name", decode = "json_string" }
+phase = { from = "literal", value = "end" }
+direction = { from = "literal", value = "emit" }
+correlation_id = { from = "first_field", fields = ["payload.key", "payload.traceId", "payload.requestId"] }
+
+[[event_rules.rules]]
+id = "structured-command"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "command" }]
+[event_rules.rules.mapping]
+kind = "command"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+
+[[event_rules.rules]]
+id = "structured-request"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "request" }]
+[event_rules.rules.mapping]
+kind = "request"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+direction = { from = "field", field = "operation_direction" }
+
+[[event_rules.rules]]
+id = "structured-event"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{ field = "operation_kind", equals = "event" }]
+[event_rules.rules.mapping]
+kind = "event"
+name = { from = "field", field = "operation_name" }
+phase = { from = "field", field = "operation_phase" }
+correlation_id = { from = "first_field", fields = ["correlation_id"] }
+direction = { from = "field", field = "operation_direction" }
