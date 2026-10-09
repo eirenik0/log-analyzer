@@ -118,6 +118,10 @@ is a protocol boundary for trusted adapters. Keep credentials in provider-specif
 environment variables read by the adapter, never argv/config/report files. Do not
 commit traces or unsanitized model responses. No embedded provider runtime is added.
 
+Evaluation sources and fixtures use LF checkout bytes via `.gitattributes` so
+Windows checkout conversion does not invalidate the preserved draft hash or corpus
+identities. Hashes always describe the actual consumed bytes.
+
 ## Published baseline and limits
 
 [baseline.json](results/baseline.json) records the first sanitized scripted run,
