@@ -797,6 +797,105 @@ impl OutputState {
                 self.restore_validation_metadata(validation, &mut value["profile_validation"], "");
                 self.redact_validation_addresses(&original, &mut value);
             }
+            if let Some(resolution) = original.get("profile_resolution") {
+                // Restore only generated metadata; source records may use these
+                // same field names and must retain payload-safe redaction.
+                for key in [
+                    "version",
+                    "status",
+                    "requested",
+                    "selection_provenance",
+                    "selected_candidate_index",
+                    "eligible_distinct_profiles",
+                    "candidate_activation",
+                    "generic_inspection",
+                    "next_steps",
+                    "limitations",
+                    "metadata_scope",
+                ] {
+                    value["profile_resolution"][key] = resolution[key].clone();
+                }
+                value["profile_resolution"]["association"]["status"] =
+                    resolution["association"]["status"].clone();
+                if !resolution["selected"].is_null() {
+                    for key in ["sha256", "origin"] {
+                        value["profile_resolution"]["selected"][key] =
+                            resolution["selected"][key].clone();
+                    }
+                }
+                if let Some(candidates) = resolution["candidates"].as_array() {
+                    for (i, candidate) in candidates.iter().enumerate() {
+                        let target = &mut value["profile_resolution"]["candidates"][i];
+                        for key in ["origin", "status", "eligible", "support"] {
+                            if let Some(original) = candidate.get(key) {
+                                target[key] = original.clone();
+                            }
+                        }
+                        if let Some(status) = candidate.pointer("/parsing/status") {
+                            target["parsing"]["status"] = status.clone();
+                        }
+                        if !candidate["identity"].is_null() {
+                            for key in ["sha256", "origin"] {
+                                target["identity"][key] = candidate["identity"][key].clone();
+                            }
+                        }
+                        if let Some(validation) = candidate.get("profile_validation") {
+                            self.restore_validation_metadata(
+                                validation,
+                                &mut target["profile_validation"],
+                                "",
+                            );
+                        }
+                        if let Some(semantic) = candidate.get("semantic_evidence") {
+                            self.restore_validation_metadata(
+                                semantic,
+                                &mut target["semantic_evidence"],
+                                "",
+                            );
+                        }
+                        self.redact_validation_context(candidate, target);
+                        self.redact_validation_addresses(candidate, target);
+                        if let Some(files) = candidate
+                            .pointer("/parsing/coverage")
+                            .and_then(Value::as_array)
+                        {
+                            for (j, file) in files.iter().enumerate() {
+                                restore_coverage_metadata(
+                                    file,
+                                    &mut target["parsing"]["coverage"][j],
+                                );
+                            }
+                        }
+                        if let Some(evidence) = candidate.get("evidence") {
+                            for key in [
+                                "contract_version",
+                                "snapshot_id",
+                                "profile_sha256",
+                                "query_sha256",
+                                "scope",
+                                "redaction",
+                                "omissions",
+                            ] {
+                                target["evidence"][key] = evidence[key].clone();
+                            }
+                            if let Some(inputs) = evidence["inputs"].as_array() {
+                                for (j, input) in inputs.iter().enumerate() {
+                                    for key in ["input_id", "sha256", "bytes", "selected_entries"] {
+                                        target["evidence"]["inputs"][j][key] = input[key].clone();
+                                    }
+                                    restore_coverage_metadata(
+                                        &input["coverage"],
+                                        &mut target["evidence"]["inputs"][j]["coverage"],
+                                    );
+                                }
+                            }
+                            if !target["evidence"]["query"]["filter"].is_null() {
+                                target["evidence"]["query"]["filter"] = json!("[REDACTED FILTER]");
+                            }
+                        }
+                    }
+                }
+            }
             self.restore_evidence_refs(&original, &mut value, false);
             if let Some(coverage) = original.get("coverage") {
                 restore_coverage_metadata(coverage, &mut value["coverage"]);
@@ -1221,6 +1320,20 @@ fn restore_performance_metadata(
 // do not match source records. These are data disclosures, not generated labels.
 fn validation_contexts(report: &Value) -> Vec<(String, String, Value)> {
     let mut contexts = Vec::new();
+    if let Some(candidates) = report
+        .pointer("/profile_resolution/candidates")
+        .and_then(Value::as_array)
+    {
+        for (i, candidate) in candidates.iter().enumerate() {
+            for (field, path, value) in validation_contexts(candidate) {
+                contexts.push((
+                    field,
+                    format!("/profile_resolution/candidates/{i}{path}"),
+                    value,
+                ));
+            }
+        }
+    }
     if let Some(records) = report
         .pointer("/profile_validation/records")
         .and_then(Value::as_array)

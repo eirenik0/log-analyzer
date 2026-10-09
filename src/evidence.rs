@@ -34,6 +34,10 @@ pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+pub(crate) fn profile_digest(config: &AnalyzerConfig) -> Result<String, serde_json::Error> {
+    Ok(digest(&serde_json::to_vec(&serde_json::to_value(config)?)?))
+}
+
 /// Non-UTF-8 source labels retain a readable display and a distinct byte identity.
 /// Escape valid labels beginning with @ so they cannot impersonate encoded labels.
 pub(crate) fn path_label(path: &std::path::Path) -> String {
@@ -136,6 +140,13 @@ pub(crate) struct Context {
 impl Context {
     pub fn new(cli: &Cli, config: &AnalyzerConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let mut query = serde_json::to_value(cli)?;
+        if let Some(paths) = query
+            .pointer_mut("/command/ResolveProfile/candidate_config")
+            .and_then(Value::as_array_mut)
+        {
+            paths.sort_by_key(Value::to_string);
+            paths.dedup();
+        }
         // Rendering and destination do not change the selected evidence.
         for key in [
             "output",
@@ -163,7 +174,7 @@ impl Context {
             crate::comparator::LogFilter::new()
         };
         Ok(Self {
-            profile_digest: digest(&serde_json::to_vec(&serde_json::to_value(config)?)?),
+            profile_digest: profile_digest(config)?,
             query,
             filter,
             collect_records: cli.common_reports(),

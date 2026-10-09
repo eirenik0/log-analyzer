@@ -123,6 +123,46 @@ fn collections(report: &mut Value) -> Vec<Collection> {
             ));
         }
     }
+    if let Some(candidates) = report
+        .pointer("/profile_resolution/candidates")
+        .and_then(Value::as_array)
+    {
+        for (i, candidate) in candidates.iter().enumerate() {
+            let prefix = format!("/profile_resolution/candidates/{i}");
+            for field in [
+                "records",
+                "diagnostics",
+                "operations",
+                "expected_results",
+                "suggestions",
+                "effective_rules/event_rules/rules",
+                "effective_rules/command_rules/rules",
+            ] {
+                paths.push(format!("{prefix}/profile_validation/{field}"));
+            }
+            paths.push(format!("{prefix}/evidence_records"));
+            for base in ["parsing/coverage", "evidence/inputs"] {
+                if let Some(files) = candidate
+                    .pointer(&format!("/{base}"))
+                    .and_then(Value::as_array)
+                {
+                    for j in 0..files.len() {
+                        let suffix = if base == "evidence/inputs" {
+                            "/coverage"
+                        } else {
+                            ""
+                        };
+                        paths.push(format!(
+                            "{prefix}/{base}/{j}{suffix}/normalization_diagnostics"
+                        ));
+                        paths.push(format!(
+                            "{prefix}/{base}/{j}{suffix}/structural_diagnostics/diagnostics"
+                        ));
+                    }
+                }
+            }
+        }
+    }
     paths.push("/evidence_records".into());
     let mut result = Vec::new();
     for path in paths {

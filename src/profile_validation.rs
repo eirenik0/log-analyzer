@@ -438,3 +438,89 @@ mod tests {
         assert!(!same_source(&source, &entry, 1));
     }
 }
+
+/// Independent positive assertions cover the candidate's entire requested-kind
+/// population, not just a convenient witness or a rule/profile label.
+pub fn selection_evidence(
+    inputs: &[Vec<LogEntry>],
+    filter: &LogFilter,
+    kind: OperationKind,
+    purpose: Purpose,
+    facts: Option<&Expectations>,
+    validation: &Value,
+) -> Value {
+    let Some(facts) = facts else {
+        return json!({"status":"insufficient", "reason":"semantic_assertions_not_supplied", "covered_records":0});
+    };
+    if validation["suitability"]["status"] != "supported"
+        || validation["expected_facts"]["status"] != "passed"
+    {
+        return json!({"status":"insufficient", "reason":"sample_validation_not_supported", "covered_records":0});
+    }
+    let mut covered = 0;
+    for (input, entries) in inputs.iter().enumerate() {
+        for entry in entries
+            .iter()
+            .filter(|e| filter.matches(e) && relevant(e, kind))
+        {
+            let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification else {
+                return json!({"status":"insufficient", "reason":"requested_classification_invalid_or_conflicting", "covered_records":covered});
+            };
+            let matching: Vec<_> = facts
+                .records
+                .iter()
+                .filter(|f| {
+                    f.source.input == input
+                        && f.source.line == entry.source_line_number
+                        && f.source.row_path == entry.source_row_path
+                })
+                .collect();
+            let asserted = |key: &str| matching.iter().any(|f| f.checks.contains_key(key));
+            let positive = |key: &str, value: Value| {
+                matching.iter().any(|f| f.checks.get(key) == Some(&value))
+            };
+            if !positive("/status", json!("event"))
+                || !positive("/semantics/kind", json!(kind))
+                || [
+                    "/semantics/name",
+                    "/semantics/phase",
+                    "/semantics/correlation_id",
+                    "/semantics/scope",
+                    "/semantics/end_expected",
+                ]
+                .iter()
+                .any(|p| !asserted(p))
+                || semantics.outcome.is_some() && !asserted("/semantics/outcome")
+            {
+                return json!({"status":"insufficient", "reason":"requested_record_assertions_incomplete", "covered_records":covered,
+                    "missing_at":{"input":input,"line":entry.source_line_number,"row_path":entry.source_row_path}});
+            }
+            covered += 1;
+        }
+    }
+    if covered == 0 {
+        return json!({"status":"insufficient","reason":"no_positive_requested_kind_assertions","covered_records":0});
+    }
+    if matches!(purpose, Purpose::Timing) {
+        let pairs = validation["operations"]
+            .as_array()
+            .expect("validation operations");
+        for pair in pairs {
+            let address_matches = |address: &Address, source: &Value| {
+                source["input_ordinal"] == json!(address.input)
+                    && source["line"] == json!(address.line)
+                    && source["row_path"] == json!(address.row_path)
+            };
+            if !facts.pairs.iter().any(|f| {
+                address_matches(&f.start, &pair["start_source"])
+                    && address_matches(&f.end, &pair["end_source"])
+                    && f.duration_ms.is_some()
+                    && json!(f.duration_ms) == pair["duration_ms"]
+            }) {
+                return json!({"status":"insufficient","reason":"operation_pair_or_duration_assertion_missing","covered_records":covered});
+            }
+        }
+    }
+    json!({"status":"sufficient_on_assertion_covered_sample","reason":"requested_population_and_boundaries_asserted","covered_records":covered,
+        "unknown":"Unclassified records, missed lifecycles, capture completeness and intended domain scope remain unknown"})
+}

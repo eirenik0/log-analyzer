@@ -983,6 +983,70 @@ select it for subsequent analysis. All candidates may be unsuitable. See the
 for source-addressed positive/negative facts, exact pair assertions, inheritance,
 redaction, bounds, and scope/capture limitations.
 
+## Resolve a profile explicitly
+
+`resolve-profile` is an opt-in, read-only JSON interface. Existing commands keep
+all their defaults. Discovery reports selected identity/digest and provenance,
+stably ordered alternatives, per-candidate structural coverage, independent
+recognition/timing assessments, scope diagnostics, assertions and unresolved
+assumptions. It does not activate a profile or write configuration:
+
+```bash
+log-analyzer resolve-profile examples/profile-validation.jsonl --kind request --candidate-config examples/profile-candidate.toml
+log-analyzer resolve-profile examples/profile-validation.jsonl --kind request --candidate-config examples/profile-candidate.toml --expected examples/profile-expectations.json
+log-analyzer --config examples/profile-candidate.toml resolve-profile examples/profile-validation.jsonl --kind request
+```
+
+Precedence is explicit `--config`/`--preset`, then a revalidated supplied association,
+then exactly one eligible built-in or `--candidate-config` alternative. Invalid or
+unsupported explicit choices are reported and never replaced. Built-ins sort by
+name, editable alternatives by path (duplicates removed; at most 16). Distinct
+effective configurations remain ambiguous even with identical observed results;
+only identical effective configuration digests are one alternative. Exit 0 means
+a supported selection on this input. Ambiguous, insufficient or invalid/unsupported
+explicit choices exit 1 with useful generic base-profile inspection and diagnostics.
+The outer metadata describes that generic inspection; each candidate owns its
+consumed-byte, effective-profile, query identity and source references.
+
+Automatic selection requires no reported structural rejections and independently supplied
+semantic assertions, not names, filenames, language, rule IDs or match counts.
+For recognition, every selected record classified as the requested kind needs
+passing `/status = "event"`, `/semantics/kind`, exact name, phase, correlation ID,
+scope and `end_expected` checks. Check outcome whenever the candidate assigns one.
+Attached lines remain unverified even when there are no structural rejections.
+Explicit null phase/identity checks support recognition only. At least one positive
+requested-kind record is required; negative-only or other-kind assertions do not
+qualify. All supplied checks must pass. Timing additionally needs supported
+pairing and an exact source-addressed pair plus `duration_ms` assertion for every
+reported operation. A partially asserted requested population cannot authorize
+selection. Unclassified records remain semantically unknown: even complete
+assertion coverage does not establish that every relevant lifecycle was recognized,
+capture was complete, clocks were synchronized, or elapsed time establishes cause.
+Explicit choices bypass automatic proof requirements; sample suitability and
+semantic sufficiency remain separately visible. `validate-profile` continues to
+work without an expected-facts file.
+
+Use common report budgets/cursors to retrieve nested candidate witnesses, rules,
+assertion results and canonical evidence records; selection and candidate identities
+remain present on every page. A candidate normalization can expose row references
+unavailable to the generic base parser. Structural rejection is distinct from
+missing lifecycle semantics: a generated profile cannot repair every unsupported
+input format. Candidates consume and hash inputs separately and reject changes
+between reads; freeze active inputs first. Candidate count is bounded, but total
+input processing memory/work is not globally bounded.
+
+`--association FILE` accepts a strictly checked, read-only
+[version-1 association](schemas/profile-association.schema.json): one preset or
+config selector, its effective `sha256`, ordered exact source path labels and
+selected parsers, `event_contract: 2` and `structural_contract: 1`. Relative config
+paths resolve against the association file. Use candidate identity and parsing
+coverage to construct it deliberately. No raw log content belongs in this file.
+Changed digest, missing profile, contract mismatch or source scope/structure
+invalidates it and falls back to candidate discovery. It still requires fresh
+sample validation and independent semantic assertions for an automatic choice.
+An explicit CLI choice bypasses the association. Project/user discovery and atomic
+remember/inspect/replace/forget management are separate follow-on work.
+
 ## Profile Configuration
 
 Use profile TOML files to keep the binary generic and push case-specific knowledge into config.

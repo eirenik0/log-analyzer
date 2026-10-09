@@ -243,6 +243,28 @@ pub enum Commands {
         #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
         expected: Option<PathBuf>,
     },
+    /// Resolve profiles deterministically; automatic choices require supplied semantic assertions (JSON)
+    ResolveProfile {
+        #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
+        files: Vec<PathBuf>,
+        #[arg(long, value_enum)]
+        kind: OperationType,
+        #[arg(long, value_enum, default_value = "timing")]
+        purpose: crate::profile_validation::Purpose,
+        /// Source-addressed expected facts; counts or profile labels do not authorize automatic selection
+        #[arg(long)]
+        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+        expected: Option<PathBuf>,
+        /// Additional editable TOML alternatives (repeatable, at most 16); never activated or modified
+        #[arg(long)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
+        candidate_config: Vec<PathBuf>,
+        /// Read-only version-1 source/profile association; persistence management is separate
+        #[arg(long)]
+        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+        association: Option<PathBuf>,
+    },
     /// Compare two log files and show differences between JSON objects
     #[command(alias = "cmp")]
     Compare {
