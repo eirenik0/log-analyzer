@@ -104,14 +104,14 @@ fn published_reports_and_artifacts_validate_shape_and_semantics() {
     }
 }
 #[test]
-fn new_contract_is_discoverable_without_claiming_an_unimplemented_command() {
+fn investigation_and_retained_retrieval_are_discoverable() {
     let caps = invoke(&["capabilities"]);
     shape(&caps, "capabilities.schema.json");
     assert_eq!(caps["investigation_contracts"]["versions"], json!([1]));
-    assert_eq!(caps["investigation_contracts"]["command_available"], false);
+    assert_eq!(caps["investigation_contracts"]["command_available"], true);
     assert_eq!(
         caps["investigation_contracts"]["artifact_retrieval_available"],
-        false
+        true
     );
     assert_eq!(caps["bounded_reports"]["version"], 1);
     assert_eq!(caps["report_schemas"]["evidence_contract_version"], 1);

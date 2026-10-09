@@ -294,8 +294,73 @@ pub struct PrepareProfileArgs {
     pub witness_limit: u32,
 }
 
+#[derive(serde::Serialize, clap::Args)]
+pub struct InvestigateArgs {
+    #[arg(required = true, num_args = 1..)]
+    #[serde(serialize_with = "crate::evidence::serialize_paths")]
+    pub files: Vec<PathBuf>,
+    /// New reusable evidence artifact; existing files are never replaced
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_path")]
+    pub artifact: PathBuf,
+    /// Exact JSON selector (input_ordinal, kind, name, correlation_id, scope); repeat for OR
+    #[arg(long)]
+    pub select: Vec<String>,
+    /// Inclusive observed duration threshold; never asserts CPU time or a hang
+    #[arg(long, default_value = "1000")]
+    pub threshold_ms: u64,
+    #[arg(long, default_value = "16777216")]
+    pub input_max_bytes: u64,
+    #[arg(long, default_value = "100000")]
+    pub processing_max_records: u64,
+    #[arg(long, default_value = "10000")]
+    pub processing_max_expanded_records: u64,
+    #[arg(long, default_value = "10000000")]
+    pub processing_max_work: u64,
+    /// Cooperative deadline, checked at capture, record and correlation boundaries
+    #[arg(long, default_value = "30000")]
+    pub processing_max_ms: u64,
+    /// Conservative buffered/retained-data allowance; not a process RSS limit
+    #[arg(long, default_value = "536870912")]
+    pub processing_max_memory_bytes: u64,
+    #[arg(long, default_value = "67108864")]
+    pub artifact_max_bytes: u64,
+    /// Cap each physical line and accumulated multiline record before growth
+    #[arg(long, default_value = "262144")]
+    pub record_max_bytes: usize,
+    /// Creating this file requests cooperative cancellation and a partial outcome
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub cancel_file: Option<PathBuf>,
+}
+
+#[derive(serde::Serialize, clap::Args)]
+pub struct InvestigationEvidenceArgs {
+    #[serde(serialize_with = "crate::evidence::serialize_path")]
+    pub artifact: PathBuf,
+    /// Exact digest from the original report; rejects altered artifacts
+    #[arg(long)]
+    pub expected_sha256: String,
+    /// Retained collection JSON Pointer, for example /findings or /memberships/0/members
+    #[arg(long, default_value = "/findings")]
+    pub collection: String,
+    /// Exact item ID or evidence reference ID within the chosen collection
+    #[arg(long)]
+    pub id: Option<String>,
+    /// Hash current sources separately and report unchanged, changed, missing or prefix
+    #[arg(long)]
+    pub verify_sources: bool,
+    /// Hard artifact read limit, independent of presentation limits
+    #[arg(long, default_value = "67108864")]
+    pub artifact_max_bytes: u64,
+}
+
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
+    /// One bounded capture/parse/correlation per independent input, with reusable evidence (JSON)
+    Investigate(InvestigateArgs),
+    /// Retrieve retained evidence without reparsing or correlating source logs (JSON)
+    InvestigationEvidence(InvestigationEvidenceArgs),
     /// Print build identity, commands, formats, presets, report schemas and contract availability as JSON
     Capabilities,
     /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
@@ -650,6 +715,12 @@ impl Cli {
             && (self.config.is_some() || self.preset.is_some())
         {
             return Err("--template conflicts with --config and --preset".into());
+        }
+        if matches!(
+            &self.command,
+            Commands::Investigate(_) | Commands::InvestigationEvidence(_)
+        ) {
+            return Ok(());
         }
         if !self.common_reports() {
             return Ok(());

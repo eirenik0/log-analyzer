@@ -75,7 +75,7 @@ Trace IDs, session selectors and field filters are substring discovery. Even
 identity-and-scope selector. Verify full semantic correlation ID, operation kind,
 name and scope on returned classifications and source records. Use actual paired
 start/end references to attribute a lifecycle. The current CLI has no dedicated
-exact compound selector: state that limitation, inspect supported structured
+exact compound selector on older binaries: state that limitation, inspect supported structured
 reports, and abstain if exact evidence cannot be established within budget.
 Do not apply discovery filters before pairing; they may remove required boundaries.
 

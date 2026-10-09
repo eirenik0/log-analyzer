@@ -64,6 +64,18 @@ compatibility fields through a trusted JSON parser when the schema catalog would
 exceed the remaining output budget. Read supporting references only as needed.
 An exceeded budget requires a `budget_exhausted` result, even if a finding is known.
 
+When both unified-command and artifact retrieval availability are advertised,
+use `investigate` with an explicit selected profile, processing limits, an artifact
+path and bounded presentation. Inspect coverage, per-goal support and stop reasons.
+Reuse `investigation-evidence` with the report's exact artifact checksum and
+snapshot-bound cursor; it retrieves retained calculations without repeating engine
+work. A changed/missing source affects current verification, not retained facts.
+Honor byte/work/time/cancellation limits and source/rule verification losses.
+Recognition, outcome support and opposite-boundary support are separate. A literal
+success rule cannot establish zero failures; an unavailable end recognizer cannot
+establish a missing end. Inspect per-goal support and partial population coverage.
+Selected conflicting or invalid classifications prevent complete semantic counts.
+Retain positive partial facts; unresolved policy role matches cannot establish unique joins.
 Use common JSON budgets advertised by the binary. Read full-scope counts and
 omissions before interpreting detail pages. Follow snapshot-bound cursors with the
 same inputs/profile/query/redaction. Retrieve canonical `evidence_records` and
@@ -80,8 +92,9 @@ missing pages or no progress. Never automatically switch to unlimited output.
   time. Gaps between observations do not establish CPU work, sleep or a cause.
 - **One lifecycle:** use trace/search for discovery, then verify exact semantic ID,
   kind, name, scope and paired references. Trace/session/field filters are substring
-  matches and can select other IDs. The CLI has no dedicated exact compound selector;
-  inspect returned classifications rather than treating discovery as proof.
+  matches and can select other IDs. When unified investigation is available, use
+  its exact compound selector after correlation; inspect the selected kind/name/ID/
+  effective scope and both source boundaries rather than treating discovery as proof.
 
 Perform pairing on complete related inputs before applying discovery filters that
 could remove boundaries. Reused IDs need verified scope. Missing ends and intentional
@@ -98,8 +111,9 @@ timing semantics and two real boundaries. State capture/coverage/omission limita
 Use `supported`, `insufficient_evidence`, `unsupported_input` or `budget_exhausted`
 as appropriate. An unknown cause may coexist with supported observations.
 
-Independent runs need separate investigation contracts linked by comparison
-provenance; never place both under one snapshot identity. Masked labels from
+Independent runs need separate analysis scopes linked by explicit comparison
+provenance. Unified investigation treats every input as an independent run;
+never correlate its events with another supplied input. Masked labels from
 independent reports are not comparable identities. Redacted locations need a
 permitted local mapping or an explicit resolution gap. Masking is optional and
 cannot guarantee arbitrary content is secret.

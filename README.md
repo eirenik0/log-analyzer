@@ -29,6 +29,132 @@ cargo install --path .
 log-analyzer --version
 ```
 
+## Unified investigation and retained evidence
+
+Capture, parse/classify and correlate each independent input once, then inspect
+calculated findings, source boundaries, explicit populations and per-goal support:
+
+```bash
+log-analyzer --config examples/investigations/profile.toml investigate \
+  examples/investigations/slow.jsonl --artifact evidence.json --report-max-items 5
+log-analyzer investigation-evidence evidence.json \
+  --expected-sha256 <artifact.stored_sha256> --collection /findings --report-max-items 5
+```
+
+Goal support and semantic coverage describe the exact-selected population. Empty
+selection has no supported lifecycle assessment; unrelated orphans and scope aliases
+do not downgrade selected pairs. Outcome counts require a rule applicable to selected
+records. Policy `payload.*` selectors share extraction semantics: decoded payloads
+have precedence, with per-field envelope fallback and nested paths.
+
+The main report's `retrieval.next_cursor` resumes `/findings` through
+`investigation-evidence --report-cursor ...`. Retrieve `/records`, `/populations`,
+`/memberships`, `/memberships/N/members`, `/sequences` or `/sequences/N/events` for
+specific evidence; `--id` selects an exact retained ID/reference ID. Retrieval
+binds the artifact checksum, input snapshot, effective profile/query, redaction
+and collection/ID selector. It never parses or correlates sources again. Optional
+`--verify-sources` hashes current files separately and reports unchanged, changed,
+missing or unavailable. Prefix verification compares only consumed bytes and reports
+`prefix_unchanged`, `prefix_changed` or `prefix_shortened`; retained facts stay about the captured
+snapshot. Every declared input receives a verification result; unread sources are
+unavailable because no retained snapshot exists. Artifact reads and optional source
+verification have byte limits.
+Artifacts stay local until deleted, are never overwritten and need caller-managed
+retention. Retrieval saves only new `--output` files.
+
+Start with an explicit validated `--config`/`--preset`. This initial workflow does
+not repeat automatic profile discovery: generic base inspection remains useful,
+but unavailable lifecycle semantics are stated explicitly. Invalid configurations
+remain CLI errors. Recognition, timing, failures and incomplete-lifecycle evidence
+have separate support requirements; scope aliases and missing timestamp provenance
+prevent a timing support claim. Each supplied file is an independent run, even
+when IDs or paths repeat. Analyze related capture fragments together through the
+existing commands only after establishing their common run. Compare independent
+runs with explicit comparison provenance, rather than merging their events.
+
+Use a repeatable exact JSON selector after shared correlation to retain complete
+boundaries, for example:
+
+```bash
+log-analyzer --config examples/investigations/profile.toml investigate \
+  examples/investigations/slow.jsonl --artifact selected-evidence.json \
+  --select '{"input_ordinal":0,"kind":"request","name":"run","correlation_id":"parent","scope":["slow-run"]}'
+```
+
+Selectors combine their declared fields with equality, use the effective correlation
+scope and OR across repeated selectors. Missing fields do not satisfy requested
+values. Legacy `--filter` keeps substring semantics and runs before correlation;
+removing an end through a filter cannot establish a hang. Elapsed source intervals
+preserve UTC offsets and do not measure CPU time, critical-path time or causes.
+
+Processing limits are separate from output limits. Defaults are 16 MiB captured
+input, 100,000 record attempts, 10,000 expanded-row attempts, 10,000,000 charged
+work units, a cooperative 30-second deadline, a 512 MiB conservative data allowance,
+64 MiB artifact storage and 256 KiB per physical line/multiline record. See
+`investigate --help` for overrides. Work accounts for parsing bytes, loop steps
+and sorting reservations; it is not a CPU instruction count. Rejected candidates
+consume attempt capacity; reported record usage counts successfully parsed records.
+Input cutoffs retain consumed-prefix hashes, never a full-file hash claim; final
+JSONL fragments and unclosed multiline candidates are left open. Expansion checks
+run before row cloning; ordinary normalization consumes only the general record
+budget when array expansion is disabled. `--cancel-file path` requests cooperative cancellation when
+the file appears. Interrupted correlation publishes no tentative missing-end results.
+A cutoff makes affected full-input assessments insufficient while preserving completed
+processed-population facts. Independent inputs have separate scope completion;
+a later capture failure does not downgrade an earlier completed input. Oversized physical or multiline records retain nonempty and rejection diagnostics;
+a cutoff never turns observed content into empty input. Rejected physical or
+normalized records make declared-input support insufficient;
+known processed counts and elapsed measurements remain retained. Selected conflicting or invalid
+classifications make semantic populations partial or unavailable. Unresolved policy
+role matches prevent complete domain counts and cardinality-dependent joins. Paired-population
+distributions require measurable source timestamps for every pair; individual
+reliable intervals remain available when that requirement is unmet. Identity-only
+classification does not establish lifecycle support or authorize zero lifecycle
+counts. Mixed identity-only and boundary evidence retains observed boundary facts
+while declaring incomplete lifecycle coverage. Outcome and opposite-boundary
+recognition are checked per selected operation family. Literal success/failure
+mappings do not authorize the other outcome; unavailable recognition withholds
+zero counts and missing-boundary claims. Positive classified facts remain retained
+with explicit partial population coverage when capabilities differ. Reading exactly the input byte cap conservatively
+reports a prefix if physical EOF was not observed.
+
+The memory setting bounds a conservative reservation model for buffered/retained
+source and calculated data, including normalization field-mapping amplification
+and configuration-derived copies. It can stop earlier than the record cap and does
+not promise a process RSS ceiling. Profile loading, compiled regexes, fixed report
+metadata and final partial-outcome delivery are outside that accounting; effective
+profile serialization is capped at 4 MiB. Deadlines are checked between bounded
+operations, not during an individual JSON parse, regex match, sort or filesystem
+call. Artifact writing still finishes a valid partial outcome after cancellation.
+Storage exhaustion reports an unavailable artifact and retained inline facts,
+with omissions explicit; retry with a new artifact destination and suitable limits.
+
+`--report-max-bytes`, `--report-max-chars` and `--report-max-items` bound atomic main
+finding bundles without changing artifact measurements. Mandatory metadata can
+exceed an impossibly small output budget, with an explicit status. An oversized
+atomic bundle requires a larger permitted budget, not automatic unlimited output.
+`--redact` omits captured payloads, raw/message/field data and effective profile,
+replaces excerpts with source omission markers, and hides paths and domain identities.
+Arithmetic may remain checkable; source/rule verification losses are declared.
+Unavailable source text affects its own input scope; independent retained evidence
+keeps its source verification, with aggregate artifact losses still explicit.
+Keep the original query/profile/snapshot digests as opaque provenance.
+
+Optional strict version-1 `[investigation]` profile policy declares roles by existing
+classification rule IDs, event/attempt/resource populations with explicit identity
+fields and occurrence/identity grouping, and source-target relationships with exact
+join fields, required scope fields and cardinality. All identity groups and joins
+also remain inside the effective correlation scope. String selectors reuse structured
+field names and `payload.<field>` selection. String, number and boolean payload
+identity/join values use canonical scalar text, matching structured fields: numeric
+`1` and string `"1"` intentionally share a declared identity. Null, objects and arrays
+are unsupported policy identities. Missing identity or ambiguous joins produce
+exclusions/unknowns. See [the synthetic policy](examples/investigations/domain-policy.toml).
+Declare screenshot attempts, poll sends, observed responses, cached failures and
+downstream links separately when the domain supports them. Repeated starts remain
+start occurrences; domain attempt/resource grouping needs explicit declarations.
+A supported join establishes an observed relationship and does not establish causality.
+
 ## First investigation: what failed, and why?
 
 From a repository checkout, ask: **“What failed in this capture, and does it show
@@ -263,8 +389,8 @@ with [synthetic examples](examples/investigation-contract/). `capabilities` embe
 these under `report_schemas.investigation` and `evidence_artifact`, and separately
 advertises implementation availability. Schema 1 accepts both the existing agent-result shape and the retained report
 shape. These contracts separate assessment, processing completion, presentation
-omissions, occurrence/population identity and verification after redaction. A unified
-investigation command and saved-artifact retrieval are not yet implemented.
+omissions, occurrence/population identity and verification after redaction. `investigate` and `investigation-evidence` implement the retained contract;
+[the unified workflow](#unified-investigation-and-retained-evidence) explains their limits.
 Applied redaction in the retained contract omits record payloads and exposes only
 source omission markers in excerpts; arithmetic can remain independently checkable.
 

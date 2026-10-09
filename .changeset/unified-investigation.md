@@ -1,0 +1,46 @@
+---
+default: minor
+---
+
+Add bounded `investigate` with one capture/parse/classification/correlation pass per
+independent input, explicit profile support, scoped measurements and populations,
+exact compound selectors, cooperative processing cutoffs, and an atomic local
+evidence artifact. Add checksum-bound `investigation-evidence` retrieval without
+reparsing sources, optional current-source verification, honest persistence and
+presentation limits, and payload-omitting redaction. Support strict explicit profile
+policy for domain attempts/resources and scoped observed relationships.
+
+Keep assessments and outcome availability tied to exact-selected evidence, and use
+decoded-first nested payload extraction for declared population and relationship keys.
+
+Keep canonical retained records and manifest counts exact-selected, preserve completed
+independent scopes and their source verification when later inputs fail, and support
+canonical numeric/boolean payload identity and join values.
+
+Apply the expanded-row budget only when normalization expands arrays; ordinary
+normalized records continue to consume the general record budget.
+
+Charge early normalization rejections against the general record limit and report
+verification availability for every declared input, including unread sources.
+
+Keep identity recognition separate from lifecycle support: identity-only selections
+withhold lifecycle populations, while mixed selections retain observed boundaries
+and declare incomplete lifecycle coverage.
+
+Withhold full-input support when physical or normalized candidates are rejected,
+retaining exact processed facts and explicitly partial populations and scopes.
+
+Withhold paired-population elapsed distributions when some pairs lack source
+timestamp provenance, preserving reliable individual measurements and unavailable
+interval findings.
+
+Check outcome and opposite-boundary recognition per selected operation family,
+respecting literal mappings and structured identity/value constraints. Withhold
+unsupported zeros and missing-boundary claims; retain positive facts with explicit
+partial coverage when recognition capabilities differ.
+
+Preserve nonempty and rejection coverage when physical or multiline record-size
+limits interrupt parsing, including automatic-sampling cutoffs.
+
+Retain conflicting and invalid classifications as unavailable semantic exclusions;
+withhold unsupported zeros, missing boundaries and policy relationship cardinality.

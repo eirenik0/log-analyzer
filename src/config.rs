@@ -62,6 +62,8 @@ pub struct AnalyzerConfig {
     pub perf: PerfRules,
     pub timeline: crate::timeline::TimelineRules,
     pub normalization: Option<crate::normalize::NormalizationRules>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub investigation: Option<crate::investigation_policy::InvestigationPolicy>,
     pub profile: ProfileRules,
     #[serde(skip_serializing_if = "SessionsRules::is_empty")]
     pub sessions: SessionsRules,
@@ -77,6 +79,7 @@ impl Default for AnalyzerConfig {
             perf: PerfRules::default(),
             timeline: crate::timeline::TimelineRules::default(),
             normalization: None,
+            investigation: None,
             profile: ProfileRules::default(),
             sessions: SessionsRules::default(),
         }
@@ -197,6 +200,9 @@ impl AnalyzerConfig {
                     .any(|s| !s.is_empty()))
         {
             return Err("explicit event_rules cannot coexist with legacy lifecycle markers; remove the parser event/command/request identity and phase markers and perf command phase markers, or omit event_rules".into());
+        }
+        if let Some(policy) = &self.investigation {
+            policy.validate(self)?;
         }
         Ok(())
     }
