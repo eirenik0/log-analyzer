@@ -142,10 +142,32 @@ fn measured_intervals_and_population_counts_agree_with_existing_engine() {
         "examples/investigations/slow.jsonl",
     ]);
     let (report, artifact) = fixture("supported");
-    assert_eq!(
-        native["report_metadata"]["evidence"],
-        report["report_metadata"]["evidence"]
-    );
+    let mut compatible_manifest = native["report_metadata"]["evidence"].clone();
+    // Keep historical schema-1 fixtures: validate the additive diagnostics before
+    // comparing every pre-existing identity, count and reference exactly.
+    for input in compatible_manifest["inputs"].as_array_mut().unwrap() {
+        let diagnostics = input["coverage"]
+            .as_object_mut()
+            .unwrap()
+            .remove("structural_diagnostics")
+            .expect("new structural diagnostics");
+        assert_eq!(
+            diagnostics,
+            json!({
+                "version":1,"selection":"explicit","sampled_nonempty_lines":0,
+                "sample_format_matches":{"classic":0,"rust_tracing":0,"syslog":0,"json_lines":0},
+                "sample_status":"not_sampled",
+                "observed_format_matches":{"classic":0,"rust_tracing":0,"syslog":0,"json_lines":6},
+                "observed_status":"single_format","unsupported_python_headers":0,
+                "physical_candidate_blocks":6,"attached_nonempty_lines":0,"blank_lines":0,
+                "diagnostics":[],"diagnostic_count":0,"omitted_diagnostics":0,
+                "limitations":["structure_does_not_establish_event_semantics",
+                    "sample_does_not_establish_capture_completeness",
+                    "attached_lines_are_not_validated_continuations"]
+            })
+        );
+    }
+    assert_eq!(compatible_manifest, report["report_metadata"]["evidence"]);
     let measurements: Vec<_> = report["findings"]
         .as_array()
         .unwrap()

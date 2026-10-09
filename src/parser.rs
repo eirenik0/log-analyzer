@@ -124,6 +124,193 @@ pub fn detect_log_format(
     ))
 }
 
+/// Structural observations do not establish event semantics or capture completeness.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct FormatMatches {
+    pub classic: usize,
+    pub rust_tracing: usize,
+    pub syslog: usize,
+    pub json_lines: usize,
+}
+impl FormatMatches {
+    fn observe(&mut self, line: &str) {
+        self.classic += usize::from(classic_entry_start(line));
+        self.rust_tracing += usize::from(RUST_TRACING_ENTRY.is_match(line));
+        self.syslog += usize::from(SYSLOG_ENTRY.is_match(line));
+        self.json_lines += usize::from(looks_like_json_line(line.trim()));
+    }
+    fn status(&self) -> &'static str {
+        let scores = [
+            self.classic,
+            self.rust_tracing,
+            self.syslog,
+            self.json_lines,
+        ];
+        let max = scores.into_iter().max().unwrap_or(0);
+        if max == 0 {
+            "no_match"
+        } else if scores.into_iter().filter(|score| *score == max).count() > 1 {
+            "tied"
+        } else if scores.into_iter().filter(|score| *score > 0).count() > 1 {
+            "mixed"
+        } else {
+            "single_format"
+        }
+    }
+    fn any(&self) -> bool {
+        self.classic + self.rust_tracing + self.syslog + self.json_lines > 0
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StructuralDiagnostic {
+    pub line: usize,
+    pub reason: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StructuralDiagnostics {
+    pub version: u32,
+    pub selection: &'static str,
+    pub sampled_nonempty_lines: usize,
+    pub sample_format_matches: FormatMatches,
+    pub sample_status: &'static str,
+    pub observed_format_matches: FormatMatches,
+    pub observed_status: &'static str,
+    pub unsupported_python_headers: usize,
+    pub physical_candidate_blocks: usize,
+    pub attached_nonempty_lines: usize,
+    pub blank_lines: usize,
+    pub diagnostics: Vec<StructuralDiagnostic>,
+    pub diagnostic_count: usize,
+    pub omitted_diagnostics: usize,
+    pub limitations: Vec<&'static str>,
+}
+impl StructuralDiagnostics {
+    fn new(selection: &'static str, samples: &[String]) -> Self {
+        let mut sample_format_matches = FormatMatches::default();
+        let mut sampled_nonempty_lines = 0;
+        for line in samples.iter().filter(|line| !line.trim().is_empty()) {
+            sample_format_matches.observe(line);
+            sampled_nonempty_lines += 1;
+        }
+        let sample_status = if selection == "automatic_sample" {
+            sample_format_matches.status()
+        } else {
+            "not_sampled"
+        };
+        Self {
+            version: 1,
+            selection,
+            sampled_nonempty_lines,
+            sample_status,
+            sample_format_matches,
+            observed_format_matches: FormatMatches::default(),
+            observed_status: "no_match",
+            unsupported_python_headers: 0,
+            physical_candidate_blocks: 0,
+            attached_nonempty_lines: 0,
+            blank_lines: 0,
+            diagnostics: Vec::new(),
+            diagnostic_count: 0,
+            omitted_diagnostics: 0,
+            limitations: vec![
+                "structure_does_not_establish_event_semantics",
+                "sample_does_not_establish_capture_completeness",
+                "attached_lines_are_not_validated_continuations",
+            ],
+        }
+    }
+    fn reject(&mut self, line: usize, reason: &'static str) {
+        self.diagnostic_count += 1;
+        if self.diagnostics.len() < 20 {
+            self.diagnostics.push(StructuralDiagnostic { line, reason });
+        } else {
+            self.omitted_diagnostics += 1;
+        }
+    }
+}
+
+fn unsupported_python_header(line: &str) -> bool {
+    static PYTHON_HEADER: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+        r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?\s+(?:\[(?i:trace|debug|info|warn|warning|error|critical|fatal)\]|(?i:trace|debug|info|warn|warning|error|critical|fatal))\s+\S"
+    ).expect("valid unsupported Python-style header regex")
+    });
+    PYTHON_HEADER.is_match(line)
+        && !RUST_TRACING_ENTRY.is_match(line)
+        && !SYSLOG_ENTRY.is_match(line)
+}
+
+fn finish_candidate(
+    text: &str,
+    line_number: usize,
+    format: LogFormat,
+    path: &Path,
+    config: &AnalyzerConfig,
+    entries: &mut Vec<LogEntry>,
+    coverage: &mut ParseCoverage,
+) {
+    coverage.structural_diagnostics.physical_candidate_blocks += 1;
+    if let Some(rules) = &config.normalization {
+        for (row_path, row) in crate::normalize::normalize(text, line_number, rules) {
+            let parsed = row.and_then(|value| {
+                parse_json_line_entry(&value.to_string(), line_number, config).map_err(|_| {
+                    crate::normalize::RowDiagnostic {
+                        line: line_number,
+                        row_path: row_path.clone(),
+                        field: "timestamp_or_message".into(),
+                        reason: "invalid_normalized_entry".into(),
+                    }
+                })
+            });
+            match parsed {
+                Ok(mut entry) => {
+                    entry.normalized_record = Some(entry.raw_logline.clone());
+                    entry.source_file = Some(crate::evidence::path_label(path));
+                    entry.source_row_path = Some(row_path);
+                    entry.raw_logline = text.to_string();
+                    entries.push(entry);
+                }
+                Err(diagnostic) => {
+                    coverage.rejected_candidates += 1;
+                    coverage.normalization_diagnostics.push(diagnostic);
+                }
+            }
+        }
+        return;
+    }
+    if format != LogFormat::JsonLines && !line_starts_entry(text, format) {
+        coverage.rejected_candidates += 1;
+        let first_line = text.lines().next().unwrap_or_default();
+        let mut matches = FormatMatches::default();
+        matches.observe(first_line);
+        let reason = if unsupported_python_header(first_line) {
+            "unsupported_python_header"
+        } else if matches.any() {
+            "selected_parser_mismatch"
+        } else if looks_like_entry_candidate(first_line) {
+            "unsupported_header"
+        } else {
+            "unrecognized_leading_block"
+        };
+        coverage.structural_diagnostics.reject(line_number, reason);
+        return;
+    }
+    match parse_log_entry_in_format(text, line_number, config, format) {
+        Ok(mut entry) => {
+            entry.source_file = Some(crate::evidence::path_label(path));
+            entries.push(entry);
+        }
+        Err(_) => {
+            coverage.rejected_candidates += 1;
+            coverage
+                .structural_diagnostics
+                .reject(line_number, "invalid_selected_record");
+        }
+    }
+}
+
 /// Coverage is measured before filters or severity selection.
 #[derive(Debug, Clone, Serialize)]
 pub struct ParseCoverage {
@@ -137,6 +324,7 @@ pub struct ParseCoverage {
     pub parsed_entries: usize,
     pub rejected_candidates: usize,
     pub normalization_diagnostics: Vec<crate::normalize::RowDiagnostic>,
+    pub structural_diagnostics: StructuralDiagnostics,
 }
 
 impl ParseCoverage {
@@ -160,12 +348,42 @@ pub fn parse_log_file_report(
         ParseError::InvalidLogFormat(format!("invalid analyzer configuration: {reason}"))
     })?;
     let path = path.as_ref();
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(crate::evidence::SnapshotReader::new(file));
+    let mut lines = std::io::Read::by_ref(&mut reader).lines().enumerate();
+    let mut samples = Vec::new();
+    let mut sample_indices = Vec::new();
+    let mut skipped_leading_blank_lines = 0;
+    let selection = if config.normalization.is_some() {
+        "normalization"
+    } else if config.parser.format == LogFormat::Auto {
+        "automatic_sample"
+    } else {
+        "explicit"
+    };
+    if selection == "automatic_sample" {
+        let mut nonempty = 0;
+        while nonempty < 10 {
+            let Some((index, line)) = lines.next() else {
+                break;
+            };
+            let line = line?;
+            if line.trim().is_empty() && samples.is_empty() {
+                skipped_leading_blank_lines += 1;
+                continue;
+            }
+            nonempty += usize::from(!line.trim().is_empty());
+            sample_indices.push(index);
+            samples.push(line);
+        }
+    }
     let format = if config.normalization.is_some() {
         LogFormat::JsonLines
     } else {
-        detect_log_format(path, config)?
+        detect_format_from_lines(samples.iter().map(String::as_str), config.parser.format)
     };
-    let file = File::open(path)?;
+    let mut structural_diagnostics = StructuralDiagnostics::new(selection, &samples);
+    structural_diagnostics.blank_lines = skipped_leading_blank_lines;
     let mut coverage = ParseCoverage {
         file: crate::evidence::path_label(path),
         profile: config.profile_name.clone(),
@@ -177,71 +395,61 @@ pub fn parse_log_file_report(
         parsed_entries: 0,
         rejected_candidates: 0,
         normalization_diagnostics: Vec::new(),
+        structural_diagnostics,
     };
-    let mut reader = BufReader::new(crate::evidence::SnapshotReader::new(file));
     let mut entries = Vec::new();
     let mut current_log: Option<String> = None;
     let mut current_line_number = 0;
 
-    let mut finish = |text: &str, line_number: usize| {
-        if let Some(rules) = &config.normalization {
-            for (row_path, row) in crate::normalize::normalize(text, line_number, rules) {
-                let parsed = row.and_then(|value| {
-                    parse_json_line_entry(&value.to_string(), line_number, config).map_err(|_| {
-                        crate::normalize::RowDiagnostic {
-                            line: line_number,
-                            row_path: row_path.clone(),
-                            field: "timestamp_or_message".into(),
-                            reason: "invalid_normalized_entry".into(),
-                        }
-                    })
-                });
-                match parsed {
-                    Ok(mut entry) => {
-                        entry.normalized_record = Some(entry.raw_logline.clone());
-                        entry.source_file = Some(crate::evidence::path_label(path));
-                        entry.source_row_path = Some(row_path);
-                        entry.raw_logline = text.to_string();
-                        entries.push(entry);
-                    }
-                    Err(diagnostic) => {
-                        coverage.rejected_candidates += 1;
-                        coverage.normalization_diagnostics.push(diagnostic);
-                    }
-                }
-            }
-            return;
-        }
-
-        if format != LogFormat::JsonLines && !line_starts_entry(text, format) {
-            coverage.rejected_candidates += 1;
-            return;
-        }
-        match parse_log_entry_in_format(text, line_number, config, format) {
-            Ok(mut entry) => {
-                entry.source_file = Some(crate::evidence::path_label(path));
-                entries.push(entry);
-            }
-            Err(_) => coverage.rejected_candidates += 1,
-        }
-    };
-
-    for (index, line) in std::io::Read::by_ref(&mut reader).lines().enumerate() {
+    let replay = sample_indices
+        .into_iter()
+        .zip(samples)
+        .map(|(index, line)| (index, Ok(line)));
+    for (index, line) in replay.chain(lines) {
         let line = line?;
         if !line.trim().is_empty() {
             coverage.nonempty_lines += 1;
+            coverage
+                .structural_diagnostics
+                .observed_format_matches
+                .observe(&line);
+            coverage.structural_diagnostics.unsupported_python_headers +=
+                usize::from(unsupported_python_header(&line));
+        } else {
+            coverage.structural_diagnostics.blank_lines += 1;
         }
         if format == LogFormat::JsonLines {
             if !line.trim().is_empty() {
-                finish(&line, index + 1);
+                finish_candidate(
+                    &line,
+                    index + 1,
+                    format,
+                    path,
+                    config,
+                    &mut entries,
+                    &mut coverage,
+                );
             }
-        } else if line_starts_entry(&line, format) || looks_like_entry_candidate(&line) {
+        } else if line_starts_entry(&line, format)
+            || looks_like_entry_candidate(&line)
+            || unsupported_python_header(&line)
+        {
             if let Some(text) = current_log.take() {
-                finish(&text, current_line_number);
+                finish_candidate(
+                    &text,
+                    current_line_number,
+                    format,
+                    path,
+                    config,
+                    &mut entries,
+                    &mut coverage,
+                );
             }
             current_log = Some(line);
             current_line_number = index + 1;
         } else if let Some(text) = &mut current_log {
+            coverage.structural_diagnostics.attached_nonempty_lines +=
+                usize::from(!line.trim().is_empty());
             text.push('\n');
             text.push_str(&line);
         } else if !line.trim().is_empty() {
@@ -251,12 +459,24 @@ pub fn parse_log_file_report(
         }
     }
     if let Some(text) = current_log {
-        finish(&text, current_line_number);
+        finish_candidate(
+            &text,
+            current_line_number,
+            format,
+            path,
+            config,
+            &mut entries,
+            &mut coverage,
+        );
     }
     let (digest, bytes) = reader.into_inner().finish();
     coverage.snapshot_sha256 = digest;
     coverage.input_bytes = bytes;
     coverage.parsed_entries = entries.len();
+    coverage.structural_diagnostics.observed_status = coverage
+        .structural_diagnostics
+        .observed_format_matches
+        .status();
     Ok(ParsedLogFile { entries, coverage })
 }
 

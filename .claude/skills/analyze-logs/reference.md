@@ -54,7 +54,11 @@ Masked identities from independently generated reports are not comparable.
 Report observations, measurements, hypotheses, contrary evidence and unknowns
 according to the advertised investigation contract. Inspect rejected header-shaped
 candidates before interpreting coverage; they are distinct from genuine multiline
-payloads and traceback continuations. Empty input, no filter
+payloads and traceback continuations. Compare sampled detection with whole-input
+structural observations and bounded rejection source lines. Tied/mixed/no-match
+selection and attached-line counts are limitations, not validated completeness or
+lifecycle meaning. Unsupported Python-style headers require structural support;
+profile-rule generation alone cannot repair them. Empty input, no filter
 matches, no errors, parsing failure and unavailable analysis are distinct.
 
 The authoritative contracts are described in the repository's
