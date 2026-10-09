@@ -26,6 +26,7 @@ pub mod normalize;
 mod output;
 pub mod parser;
 pub mod perf_analyzer;
+mod profile_mappings;
 pub mod profile_resolution;
 pub mod profile_validation;
 mod report_budget;
@@ -435,6 +436,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     | Commands::Capabilities
                     | Commands::ValidateProfile { .. }
                     | Commands::ResolveProfile { .. }
+                    | Commands::ProfileMappings { .. }
             ),
     );
     if cli.common_reports() {
@@ -462,6 +464,9 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             write_output_file(path, &rendered)?;
         }
         return Ok(());
+    }
+    if matches!(&cli.command, Commands::ProfileMappings { .. }) {
+        return profile_mappings::run(cli);
     }
     // Resolution reports invalid explicit choices itself and keeps generic inspection available.
     if matches!(&cli.command, Commands::ResolveProfile { .. }) {
@@ -534,6 +539,9 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     let filter = build_filter(&cli.filter)?;
 
     match &cli.command {
+        Commands::ProfileMappings { .. } => {
+            unreachable!("mapping management returned before config loading")
+        }
         Commands::ResolveProfile { .. } => {
             unreachable!("resolution returned before config loading")
         }

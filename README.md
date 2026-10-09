@@ -16,6 +16,8 @@ require a suitable preset or validated TOML profile.
 
 ## Installation
 
+Building from source requires Rust 1.89 or newer.
+
 ```bash
 # Auto-detect platform and install latest release
 curl -fsSL https://raw.githubusercontent.com/eirenik0/log-analyzer/main/scripts/install.sh | bash
@@ -998,7 +1000,8 @@ log-analyzer --config examples/profile-candidate.toml resolve-profile examples/p
 ```
 
 Precedence is explicit `--config`/`--preset`, then a revalidated supplied association,
-then exactly one eligible built-in or `--candidate-config` alternative. Invalid or
+then revalidated project and user mappings, then exactly one eligible built-in
+or `--candidate-config` alternative. Invalid or
 unsupported explicit choices are reported and never replaced. Built-ins sort by
 name, editable alternatives by path (duplicates removed; at most 16). Distinct
 effective configurations remain ambiguous even with identical observed results;
@@ -1048,8 +1051,66 @@ A zero-match filter leaves successful parsing and structural revalidation intact
 while analysis remains insufficient. Empty sources have unverified structure and
 cannot revalidate an association; a genuinely incompatible nonempty source remains
 invalid even when another source is empty.
-An explicit CLI choice bypasses the association. Project/user discovery and atomic
-remember/inspect/replace/forget management are separate follow-on work.
+An explicit CLI choice bypasses the association and persistent lookup. Resolution
+reports version 2 for mapping provenance; the embedded report schema retains
+version-1 resolution and the supplied association contract remains version 1.
+
+### Persistent source/profile mappings
+
+`resolve-profile` reads the project registry at
+`<project-root>/.log-analyzer/profile-mappings.json`, then the user registry at
+`~/.config/log-analyzer/profile-mappings.json` (Windows uses `USERPROFILE` when
+`HOME` is unavailable). The project root defaults to the current directory;
+there is no ancestor search. Use `--project-root`, `--project-mappings`,
+`--user-mappings`, or `--no-mappings` to control lookup. Missing registries remain
+absent: lookup does not create directories, lock files, caches or configuration.
+
+Matching uses the exact ordered list of canonical source paths plus requested
+kind and purpose. Project paths and custom profile selectors are root-relative,
+so a project can move as a unit. User mappings use absolute paths and absolute
+project context; they never match another project by basename. Project source paths
+and saved profile selectors must stay inside the root, including after resolving symlinks.
+Persistence requires UTF-8 paths. A mapping does not establish relationships
+between sources or combine independent runs into a correlation scope.
+
+Every matching profile is loaded and checked against its saved effective digest,
+event/structural/resolution contracts, current source parsing and independently
+supplied semantic assertions. Prior success cannot authorize a new automatic
+choice. No assertions means insufficient evidence. Changed rules, missing
+profiles, incompatible input and malformed registries produce diagnostics and
+allow lower-tier fallback. Multiple exact matches in a higher tier stop automatic
+selection; they cannot be hidden by a lower-tier match.
+
+Saving requires an explicit management command and a current selected profile
+that passes the same independent-assertion gate. Explicit selection alone is
+insufficient to remember it. The [registry schema](schemas/profile-mappings.schema.json)
+stores selectors, ordered source paths, digests, selected parsers, contract versions
+and assertion-digest provenance. It stores no raw log excerpts, assertion values,
+credentials, reports or disposable analysis cache. Inspect the metadata before
+tracking or sharing it; project configuration and private evidence remain separate.
+
+```bash
+log-analyzer --config examples/profile-candidate.toml profile-mappings --project-root . remember examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
+log-analyzer profile-mappings --project-root . inspect
+# Copy entry.id and digest from inspect; replacement requires fresh validation.
+log-analyzer --config examples/profile-candidate.toml profile-mappings --project-root . replace examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json --entry-id ID --if-digest DIGEST
+log-analyzer profile-mappings --project-root . forget --entry-id ID --if-digest DIGEST
+```
+
+`--scope user` chooses user storage; `--registry PATH` overrides the selected
+scope's file. Inspect and forget do not need source/profile files to exist.
+Remember refuses an existing source key. Replace and forget require the currently
+inspected entry digest and report a conflict if it changes. Mutations validate
+before acquiring a bounded native lock, reread under the lock, then sync and
+atomically replace a same-directory temporary file. Directory aliases share a
+canonical lock path; registry/lock symlink files are rejected for mutation. The
+stable sibling lock file remains after use and operating-system locks release
+when the process exits. These guarantees assume filesystem support for native
+locking and atomic replacement; they do not claim universal power-loss durability.
+Management refuses report destinations that conflict with its registry or stable
+lock, including resolved aliases; use a separate `--output` report path.
+Management returns full JSON and rejects common report budgets/cursors, so a
+retrieval request cannot repeat a mutation.
 
 ## Profile Configuration
 

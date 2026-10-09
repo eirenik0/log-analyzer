@@ -83,8 +83,8 @@ statuses must agree with budgets and usage; unknowns alone do not establish supp
 
 Use `resolve-profile --help` and capability `profile_resolution.version` before
 using discovery. Existing defaults remain explicit. Precedence is explicit CLI,
-revalidated supplied read-only association, then one independently asserted
-candidate. Never substitute a candidate for an invalid explicit choice.
+revalidated supplied read-only association, revalidated project/user mappings
+(version 2), then one independently asserted candidate. Never substitute a candidate for an invalid explicit choice.
 
 Compare candidate structural parsing, recognition, correlation scope and timing
 support separately. Expected facts remain optional for sample validation, but an
@@ -99,3 +99,16 @@ and input identities. `--association` reads a strict supplied contract without
 writing it; remembering project/source mappings is separate. Freeze inputs because
 candidates read them separately. Apply the selected preset/config explicitly to
 subsequent commands.
+
+
+Version-2 resolution reads exact ordered source/kind/purpose mappings without
+writing. Use advertised `profile-mappings inspect|remember|replace|forget` only
+for requested metadata management. Saving needs a current selected profile with
+complete independent semantic assertions; explicit configuration alone does not
+suffice. Inspect gives the entry digest needed by replace/forget. Project paths
+are root-relative and constrained to the root; user paths bind absolute project
+context. Ambiguous higher-tier mappings abstain; invalid ones expose diagnostics
+before fallback. Source relationships and capture completeness remain unknown.
+The registry contains minimal paths/selectors/digests and assertion-digest provenance,
+not raw logs, expected facts or cached reports. Management does not support common
+report budgets/cursors; get current options from `profile-mappings --help`.
