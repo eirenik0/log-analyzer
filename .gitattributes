@@ -8,3 +8,5 @@
 # Frozen evaluations include transitive built-in profile bytes.
 /config/profiles/** text eol=lf
 /config/templates/** text eol=lf
+/.agents/skills/analyze-logs/templates/** text eol=lf
+/.claude/skills/analyze-logs/templates/** text eol=lf
