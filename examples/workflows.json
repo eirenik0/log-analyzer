@@ -78,12 +78,39 @@
           "exit": 0,
           "checks": []
         }
-      ]
+      ],
+      "skill_example": ".claude/skills/analyze-logs/examples/debug-failure.md"
     },
     {
       "id": "slow-info-comparison",
       "question": "Why is the INFO-only run slower than the independent baseline?",
       "steps": [
+        {
+          "id": "slow-scope",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "info",
+            "{root}/examples/investigations/slow.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        },
+        {
+          "id": "baseline-scope",
+          "args": [
+            "--config",
+            "{root}/examples/investigations/profile.toml",
+            "--report-max-items",
+            "3",
+            "info",
+            "{root}/examples/investigations/baseline.jsonl"
+          ],
+          "exit": 0,
+          "checks": []
+        },
         {
           "id": "slow-validation",
           "args": [
@@ -176,7 +203,8 @@
           "exit": 0,
           "checks": []
         }
-      ]
+      ],
+      "skill_example": ".claude/skills/analyze-logs/examples/performance.md"
     },
     {
       "id": "reused-id-lifecycle",

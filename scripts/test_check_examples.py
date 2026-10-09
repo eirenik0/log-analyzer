@@ -26,6 +26,19 @@ class FakeRunner(examples.Runner):
 
 
 class WorkflowChecks(unittest.TestCase):
+    def test_documented_commands_cannot_drift_from_checked_workflow(self):
+        example = {'id': 'documentation', 'steps': [{'args': ['--config', '{root}/examples/profile.toml', 'perf', '{root}/examples/run.log']}]}
+        document = '```sh\nlog-analyzer capabilities\n```\n\n```sh\nlog-analyzer --config examples/profile.toml perf examples/run.log\n```\n'
+        self.assertEqual(examples.skill_commands(example, document), [['--config', 'examples/profile.toml', 'perf', 'examples/run.log']])
+        for changed in (document.replace(' --config examples/profile.toml', ''),
+                        document.replace(' perf ', ' perf --unknown-option '),
+                        document.replace('log-analyzer capabilities', 'log-analyzer capabilities; touch injected'),
+                        document.replace('```sh', '```text'),
+                        document + '```sh\nlog-analyzer info unrelated.log\n```\n'):
+            with self.subTest(document=changed):
+                with self.assertRaisesRegex(AssertionError, 'commands differ'):
+                    examples.skill_commands(example, changed)
+
     def test_unsupported_capability_is_failure(self):
         with self.assertRaisesRegex(AssertionError, 'unsupported capability'):
             examples.compatible({})

@@ -87,6 +87,10 @@ cannot guarantee arbitrary content is secret.
 
 The portable workflow, synthetic end-to-end examples and stopping decisions are
 maintained in [docs/investigation-workflow.md](https://github.com/eirenik0/log-analyzer/blob/main/docs/investigation-workflow.md).
+The bundled [failure](examples/debug-failure.md) and
+[performance](examples/performance.md) examples show the checked investigation
+sequence. Their synthetic commands require a repository checkout; use absolute
+input/profile paths for real captures.
 The [command reference](reference.md) and actual binary help describe syntax,
 profiles, inheritance, normalization and retrieval. The existing executable
 example runner verifies these workflows. The [published synthetic evaluation baseline](https://github.com/eirenik0/log-analyzer/blob/main/evals/README.md) verifies the harness; model quality and token savings remain unmeasured.
