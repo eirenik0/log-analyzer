@@ -391,7 +391,29 @@ fn explicitly_selected_input_status_is_masked_without_changing_coverage_status()
         assert!(output.status.success());
         let text = String::from_utf8(output.stdout).unwrap();
         if format == "text" {
-            assert!(!text.contains("701"), "{text}");
+            // Generated revisions can coincidentally contain a short numeric ID.
+            // Exclude only that digest, preserving every other output field.
+            let mut content = text.clone();
+            if let Some(build) = text
+                .lines()
+                .rfind(|line| line.starts_with("Build: log-analyzer "))
+                && let Some(revision) = build
+                    .split(" revision=")
+                    .nth(1)
+                    .and_then(|v| v.split_whitespace().next())
+                && revision.len() == 40
+                && revision.bytes().all(|c| c.is_ascii_hexdigit())
+            {
+                let token = format!("revision={revision} state=");
+                let header_offset = text.rfind(build).unwrap();
+                let revision_offset =
+                    header_offset + build.find(&token).unwrap() + "revision=".len();
+                content.replace_range(
+                    revision_offset..revision_offset + revision.len(),
+                    "<generated>",
+                );
+            }
+            assert!(!content.contains("701"), "{text}");
         }
         if format == "json" {
             let value: Value = serde_json::from_str(&text).unwrap();

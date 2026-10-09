@@ -13,7 +13,8 @@
     "report_schemas",
     "bounded_reports",
     "profile_validation",
-    "investigation_contracts"
+    "investigation_contracts",
+    "profile_preparation"
   ],
   "properties": {
     "schema_version": {
@@ -282,6 +283,19 @@
         "occurrence_identity"
       ],
       "additionalProperties": false
+    },
+    "profile_preparation": {
+      "type": "object",
+      "required": [
+        "version",
+        "command",
+        "candidate_activation",
+        "candidate_overwrite",
+        "validation",
+        "retries",
+        "presentation",
+        "common_cursors"
+      ]
     }
   }
 }

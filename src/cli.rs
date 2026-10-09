@@ -266,6 +266,34 @@ pub struct Cli {
     pub command: Commands,
 }
 
+#[derive(serde::Serialize, clap::Args)]
+pub struct PrepareProfileArgs {
+    #[arg(required = true, num_args = 1..)]
+    #[serde(serialize_with = "crate::evidence::serialize_paths")]
+    pub files: Vec<PathBuf>,
+    /// New candidate file; existing files are never replaced
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_path")]
+    pub candidate_output: PathBuf,
+    #[arg(long, value_enum)]
+    pub kind: OperationType,
+    #[arg(long, value_enum, default_value = "timing")]
+    pub purpose: crate::profile_validation::Purpose,
+    /// Independently established source-addressed assertions, never generated from the candidate
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub expected: Option<PathBuf>,
+    /// Existing TOML or built-in starting point; defaults to base
+    #[arg(long, conflicts_with_all = ["config", "preset"])]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub template: Option<PathBuf>,
+    #[arg(long)]
+    pub profile_name: Option<String>,
+    /// Maximum representative records per diagnostic array; omitted counts remain visible
+    #[arg(long, default_value = "20", value_parser = clap::value_parser!(u32).range(1..=100))]
+    pub witness_limit: u32,
+}
+
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
     /// Print build identity, commands, formats, presets, report schemas and contract availability as JSON
@@ -293,6 +321,8 @@ pub enum Commands {
         #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
         expected: Option<PathBuf>,
     },
+    /// Save a separate editable candidate and report sample validation plus missing domain knowledge (JSON)
+    PrepareProfile(PrepareProfileArgs),
     /// Resolve profiles deterministically; automatic choices require supplied semantic assertions (JSON)
     ResolveProfile {
         #[arg(required = true, num_args = 1..)]
@@ -616,11 +646,16 @@ impl Cli {
     }
 
     pub fn prepare_common_reports(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if matches!(&self.command, Commands::PrepareProfile(args) if args.template.is_some())
+            && (self.config.is_some() || self.preset.is_some())
+        {
+            return Err("--template conflicts with --config and --preset".into());
+        }
         if !self.common_reports() {
             return Ok(());
         }
         match &mut self.command {
-            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } | Commands::ProfileMappings { .. } =>
+            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } | Commands::ProfileMappings { .. } | Commands::PrepareProfile(_) =>
                 return Err("Common report budgets support info/search/extract/perf/trace/process/comparisons/errors; this command is unsupported".into()),
             Commands::Process { limit, .. } => *limit = 0,
             Commands::Perf { top_n, .. } => *top_n = 0,
@@ -651,4 +686,59 @@ impl Cli {
 
 pub fn cli_parse() -> Cli {
     Cli::parse()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn preparation_args_preserve_query_help_and_conflicts() {
+        let args = [
+            "log-analyzer",
+            "prepare-profile",
+            "sample.jsonl",
+            "--candidate-output",
+            "candidate.toml",
+            "--kind",
+            "request",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert_eq!(
+            serde_json::to_value(&cli.command).unwrap(),
+            serde_json::json!({"PrepareProfile":{"files":["sample.jsonl"],"candidate_output":"candidate.toml","kind":"Request","purpose":"timing","expected":null,"template":null,"profile_name":null,"witness_limit":20}})
+        );
+        let help = Cli::try_parse_from(["log-analyzer", "prepare-profile", "--help"])
+            .err()
+            .unwrap()
+            .to_string();
+        for flag in [
+            "--candidate-output",
+            "--kind",
+            "--purpose",
+            "--expected",
+            "--template",
+            "--profile-name",
+            "--witness-limit",
+        ] {
+            assert!(help.contains(flag), "{help}");
+        }
+        for global in ["--config", "--preset"] {
+            for before in [true, false] {
+                let mut invocation = if before {
+                    vec!["log-analyzer", global, "base"]
+                } else {
+                    vec!["log-analyzer"]
+                };
+                invocation.extend_from_slice(&args[1..]);
+                invocation.extend(["--template", "base"]);
+                if !before {
+                    invocation.extend([global, "base"]);
+                }
+                if let Ok(mut cli) = Cli::try_parse_from(invocation) {
+                    assert!(cli.prepare_common_reports().is_err());
+                }
+            }
+        }
+        assert!(Cli::try_parse_from(args.into_iter().chain(["--witness-limit", "0"])).is_err());
+    }
 }

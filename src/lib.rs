@@ -27,6 +27,7 @@ mod output;
 pub mod parser;
 pub mod perf_analyzer;
 mod profile_mappings;
+mod profile_preparation;
 pub mod profile_resolution;
 pub mod profile_validation;
 mod report_budget;
@@ -437,6 +438,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     | Commands::ValidateProfile { .. }
                     | Commands::ResolveProfile { .. }
                     | Commands::ProfileMappings { .. }
+                    | Commands::PrepareProfile(_)
             ),
     );
     if cli.common_reports() {
@@ -464,6 +466,9 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             write_output_file(path, &rendered)?;
         }
         return Ok(());
+    }
+    if matches!(&cli.command, Commands::PrepareProfile(_)) {
+        return profile_preparation::run(cli);
     }
     if matches!(&cli.command, Commands::ProfileMappings { .. }) {
         return profile_mappings::run(cli);
@@ -548,6 +553,9 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
         }
         Commands::ResolveProfile { .. } => {
             unreachable!("resolution returned before config loading")
+        }
+        Commands::PrepareProfile(_) => {
+            unreachable!("preparation returned before legacy analysis")
         }
         Commands::Capabilities => unreachable!("capabilities returned before config loading"),
         Commands::ValidateProfile {

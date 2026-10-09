@@ -243,9 +243,10 @@ fn shared_cli_reports_disclose_identical_structural_coverage_and_schema() {
                 &fs::read_to_string(format!("schemas/{schema}.schema.json")).unwrap(),
             )
             .unwrap();
-            jsonschema::validator_for(
-                &schema["$defs"]["coverage"]["properties"]["structural_diagnostics"],
-            )
+            jsonschema::validator_for(&json!({
+                "$defs": schema["$defs"],
+                "$ref": "#/$defs/coverage/properties/structural_diagnostics"
+            }))
             .unwrap()
             .validate(structure)
             .unwrap();
