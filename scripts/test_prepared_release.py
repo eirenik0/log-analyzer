@@ -83,7 +83,7 @@ class ReleasePreparationTests(unittest.TestCase):
         self.no_release = 'Error: releases::no_release (https://knope.tech/reference/config-file/steps/prepare-release/#errors)\n'
 
     def run_preparation(self, dry_run='false'):
-        return subprocess.run(['bash', '-c', self.script], cwd=self.root,
+        return subprocess.run(['/bin/bash' if Path('/bin/bash').exists() else 'bash', '-c', self.script], cwd=self.root,
                               env=dict(self.env, DRY_RUN=dry_run), capture_output=True, text=True)
 
     def test_no_release_stops_cleanly_in_normal_and_dry_runs(self):
