@@ -34,7 +34,7 @@ include every declared source; `--output` matches stdout.
 
 Before interpreting JSON, check `capabilities.report_schemas` and the existing
 `report_metadata.evidence` contract. The canonical specification is
-[`docs/design/evidence-contract.md`](../../../docs/design/evidence-contract.md)
+[`docs/design/evidence-contract.md`](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/evidence-contract.md)
 with machine-readable schemas embedded in `capabilities.report_schemas` and
 also published under `schemas/`. Cite snapshot-scoped references,
 verify effective profile/input identity, and retrieve individual records when
@@ -146,13 +146,19 @@ Start from a template and customize your log format:
 
 ```bash
 # Local repo templates
+mkdir -p config/profiles
 cp config/templates/custom-start.toml config/profiles/my-team.toml
 
-# Skill-installed templates (global install)
+# Personal installation only; create the destination first
+mkdir -p ./config/profiles
 cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
 ```
 
-Available files:
+For plugin or project installations, resolve `templates/custom-start.toml`
+relative to this skill directory instead of assuming a personal installation.
+Keep edited candidates in the working project, outside the plugin cache.
+
+Available files in a repository checkout:
 - `config/profiles/base.toml` - generic parser/perf/profile baseline
 - `config/profiles/eyes.toml` - Eyes/Applitools-specific preset
   - Decodes both `with settings` and `with default driver and settings` command payloads.
@@ -442,7 +448,9 @@ Generate LLM-friendly diff output. Equivalent to `compare --diff-only -F json -c
 log-analyzer llm-diff <file1> <file2> [options]
 ```
 
-Same options as `process` (or `llm`) command.
+`llm-diff` accepts `--sort-by` (including `diff-count`), `--no-sanitize` and
+the global report options. It has no `--limit`; use `--report-max-items` for
+bounded JSON pages, then follow `retrieval.next_cursor` within the agreed budget.
 
 ### perf
 
@@ -476,7 +484,7 @@ unfinished operations have no measured duration or completed-operation count.
 
 **Output includes:**
 - Slowest operations with timing details
-- Orphan operations (started but never finished)
+- Orphan operations (a start has no matching end in the selected capture)
 - Statistics per operation type (count, avg, p50, p95, p99)
 
 **Examples:**
@@ -529,7 +537,7 @@ Version 1 and non-start phases reject this option; the default still expects an 
 
 ### Configurable event timelines
 
-See [README: Configurable event timelines](../../../README.md#configurable-event-timelines)
+See [README: Configurable event timelines](https://github.com/eirenik0/log-analyzer/blob/main/README.md#configurable-event-timelines)
 for the profile syntax. For retries, identify the response boundary separately
 from the marker written after sleep. Inspect incomplete/ambiguous groups before
 using durations; use `trace` to narrow the evidence to a related context.
@@ -591,21 +599,22 @@ log-analyzer generate-config ./logs/test.log --profile-name test-run
 # Merge split logs before inferring profile hints
 log-analyzer generate-config ./logs/run-1.log ./logs/run-2.log --profile-name run-profile
 
-# Save generated profile for skill reuse
+# Save a candidate in the working project for validation before selection
+mkdir -p ./config/profiles
 log-analyzer generate-config ./logs/*.log --profile-name cypress \
-  -o .claude/skills/analyze-logs/profiles/cypress.toml
+  -o ./config/profiles/cypress.toml
 
 # Generate using parser/perf rules from a built-in template
 log-analyzer generate-config ./logs/*.log \
   --template service-api \
   --profile-name service-api \
-  -o .claude/skills/analyze-logs/profiles/service-api.toml
+  -o ./config/profiles/service-api.toml
 
 # Generate a repo profile starting from the Eyes preset
 log-analyzer generate-config ./logs/*.log \
   --template eyes \
   --profile-name eyes \
-  -o .claude/skills/analyze-logs/profiles/eyes.toml
+  -o ./config/profiles/eyes.toml
 ```
 
 ## Environment Variables
@@ -688,7 +697,7 @@ limits and conflicts with bounded/limit flags.
 ### Structured exports
 
 Preview unknown JSON exports with `schema <file> --samples 3` before mapping fields.
-Use explicit paths and timestamp units from [README](../../../README.md#structured-export-normalization),
+Use explicit paths and timestamp units from [README](https://github.com/eirenik0/log-analyzer/blob/main/README.md#structured-export-normalization),
 then check normalization diagnostics in `info -j` coverage before investigating.
 
 For reports intended for sharing, use global `--redact`; selected ID fields can

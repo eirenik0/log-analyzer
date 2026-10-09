@@ -20,7 +20,7 @@ usage() {
     echo ""
     echo "After installation, use in Claude Code with:"
     echo "  /analyze-logs <command> [options]"
-    exit 1
+    exit "${1:-0}"
 }
 
 INSTALL_GLOBAL=false
@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            usage
+            usage 1
             ;;
     esac
 done
@@ -51,21 +51,49 @@ if [ "$INSTALL_GLOBAL" = true ]; then
     INSTALL_DIR="$HOME/.claude/skills/$SKILL_NAME"
     echo "Installing globally to: $INSTALL_DIR"
 else
-    INSTALL_DIR="$REPO_DIR/.claude/skills/$SKILL_NAME"
+    INSTALL_DIR="$PWD/.claude/skills/$SKILL_NAME"
     echo "Installing to project: $INSTALL_DIR"
 fi
 
-# Create directory and copy files
+# Resolve existing ancestors, including symlinks, before creating a destination.
+resolve_directory() {
+    local candidate="$1"
+    local suffix=""
+    while [ ! -d "$candidate" ]; do
+        suffix="/$(basename "$candidate")$suffix"
+        candidate="$(dirname "$candidate")"
+    done
+    local resolved
+    resolved="$(cd "$candidate" && pwd -P)" || return 1
+    printf '%s%s\n' "$resolved" "$suffix"
+}
+
+SKILL_SOURCE="$(resolve_directory "$SKILL_SOURCE")"
+INSTALL_DIR="$(resolve_directory "$INSTALL_DIR")"
+if [ "$SKILL_SOURCE" != "$INSTALL_DIR" ]; then
+    case "${INSTALL_DIR%/}/" in
+        "${SKILL_SOURCE%/}/"*) echo "Error: installation destination overlaps the skill source" >&2; exit 1 ;;
+    esac
+    case "${SKILL_SOURCE%/}/" in
+        "${INSTALL_DIR%/}/"*) echo "Error: installation destination overlaps the skill source" >&2; exit 1 ;;
+    esac
+fi
+
+# Create directory and copy files only after ruling out recursive copies.
 mkdir -p "$INSTALL_DIR"
-cp -r "$SKILL_SOURCE"/* "$INSTALL_DIR/"
+if [ "$SKILL_SOURCE" -ef "$INSTALL_DIR" ]; then
+    echo "Skill is already available in this project."
+else
+    cp -R "$SKILL_SOURCE/." "$INSTALL_DIR/"
+fi
 
 echo ""
 echo "Skill installed successfully!"
 echo ""
 echo "Usage in Claude Code:"
-echo "  /analyze-logs diff file1.log file2.log"
-echo "  /analyze-logs perf test.log"
-echo "  /analyze-logs info test.log --samples"
+echo "  /analyze-logs What failed in this capture? test.log --preset eyes"
+echo "  /analyze-logs perf test.log --config ./config/profiles/my-team.toml"
+echo "Choose a profile for the actual format and validate it against the capture."
 echo ""
 echo "Create a custom analyzer profile from template:"
 echo "  mkdir -p ./config/profiles"
@@ -78,12 +106,12 @@ if command -v log-analyzer &> /dev/null; then
     echo "log-analyzer binary found at: $(which log-analyzer)"
 else
     echo "Note: log-analyzer binary not found in PATH."
-    echo "The skill will use 'cargo run' for development."
+    echo "Install or build the binary before running an investigation."
     echo ""
     echo "To install the binary:"
-    echo "  cargo build --release"
-    echo "  sudo cp target/release/log-analyzer /usr/local/bin/"
+    echo "  cargo build --release --manifest-path \"$REPO_DIR/Cargo.toml\""
+    echo "Then supply the built executable or install it on PATH."
     echo ""
     echo "Or download from releases:"
-    echo "  ./scripts/install.sh"
+    echo "  \"$REPO_DIR/scripts/install.sh\""
 fi

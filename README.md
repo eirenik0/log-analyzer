@@ -1044,17 +1044,29 @@ agent chooses queries and explains findings:
 
 ### Usage
 
-Ask an investigation question or choose a CLI task with `/analyze-logs` in
-[Claude Code](https://claude.ai/code). External data handling follows that agent's configuration; see [local data flow](#local-data-flow-and-external-agents):
+Marketplace plugin installations use `/log-analyzer:analyze-logs` in
+[Claude Code](https://code.claude.com/docs/en/plugins/components#skills).
+Project and personal skill installations use `/analyze-logs` instead.
+External data handling follows the agent's configuration; see
+[local data flow](#local-data-flow-and-external-agents).
 
 ```text
-/analyze-logs What failed in this capture, and can it establish why? examples/investigations/failure.jsonl --config examples/investigations/profile.toml
-/analyze-logs diff file1.log file2.log          # Compare and explain differences
-/analyze-logs perf logs/*.log --threshold-ms 500  # Find bottlenecks across files
-/analyze-logs trace logs/*.log --id f227f11e      # Follow one operation lifecycle
-/analyze-logs info logs/*.log --samples           # Cross-file log structure overview
-/analyze-logs llm test.log                      # Generate LLM-friendly output
+/log-analyzer:analyze-logs What failed in this capture, and can it establish why? /logs/failure.log --config /profiles/my-team.toml
+/log-analyzer:analyze-logs perf /logs/run.log --preset eyes --threshold-ms 500
+/log-analyzer:analyze-logs trace /logs/run.log --preset eyes --id request-7
 ```
+
+Replace these paths and select a profile suited to the actual log format.
+The skill checks capabilities, coverage and profile suitability before drawing
+conclusions. Its [failure](.claude/skills/analyze-logs/examples/debug-failure.md)
+and [performance](.claude/skills/analyze-logs/examples/performance.md) examples use
+the maintained synthetic fixtures; their documented commands are checked by CI.
+
+For a standalone skill, run `/path/to/log-analyzer/scripts/install-skill.sh`
+from the destination project, or add `--global` for personal installation.
+Running it from the source repository is a safe no-op; other overlapping source
+and destination directories are rejected before copying. Install the CLI separately;
+the skill's capability check detects whether the executable supports the workflow.
 
 ## Development
 
