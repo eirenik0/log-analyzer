@@ -267,8 +267,8 @@ fn shared_cli_reports_disclose_identical_structural_coverage_and_schema() {
             text.contains("Structural rejection at line 2: unsupported_python_header"),
             "{text}"
         );
-        assert!(text.contains("attached nonempty lines=1"));
-        assert!(text.contains("does not establish event semantics"));
+        assert!(text.contains("attached=1 (unverified)"));
+        assert!(text.contains("capture/semantics unknown"));
     }
     fs::write(
         &file,
@@ -379,4 +379,89 @@ fn redacted_pages_retrieve_retained_diagnostics_and_preserve_global_omissions() 
         assert!(page_number < 69, "pagination did not terminate");
     }
     assert_eq!(lines, (2..=21).collect::<Vec<_>>());
+}
+
+#[test]
+fn clean_and_blank_text_reports_expose_full_structural_observations() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("synthetic.log");
+    for (content, expected) in [
+        (
+            "worker | 2026-01-01T00:00:00Z [INFO ] valid\n\n",
+            [
+                "sample=single_format/1",
+                "observed=single_format",
+                "=1/1,0/0,0/0,0/0",
+                "blocks=1",
+                "blank=1",
+            ],
+        ),
+        (
+            "\n\n",
+            [
+                "sample=no_match/0",
+                "observed=no_match",
+                "=0/0,0/0,0/0,0/0",
+                "blocks=0",
+                "blank=2",
+            ],
+        ),
+    ] {
+        fs::write(&file, content).unwrap();
+        for operation in ["info", "errors", "perf"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+                .args([
+                    "--preset",
+                    "base",
+                    "--color",
+                    "never",
+                    operation,
+                    file.to_str().unwrap(),
+                ])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            let text = String::from_utf8(output.stdout).unwrap();
+            for expected in expected {
+                assert!(text.contains(expected), "missing {expected}: {text}");
+            }
+            for expected in [
+                "automatic_sample",
+                "headers(classic/rust/syslog/json; sample/consumed)",
+                "attached=0 (unverified)",
+                "Python=0",
+                "capture/semantics unknown",
+            ] {
+                assert!(text.contains(expected), "missing {expected}: {text}");
+            }
+        }
+    }
+}
+
+#[test]
+fn bounded_clean_errors_label_the_structural_summary() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("synthetic.log");
+    fs::write(
+        &file,
+        "worker | 2026-01-01T00:00:00Z [ERROR] failure\n  at frame\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+        .args([
+            "--preset",
+            "base",
+            "--color",
+            "never",
+            "errors",
+            file.to_str().unwrap(),
+            "--bounded",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("Structure summary:"));
+    assert!(text.contains("attached=1 unverified"));
+    assert!(text.contains("capture/semantics unknown"));
 }

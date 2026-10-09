@@ -308,6 +308,10 @@ fn read_analysis_inputs(
 }
 
 fn coverage_text(coverage: &AnalysisCoverage) -> String {
+    coverage_text_with_mode(coverage, false)
+}
+
+fn coverage_text_with_mode(coverage: &AnalysisCoverage, bounded: bool) -> String {
     use std::fmt::Write;
     let mut text = String::from("Parse coverage\n");
     for file in &coverage.files {
@@ -333,53 +337,55 @@ fn coverage_text(coverage: &AnalysisCoverage) -> String {
             file.rejected_candidates
         );
         let structure = &file.structural_diagnostics;
-        let _ = writeln!(
-            text,
-            "    Structure: sample={}/{}; observed={}; attached={} (unverified); capture/semantics unknown.",
-            structure.sample_status,
-            structure.sampled_nonempty_lines,
-            structure.observed_status,
-            structure.attached_nonempty_lines
-        );
-        if structure.diagnostic_count > 0
+        let exceptional = structure.diagnostic_count > 0
             || matches!(structure.sample_status, "tied" | "mixed")
             || matches!(structure.observed_status, "tied" | "mixed")
-            || (file.nonempty_lines > 0 && structure.observed_status == "no_match")
-        {
+            || (file.nonempty_lines > 0 && structure.observed_status == "no_match");
+        if bounded && !exceptional {
             let _ = writeln!(
                 text,
-                "    Structure detail: selection={}, physical blocks={}, attached nonempty lines={}, blank lines={}, unsupported Python headers={}",
+                "  Structure summary: sample={}/{} input={} attached={} unverified; capture/semantics unknown.",
+                structure.sample_status,
+                structure.sampled_nonempty_lines,
+                structure.observed_status,
+                structure.attached_nonempty_lines
+            );
+        } else {
+            let sample = &structure.sample_format_matches;
+            let consumed = &structure.observed_format_matches;
+            let _ = writeln!(
+                text,
+                "    Structure: {}; sample={}/{}; observed={}; headers(classic/rust/syslog/json; sample/consumed)={}/{},{}/{},{}/{},{}/{}; blocks={}, attached={} (unverified), blank={}, Python={}; capture/semantics unknown.",
                 structure.selection,
+                structure.sample_status,
+                structure.sampled_nonempty_lines,
+                structure.observed_status,
+                sample.classic,
+                consumed.classic,
+                sample.rust_tracing,
+                consumed.rust_tracing,
+                sample.syslog,
+                consumed.syslog,
+                sample.json_lines,
+                consumed.json_lines,
                 structure.physical_candidate_blocks,
                 structure.attached_nonempty_lines,
                 structure.blank_lines,
                 structure.unsupported_python_headers
             );
+        }
+        for diagnostic in &structure.diagnostics {
             let _ = writeln!(
                 text,
-                "    Format header matches: sample={}; consumed={}",
-                serde_json::to_string(&structure.sample_format_matches)
-                    .expect("format matches serialize"),
-                serde_json::to_string(&structure.observed_format_matches)
-                    .expect("format matches serialize")
+                "    Structural rejection at line {}: {}",
+                diagnostic.line, diagnostic.reason
             );
-            for diagnostic in &structure.diagnostics {
-                let _ = writeln!(
-                    text,
-                    "    Structural rejection at line {}: {}",
-                    diagnostic.line, diagnostic.reason
-                );
-            }
-            if structure.omitted_diagnostics > 0 {
-                let _ = writeln!(
-                    text,
-                    "    Structural diagnostics omitted: {} of {}",
-                    structure.omitted_diagnostics, structure.diagnostic_count
-                );
-            }
+        }
+        if structure.omitted_diagnostics > 0 {
             let _ = writeln!(
                 text,
-                "    Limits: structure does not establish event semantics or capture completeness."
+                "    Structural diagnostics omitted: {} of {}",
+                structure.omitted_diagnostics, structure.diagnostic_count
             );
         }
     }
@@ -920,7 +926,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
                             &report,
                             &error_options,
                             limits,
-                            &output::diagnostic(&coverage_text(&coverage)),
+                            &output::diagnostic(&coverage_text_with_mode(&coverage, true)),
                             &output::report_prefix(),
                         )
                     } else {

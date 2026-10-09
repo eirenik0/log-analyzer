@@ -213,7 +213,14 @@ Each coverage object adds `structural_diagnostics` version 1: selection provenan
 sampled format-match counts and no-match/tied/mixed status, whole-input format
 observations, physical candidate blocks, attached nonempty lines, blank lines,
 and bounded rejection source lines/reasons (first 20, with omitted/total counts).
-Text coverage shows the same observations and limits. Physical blocks count
+Text coverage shows these observations and limits, including clean and blank
+inputs. Bounded error text explicitly labels a compact clean-input structure
+summary to preserve its existing budget. It retains sample/full-input status and
+unverified attached-line counts, while omitting clean-only selection provenance,
+exact format-match vectors, physical-block, blank-line and zero unsupported-header
+counts. Unbounded text and JSON expose those counters. Ambiguity,
+unsupported structure and rejection details remain visible in bounded text,
+with the existing mandatory-metadata budget exception when necessary. Physical blocks count
 attempted source blocks; normalized parsed/rejected rows remain separate populations.
 Attached lines are not automatically verified continuations. Format observations
 can overlap (for example Rust tracing/syslog or JSON-looking payload lines).
