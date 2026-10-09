@@ -104,7 +104,11 @@ its calculation/population definition and all material limitations. It need not
 inline exhaustive members or diagnostics. Those collections remain in the artifact,
 with exact counts and references. An excerpt is a prefix of its retained record’s `message` or `raw_text`;
 `omitted_characters` counts the remaining Unicode scalars in that field.
-When redaction removes both retained text fields, source verification is unavailable.
+Applied redaction omits retained `raw_text`, `message`, and `fields` payloads
+(`null`, `null`, and `{}` respectively) and sets `data_omitted: true`. Source
+verification is unavailable. Excerpts use only `[REDACTED SOURCE]` or a declared
+prefix of that marker; their omission counts describe the marker, not original logs.
+Arbitrary replacement text cannot prove redaction without the original inputs.
 Clipping an excerpt is a declared prefix projection;
 it cannot alter the claim, fact, support identity, limitations or verification.
 

@@ -1021,3 +1021,56 @@ fn unavailable_artifact_cannot_advertise_integrity_verification() {
     shape(&report, "investigation.schema.json");
     validate_relations(&report, None).unwrap();
 }
+
+#[test]
+fn applied_redaction_omits_record_payloads_even_with_refreshed_checksum() {
+    let (_, original) = fixture("supported");
+    for field in ["raw_text", "message", "fields", "data_omitted"] {
+        let (report, mut artifact) = fixture("redacted");
+        artifact["records"][0][field] = original["records"][0][field].clone();
+        reject(report, artifact, "must omit retained record payloads");
+    }
+    let (mut report, mut artifact) = fixture("redacted");
+    artifact["records"] = original["records"].clone();
+    for record in artifact["records"].as_array_mut().unwrap() {
+        record["verification"]["source_and_rules"] = json!("unavailable");
+        record["verification"]["losses"] = json!(["original source omitted"]);
+    }
+    for document in [&mut report, &mut artifact] {
+        document["findings"][0]["evidence"][0]["text"] =
+            original["findings"][0]["evidence"][0]["text"].clone();
+    }
+    reject(report, artifact, "must omit retained record payloads");
+}
+
+#[test]
+fn applied_redaction_cannot_expose_original_excerpts() {
+    let (_, original) = fixture("supported");
+    let (mut report, mut artifact) = fixture("redacted");
+    for document in [&mut report, &mut artifact] {
+        document["findings"][0]["evidence"][0]["text"] =
+            original["findings"][0]["evidence"][0]["text"].clone();
+    }
+    assert!(
+        validate_relations(&report, None)
+            .unwrap_err()
+            .to_string()
+            .contains("requires the source omission marker")
+    );
+    reject(report, artifact, "requires the source omission marker");
+
+    let (mut report, artifact) = fixture("redacted");
+    report["findings"][0]["evidence"][0]["text"] = json!("[REDACTED");
+    report["findings"][0]["evidence"][0]["omitted_characters"] =
+        json!("[REDACTED SOURCE]".chars().count() - "[REDACTED".chars().count());
+    let bytes = refresh(&mut report, &artifact);
+    validate_relations(&report, Some(&bytes)).unwrap();
+    validate_relations(&report, None).unwrap();
+    report["findings"][0]["evidence"][0]["omitted_characters"] = json!(0);
+    assert!(
+        validate_relations(&report, None)
+            .unwrap_err()
+            .to_string()
+            .contains("requires the source omission marker")
+    );
+}

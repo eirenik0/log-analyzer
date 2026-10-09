@@ -52,6 +52,8 @@ schema publication alone is not feature availability. Continue the existing vers
 workflow until the unified command is advertised. Repeated declared inputs require
 occurrence identity as well as source references; partial processing does not justify
 full-input counts or completion, and redaction may prevent source/rule verification.
+The retained contract requires redacted record payloads to be omitted and excerpts
+to contain only the source omission marker (or its declared prefix).
 Supported assessments require positive findings; unknowns alone cannot establish support.
 Check coverage against retained evidence and artifact retention against its descriptor.
 Applied redaction omits captured stream data and is reflected in verification losses.

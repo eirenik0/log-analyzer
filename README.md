@@ -228,6 +228,8 @@ advertises implementation availability. Schema 1 accepts both the existing agent
 shape. These contracts separate assessment, processing completion, presentation
 omissions, occurrence/population identity and verification after redaction. A unified
 investigation command and saved-artifact retrieval are not yet implemented.
+Applied redaction in the retained contract omits record payloads and exposes only
+source omission markers in excerpts; arithmetic can remain independently checkable.
 
 ## Bounded investigation output
 

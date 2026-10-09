@@ -24,3 +24,6 @@ evidence targets, preserve blank continuation lines, and bound semantic event co
 Index source verification, handle mixed normalized witnesses and multiple excerpts,
 preserve exact integer statistics, and enforce record usage, scope, and unavailable
 artifact-integrity guarantees.
+
+Omit retained record payloads under applied redaction and restrict evidence excerpts
+to source omission markers, including report-only validation.

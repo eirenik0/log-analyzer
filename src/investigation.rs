@@ -559,6 +559,18 @@ pub fn validate_relations(
         }
         let mut retained_rows: BTreeMap<u64, BTreeMap<u64, BTreeSet<String>>> = BTreeMap::new();
         for record in list(artifact, "/records")? {
+            if manifest["redaction"]["applied"] == true {
+                require(
+                    record["data_omitted"] == true
+                        && record["raw_text"].is_null()
+                        && record["message"].is_null()
+                        && record["fields"]
+                            .as_object()
+                            .is_some_and(|fields| fields.is_empty()),
+                    "/artifact/records",
+                    "applied redaction must omit retained record payloads",
+                )?;
+            }
             let id = occurrence(get(record, "/occurrence")?)?;
             let source = get(record, "/occurrence/evidence_ref")?;
             let line = number(source, "/line")?;
@@ -1073,6 +1085,20 @@ pub fn validate_relations(
                     excerpt["verification"]["source_and_rules"] == "unavailable",
                     "/findings/evidence/verification",
                     "excerpt claims source verification after applied redaction",
+                )?;
+                // Without original inputs there is no way to prove arbitrary text was redacted.
+                let marker = "[REDACTED SOURCE]";
+                let excerpt_text = text(excerpt, "/text")?;
+                require(
+                    marker.starts_with(excerpt_text)
+                        && number(excerpt, "/omitted_characters")?
+                            == marker
+                                .chars()
+                                .count()
+                                .saturating_sub(excerpt_text.chars().count())
+                                as u64,
+                    "/findings/evidence/text",
+                    "applied redaction requires the source omission marker",
                 )?;
             }
             if source["evidence_ref"]["location_redacted"] == true {
