@@ -78,3 +78,24 @@ redaction removes source locations, payloads, queries or captured streams.
 Check coverage against retained evidence, retention against the artifact descriptor,
 and pagination against displayed findings and omissions. Exceptional presentation
 statuses must agree with budgets and usage; unknowns alone do not establish support.
+
+## Deterministic profile resolution
+
+Use `resolve-profile --help` and capability `profile_resolution.version` before
+using discovery. Existing defaults remain explicit. Precedence is explicit CLI,
+revalidated supplied read-only association, then one independently asserted
+candidate. Never substitute a candidate for an invalid explicit choice.
+
+Compare candidate structural parsing, recognition, correlation scope and timing
+support separately. Expected facts remain optional for sample validation, but an
+automatic choice requires passing semantic assertions covering every candidate
+record of the requested kind; timing also requires every observed pair/duration.
+Counts, similar wording, profile/rule labels and negative-only facts are insufficient.
+Treat multiple eligible effective profiles as ambiguous and ask for domain facts;
+unclassified records and capture completeness remain unknown. Retrieve nested
+candidate witnesses through common cursors. The outer evidence belongs to generic
+inspection; candidate normalization and source references have their own profile
+and input identities. `--association` reads a strict supplied contract without
+writing it; remembering project/source mappings is separate. Freeze inputs because
+candidates read them separately. Apply the selected preset/config explicitly to
+subsequent commands.

@@ -26,6 +26,7 @@ pub mod normalize;
 mod output;
 pub mod parser;
 pub mod perf_analyzer;
+pub mod profile_resolution;
 pub mod profile_validation;
 mod report_budget;
 pub mod search;
@@ -433,6 +434,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     | Commands::Schema { .. }
                     | Commands::Capabilities
                     | Commands::ValidateProfile { .. }
+                    | Commands::ResolveProfile { .. }
             ),
     );
     if cli.common_reports() {
@@ -461,6 +463,10 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
+    // Resolution reports invalid explicit choices itself and keeps generic inspection available.
+    if matches!(&cli.command, Commands::ResolveProfile { .. }) {
+        return profile_resolution::run(cli);
+    }
     let analyzer_config = config::load_config(cli.config.as_deref(), cli.preset.as_deref())
         .map_err(|e| format!("Failed to load config: {}", e))?;
     output::set_metadata(
@@ -474,6 +480,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
             | Commands::LlmDiff { .. }
             | Commands::Schema { .. }
             | Commands::ValidateProfile { .. }
+            | Commands::ResolveProfile { .. }
     ) {
         OutputFormat::Json
     } else {
@@ -527,6 +534,9 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     let filter = build_filter(&cli.filter)?;
 
     match &cli.command {
+        Commands::ResolveProfile { .. } => {
+            unreachable!("resolution returned before config loading")
+        }
         Commands::Capabilities => unreachable!("capabilities returned before config loading"),
         Commands::ValidateProfile {
             files,

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Read-only profile association, version 1",
+  "type": "object",
+  "required": [
+    "version",
+    "profile",
+    "sources",
+    "event_contract",
+    "structural_contract"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "event_contract": {
+      "const": 2
+    },
+    "structural_contract": {
+      "const": 1
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "preset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "config": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "sha256"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "preset"
+          ],
+          "properties": {
+            "preset": {
+              "type": "string"
+            },
+            "config": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "required": [
+            "config"
+          ],
+          "properties": {
+            "config": {
+              "type": "string"
+            },
+            "preset": {
+              "type": "null"
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "selected_parser"
+        ],
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "selected_parser": {
+            "enum": [
+              "classic",
+              "rust-tracing",
+              "syslog",
+              "json-lines"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

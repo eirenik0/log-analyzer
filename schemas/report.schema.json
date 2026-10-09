@@ -2343,6 +2343,209 @@
           }
         }
       ]
+    },
+    "profile_resolution": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "status": {
+          "enum": [
+            "selected",
+            "ambiguous",
+            "insufficient_evidence",
+            "invalid_explicit_choice",
+            "unsupported_explicit_choice"
+          ]
+        },
+        "requested": {
+          "type": "object",
+          "required": [
+            "kind",
+            "purpose"
+          ]
+        },
+        "selection_provenance": {
+          "enum": [
+            "explicit",
+            "association",
+            "independently_asserted_candidate",
+            "none"
+          ]
+        },
+        "selected": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "choice": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "name",
+            "sha256",
+            "origin",
+            "choice"
+          ]
+        },
+        "selected_candidate_index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "eligible_distinct_profiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "association": {
+          "type": "object"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "origin": {
+                "enum": [
+                  "explicit",
+                  "association",
+                  "builtin",
+                  "candidate_config"
+                ]
+              },
+              "choice": {
+                "type": "object"
+              },
+              "identity": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "$ref": "#/$defs/digest"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "choice": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "name",
+                  "sha256",
+                  "origin",
+                  "choice"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "evaluated",
+                  "invalid_configuration",
+                  "input_structure_unavailable"
+                ]
+              },
+              "eligible": {
+                "type": "boolean"
+              },
+              "profile_validation": {
+                "$ref": "#/$defs/profile_validation"
+              },
+              "semantic_evidence": {
+                "type": "object",
+                "required": [
+                  "status",
+                  "reason",
+                  "covered_records"
+                ]
+              },
+              "support": {
+                "type": "object",
+                "required": [
+                  "recognition",
+                  "timing",
+                  "correlation_scope_diagnostics"
+                ]
+              },
+              "evidence": {
+                "type": "object"
+              },
+              "evidence_records": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/evidence_record"
+                }
+              },
+              "parsing": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "origin",
+              "choice",
+              "identity",
+              "status",
+              "eligible"
+            ]
+          }
+        },
+        "candidate_activation": {
+          "const": false
+        },
+        "generic_inspection": {
+          "type": "object"
+        },
+        "next_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadata_scope": {
+          "const": "outer_generic_inspection_candidate_specific_evidence"
+        }
+      },
+      "required": [
+        "version",
+        "status",
+        "requested",
+        "selection_provenance",
+        "selected",
+        "selected_candidate_index",
+        "eligible_distinct_profiles",
+        "association",
+        "candidates",
+        "candidate_activation",
+        "generic_inspection",
+        "next_steps",
+        "limitations",
+        "metadata_scope"
+      ],
+      "additionalProperties": false
     }
   },
   "type": "object",
@@ -2364,6 +2567,18 @@
     }
   },
   "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "profile_resolution",
+        "coverage"
+      ],
+      "properties": {
+        "profile_resolution": {
+          "$ref": "#/$defs/profile_resolution"
+        }
+      }
+    },
     {
       "type": "object",
       "required": [
@@ -2764,8 +2979,17 @@
         "coverage"
       ],
       "not": {
-        "required": [
-          "profile_validation"
+        "anyOf": [
+          {
+            "required": [
+              "profile_validation"
+            ]
+          },
+          {
+            "required": [
+              "profile_resolution"
+            ]
+          }
         ]
       }
     }
