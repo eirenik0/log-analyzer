@@ -13,7 +13,7 @@ use std::{
     path::Path,
 };
 
-#[derive(Debug, Clone, Copy, clap::ValueEnum, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Purpose {
     Recognition,

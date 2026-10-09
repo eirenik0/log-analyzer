@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Log Analyzer profile mapping registry version 1",
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "key": {
+          "type": "object",
+          "properties": {
+            "project_context": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "kind": {
+              "enum": [
+                "request",
+                "event",
+                "command"
+              ]
+            },
+            "purpose": {
+              "enum": [
+                "recognition",
+                "timing"
+              ]
+            }
+          },
+          "required": [
+            "project_context",
+            "sources",
+            "kind",
+            "purpose"
+          ],
+          "additionalProperties": false
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "config": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "preset",
+            "config",
+            "sha256"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "preset": {
+                  "type": "string"
+                },
+                "config": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "preset": {
+                  "type": "null"
+                },
+                "config": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "selected_parsers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "auto",
+              "classic",
+              "rust-tracing",
+              "syslog",
+              "json-lines"
+            ]
+          }
+        },
+        "event_contract": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "structural_contract": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "resolution_contract": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {
+            "expected_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "basis": {
+              "const": "complete_current_sample_independent_assertions"
+            }
+          },
+          "required": [
+            "expected_sha256",
+            "basis"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "profile",
+        "selected_parsers",
+        "event_contract",
+        "structural_contract",
+        "resolution_contract",
+        "provenance"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "scope": {
+      "enum": [
+        "project",
+        "user"
+      ]
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "scope",
+    "entries"
+  ],
+  "additionalProperties": false
+}

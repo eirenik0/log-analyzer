@@ -38,10 +38,14 @@ working directory. Skill installation does not install the Rust executable.
    files share a run. Freeze active files; do not declare an input twice. Keep
    independent slow/baseline runs separate for timing.
 4. Explicitly select `--preset` or `--config`, or use `resolve-profile` when the
-   executable advertises version-1 profile resolution. Resolution can abstain;
+   executable advertises supported version-1 or version-2 profile resolution. Resolution can abstain;
    automatic selection requires independently known semantic assertions covering
    the requested population and timing pairs. Inspect candidate-specific evidence,
-   then use its explicit selector; resolution never activates a profile. Check `info` coverage and
+   then use its explicit selector; resolution never activates a profile. Version 2
+   can revalidate persistent project/user mappings; old success is not current proof.
+   Save/replace/forget metadata only when explicitly requested, with complete current
+   independent assertions for saving and an inspected entry digest for replacement
+   or forgetting. A shared mapping never establishes that separate sources share a run. Check `info` coverage and
    `validate-profile --kind request|event|command`; use independently known positive,
    negative and pair facts with `--expected` when available. Recognition support
    does not imply timing support. Generate/edit separate TOML candidates and validate

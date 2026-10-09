@@ -360,6 +360,23 @@ impl OutputState {
             }
             Value::String(text) => {
                 let leaf = path.rsplit('.').next().unwrap_or(path);
+                if path.starts_with("profile_mappings.")
+                    && matches!(
+                        leaf,
+                        "registry" | "project_root" | "project_context" | "sources" | "config"
+                    )
+                {
+                    return Value::String(self.path_text(text));
+                }
+                if path == "profile_resolution.mappings.reason" {
+                    return Value::String(self.path_text(text));
+                }
+                if path.ends_with(".ResolveProfile.project_root")
+                    || path.ends_with(".ResolveProfile.project_mappings")
+                    || path.ends_with(".ResolveProfile.user_mappings")
+                {
+                    return Value::String(self.path_text(text));
+                }
                 if path.ends_with(".ValidateProfile.expected")
                     || path.ends_with(".ResolveProfile.expected")
                     || path.ends_with(".ResolveProfile.association")
@@ -846,6 +863,52 @@ impl OutputState {
                     value["profile_resolution"]["association"]["semantic_proof"] =
                         resolution["association"]["semantic_proof"].clone();
                 }
+                if let Some(mappings) = resolution["mappings"].as_array() {
+                    for (i, mapping) in mappings.iter().enumerate() {
+                        let target = &mut value["profile_resolution"]["mappings"][i];
+                        for key in [
+                            "origin",
+                            "status",
+                            "mapping_id",
+                            "semantic_status",
+                            "eligible",
+                        ] {
+                            if let Some(original) = mapping.get(key) {
+                                target[key] = original.clone();
+                            }
+                        }
+                        for container in ["", "/revalidation"] {
+                            let original = if container.is_empty() {
+                                mapping
+                            } else {
+                                &mapping["revalidation"]
+                            };
+                            if !original.is_object() {
+                                continue;
+                            }
+                            let target = if container.is_empty() {
+                                &mut *target
+                            } else {
+                                &mut target["revalidation"]
+                            };
+                            if let Some(reason) = original["reason"].as_str()
+                                && (crate::profile_resolution::generated_association_reason(reason)
+                                    || matches!(
+                                        reason,
+                                        "mapping_profile_unavailable_or_changed"
+                                            | "mapping_contract_changed"
+                                            | "multiple_exact_source_matches"
+                                            | "user_home_unavailable"
+                                    ))
+                            {
+                                target["reason"] = json!(reason);
+                            }
+                            if let Some(status) = original.get("status") {
+                                target["status"] = status.clone();
+                            }
+                        }
+                    }
+                }
                 if !resolution["selected"].is_null() {
                     for key in ["sha256", "origin"] {
                         value["profile_resolution"]["selected"][key] =
@@ -925,6 +988,38 @@ impl OutputState {
                     }
                 }
             }
+            if let Some(mappings) = original.get("profile_mappings") {
+                for key in [
+                    "version",
+                    "scope",
+                    "raw_evidence_persisted",
+                    "mutation",
+                    "report_save",
+                ] {
+                    value["profile_mappings"][key] = mappings[key].clone();
+                }
+                if let Some(entries) = mappings["entries"].as_array() {
+                    for (i, entry) in entries.iter().enumerate() {
+                        let target = &mut value["profile_mappings"]["entries"][i];
+                        target["digest"] = entry["digest"].clone();
+                        for key in [
+                            "id",
+                            "selected_parsers",
+                            "event_contract",
+                            "structural_contract",
+                            "resolution_contract",
+                            "provenance",
+                        ] {
+                            target["entry"][key] = entry["entry"][key].clone();
+                        }
+                        target["entry"]["profile"]["sha256"] =
+                            entry["entry"]["profile"]["sha256"].clone();
+                        for key in ["kind", "purpose"] {
+                            target["entry"]["key"][key] = entry["entry"]["key"][key].clone();
+                        }
+                    }
+                }
+            }
             self.restore_evidence_refs(&original, &mut value, false);
             if let Some(coverage) = original.get("coverage") {
                 restore_coverage_metadata(coverage, &mut value["coverage"]);
@@ -999,8 +1094,11 @@ impl OutputState {
 // Generated resolver structure must remain typed even when a user masks a
 // same-named source field. This list deliberately excludes canonical payloads.
 fn resolver_container(path: &str, value: &Value) -> bool {
-    if !value.is_object() && !value.is_array() {
+    if !value.is_object() && !value.is_array() && !value.is_null() {
         return false;
+    }
+    if path == "profile_mappings" || path.starts_with("profile_mappings.") {
+        return true;
     }
     if path == "coverage.files" {
         return true;
@@ -1011,6 +1109,8 @@ fn resolver_container(path: &str, value: &Value) -> bool {
     matches!(
         path,
         "" | ".association"
+            | ".mappings"
+            | ".mappings.revalidation"
             | ".selected"
             | ".selected.choice"
             | ".selected.choice.selector"
@@ -1788,6 +1888,14 @@ impl OutputState {
         }
     }
 }
+pub(crate) fn clear_evidence() {
+    STATE.with(|state| {
+        if let Some(state) = state.borrow_mut().as_mut() {
+            state.evidence = None;
+        }
+    });
+}
+
 pub(crate) fn set_evidence(context: crate::evidence::Context) {
     STATE.with(|state| {
         if let Some(state) = state.borrow_mut().as_mut() {

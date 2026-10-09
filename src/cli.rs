@@ -50,6 +50,56 @@ pub enum ProcessSortOrder {
     Type,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum MappingScope {
+    Project,
+    User,
+}
+
+#[derive(serde::Serialize, Debug, clap::Subcommand)]
+pub enum MappingAction {
+    /// Show stored metadata and entry digests; never reads logs or creates files
+    Inspect,
+    /// Remember a currently selected assertion-validated profile; refuse an existing source key
+    Remember {
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
+        #[arg(long, value_enum)]
+        kind: OperationType,
+        #[arg(long, value_enum, default_value = "timing")]
+        purpose: crate::profile_validation::Purpose,
+        #[arg(long)]
+        expected: PathBuf,
+        #[arg(long)]
+        candidate_config: Vec<PathBuf>,
+    },
+    /// Replace the inspected entry only if its digest still matches
+    Replace {
+        #[arg(long)]
+        entry_id: String,
+        #[arg(long)]
+        if_digest: String,
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
+        #[arg(long, value_enum)]
+        kind: OperationType,
+        #[arg(long, value_enum, default_value = "timing")]
+        purpose: crate::profile_validation::Purpose,
+        #[arg(long)]
+        expected: PathBuf,
+        #[arg(long)]
+        candidate_config: Vec<PathBuf>,
+    },
+    /// Forget an inspected entry without requiring its sources or profile to exist
+    Forget {
+        #[arg(long)]
+        entry_id: String,
+        #[arg(long)]
+        if_digest: String,
+    },
+}
+
 #[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, ValueEnum)]
 pub enum OperationType {
     /// Request operations (send/receive)
@@ -264,6 +314,32 @@ pub enum Commands {
         #[arg(long)]
         #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
         association: Option<PathBuf>,
+        /// Project root for mapping lookup; defaults to the current directory
+        #[arg(long)]
+        project_root: Option<PathBuf>,
+        /// Override project mapping registry; lookup never creates it
+        #[arg(long)]
+        project_mappings: Option<PathBuf>,
+        /// Override user mapping registry; lookup never creates it
+        #[arg(long)]
+        user_mappings: Option<PathBuf>,
+        /// Skip persistent mapping lookup
+        #[arg(long)]
+        no_mappings: bool,
+    },
+    /// Inspect or explicitly manage assertion-validated source/profile mappings (JSON)
+    ProfileMappings {
+        /// Project paths are root-relative; user mappings also bind absolute project context
+        #[arg(long, value_enum, default_value = "project")]
+        scope: MappingScope,
+        /// Explicit project root; defaults to the current directory, with no ancestor search
+        #[arg(long)]
+        project_root: Option<PathBuf>,
+        /// Override the selected scope's registry file
+        #[arg(long)]
+        registry: Option<PathBuf>,
+        #[command(subcommand)]
+        action: MappingAction,
     },
     /// Compare two log files and show differences between JSON objects
     #[command(alias = "cmp")]
@@ -544,7 +620,7 @@ impl Cli {
             return Ok(());
         }
         match &mut self.command {
-            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } =>
+            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } | Commands::ProfileMappings { .. } =>
                 return Err("Common report budgets support info/search/extract/perf/trace/process/comparisons/errors; this command is unsupported".into()),
             Commands::Process { limit, .. } => *limit = 0,
             Commands::Perf { top_n, .. } => *top_n = 0,

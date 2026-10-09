@@ -83,8 +83,8 @@ statuses must agree with budgets and usage; unknowns alone do not establish supp
 
 Use `resolve-profile --help` and capability `profile_resolution.version` before
 using discovery. Existing defaults remain explicit. Precedence is explicit CLI,
-revalidated supplied read-only association, then one independently asserted
-candidate. Never substitute a candidate for an invalid explicit choice.
+revalidated supplied read-only association, revalidated project/user mappings
+(version 2), then one independently asserted candidate. Never substitute a candidate for an invalid explicit choice.
 
 Compare candidate structural parsing, recognition, correlation scope and timing
 support separately. Expected facts remain optional for sample validation, but an
@@ -99,3 +99,9 @@ and input identities. `--association` reads a strict supplied contract without
 writing it; remembering project/source mappings is separate. Freeze inputs because
 candidates read them separately. Apply the selected preset/config explicitly to
 subsequent commands.
+
+
+Manage persisted mappings only when requested. Require independent domain facts
+before remembering a choice, inspect before replacing or forgetting, and treat
+revalidation failures as evidence requiring investigation. Read the README's
+persistent-mapping section and current CLI help for storage contracts and options.

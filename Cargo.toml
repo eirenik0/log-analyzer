@@ -2,6 +2,7 @@
 name = "log-analyzer"
 version = "0.3.0"
 edition = "2024"
+rust-version = "1.89"
 description = "Structured log analysis with parsing, filtering, comparison, and performance diagnostics"
 license = "MIT"
 readme = "README.md"
@@ -22,7 +23,7 @@ unicode-segmentation = "1.12"
 thiserror = "2.0"
 toml = "0.8"
 sha2 = "0.10"
+tempfile = "3.24"
 
 [dev-dependencies]
 jsonschema = { version = "0.58.6", default-features = false }
-tempfile = "3.24"
