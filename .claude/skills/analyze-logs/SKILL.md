@@ -28,7 +28,9 @@ before sharing; optional masking does not guarantee secrecy.
    schema, evidence contract, common retrieval and profile-validation versions.
    Missing capabilities require an explicit unsupported result, not a meaning-changing
    fallback. The maintained workflow requires schema/evidence contract 1 and version-1
-   retrieval/profile validation. Get current syntax from the binary's help/reference.
+   retrieval/profile validation. If `investigation_contracts` is present, check actual
+   command/retrieval availability; schema 1 definitions alone do not enable a unified command.
+   Get current syntax from the binary's help/reference.
 3. Establish the question, stable input paths, related run/session scope, known
    capture limits and tool/output/time/token budgets. Do not infer that arbitrary
    files share a run. Freeze active files; do not declare an input twice. Keep

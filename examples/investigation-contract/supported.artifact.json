@@ -1,0 +1,1414 @@
+{
+  "contract_version": 1,
+  "investigation_contract_version": 1,
+  "report_metadata": {
+    "active_profile": "investigation-example",
+    "build": {
+      "package_version": "0.3.0",
+      "source_revision": "9b35994bc918034a17f31cbb564a1b3977fa9a49",
+      "source_state": "dirty"
+    },
+    "event_classification_contract": 2,
+    "evidence": {
+      "contract_version": 1,
+      "inputs": [
+        {
+          "bytes": 1196,
+          "coverage": {
+            "configured_parser": "json-lines",
+            "file": "examples/investigations/slow.jsonl",
+            "input_bytes": 1196,
+            "nonempty_lines": 6,
+            "normalization_diagnostics": [],
+            "parsed_entries": 6,
+            "profile": "investigation-example",
+            "rejected_candidates": 0,
+            "selected_parser": "json-lines",
+            "snapshot_sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378"
+          },
+          "file": "examples/investigations/slow.jsonl",
+          "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+          "selected_entries": 6,
+          "sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378"
+        }
+      ],
+      "omissions": {
+        "basis": "legacy_view_before_common_pagination",
+        "details": {
+          "ambiguous_groups": 0,
+          "operations": 0,
+          "orphans": 0,
+          "stats": 0,
+          "threshold_violations": 0,
+          "unmatched_events": 0
+        },
+        "pagination": "see_retrieval_collections",
+        "records": null,
+        "retrieval": "rerun_without_display_limits"
+      },
+      "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+      "query": {
+        "command": {
+          "Perf": {
+            "files": [
+              "examples/investigations/slow.jsonl"
+            ],
+            "op_type": null,
+            "orphans_only": false,
+            "sort_by": "Duration",
+            "threshold_ms": 1000,
+            "top_n": 0
+          }
+        },
+        "filter": null
+      },
+      "query_sha256": "ad982ba11e049590502de9281748ecdcda2a741c91ce9ae601007ab14bbd832a",
+      "redaction": {
+        "applied": false,
+        "legacy_sanitization": false,
+        "masked_id_fields": []
+      },
+      "scope": {
+        "capture_completeness": "unknown",
+        "coverage_basis": "before_display_limits",
+        "parsed_entries": 6,
+        "selected_entries": 6,
+        "status": "parsed"
+      },
+      "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f"
+    },
+    "schema_version": 1
+  },
+  "processing": {
+    "status": "complete",
+    "stop": null,
+    "limits": {
+      "input_bytes": null,
+      "records": null,
+      "expanded_records": null,
+      "work_units": null,
+      "elapsed_ms": null,
+      "memory_bytes": null,
+      "artifact_bytes": null
+    },
+    "usage": {
+      "input_bytes": 1196,
+      "records": 6,
+      "expanded_records": null,
+      "work_units": null,
+      "elapsed_ms": null,
+      "memory_bytes": null,
+      "artifact_bytes": null
+    },
+    "inputs": [
+      {
+        "input_ordinal": 0,
+        "capture": "complete",
+        "consumed_bytes": 1196,
+        "consumed_sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378",
+        "remaining_bytes": 0
+      }
+    ]
+  },
+  "scopes": [
+    {
+      "id": "scope-1",
+      "input_ordinals": [
+        0
+      ],
+      "selection": "effective global filter selects parsed records in the declared inputs",
+      "extent": "declared_input",
+      "completeness": "complete",
+      "analysis_completion": "complete",
+      "correlation_scope": [],
+      "semantic_coverage": {
+        "status": "supported",
+        "relevant_records": 6,
+        "classified_records": 6,
+        "paired_events": 6,
+        "unmatched_events": 0,
+        "ambiguous_events": 0,
+        "rejected_events": 0,
+        "reason": "Observed sample only; upstream completeness and clock synchronization are unknown."
+      },
+      "upstream_completeness": "unknown"
+    }
+  ],
+  "assessments": [
+    {
+      "goal": "slow_operations",
+      "scope_id": "scope-1",
+      "status": "supported",
+      "reason": "Assessment applies only to the declared scope and observed semantics.",
+      "finding_ids": [
+        "measurement-0",
+        "measurement-1",
+        "measurement-2",
+        "paired-count",
+        "paired-p95",
+        "record-count"
+      ]
+    }
+  ],
+  "populations": [
+    {
+      "id": "paired-lifecycles",
+      "scope_id": "scope-1",
+      "entity": "operations",
+      "definition": "Existing perf start/end pairs in the processed population; this does not establish logical retry grouping.",
+      "identity_fields": [
+        "name",
+        "correlation_id",
+        "scope"
+      ],
+      "rule_ids": [
+        "begin",
+        "finish"
+      ],
+      "exclusions": [],
+      "completeness": "complete",
+      "basis": "processed_population",
+      "count": 3,
+      "membership": {
+        "collection": "/memberships/0/members",
+        "count": 3,
+        "sha256": "d99e7ec7601366f483f3f12db417aa5cd8a71e8696d7aa7736ab9789056b217f"
+      }
+    },
+    {
+      "id": "parsed-records",
+      "scope_id": "scope-1",
+      "entity": "physical_records",
+      "definition": "Filter-selected parsed physical source record occurrences before presentation limits.",
+      "identity_fields": [],
+      "rule_ids": [],
+      "exclusions": [],
+      "completeness": "complete",
+      "basis": "processed_population",
+      "count": 6,
+      "membership": {
+        "collection": "/memberships/1/members",
+        "count": 6,
+        "sha256": "9255c5f99e5ab5f485e015ee9e76ccaaf1bf805f6ce01ef6391947325b1fc836"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "id": "measurement-0",
+      "kind": "measurement",
+      "claim": "Observed run source-timestamp interval is 8000 ms.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 1,
+              "location_redacted": false,
+              "reference_id": "59904095370a2e889ac519dcde0fd8fd7c8f3e327f97eea6359fe644d7b38e50",
+              "row_path": null
+            }
+          },
+          "text": "run start",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 6,
+              "location_redacted": false,
+              "reference_id": "c3ca768d6a9fcfe3c7cb12c2bea4a6e1fef11cc8661ac9b30b728e2d771f35ca",
+              "row_path": null
+            }
+          },
+          "text": "run end",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        }
+      ],
+      "details": {
+        "value": 8000,
+        "unit": "ms",
+        "semantics": "start_to_finish",
+        "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+        "boundaries": {
+          "start": {
+            "occurrence": {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 1,
+                "location_redacted": false,
+                "reference_id": "59904095370a2e889ac519dcde0fd8fd7c8f3e327f97eea6359fe644d7b38e50",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:00+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "start",
+            "rule_id": "begin"
+          },
+          "end": {
+            "occurrence": {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 6,
+                "location_redacted": false,
+                "reference_id": "c3ca768d6a9fcfe3c7cb12c2bea4a6e1fef11cc8661ac9b30b728e2d771f35ca",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:08+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "end",
+            "rule_id": "finish"
+          }
+        },
+        "clock_relationship": "unknown"
+      }
+    },
+    {
+      "id": "measurement-1",
+      "kind": "measurement",
+      "claim": "Observed worker-a source-timestamp interval is 2000 ms.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 2,
+              "location_redacted": false,
+              "reference_id": "d1e4ac4b5fa7eca0e961b5c3341aa0167356f2ebcf9479ee81e6275238d99967",
+              "row_path": null
+            }
+          },
+          "text": "worker-a start",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 4,
+              "location_redacted": false,
+              "reference_id": "7aa04ce910175ebe19cce7fc08df60ec133bf73bdc79fa4efcba97b674006435",
+              "row_path": null
+            }
+          },
+          "text": "worker-a end",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        }
+      ],
+      "details": {
+        "value": 2000,
+        "unit": "ms",
+        "semantics": "start_to_finish",
+        "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+        "boundaries": {
+          "start": {
+            "occurrence": {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 2,
+                "location_redacted": false,
+                "reference_id": "d1e4ac4b5fa7eca0e961b5c3341aa0167356f2ebcf9479ee81e6275238d99967",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:01+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "start",
+            "rule_id": "begin"
+          },
+          "end": {
+            "occurrence": {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 4,
+                "location_redacted": false,
+                "reference_id": "7aa04ce910175ebe19cce7fc08df60ec133bf73bdc79fa4efcba97b674006435",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:03+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "end",
+            "rule_id": "finish"
+          }
+        },
+        "clock_relationship": "unknown"
+      }
+    },
+    {
+      "id": "measurement-2",
+      "kind": "measurement",
+      "claim": "Observed worker-b source-timestamp interval is 2000 ms.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 3,
+              "location_redacted": false,
+              "reference_id": "897f20fac1e8a93f78ddec2d3555fdeddebed790567b14b518811c3808018c60",
+              "row_path": null
+            }
+          },
+          "text": "worker-b start",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 5,
+              "location_redacted": false,
+              "reference_id": "639f6ed022a6d91914d8bc8c77b200f981f9b5f003fa5c01cbb1af2974fce030",
+              "row_path": null
+            }
+          },
+          "text": "worker-b end",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        }
+      ],
+      "details": {
+        "value": 2000,
+        "unit": "ms",
+        "semantics": "start_to_finish",
+        "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+        "boundaries": {
+          "start": {
+            "occurrence": {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 3,
+                "location_redacted": false,
+                "reference_id": "897f20fac1e8a93f78ddec2d3555fdeddebed790567b14b518811c3808018c60",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:02+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "start",
+            "rule_id": "begin"
+          },
+          "end": {
+            "occurrence": {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 5,
+                "location_redacted": false,
+                "reference_id": "639f6ed022a6d91914d8bc8c77b200f981f9b5f003fa5c01cbb1af2974fce030",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:04+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "end",
+            "rule_id": "finish"
+          }
+        },
+        "clock_relationship": "unknown"
+      }
+    },
+    {
+      "id": "paired-count",
+      "kind": "calculated_fact",
+      "claim": "3 paired lifecycles in the processed population.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [],
+      "details": {
+        "calculation": "count",
+        "population_id": "paired-lifecycles",
+        "value": 3,
+        "unit": "operations",
+        "semantics": "cardinality_of_declared_processed_population",
+        "method": "cardinality"
+      }
+    },
+    {
+      "id": "paired-p95",
+      "kind": "calculated_fact",
+      "claim": "95th percentile of retained paired-lifecycle intervals.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [],
+      "details": {
+        "calculation": "distribution",
+        "population_id": "paired-lifecycles",
+        "measurement_ids": [
+          "measurement-0",
+          "measurement-1",
+          "measurement-2"
+        ],
+        "sample_count": 3,
+        "value": 8000,
+        "unit": "ms",
+        "statistic": "p95",
+        "method": "sorted_index_floor_n_times_percentile_over_100"
+      }
+    },
+    {
+      "id": "record-count",
+      "kind": "calculated_fact",
+      "claim": "6 filter-selected parsed physical record occurrences.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [],
+      "details": {
+        "calculation": "count",
+        "population_id": "parsed-records",
+        "value": 6,
+        "unit": "records",
+        "semantics": "cardinality_of_declared_processed_population",
+        "method": "cardinality"
+      }
+    }
+  ],
+  "records": [
+    {
+      "occurrence": {
+        "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+          "line": 1,
+          "location_redacted": false,
+          "reference_id": "59904095370a2e889ac519dcde0fd8fd7c8f3e327f97eea6359fe644d7b38e50",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:00+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:00+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"run start\",\"phase\":\"start\",\"operation\":\"run\",\"id\":\"parent\"}",
+      "message": "run start",
+      "fields": {
+        "id": "parent",
+        "operation": "run",
+        "phase": "start",
+        "session": "slow-run",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "begin"
+          ],
+          "semantics": {
+            "correlation_id": "parent",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "run",
+            "outcome": null,
+            "phase": "start",
+            "scope": [
+              "slow-run"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    },
+    {
+      "occurrence": {
+        "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+          "line": 2,
+          "location_redacted": false,
+          "reference_id": "d1e4ac4b5fa7eca0e961b5c3341aa0167356f2ebcf9479ee81e6275238d99967",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:01+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:01+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-a start\",\"phase\":\"start\",\"operation\":\"worker-a\",\"id\":\"a\"}",
+      "message": "worker-a start",
+      "fields": {
+        "id": "a",
+        "operation": "worker-a",
+        "phase": "start",
+        "session": "slow-run",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "begin"
+          ],
+          "semantics": {
+            "correlation_id": "a",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "worker-a",
+            "outcome": null,
+            "phase": "start",
+            "scope": [
+              "slow-run"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    },
+    {
+      "occurrence": {
+        "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+          "line": 3,
+          "location_redacted": false,
+          "reference_id": "897f20fac1e8a93f78ddec2d3555fdeddebed790567b14b518811c3808018c60",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:02+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:02+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-b start\",\"phase\":\"start\",\"operation\":\"worker-b\",\"id\":\"b\"}",
+      "message": "worker-b start",
+      "fields": {
+        "id": "b",
+        "operation": "worker-b",
+        "phase": "start",
+        "session": "slow-run",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "begin"
+          ],
+          "semantics": {
+            "correlation_id": "b",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "worker-b",
+            "outcome": null,
+            "phase": "start",
+            "scope": [
+              "slow-run"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    },
+    {
+      "occurrence": {
+        "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+          "line": 4,
+          "location_redacted": false,
+          "reference_id": "7aa04ce910175ebe19cce7fc08df60ec133bf73bdc79fa4efcba97b674006435",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:03+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:03+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-a end\",\"phase\":\"end\",\"operation\":\"worker-a\",\"id\":\"a\",\"outcome\":\"success\"}",
+      "message": "worker-a end",
+      "fields": {
+        "id": "a",
+        "operation": "worker-a",
+        "outcome": "success",
+        "phase": "end",
+        "session": "slow-run",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "finish"
+          ],
+          "semantics": {
+            "correlation_id": "a",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "worker-a",
+            "outcome": "success",
+            "phase": "end",
+            "scope": [
+              "slow-run"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    },
+    {
+      "occurrence": {
+        "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+          "line": 5,
+          "location_redacted": false,
+          "reference_id": "639f6ed022a6d91914d8bc8c77b200f981f9b5f003fa5c01cbb1af2974fce030",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:04+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:04+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-b end\",\"phase\":\"end\",\"operation\":\"worker-b\",\"id\":\"b\",\"outcome\":\"success\"}",
+      "message": "worker-b end",
+      "fields": {
+        "id": "b",
+        "operation": "worker-b",
+        "outcome": "success",
+        "phase": "end",
+        "session": "slow-run",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "finish"
+          ],
+          "semantics": {
+            "correlation_id": "b",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "worker-b",
+            "outcome": "success",
+            "phase": "end",
+            "scope": [
+              "slow-run"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    },
+    {
+      "occurrence": {
+        "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+          "line": 6,
+          "location_redacted": false,
+          "reference_id": "c3ca768d6a9fcfe3c7cb12c2bea4a6e1fef11cc8661ac9b30b728e2d771f35ca",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:08+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:08+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"run end\",\"phase\":\"end\",\"operation\":\"run\",\"id\":\"parent\",\"outcome\":\"success\"}",
+      "message": "run end",
+      "fields": {
+        "id": "parent",
+        "operation": "run",
+        "outcome": "success",
+        "phase": "end",
+        "session": "slow-run",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "finish"
+          ],
+          "semantics": {
+            "correlation_id": "parent",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "run",
+            "outcome": "success",
+            "phase": "end",
+            "scope": [
+              "slow-run"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    }
+  ],
+  "captured_inputs": [
+    {
+      "input_ordinal": 0,
+      "capture": "complete",
+      "encoding": "utf8",
+      "data": "{\"ts\":\"2026-01-01T00:00:00+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"run start\",\"phase\":\"start\",\"operation\":\"run\",\"id\":\"parent\"}\n{\"ts\":\"2026-01-01T00:00:01+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-a start\",\"phase\":\"start\",\"operation\":\"worker-a\",\"id\":\"a\"}\n{\"ts\":\"2026-01-01T00:00:02+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-b start\",\"phase\":\"start\",\"operation\":\"worker-b\",\"id\":\"b\"}\n{\"ts\":\"2026-01-01T00:00:03+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-a end\",\"phase\":\"end\",\"operation\":\"worker-a\",\"id\":\"a\",\"outcome\":\"success\"}\n{\"ts\":\"2026-01-01T00:00:04+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"worker-b end\",\"phase\":\"end\",\"operation\":\"worker-b\",\"id\":\"b\",\"outcome\":\"success\"}\n{\"ts\":\"2026-01-01T00:00:08+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"slow-run\",\"session\":\"slow-run\",\"message\":\"run end\",\"phase\":\"end\",\"operation\":\"run\",\"id\":\"parent\",\"outcome\":\"success\"}\n",
+      "data_omitted": false,
+      "original_consumed_sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378",
+      "stored_sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378"
+    }
+  ],
+  "memberships": [
+    {
+      "population_id": "paired-lifecycles",
+      "members": [
+        {
+          "kind": "operation",
+          "id": "paired-lifecycle-0",
+          "identity": [
+            {
+              "field": "name",
+              "value": "run"
+            },
+            {
+              "field": "correlation_id",
+              "value": "parent"
+            },
+            {
+              "field": "scope",
+              "value": "[\"slow-run\"]"
+            }
+          ],
+          "source_occurrences": [
+            {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 1,
+                "location_redacted": false,
+                "reference_id": "59904095370a2e889ac519dcde0fd8fd7c8f3e327f97eea6359fe644d7b38e50",
+                "row_path": null
+              }
+            },
+            {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 6,
+                "location_redacted": false,
+                "reference_id": "c3ca768d6a9fcfe3c7cb12c2bea4a6e1fef11cc8661ac9b30b728e2d771f35ca",
+                "row_path": null
+              }
+            }
+          ],
+          "measurement_ids": [
+            "measurement-0"
+          ]
+        },
+        {
+          "kind": "operation",
+          "id": "paired-lifecycle-1",
+          "identity": [
+            {
+              "field": "name",
+              "value": "worker-a"
+            },
+            {
+              "field": "correlation_id",
+              "value": "a"
+            },
+            {
+              "field": "scope",
+              "value": "[\"slow-run\"]"
+            }
+          ],
+          "source_occurrences": [
+            {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 2,
+                "location_redacted": false,
+                "reference_id": "d1e4ac4b5fa7eca0e961b5c3341aa0167356f2ebcf9479ee81e6275238d99967",
+                "row_path": null
+              }
+            },
+            {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 4,
+                "location_redacted": false,
+                "reference_id": "7aa04ce910175ebe19cce7fc08df60ec133bf73bdc79fa4efcba97b674006435",
+                "row_path": null
+              }
+            }
+          ],
+          "measurement_ids": [
+            "measurement-1"
+          ]
+        },
+        {
+          "kind": "operation",
+          "id": "paired-lifecycle-2",
+          "identity": [
+            {
+              "field": "name",
+              "value": "worker-b"
+            },
+            {
+              "field": "correlation_id",
+              "value": "b"
+            },
+            {
+              "field": "scope",
+              "value": "[\"slow-run\"]"
+            }
+          ],
+          "source_occurrences": [
+            {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 3,
+                "location_redacted": false,
+                "reference_id": "897f20fac1e8a93f78ddec2d3555fdeddebed790567b14b518811c3808018c60",
+                "row_path": null
+              }
+            },
+            {
+              "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+                "line": 5,
+                "location_redacted": false,
+                "reference_id": "639f6ed022a6d91914d8bc8c77b200f981f9b5f003fa5c01cbb1af2974fce030",
+                "row_path": null
+              }
+            }
+          ],
+          "measurement_ids": [
+            "measurement-2"
+          ]
+        }
+      ]
+    },
+    {
+      "population_id": "parsed-records",
+      "members": [
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 1,
+              "location_redacted": false,
+              "reference_id": "59904095370a2e889ac519dcde0fd8fd7c8f3e327f97eea6359fe644d7b38e50",
+              "row_path": null
+            }
+          }
+        },
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 2,
+              "location_redacted": false,
+              "reference_id": "d1e4ac4b5fa7eca0e961b5c3341aa0167356f2ebcf9479ee81e6275238d99967",
+              "row_path": null
+            }
+          }
+        },
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 3,
+              "location_redacted": false,
+              "reference_id": "897f20fac1e8a93f78ddec2d3555fdeddebed790567b14b518811c3808018c60",
+              "row_path": null
+            }
+          }
+        },
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 4,
+              "location_redacted": false,
+              "reference_id": "7aa04ce910175ebe19cce7fc08df60ec133bf73bdc79fa4efcba97b674006435",
+              "row_path": null
+            }
+          }
+        },
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 5,
+              "location_redacted": false,
+              "reference_id": "639f6ed022a6d91914d8bc8c77b200f981f9b5f003fa5c01cbb1af2974fce030",
+              "row_path": null
+            }
+          }
+        },
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 6,
+              "location_redacted": false,
+              "reference_id": "c3ca768d6a9fcfe3c7cb12c2bea4a6e1fef11cc8661ac9b30b728e2d771f35ca",
+              "row_path": null
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "sequence-1",
+      "scope_id": "scope-1",
+      "completeness": "complete",
+      "ordering": "observed_timestamp_then_input_ordinal_then_record_ordinal",
+      "events": [
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 1,
+              "location_redacted": false,
+              "reference_id": "59904095370a2e889ac519dcde0fd8fd7c8f3e327f97eea6359fe644d7b38e50",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 0,
+          "timestamp": "2026-01-01T00:00:00+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "begin"
+          ]
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 2,
+              "location_redacted": false,
+              "reference_id": "d1e4ac4b5fa7eca0e961b5c3341aa0167356f2ebcf9479ee81e6275238d99967",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 1,
+          "timestamp": "2026-01-01T00:00:01+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "begin"
+          ]
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 3,
+              "location_redacted": false,
+              "reference_id": "897f20fac1e8a93f78ddec2d3555fdeddebed790567b14b518811c3808018c60",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 2,
+          "timestamp": "2026-01-01T00:00:02+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "begin"
+          ]
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 4,
+              "location_redacted": false,
+              "reference_id": "7aa04ce910175ebe19cce7fc08df60ec133bf73bdc79fa4efcba97b674006435",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 3,
+          "timestamp": "2026-01-01T00:00:03+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "finish"
+          ]
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 5,
+              "location_redacted": false,
+              "reference_id": "639f6ed022a6d91914d8bc8c77b200f981f9b5f003fa5c01cbb1af2974fce030",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 4,
+          "timestamp": "2026-01-01T00:00:04+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "finish"
+          ]
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "525f4d20f8ae7c6e2e9e291f02a5fa47b7def7df13f960c1cb064ec68c4ac60f",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
+              "line": 6,
+              "location_redacted": false,
+              "reference_id": "c3ca768d6a9fcfe3c7cb12c2bea4a6e1fef11cc8661ac9b30b728e2d771f35ca",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 5,
+          "timestamp": "2026-01-01T00:00:08+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "finish"
+          ]
+        }
+      ]
+    }
+  ],
+  "content": "original",
+  "effective_profile": {
+    "event_rules": {
+      "rules": [
+        {
+          "adapter": {
+            "conditions": [
+              {
+                "equals": "start",
+                "field": "phase"
+              }
+            ],
+            "type": "structured"
+          },
+          "id": "begin",
+          "mapping": {
+            "correlation_id": {
+              "field": "id",
+              "from": "field"
+            },
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": {
+              "field": "operation",
+              "from": "field"
+            },
+            "outcome": null,
+            "phase": {
+              "from": "literal",
+              "value": "start"
+            },
+            "scope": [
+              {
+                "field": "session",
+                "from": "field"
+              }
+            ]
+          }
+        },
+        {
+          "adapter": {
+            "conditions": [
+              {
+                "equals": "end",
+                "field": "phase"
+              }
+            ],
+            "type": "structured"
+          },
+          "id": "finish",
+          "mapping": {
+            "correlation_id": {
+              "field": "id",
+              "from": "field"
+            },
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": {
+              "field": "operation",
+              "from": "field"
+            },
+            "outcome": {
+              "field": "outcome",
+              "from": "field"
+            },
+            "phase": {
+              "from": "literal",
+              "value": "end"
+            },
+            "scope": [
+              {
+                "field": "session",
+                "from": "field"
+              }
+            ]
+          }
+        }
+      ],
+      "version": 2
+    },
+    "normalization": null,
+    "parser": {
+      "command_payload_markers": [],
+      "command_prefix": "",
+      "command_start_marker": "",
+      "event_emit_markers": [],
+      "event_payload_separator": "payload",
+      "event_receive_markers": [],
+      "format": "json-lines",
+      "json_indicators": [],
+      "module_depth": 2,
+      "module_strip_prefix": "",
+      "request_endpoint_marker": "",
+      "request_payload_markers": [],
+      "request_prefix": "",
+      "request_receive_markers": [],
+      "request_send_markers": []
+    },
+    "perf": {
+      "command_completion_markers": [],
+      "command_start_markers": [],
+      "correlation_scope_fields": [
+        "component_id"
+      ],
+      "event_correlation_keys": [
+        "trace_id",
+        "traceId",
+        "request_id",
+        "requestId",
+        "id",
+        "key"
+      ]
+    },
+    "profile": {
+      "known_commands": [],
+      "known_components": [],
+      "known_requests": []
+    },
+    "profile_name": "investigation-example",
+    "timeline": {
+      "events": [],
+      "pairs": []
+    }
+  },
+  "effective_profile_omitted": false,
+  "retention": {
+    "policy": "unspecified",
+    "expires_at": null
+  },
+  "verification": {
+    "artifact_integrity": "available",
+    "arithmetic": "available",
+    "source_and_rules": "available",
+    "losses": []
+  }
+}

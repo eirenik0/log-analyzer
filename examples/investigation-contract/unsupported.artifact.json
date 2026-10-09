@@ -1,0 +1,316 @@
+{
+  "contract_version": 1,
+  "investigation_contract_version": 1,
+  "report_metadata": {
+    "active_profile": "investigation-example",
+    "build": {
+      "package_version": "0.3.0",
+      "source_revision": "9b35994bc918034a17f31cbb564a1b3977fa9a49",
+      "source_state": "dirty"
+    },
+    "event_classification_contract": 2,
+    "evidence": {
+      "contract_version": 1,
+      "inputs": [
+        {
+          "bytes": 35,
+          "coverage": {
+            "configured_parser": "json-lines",
+            "file": "examples/investigations/unsupported.log",
+            "input_bytes": 35,
+            "nonempty_lines": 1,
+            "normalization_diagnostics": [],
+            "parsed_entries": 0,
+            "profile": "investigation-example",
+            "rejected_candidates": 1,
+            "selected_parser": "json-lines",
+            "snapshot_sha256": "fbc8794b0835ebf4a92fed4c9843cf206b4c0a116dbd13c4e212c6a222fe58a8"
+          },
+          "file": "examples/investigations/unsupported.log",
+          "input_id": "db0e18c708cdcbd7d4954db6546ee94ed24d1616f37762dc00808a1ced1029f3",
+          "selected_entries": 0,
+          "sha256": "fbc8794b0835ebf4a92fed4c9843cf206b4c0a116dbd13c4e212c6a222fe58a8"
+        }
+      ],
+      "omissions": {
+        "basis": "legacy_view_before_common_pagination",
+        "details": "command_specific",
+        "pagination": "see_retrieval_collections",
+        "records": null,
+        "retrieval": "rerun_without_display_limits"
+      },
+      "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+      "query": {
+        "command": {
+          "Perf": {
+            "files": [
+              "examples/investigations/unsupported.log"
+            ],
+            "op_type": null,
+            "orphans_only": false,
+            "sort_by": "Duration",
+            "threshold_ms": 1000,
+            "top_n": 0
+          }
+        },
+        "filter": null
+      },
+      "query_sha256": "b1d6240cc30f0e4bce4bc4244154ce13a65722f4e2c331005d040246f8de022a",
+      "redaction": {
+        "applied": false,
+        "legacy_sanitization": false,
+        "masked_id_fields": []
+      },
+      "scope": {
+        "capture_completeness": "unknown",
+        "coverage_basis": "before_display_limits",
+        "parsed_entries": 0,
+        "selected_entries": 0,
+        "status": "unparsed_input"
+      },
+      "snapshot_id": "36a8c34c6385258511ee0e55bd35f3e78b23e8bbc819ec8d1bc8a070f63d96e8"
+    },
+    "schema_version": 1
+  },
+  "processing": {
+    "status": "complete",
+    "stop": null,
+    "limits": {
+      "input_bytes": null,
+      "records": null,
+      "expanded_records": null,
+      "work_units": null,
+      "elapsed_ms": null,
+      "memory_bytes": null,
+      "artifact_bytes": null
+    },
+    "usage": {
+      "input_bytes": 35,
+      "records": 0,
+      "expanded_records": null,
+      "work_units": null,
+      "elapsed_ms": null,
+      "memory_bytes": null,
+      "artifact_bytes": null
+    },
+    "inputs": [
+      {
+        "input_ordinal": 0,
+        "capture": "complete",
+        "consumed_bytes": 35,
+        "consumed_sha256": "fbc8794b0835ebf4a92fed4c9843cf206b4c0a116dbd13c4e212c6a222fe58a8",
+        "remaining_bytes": 0
+      }
+    ]
+  },
+  "scopes": [
+    {
+      "id": "scope-1",
+      "input_ordinals": [
+        0
+      ],
+      "selection": "effective global filter selects parsed records in the declared inputs",
+      "extent": "declared_input",
+      "completeness": "complete",
+      "analysis_completion": "not_performed",
+      "correlation_scope": [],
+      "semantic_coverage": {
+        "status": "unsupported",
+        "relevant_records": null,
+        "classified_records": null,
+        "paired_events": null,
+        "unmatched_events": null,
+        "ambiguous_events": null,
+        "rejected_events": null,
+        "reason": "Observed sample only; upstream completeness and clock synchronization are unknown."
+      },
+      "upstream_completeness": "unknown"
+    }
+  ],
+  "assessments": [
+    {
+      "goal": "inspection",
+      "scope_id": "scope-1",
+      "status": "unsupported",
+      "reason": "Assessment applies only to the declared scope and observed semantics.",
+      "finding_ids": [
+        "unknown-1"
+      ]
+    }
+  ],
+  "populations": [],
+  "findings": [
+    {
+      "id": "unknown-1",
+      "kind": "unknown",
+      "claim": "Nonempty input has no recognized records.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [],
+      "details": {
+        "reason": "Nonempty input has no recognized records.",
+        "supporting_occurrences": []
+      }
+    }
+  ],
+  "records": [],
+  "captured_inputs": [
+    {
+      "input_ordinal": 0,
+      "capture": "complete",
+      "encoding": "utf8",
+      "data": "GET /reserved-example HTTP/1.1 503\n",
+      "data_omitted": false,
+      "original_consumed_sha256": "fbc8794b0835ebf4a92fed4c9843cf206b4c0a116dbd13c4e212c6a222fe58a8",
+      "stored_sha256": "fbc8794b0835ebf4a92fed4c9843cf206b4c0a116dbd13c4e212c6a222fe58a8"
+    }
+  ],
+  "memberships": [],
+  "sequences": [],
+  "content": "original",
+  "effective_profile": {
+    "event_rules": {
+      "rules": [
+        {
+          "adapter": {
+            "conditions": [
+              {
+                "equals": "start",
+                "field": "phase"
+              }
+            ],
+            "type": "structured"
+          },
+          "id": "begin",
+          "mapping": {
+            "correlation_id": {
+              "field": "id",
+              "from": "field"
+            },
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": {
+              "field": "operation",
+              "from": "field"
+            },
+            "outcome": null,
+            "phase": {
+              "from": "literal",
+              "value": "start"
+            },
+            "scope": [
+              {
+                "field": "session",
+                "from": "field"
+              }
+            ]
+          }
+        },
+        {
+          "adapter": {
+            "conditions": [
+              {
+                "equals": "end",
+                "field": "phase"
+              }
+            ],
+            "type": "structured"
+          },
+          "id": "finish",
+          "mapping": {
+            "correlation_id": {
+              "field": "id",
+              "from": "field"
+            },
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": {
+              "field": "operation",
+              "from": "field"
+            },
+            "outcome": {
+              "field": "outcome",
+              "from": "field"
+            },
+            "phase": {
+              "from": "literal",
+              "value": "end"
+            },
+            "scope": [
+              {
+                "field": "session",
+                "from": "field"
+              }
+            ]
+          }
+        }
+      ],
+      "version": 2
+    },
+    "normalization": null,
+    "parser": {
+      "command_payload_markers": [],
+      "command_prefix": "",
+      "command_start_marker": "",
+      "event_emit_markers": [],
+      "event_payload_separator": "payload",
+      "event_receive_markers": [],
+      "format": "json-lines",
+      "json_indicators": [],
+      "module_depth": 2,
+      "module_strip_prefix": "",
+      "request_endpoint_marker": "",
+      "request_payload_markers": [],
+      "request_prefix": "",
+      "request_receive_markers": [],
+      "request_send_markers": []
+    },
+    "perf": {
+      "command_completion_markers": [],
+      "command_start_markers": [],
+      "correlation_scope_fields": [
+        "component_id"
+      ],
+      "event_correlation_keys": [
+        "trace_id",
+        "traceId",
+        "request_id",
+        "requestId",
+        "id",
+        "key"
+      ]
+    },
+    "profile": {
+      "known_commands": [],
+      "known_components": [],
+      "known_requests": []
+    },
+    "profile_name": "investigation-example",
+    "timeline": {
+      "events": [],
+      "pairs": []
+    }
+  },
+  "effective_profile_omitted": false,
+  "retention": {
+    "policy": "unspecified",
+    "expires_at": null
+  },
+  "verification": {
+    "artifact_integrity": "available",
+    "arithmetic": "available",
+    "source_and_rules": "available",
+    "losses": []
+  }
+}

@@ -1,0 +1,2 @@
+{"ts":"2026-01-01T00:00:00+02:00","level":"INFO","component":"worker","component_id":"demo","session":"demo","message":"request start","phase":"start","operation":"work","id":"request-1"}
+{"ts":"2026-01-01T00:00:00+02:00","level":"INFO","component":"worker","component_id":"demo","session":"demo","message":"request end","phase":"end","outcome":"success","operation":"work","id":"request-1"}
