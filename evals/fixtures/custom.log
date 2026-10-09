@@ -1,0 +1,2 @@
+worker (job-demo) | 2026-01-01T00:00:00.000Z [INFO] Task "sync" BEGIN settings {"attempt":1}
+worker (job-demo) | 2026-01-01T00:00:01.500Z [INFO] Task "sync" DONE

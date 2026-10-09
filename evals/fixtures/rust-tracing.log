@@ -1,0 +1,2 @@
+2026-01-01T00:00:00.000Z INFO demo::worker: ready trace_id=trace-demo
+2026-01-01T00:00:01.000Z ERROR demo::worker: request failed trace_id=trace-demo

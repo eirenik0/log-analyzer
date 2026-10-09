@@ -1,0 +1,2 @@
+{"timestamp":"2026-01-01T00:00:02Z","level":"INFO","component":"zeta","message":"later"}
+{"timestamp":"2026-01-01T00:00:01Z","level":"ERROR","component":"alpha","message":"earlier"}

@@ -1,0 +1,10 @@
+profile_name = "custom-task"
+[parser]
+format = "classic"
+command_prefix = 'Task "'
+command_start_marker = '"'
+command_payload_markers = ["settings"]
+json_indicators = ["settings {"]
+[perf]
+command_start_markers = ["BEGIN"]
+command_completion_markers = ["DONE"]

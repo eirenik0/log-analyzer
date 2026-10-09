@@ -1,0 +1,5 @@
+extends = "../../examples/investigations/profile.toml"
+profile_name = "nested-investigation"
+[normalization]
+root_path = "/rows"
+expand_rows = true

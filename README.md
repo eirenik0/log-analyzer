@@ -1055,3 +1055,12 @@ them against the test binary. After `cargo build --release`, run
 `python3 scripts/check-examples.py target/release/log-analyzer`; release packaging
 also checks native binaries and explicitly skips targets that cannot run on the
 build host.
+
+## Grounded evaluation baseline
+
+The [evaluation harness](evals/README.md) scores typed factual claims, exact citations,
+unsupported causes, abstention and important omissions. Mandatory CI runs a synthetic
+CLI corpus and paired scripted analyzer/search investigations without credentials.
+The [first published baseline](evals/results/baseline.json) verifies the harness;
+optional repeated same-model comparisons remain unmeasured until an adapter is run.
+Missing tokens/provider cost stay unavailable.

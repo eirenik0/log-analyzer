@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "original_sha256": "46c08386372dcdb1e7018977d01343e930ef5700d62f9e751d693db1c7fc3beb",
+  "binary_sha256": "c74eb412517282980ab66cca58ca2d4f2e006e4096116bcc0f69a191c8777780",
+  "migrations": [
+    {
+      "case": "process-sort-time",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/8",
+      "proof": "Original desired assertions re-run XPASS before marker removal.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "selected",
+          "passed": true,
+          "actual": "earlier",
+          "expected": "earlier"
+        }
+      ]
+    },
+    {
+      "case": "process-sort-component",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/8",
+      "proof": "Original desired assertions re-run XPASS before marker removal.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "selected",
+          "passed": true,
+          "actual": "earlier",
+          "expected": "earlier"
+        }
+      ]
+    },
+    {
+      "case": "process-timezone",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/9",
+      "proof": "Original desired assertions re-run XPASS before marker removal.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "utc",
+          "passed": true,
+          "actual": "2026-01-01T00:00:00.000Z",
+          "expected": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "case": "perf-top-n",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/10",
+      "proof": "Original desired assertions re-run XPASS before marker removal.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "operations",
+          "passed": true,
+          "actual": 1,
+          "expected": 1
+        }
+      ]
+    },
+    {
+      "case": "perf-orphans-only",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/10",
+      "proof": "Original desired assertions re-run XPASS before marker removal.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "operations",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "orphans",
+          "passed": true,
+          "actual": 1,
+          "expected": 1
+        }
+      ]
+    },
+    {
+      "case": "correlation-collision",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/11",
+      "proof": "Scoped 2000/3000 ms desired assertions re-run XPASS before marker removal; durations are bound to exact parent scope rather than sorted array order.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "operations",
+          "passed": true,
+          "actual": 2,
+          "expected": 2
+        },
+        {
+          "id": "duration-a",
+          "passed": true,
+          "actual": 2000,
+          "expected": 2000
+        },
+        {
+          "id": "duration-b",
+          "passed": true,
+          "actual": 3000,
+          "expected": 3000
+        }
+      ]
+    },
+    {
+      "case": "unicode-compaction",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/17",
+      "proof": "Original desired assertions re-run XPASS before marker removal.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "rows",
+          "passed": true,
+          "actual": 1,
+          "expected": 1
+        }
+      ]
+    },
+    {
+      "case": "service-api-command",
+      "issue": "https://github.com/eirenik0/log-analyzer/issues/19",
+      "proof": "Original desired assertions re-run XPASS before marker removal.",
+      "checks": [
+        {
+          "id": "exit",
+          "passed": true,
+          "actual": 0,
+          "expected": 0
+        },
+        {
+          "id": "operations",
+          "passed": true,
+          "actual": 1,
+          "expected": 1
+        },
+        {
+          "id": "duration",
+          "passed": true,
+          "actual": 1500,
+          "expected": 1500
+        }
+      ]
+    }
+  ]
+}

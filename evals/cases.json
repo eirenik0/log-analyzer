@@ -1,0 +1,1031 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "parse-classic",
+      "description": "Recognize classic entries without rejected candidates",
+      "tags": [
+        "parsing",
+        "classic"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/classic.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "parser",
+          "target": "json",
+          "op": "eq",
+          "value": "classic",
+          "path": "/coverage/files/0/selected_parser"
+        },
+        {
+          "id": "rejects",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/coverage/files/0/rejected_candidates"
+        }
+      ]
+    },
+    {
+      "id": "parse-rust",
+      "description": "Recognize rust entries without rejected candidates",
+      "tags": [
+        "parsing",
+        "rust"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/rust-tracing.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "parser",
+          "target": "json",
+          "op": "eq",
+          "value": "rust-tracing",
+          "path": "/coverage/files/0/selected_parser"
+        },
+        {
+          "id": "rejects",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/coverage/files/0/rejected_candidates"
+        }
+      ]
+    },
+    {
+      "id": "parse-syslog",
+      "description": "Recognize syslog entries without rejected candidates",
+      "tags": [
+        "parsing",
+        "syslog"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/syslog.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "parser",
+          "target": "json",
+          "op": "eq",
+          "value": "syslog",
+          "path": "/coverage/files/0/selected_parser"
+        },
+        {
+          "id": "rejects",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/coverage/files/0/rejected_candidates"
+        }
+      ]
+    },
+    {
+      "id": "parse-jsonl",
+      "description": "Recognize jsonl entries without rejected candidates",
+      "tags": [
+        "parsing",
+        "jsonl"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/events.jsonl"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "parser",
+          "target": "json",
+          "op": "eq",
+          "value": "json-lines",
+          "path": "/coverage/files/0/selected_parser"
+        },
+        {
+          "id": "rejects",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/coverage/files/0/rejected_candidates"
+        }
+      ]
+    },
+    {
+      "id": "parse-console",
+      "description": "Recognize console entries without rejected candidates",
+      "tags": [
+        "parsing",
+        "console"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/console.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "parser",
+          "target": "json",
+          "op": "eq",
+          "value": "classic",
+          "path": "/coverage/files/0/selected_parser"
+        },
+        {
+          "id": "rejects",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/coverage/files/0/rejected_candidates"
+        }
+      ]
+    },
+    {
+      "id": "multiline-coverage",
+      "description": "Continuation frames do not count as rejected entries",
+      "tags": [
+        "parsing",
+        "multiline"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/multiline.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "rejects",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/coverage/files/0/rejected_candidates"
+        }
+      ]
+    },
+    {
+      "id": "empty-input",
+      "description": "Empty input is distinct from unsupported input",
+      "tags": [
+        "coverage"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/empty.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "status",
+          "target": "json",
+          "op": "eq",
+          "value": "empty_input",
+          "path": "/coverage/status"
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/coverage/parsed_entries"
+        }
+      ]
+    },
+    {
+      "id": "unsupported-access",
+      "description": "access input is explicitly unsupported, never a clean zero",
+      "tags": [
+        "coverage",
+        "unsupported"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/unsupported-access.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "id": "status",
+          "target": "json",
+          "op": "eq",
+          "value": "unparsed_input",
+          "path": "/coverage/status"
+        }
+      ]
+    },
+    {
+      "id": "unsupported-tuple",
+      "description": "tuple input is explicitly unsupported, never a clean zero",
+      "tags": [
+        "coverage",
+        "unsupported"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/wrapped.jsonl"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "id": "status",
+          "target": "json",
+          "op": "eq",
+          "value": "unparsed_input",
+          "path": "/coverage/status"
+        }
+      ]
+    },
+    {
+      "id": "partial-input",
+      "description": "Invalid timestamp remains visible in coverage",
+      "tags": [
+        "coverage",
+        "jsonl"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/partial.jsonl"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "parsed",
+          "target": "json",
+          "op": "eq",
+          "value": 1,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "rejects",
+          "target": "json",
+          "op": "eq",
+          "value": 1,
+          "path": "/coverage/files/0/rejected_candidates"
+        }
+      ]
+    },
+    {
+      "id": "zero-filter-matches",
+      "description": "No filter matches does not mean parser failure",
+      "tags": [
+        "coverage",
+        "filter"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/classic.log",
+        "-f",
+        "t:nonexistent-marker"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "status",
+          "target": "json",
+          "op": "eq",
+          "value": "zero_filter_matches",
+          "path": "/coverage/status"
+        },
+        {
+          "id": "parsed",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        }
+      ]
+    },
+    {
+      "id": "mixed-files-failure",
+      "description": "One good file cannot hide another unsupported file",
+      "tags": [
+        "coverage",
+        "multiple-files"
+      ],
+      "args": [
+        "-j",
+        "info",
+        "{fixtures}/classic.log",
+        "{fixtures}/unsupported-access.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "id": "status",
+          "target": "json",
+          "op": "eq",
+          "value": "unparsed_input",
+          "path": "/coverage/status"
+        }
+      ]
+    },
+    {
+      "id": "extract-nested",
+      "description": "Extract nested payload fields using the existing single-field interface",
+      "tags": [
+        "extraction",
+        "jsonl"
+      ],
+      "args": [
+        "-j",
+        "extract",
+        "{fixtures}/events.jsonl",
+        "--field",
+        "attempt"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "count",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/extract/extracted"
+        },
+        {
+          "id": "groups",
+          "target": "json",
+          "op": "length",
+          "value": 2,
+          "path": "/extract/groups"
+        }
+      ]
+    },
+    {
+      "id": "trace-source",
+      "description": "Console normalization retains original physical source line",
+      "tags": [
+        "trace",
+        "provenance"
+      ],
+      "args": [
+        "-j",
+        "trace",
+        "{fixtures}/console.log",
+        "--session",
+        "run-demo"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "count",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/trace/count"
+        },
+        {
+          "id": "line",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/trace/entries/1/source_line_number"
+        }
+      ]
+    },
+    {
+      "id": "perf-control",
+      "description": "Distinct IDs pair correctly and an unfinished request remains an orphan",
+      "tags": [
+        "timing"
+      ],
+      "args": [
+        "--preset",
+        "service-api",
+        "-j",
+        "perf",
+        "{fixtures}/requests.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "operations",
+          "target": "json",
+          "op": "length",
+          "value": 2,
+          "path": "/operations"
+        },
+        {
+          "id": "slow",
+          "target": "json",
+          "op": "eq",
+          "value": 2000,
+          "path": "/operations/0/duration_ms"
+        },
+        {
+          "id": "fast",
+          "target": "json",
+          "op": "eq",
+          "value": 10,
+          "path": "/operations/1/duration_ms"
+        },
+        {
+          "id": "orphans",
+          "target": "json",
+          "op": "length",
+          "value": 1,
+          "path": "/orphans"
+        }
+      ]
+    },
+    {
+      "id": "perf-split-files",
+      "description": "Pair a global request identity across related input files",
+      "tags": [
+        "timing",
+        "multiple-files"
+      ],
+      "args": [
+        "--preset",
+        "service-api",
+        "-j",
+        "perf",
+        "{fixtures}/requests-start.log",
+        "{fixtures}/requests-end.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "operations",
+          "target": "json",
+          "op": "length",
+          "value": 1,
+          "path": "/operations"
+        },
+        {
+          "id": "duration",
+          "target": "json",
+          "op": "eq",
+          "value": 2000,
+          "path": "/operations/0/duration_ms"
+        }
+      ]
+    },
+    {
+      "id": "custom-profile",
+      "description": "A generic task vocabulary is configured without new parser code",
+      "tags": [
+        "profile",
+        "timing"
+      ],
+      "args": [
+        "--config",
+        "{profiles}/custom-task.toml",
+        "-j",
+        "perf",
+        "{fixtures}/custom.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "operations",
+          "target": "json",
+          "op": "length",
+          "value": 1,
+          "path": "/operations"
+        },
+        {
+          "id": "duration",
+          "target": "json",
+          "op": "eq",
+          "value": 1500,
+          "path": "/operations/0/duration_ms"
+        }
+      ]
+    },
+    {
+      "id": "process-sort-time",
+      "description": "Sort before choosing the first row",
+      "tags": [
+        "selection"
+      ],
+      "args": [
+        "process",
+        "{fixtures}/order.jsonl",
+        "--sort-by",
+        "time",
+        "--limit",
+        "1"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "selected",
+          "target": "json",
+          "op": "eq",
+          "value": "earlier",
+          "path": "/logs/0/msg"
+        }
+      ]
+    },
+    {
+      "id": "process-sort-component",
+      "description": "Sort before choosing the first row",
+      "tags": [
+        "selection"
+      ],
+      "args": [
+        "process",
+        "{fixtures}/order.jsonl",
+        "--sort-by",
+        "component",
+        "--limit",
+        "1"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "selected",
+          "target": "json",
+          "op": "eq",
+          "value": "earlier",
+          "path": "/logs/0/msg"
+        }
+      ]
+    },
+    {
+      "id": "process-timezone",
+      "description": "UTC serialization is independent of the host timezone",
+      "tags": [
+        "timestamps"
+      ],
+      "args": [
+        "process",
+        "{fixtures}/events.jsonl",
+        "--limit",
+        "1"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "utc",
+          "target": "json",
+          "op": "eq",
+          "value": "2026-01-01T00:00:00.000Z",
+          "path": "/metadata/time_range/start"
+        }
+      ],
+      "timezone": "Europe/Bratislava"
+    },
+    {
+      "id": "perf-top-n",
+      "description": "JSON honors the requested result budget",
+      "tags": [
+        "selection"
+      ],
+      "args": [
+        "--preset",
+        "service-api",
+        "-j",
+        "perf",
+        "{fixtures}/requests.log",
+        "--top-n",
+        "1"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "operations",
+          "target": "json",
+          "op": "length",
+          "value": 1,
+          "path": "/operations"
+        }
+      ]
+    },
+    {
+      "id": "perf-orphans-only",
+      "description": "Orphan-only JSON excludes completed-operation detail",
+      "tags": [
+        "selection"
+      ],
+      "args": [
+        "--preset",
+        "service-api",
+        "-j",
+        "perf",
+        "{fixtures}/requests.log",
+        "--orphans-only"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "operations",
+          "target": "json",
+          "op": "length",
+          "value": 0,
+          "path": "/operations"
+        },
+        {
+          "id": "orphans",
+          "target": "json",
+          "op": "length",
+          "value": 1,
+          "path": "/orphans"
+        }
+      ]
+    },
+    {
+      "id": "correlation-collision",
+      "description": "Same child ID under distinct parent contexts must not silently mispair",
+      "tags": [
+        "correlation"
+      ],
+      "args": [
+        "--preset",
+        "service-api",
+        "-j",
+        "perf",
+        "{fixtures}/collision.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "operations",
+          "target": "json",
+          "op": "length",
+          "value": 2,
+          "path": "/operations"
+        },
+        {
+          "id": "duration-a",
+          "target": "json",
+          "path": "/operations",
+          "op": "eq",
+          "value": 2000,
+          "select": {
+            "/scope": [
+              "context-a"
+            ]
+          },
+          "item_path": "/duration_ms"
+        },
+        {
+          "id": "duration-b",
+          "target": "json",
+          "path": "/operations",
+          "op": "eq",
+          "value": 3000,
+          "select": {
+            "/scope": [
+              "context-b"
+            ]
+          },
+          "item_path": "/duration_ms"
+        }
+      ]
+    },
+    {
+      "id": "unicode-compaction",
+      "description": "Valid multibyte payloads must not panic during compaction",
+      "tags": [
+        "unicode",
+        "robustness"
+      ],
+      "args": [
+        "process",
+        "{fixtures}/unicode.jsonl"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "rows",
+          "target": "json",
+          "op": "length",
+          "value": 1,
+          "path": "/logs"
+        }
+      ]
+    },
+    {
+      "id": "service-api-command",
+      "description": "The shipped profile must classify both command boundaries",
+      "tags": [
+        "profile",
+        "timing"
+      ],
+      "args": [
+        "--preset",
+        "service-api",
+        "-j",
+        "perf",
+        "{fixtures}/service-operation.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "operations",
+          "target": "json",
+          "op": "length",
+          "value": 1,
+          "path": "/operations"
+        },
+        {
+          "id": "duration",
+          "target": "json",
+          "op": "eq",
+          "value": 1500,
+          "path": "/operations/0/duration_ms"
+        }
+      ]
+    },
+    {
+      "id": "process-utc-control",
+      "description": "UTC output control for the host-timezone case",
+      "tags": [
+        "timestamps"
+      ],
+      "args": [
+        "process",
+        "{fixtures}/events.jsonl",
+        "--limit",
+        "1"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "utc",
+          "target": "json",
+          "op": "eq",
+          "value": "2026-01-01T00:00:00.000Z",
+          "path": "/metadata/time_range/start"
+        }
+      ]
+    },
+    {
+      "id": "errors-no-matches",
+      "description": "Parsed INFO entries are distinct from unparsed input",
+      "tags": [
+        "errors",
+        "coverage"
+      ],
+      "args": [
+        "-j",
+        "errors",
+        "{fixtures}/generic.log"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "parsed",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "errors",
+          "target": "json",
+          "op": "eq",
+          "value": 0,
+          "path": "/errors/summary/error_count"
+        }
+      ]
+    },
+    {
+      "id": "errors-bounded",
+      "description": "Bounded multiline reports retain total error count",
+      "tags": [
+        "errors",
+        "multiline"
+      ],
+      "args": [
+        "-j",
+        "errors",
+        "{fixtures}/multiline.log",
+        "--bounded",
+        "--max-stack-frames",
+        "1"
+      ],
+      "expect": [
+        {
+          "id": "exit",
+          "target": "exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "id": "errors",
+          "target": "json",
+          "op": "eq",
+          "value": 1,
+          "path": "/errors/summary/error_count"
+        },
+        {
+          "id": "entries",
+          "target": "json",
+          "op": "eq",
+          "value": 2,
+          "path": "/coverage/parsed_entries"
+        },
+        {
+          "id": "clusters",
+          "target": "json",
+          "op": "eq",
+          "value": 1,
+          "path": "/errors/clusters_total"
+        },
+        {
+          "id": "omitted-frames",
+          "target": "json",
+          "path": "/errors/omitted/stack_frames",
+          "op": "eq",
+          "value": 1
+        }
+      ]
+    }
+  ]
+}

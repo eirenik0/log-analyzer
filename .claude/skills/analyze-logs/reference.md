@@ -738,3 +738,10 @@ lifecycle timing. Expected sources use input ordinal, physical line and normaliz
 row pointer; missing/filtered targets and absent semantic fields fail assertions.
 Candidate rules and assertions retain contextual redaction even when unmatched.
 Keep active files separate from proposed TOML; no automatic ranking/activation.
+
+## Investigation evaluation
+
+The [grounded evaluation harness](https://github.com/eirenik0/log-analyzer/blob/main/evals/README.md)
+checks typed conclusions, citation support, abstention and omissions. Its published
+scripted baseline verifies the harness, not model accuracy or efficiency. Do not
+claim measured agent improvements without an executed paired model comparison.
