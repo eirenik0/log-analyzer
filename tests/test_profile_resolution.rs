@@ -859,3 +859,144 @@ fn multi_source_associations_distinguish_empty_evidence_from_observed_incompatib
         "source_structure_changed_or_incompatible"
     );
 }
+#[test]
+fn fixed_association_diagnostics_survive_ids_with_the_same_text() {
+    let dir = tempdir().unwrap();
+    let file = fixture(dir.path());
+    let p = profile(dir.path(), "candidate", "session");
+    let reason = "association_profile_digest_changed";
+    let proof = "independent_assertions_required_for_automatic_selection";
+    let data = fs::read_to_string(&file)
+        .unwrap()
+        .lines()
+        .zip([reason, proof])
+        .map(|(line, id)| {
+            let mut v: Value = serde_json::from_str(line).unwrap();
+            v["component_id"] = json!(id);
+            v.to_string() + "\n"
+        })
+        .collect::<String>();
+    fs::write(&file, data).unwrap();
+    let (v, _) = run(&[
+        "--config",
+        &p,
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+    ]);
+    let mut saved = json!({"version":1,"profile":{"config":"candidate.toml","sha256":v["profile_resolution"]["selected"]["sha256"]},"sources":[{"file":file,"selected_parser":"json-lines"}],"event_contract":2,"structural_contract":1});
+    let path = dir.path().join("association.json");
+    let path = path.to_str().unwrap();
+    let args = [
+        "--redact",
+        "--mask-id",
+        "component_id",
+        "--complete-output",
+        "resolve-profile",
+        &file,
+        "--kind",
+        "request",
+        "--association",
+        path,
+    ];
+    fs::write(path, saved.to_string()).unwrap();
+    let (v, _) = run(&args);
+    assert_eq!(
+        v["profile_resolution"]["association"]["status"],
+        "revalidated"
+    );
+    assert_eq!(
+        v["profile_resolution"]["association"]["semantic_proof"],
+        proof
+    );
+    for entry in v["evidence_records"].as_array().unwrap() {
+        assert!(
+            entry["component_id"]
+                .as_str()
+                .unwrap()
+                .starts_with("[MASKED_ID:")
+        );
+    }
+    saved["profile"]["sha256"] = json!("0".repeat(64));
+    fs::write(path, saved.to_string()).unwrap();
+    let (v, _) = run(&args);
+    assert_eq!(v["profile_resolution"]["association"]["reason"], reason);
+    assert_eq!(v["profile_resolution"]["association"]["status"], "invalid");
+    // Detailed load errors can contain private data and are not fixed labels.
+    let missing = dir.path().join(format!("prefix{reason}.toml"));
+    saved["profile"]["config"] = json!(missing);
+    fs::write(path, saved.to_string()).unwrap();
+    let (v, _) = run(&args);
+    let detail = v["profile_resolution"]["association"]["reason"]
+        .as_str()
+        .unwrap();
+    assert!(detail.starts_with("association_profile_unavailable:"));
+    assert!(!detail.contains(reason));
+}
+
+#[test]
+fn resolver_container_masks_preserve_schema_and_mask_same_named_payloads() {
+    let dir = tempdir().unwrap();
+    let file = fixture(dir.path());
+    let p = profile(dir.path(), "candidate", "session");
+    let fields = [
+        "profile_resolution",
+        "association",
+        "candidates",
+        "identity",
+        "parsing",
+        "evidence",
+        "inputs",
+        "choice",
+        "coverage",
+        "evidence_records",
+        "profile_validation",
+        "semantic_evidence",
+        "selected",
+        "selector",
+        "query",
+        "files",
+    ];
+    let data = fs::read_to_string(&file)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let mut row: Value = serde_json::from_str(line).unwrap();
+            row["payload"] = Value::Object(
+                fields
+                    .iter()
+                    .map(|field| ((*field).into(), json!(format!("private-{field}-value"))))
+                    .collect(),
+            );
+            row.to_string() + "\n"
+        })
+        .collect::<String>();
+    fs::write(&file, data).unwrap();
+    for field in fields {
+        let (v, o) = run(&[
+            "--redact",
+            "--mask-id",
+            field,
+            "--complete-output",
+            "--config",
+            &p,
+            "resolve-profile",
+            &file,
+            "--kind",
+            "request",
+        ]);
+        assert!(
+            o.status.success(),
+            "{field}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        assert!(
+            !String::from_utf8_lossy(&o.stdout).contains(&format!("private-{field}-value")),
+            "{field}"
+        );
+        let c = candidate(&v, "candidate");
+        assert!(c["evidence_records"].is_array(), "{field}");
+        assert!(c["evidence"]["inputs"].is_array(), "{field}");
+    }
+}

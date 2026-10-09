@@ -36,6 +36,20 @@ struct SourceShape {
     selected_parser: config::LogFormat,
 }
 
+pub(crate) fn generated_association_reason(reason: &str) -> bool {
+    matches!(
+        reason,
+        "association_contract_changed"
+            | "association_source_scope_mismatch"
+            | "association_requires_exactly_one_profile_selector"
+            | "association_profile_digest_changed"
+            | "source_structure_unavailable"
+            | "source_structure_changed_or_incompatible"
+            | "empty_source_structure_unverified"
+            | "explicit_configuration_wins"
+    )
+}
+
 fn identity(config: &AnalyzerConfig, origin: &str, choice: Value) -> Value {
     json!({"name":config.profile_name,"sha256":evidence::profile_digest(config).expect("config serializes"),"origin":origin,"choice":choice})
 }
@@ -99,7 +113,7 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     } else if let Some(path) = association {
         match load_association(path, files) {
             Err(reason) => {
-                mapping = json!({"status":"invalid","reason":crate::output::source_path(&reason)})
+                mapping = json!({"status":"invalid","reason":if generated_association_reason(&reason){reason}else{crate::output::source_path(&reason)}})
             }
             Ok((saved, config, choice)) => {
                 mapping = json!({"status":"pending_revalidation","reason":null});

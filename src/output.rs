@@ -342,7 +342,9 @@ impl OutputState {
                         } else {
                             format!("{path}.{key}")
                         };
-                        let value = if field_path == "evidence_records" {
+                        let value = if field_path == "evidence_records"
+                            || resolver_container(&field_path, value)
+                        {
                             self.value_at(value, &field_path)
                         } else {
                             self.replacement(&field_path, &rendered)
@@ -811,6 +813,9 @@ impl OutputState {
                 self.redact_validation_addresses(&original, &mut value);
             }
             if let Some(resolution) = original.get("profile_resolution") {
+                if let Some(coverage) = original.get("coverage") {
+                    value["coverage"] = self.value_at(coverage, "coverage");
+                }
                 // Restore only generated metadata; source records may use these
                 // same field names and must retain payload-safe redaction.
                 for key in [
@@ -830,6 +835,17 @@ impl OutputState {
                 }
                 value["profile_resolution"]["association"]["status"] =
                     resolution["association"]["status"].clone();
+                if let Some(reason) = resolution["association"]["reason"].as_str()
+                    && crate::profile_resolution::generated_association_reason(reason)
+                {
+                    value["profile_resolution"]["association"]["reason"] = json!(reason);
+                }
+                if resolution["association"]["semantic_proof"]
+                    == "independent_assertions_required_for_automatic_selection"
+                {
+                    value["profile_resolution"]["association"]["semantic_proof"] =
+                        resolution["association"]["semantic_proof"].clone();
+                }
                 if !resolution["selected"].is_null() {
                     for key in ["sha256", "origin"] {
                         value["profile_resolution"]["selected"][key] =
@@ -978,6 +994,42 @@ impl OutputState {
         self.preserve_numeric_metadata = false;
         rendered
     }
+}
+
+// Generated resolver structure must remain typed even when a user masks a
+// same-named source field. This list deliberately excludes canonical payloads.
+fn resolver_container(path: &str, value: &Value) -> bool {
+    if !value.is_object() && !value.is_array() {
+        return false;
+    }
+    if path == "coverage.files" {
+        return true;
+    }
+    let Some(path) = path.strip_prefix("profile_resolution") else {
+        return false;
+    };
+    matches!(
+        path,
+        "" | ".association"
+            | ".selected"
+            | ".selected.choice"
+            | ".selected.choice.selector"
+            | ".candidates"
+            | ".candidates.choice"
+            | ".candidates.choice.selector"
+            | ".candidates.identity"
+            | ".candidates.identity.choice"
+            | ".candidates.identity.choice.selector"
+            | ".candidates.parsing"
+            | ".candidates.parsing.coverage"
+            | ".candidates.profile_validation"
+            | ".candidates.semantic_evidence"
+            | ".candidates.evidence"
+            | ".candidates.evidence.inputs"
+            | ".candidates.evidence.inputs.coverage"
+            | ".candidates.evidence.query"
+            | ".candidates.evidence_records"
+    )
 }
 
 /// Diff values use generic field names in both text and JSON, so preserve their
