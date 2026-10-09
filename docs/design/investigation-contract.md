@@ -236,3 +236,18 @@ Source verification indexes each consumed text stream once. Physical witnesses a
 normalized records share a logical source: count normalized paths per physical line
 when present, otherwise count that line once. Multiple excerpts of one occurrence
 are matched by their own text projection and verification guarantees.
+
+Applied redaction in retained reports omits the entire query with command
+`[REDACTED QUERY]` and filter `[REDACTED FILTER]`, and replaces both input and
+coverage file paths with `[REDACTED PATH]`. Original identity hashes remain provenance;
+this conservative retained contract does not attempt to prove arbitrary transformed text.
+
+Presentation limits require serialized usage for each declared size budget.
+`item_limit_zero` requires zero item budget, no displayed items, and remaining items.
+`oversized_item` requires a size budget, fitting metadata, no displayed items, and
+remaining items. `mandatory_metadata_over_budget` requires an exceeded size budget
+and no displayed items. A `page` makes progress while declaring omissions.
+
+Declared serialized usage cannot be smaller than the compact UTF-8 representation
+of the provided report plus its final newline. Exact pretty-printed wire size requires
+the original report bytes; relational validation cannot reconstruct those spaces.

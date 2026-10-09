@@ -53,7 +53,9 @@ workflow until the unified command is advertised. Repeated declared inputs requi
 occurrence identity as well as source references; partial processing does not justify
 full-input counts or completion, and redaction may prevent source/rule verification.
 The retained contract requires redacted record payloads to be omitted and excerpts
-to contain only the source omission marker (or its declared prefix).
+to contain only the source omission marker (or its declared prefix). Retained
+manifest paths and queries use omission markers too. Exceptional presentation
+statuses must agree with budgets, usage, and displayed/remaining counts.
 Supported assessments require positive findings; unknowns alone cannot establish support.
 Check coverage against retained evidence and artifact retention against its descriptor.
 Applied redaction omits captured stream data and is reflected in verification losses.

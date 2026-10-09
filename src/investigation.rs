@@ -131,6 +131,22 @@ pub fn validate_relations(
         "snapshot identity digest mismatch",
     )?;
     if manifest["redaction"]["applied"] == true {
+        require(
+            manifest["query"]
+                == serde_json::json!({
+                    "command": "[REDACTED QUERY]", "filter": "[REDACTED FILTER]"
+                }),
+            "/report_metadata/evidence/query",
+            "applied redaction requires query omission markers",
+        )?;
+        for input in inputs {
+            require(
+                input["file"] == "[REDACTED PATH]"
+                    && input["coverage"]["file"] == "[REDACTED PATH]",
+                "/report_metadata/evidence/inputs/file",
+                "applied redaction requires path omission markers",
+            )?;
+        }
         summary
             .deferred_relations
             .push("unredacted_query_and_input_identity".into());
@@ -1508,18 +1524,102 @@ pub fn validate_relations(
         || report["presentation"]["omitted_findings"]
             .as_u64()
             .is_some_and(|v| v > 0);
-    if report["presentation"]["status"] == "complete" {
-        require(
+    let presentation = get(report, "/presentation")?;
+    let displayed = number(presentation, "/displayed_findings")?;
+    let all_empty = list(presentation, "/collections")?
+        .iter()
+        .all(|collection| collection["displayed"] == 0);
+    let remaining = list(presentation, "/collections")?
+        .iter()
+        .any(|collection| collection["remaining"].as_u64().is_some_and(|v| v > 0));
+    let mut size_limited = false;
+    let mut over_budget = false;
+    for (budget_key, size_key) in [
+        ("budget_bytes", "serialized_bytes"),
+        ("budget_characters", "serialized_characters"),
+    ] {
+        if let Some(budget) = presentation[budget_key].as_u64() {
+            size_limited = true;
+            let size = presentation[size_key]
+                .as_u64()
+                .ok_or_else(|| error("/presentation", "size budget requires serialized usage"))?;
+            over_budget |= size > budget;
+        }
+    }
+    require(
+        presentation["budget_items"]
+            .as_u64()
+            .is_none_or(|budget| displayed <= budget),
+        "/presentation/budget_items",
+        "displayed findings exceed item budget",
+    )?;
+    let status = text(presentation, "/status")?;
+    match status {
+        "complete" => require(
             total_known && !has_omissions,
             "/presentation/status",
             "complete presentation has omitted or unknown findings",
-        )?;
-    } else if report["presentation"]["status"] == "page" {
-        require(
-            has_omissions,
+        )?,
+        "page" => {
+            require(
+                has_omissions,
+                "/presentation/status",
+                "page presentation has no omissions",
+            )?;
+            require(
+                displayed > 0,
+                "/presentation/status",
+                "page presentation makes no progress",
+            )?;
+        }
+        "item_limit_zero" => require(
+            presentation["budget_items"] == 0 && displayed == 0 && all_empty && remaining,
             "/presentation/status",
-            "page presentation has no omissions",
-        )?;
+            "item_limit_zero requires zero item budget and no displayed items with remaining items",
+        )?,
+        "oversized_item" => require(
+            size_limited
+                && !over_budget
+                && presentation["budget_items"] != 0
+                && displayed == 0
+                && all_empty
+                && remaining,
+            "/presentation/status",
+            "oversized_item requires a size budget and no displayed items with remaining items",
+        )?,
+        "mandatory_metadata_over_budget" => require(
+            over_budget && displayed == 0 && all_empty,
+            "/presentation/status",
+            "mandatory metadata status requires exceeded size budget and no displayed items",
+        )?,
+        _ => {
+            return Err(error(
+                "/presentation/status",
+                "unsupported presentation status",
+            ));
+        }
+    }
+    require(
+        !over_budget || status == "mandatory_metadata_over_budget",
+        "/presentation/status",
+        "serialized usage exceeds budget without mandatory metadata status",
+    )?;
+    if !presentation["serialized_bytes"].is_null()
+        || !presentation["serialized_characters"].is_null()
+    {
+        let compact = report.to_string();
+        for (key, minimum) in [
+            ("serialized_bytes", compact.len() + 1),
+            ("serialized_characters", compact.chars().count() + 1),
+        ] {
+            require(
+                presentation[key]
+                    .as_u64()
+                    .is_none_or(|usage| usage >= minimum as u64),
+                "/presentation",
+                "serialized usage is below compact document size including newline",
+            )?;
+        }
     }
     if report["retrieval"]["status"] == "available" {
         require(

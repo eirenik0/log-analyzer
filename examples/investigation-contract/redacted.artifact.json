@@ -16,7 +16,7 @@
           "bytes": 1196,
           "coverage": {
             "configured_parser": "json-lines",
-            "file": "examples/investigations/slow.jsonl",
+            "file": "[REDACTED PATH]",
             "input_bytes": 1196,
             "nonempty_lines": 6,
             "normalization_diagnostics": [],
@@ -26,7 +26,7 @@
             "selected_parser": "json-lines",
             "snapshot_sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378"
           },
-          "file": "examples/investigations/slow.jsonl",
+          "file": "[REDACTED PATH]",
           "input_id": "49f803417756bf930cc131df6ee72aa9f12071631ef81a25f76da62588d2bc42",
           "selected_entries": 6,
           "sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378"
@@ -48,19 +48,8 @@
       },
       "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
       "query": {
-        "command": {
-          "Perf": {
-            "files": [
-              "examples/investigations/slow.jsonl"
-            ],
-            "op_type": null,
-            "orphans_only": false,
-            "sort_by": "Duration",
-            "threshold_ms": 1000,
-            "top_n": 0
-          }
-        },
-        "filter": null
+        "command": "[REDACTED QUERY]",
+        "filter": "[REDACTED FILTER]"
       },
       "query_sha256": "ad982ba11e049590502de9281748ecdcda2a741c91ce9ae601007ab14bbd832a",
       "redaction": {

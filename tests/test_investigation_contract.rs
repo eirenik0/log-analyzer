@@ -598,6 +598,11 @@ fn applied_redaction_rejects_original_persistence_and_verification() {
     let (mut report, mut artifact) = fixture("supported");
     for document in [&mut report, &mut artifact] {
         document["report_metadata"]["evidence"]["redaction"]["applied"] = json!(true);
+        document["report_metadata"]["evidence"]["query"] =
+            json!({"command":"[REDACTED QUERY]","filter":"[REDACTED FILTER]"});
+        document["report_metadata"]["evidence"]["inputs"][0]["file"] = json!("[REDACTED PATH]");
+        document["report_metadata"]["evidence"]["inputs"][0]["coverage"]["file"] =
+            json!("[REDACTED PATH]");
     }
     reject(
         report,
@@ -1073,4 +1078,125 @@ fn applied_redaction_cannot_expose_original_excerpts() {
             .to_string()
             .contains("requires the source omission marker")
     );
+}
+
+#[test]
+fn redacted_manifest_omits_paths_and_queries() {
+    let (original, _) = fixture("supported");
+    for pointer in ["/query", "/inputs/0/file", "/inputs/0/coverage/file"] {
+        let (mut report, mut artifact) = fixture("redacted");
+        for doc in [&mut report, &mut artifact] {
+            *doc["report_metadata"]["evidence"]
+                .pointer_mut(pointer)
+                .unwrap() = original["report_metadata"]["evidence"]
+                .pointer(pointer)
+                .unwrap()
+                .clone();
+        }
+        assert!(
+            validate_relations(&report, None)
+                .unwrap_err()
+                .to_string()
+                .contains("omission markers")
+        );
+        reject(report, artifact, "omission markers");
+    }
+    let (mut report, mut artifact) = fixture("redacted");
+    for doc in [&mut report, &mut artifact] {
+        doc["report_metadata"]["evidence"]["query"]["filter"] = json!("token=synthetic-secret");
+    }
+    reject(report, artifact, "query omission markers");
+}
+
+#[test]
+fn exceptional_presentation_statuses_require_consistent_limits() {
+    for status in [
+        "item_limit_zero",
+        "oversized_item",
+        "mandatory_metadata_over_budget",
+    ] {
+        let (mut report, artifact) = fixture("supported");
+        report["presentation"]["status"] = json!(status);
+        reject(report, artifact, "/presentation/status");
+    }
+    for status in [
+        "item_limit_zero",
+        "oversized_item",
+        "mandatory_metadata_over_budget",
+    ] {
+        let (mut report, artifact) = fixture("supported");
+        report["findings"] = json!([]);
+        let p = &mut report["presentation"];
+        p["status"] = json!(status);
+        p["displayed_findings"] = json!(0);
+        p["omitted_findings"] = json!(6);
+        p["collections"][0]["displayed"] = json!(0);
+        p["collections"][0]["remaining"] = json!(6);
+        match status {
+            "item_limit_zero" => p["budget_items"] = json!(0),
+            "oversized_item" => {
+                p["budget_bytes"] = json!(10000);
+                p["serialized_bytes"] = json!(5000);
+            }
+            _ => {
+                p["budget_characters"] = json!(1);
+                p["serialized_characters"] = json!(5000);
+            }
+        }
+        for _ in 0..4 {
+            let rendered = serde_json::to_string_pretty(&report).unwrap();
+            for (key, usage) in [
+                ("serialized_bytes", rendered.len() + 1),
+                ("serialized_characters", rendered.chars().count() + 1),
+            ] {
+                if !report["presentation"][key].is_null() {
+                    report["presentation"][key] = json!(usage);
+                }
+            }
+        }
+        shape(&report, "investigation.schema.json");
+        let raw = refresh(&mut report, &artifact);
+        validate_relations(&report, Some(&raw)).unwrap();
+        let mut invalid = report.clone();
+        match status {
+            "item_limit_zero" => invalid["presentation"]["budget_items"] = json!(1),
+            "oversized_item" => invalid["presentation"]["budget_bytes"] = Value::Null,
+            _ => invalid["presentation"]["budget_characters"] = json!(10000),
+        }
+        reject(invalid, artifact, "/presentation/status");
+    }
+}
+
+#[test]
+fn declared_presentation_budgets_require_usage_and_fit() {
+    let (mut report, artifact) = fixture("supported");
+    report["presentation"]["budget_items"] = json!(1);
+    reject(report, artifact, "exceed item budget");
+    for (budget, usage) in [
+        ("budget_bytes", "serialized_bytes"),
+        ("budget_characters", "serialized_characters"),
+    ] {
+        let (mut report, artifact) = fixture("supported");
+        report["presentation"][budget] = json!(100);
+        reject(
+            report.clone(),
+            artifact.clone(),
+            "requires serialized usage",
+        );
+        report["presentation"][usage] = json!(101);
+        reject(report, artifact, "exceeds budget");
+    }
+}
+
+#[test]
+fn presentation_usage_cannot_underreport_the_document_size() {
+    for (budget, usage) in [
+        ("budget_bytes", "serialized_bytes"),
+        ("budget_characters", "serialized_characters"),
+    ] {
+        let (mut report, artifact) = fixture("supported");
+        report["presentation"][budget] = json!(1);
+        report["presentation"][usage] = json!(1);
+        reject(report, artifact, "below compact document size");
+    }
 }
