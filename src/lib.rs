@@ -438,7 +438,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     | Commands::ValidateProfile { .. }
                     | Commands::ResolveProfile { .. }
                     | Commands::ProfileMappings { .. }
-                    | Commands::PrepareProfile { .. }
+                    | Commands::PrepareProfile(_)
             ),
     );
     if cli.common_reports() {
@@ -467,7 +467,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    if matches!(&cli.command, Commands::PrepareProfile { .. }) {
+    if matches!(&cli.command, Commands::PrepareProfile(_)) {
         return profile_preparation::run(cli);
     }
     if matches!(&cli.command, Commands::ProfileMappings { .. }) {
@@ -554,7 +554,7 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
         Commands::ResolveProfile { .. } => {
             unreachable!("resolution returned before config loading")
         }
-        Commands::PrepareProfile { .. } => {
+        Commands::PrepareProfile(_) => {
             unreachable!("preparation returned before legacy analysis")
         }
         Commands::Capabilities => unreachable!("capabilities returned before config loading"),

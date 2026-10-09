@@ -250,7 +250,10 @@ fn source_fields(value: &Value, fields: &mut Vec<Value>) {
 }
 
 pub(crate) fn run(cli: &Cli) -> Result<()> {
-    let Commands::PrepareProfile {
+    let Commands::PrepareProfile(args) = &cli.command else {
+        unreachable!()
+    };
+    let crate::cli::PrepareProfileArgs {
         files,
         candidate_output,
         kind,
@@ -259,10 +262,7 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
         template,
         profile_name,
         witness_limit,
-    } = &cli.command
-    else {
-        unreachable!()
-    };
+    } = args;
     let (base, profile_sources) = match template {
         Some(path) if path.exists() => config::load_config_from_path_with_sources(path)?,
         Some(path) => (

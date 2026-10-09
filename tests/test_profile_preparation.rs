@@ -552,3 +552,38 @@ fn report_output_protects_every_filesystem_template_ancestor() {
     assert!(!root.join("prepared.toml").exists());
     assert_eq!(fs::read(&parent).unwrap(), original);
 }
+
+#[test]
+fn global_source_conflicts_are_rejected_before_loading_or_candidate_creation() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let input = fixture(root);
+    let destination = root.join("prepared.toml");
+    let report = root.join("report.json");
+    for global in ["--config", "--preset"] {
+        for before in [true, false] {
+            let mut args = vec!["--output", report.to_str().unwrap()];
+            if before {
+                args.extend([global, "missing-source"]);
+            }
+            args.extend([
+                "prepare-profile",
+                &input,
+                "--template",
+                "base",
+                "--candidate-output",
+                destination.to_str().unwrap(),
+                "--kind",
+                "request",
+            ]);
+            if !before {
+                args.extend([global, "missing-source"]);
+            }
+            let (_, output) = run(&args);
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).contains("--template"));
+            assert!(!destination.exists());
+            assert!(!report.exists());
+        }
+    }
+}
