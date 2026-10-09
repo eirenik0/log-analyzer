@@ -2353,3 +2353,56 @@ fn extract_checks_envelope_paths_and_item_local_ids() {
         serde_json::Value::Null
     );
 }
+
+#[test]
+fn classic_slash_components_and_rejected_headers_agree_in_cli_coverage() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("slash.log");
+    for component in ["worker/io", "worker-io"] {
+        write_file(
+            &file,
+            &format!(
+                "worker (run-1) | 2026-01-01T00:00:00.000Z [INFO ] started\n{component} (run-1) | 2026-01-01T00:00:01.000Z [ERROR] failure\nworker (run-1) | 2026-01-01T00:00:02.000Z [INFO ] finished\nworker@io | 2026-01-01T00:00:03.000Z [INFO ] unsupported\n"
+            ),
+        );
+        for operation in ["info", "errors", "perf"] {
+            let output = command()
+                .args([
+                    "--preset",
+                    "base",
+                    "-F",
+                    "json",
+                    operation,
+                    file.to_str().unwrap(),
+                ])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(
+                report["coverage"]["parsed_entries"], 3,
+                "{operation} {component}"
+            );
+            assert_eq!(report["coverage"]["files"][0]["rejected_candidates"], 1);
+            let output = command()
+                .args([
+                    "--preset",
+                    "base",
+                    "--color",
+                    "never",
+                    operation,
+                    file.to_str().unwrap(),
+                ])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            let text = String::from_utf8(output.stdout).unwrap();
+            assert!(text.contains("parsed=3 entries"), "{text}");
+            assert!(text.contains("rejected=1 candidates"), "{text}");
+        }
+    }
+}

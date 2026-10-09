@@ -52,7 +52,9 @@ cannot establish completion, CPU work, sleep or a cause.
 Keep independent runs under separate snapshots and link comparison provenance.
 Masked identities from independently generated reports are not comparable.
 Report observations, measurements, hypotheses, contrary evidence and unknowns
-according to the advertised investigation contract. Empty input, no filter
+according to the advertised investigation contract. Inspect rejected header-shaped
+candidates before interpreting coverage; they are distinct from genuine multiline
+payloads and traceback continuations. Empty input, no filter
 matches, no errors, parsing failure and unavailable analysis are distinct.
 
 The authoritative contracts are described in the repository's

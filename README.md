@@ -156,6 +156,10 @@ socket | 2025-04-03T21:07:27.668Z [INFO ] Emit event of type "Logger.log" with p
 core-universal | 2025-04-03T21:07:27.652Z [INFO ] Core universal is started on port 21077
 ```
 
+Classic component names support word characters, hyphens and slashes, including
+`worker/io (run-1)`. Timestamp-shaped headers with unsupported component
+punctuation are rejected candidates rather than multiline continuations.
+
 Classic logs copied from a browser console may start with a source location:
 `background.js:123 worker | timestamp [LEVEL] message`. Supported locations are
 filenames, paths, or URLs followed by `:line` or `:line:column`, then whitespace

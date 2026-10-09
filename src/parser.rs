@@ -19,7 +19,7 @@ pub use entities::{
 };
 
 static CLASSIC_ENTRY_START: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[\w-]+(?:\s+\([^)]*\))?\s+\|\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+    Regex::new(r"^[\w/-]+(?:\s+\([^)]*\))?\s+\|\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
         .expect("valid classic log entry start regex")
 });
 static CONSOLE_SOURCE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
@@ -285,7 +285,7 @@ pub fn parse_log_file_with_config(
 fn looks_like_entry_candidate(line: &str) -> bool {
     static STRUCTURED_CANDIDATE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
-            r"^(?:\S+[:#]\S+\s+)?[\w-]+(?:\s+\([^)]*\))?\s+\|\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",
+            r"^(?:\S+[:#]\S+\s+)?[^\s|]+(?:\s+\([^)]*\))?\s+\|\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",
         )
         .expect("valid entry candidate regex")
     });

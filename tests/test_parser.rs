@@ -545,3 +545,70 @@ fn test_browser_console_multiline_payloads_and_continuations() {
         Some("https://example.test/assets/background.js:123:8")
     );
 }
+
+#[test]
+fn classic_slash_components_and_controls_preserve_record_identity() {
+    use log_analyzer::config::LogFormat;
+    use log_analyzer::parser::parse_log_file_report;
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("slash.log");
+    for component in ["worker/io", "worker-io", "服务/输入"] {
+        for prefix in ["", "bundle.js:12:3 "] {
+            let content = format!(
+                "worker (run-1) | 2026-01-01T00:00:00.000Z [INFO ] started\n{prefix}{component} (run-1) | 2026-01-01T00:00:01.000+02:00 [ERROR] processing item\nworker (run-1) | 2026-01-01T00:00:02.000Z [INFO ] finished\n"
+            );
+            fs::write(&file, &content).unwrap();
+            for format in [LogFormat::Auto, LogFormat::Classic] {
+                let mut config = AnalyzerConfig::default();
+                config.parser.format = format;
+                let report = parse_log_file_report(&file, &config).unwrap();
+                assert_eq!(report.coverage.selected_parser, LogFormat::Classic);
+                assert_eq!(report.coverage.parsed_entries, 3, "{component} {prefix}");
+                assert_eq!(report.coverage.rejected_candidates, 0);
+                let middle = &report.entries[1];
+                assert_eq!(middle.source_line_number, 2);
+                assert_eq!(middle.component, component);
+                assert_eq!(middle.component_id, "run-1");
+                assert_eq!(middle.level, "ERROR");
+                assert_eq!(middle.message, "processing item");
+                assert_eq!(
+                    middle.source_timestamp.unwrap().offset().local_minus_utc(),
+                    7200
+                );
+                assert_eq!(middle.raw_logline, content.lines().nth(1).unwrap());
+                assert!(!report.entries[0].raw_logline.contains("processing item"));
+            }
+        }
+    }
+}
+
+#[test]
+fn classic_punctuated_candidates_reject_without_swallowing_multiline_records() {
+    use log_analyzer::parser::parse_log_file_report;
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("candidates.log");
+    let content = concat!(
+        "worker/io (run-1) | 2026-01-01T00:00:00.000Z [INFO ] payload {\n",
+        "  \"path\": \"worker@io | ordinary continuation 🦀\"\n",
+        "}\n",
+        "    at worker@io (traceback)\n",
+        "worker/io (run-1) | 2026-99-01T00:00:01.000Z [ERROR] invalid timestamp\n",
+        "    at rejected frame\n",
+        "worker@io (run-1) | 2026-01-01T00:00:02.000Z [ERROR] unsupported component\n",
+        "bundle.js:12 worker@io (run-1) | 2026-01-01T00:00:03.000Z [ERROR] unsupported prefixed component\n",
+        "worker (run-1) | 2026-01-01T00:00:04.000Z [INFO ] finished\n",
+    );
+    fs::write(&file, content).unwrap();
+    let report = parse_log_file_report(&file, &AnalyzerConfig::default()).unwrap();
+    assert_eq!(report.coverage.parsed_entries, 2);
+    assert_eq!(report.coverage.rejected_candidates, 3);
+    assert_eq!(report.entries[0].source_line_number, 1);
+    assert_eq!(report.entries[1].source_line_number, 9);
+    assert_eq!(
+        report.entries[0].payload(),
+        Some(&json!({"path":"worker@io | ordinary continuation 🦀"}))
+    );
+    assert!(report.entries[0].raw_logline.contains("at worker@io"));
+    assert!(!report.entries[0].raw_logline.contains("invalid timestamp"));
+    assert_eq!(report.entries[1].message, "finished");
+}
