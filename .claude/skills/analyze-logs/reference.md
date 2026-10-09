@@ -1,6 +1,7 @@
 # Log Analyzer Command Reference
 
-Command syntax and configuration reference. Use the actual binary's help and
+Command syntax and configuration reference for the local evidence engine. Rust
+calculates; the consuming agent selects queries and explains findings. Use the actual binary's help and
 capabilities as the authority for its supported version. Investigation sequencing,
 source verification and stopping conditions live in the portable
 [workflow](https://github.com/eirenik0/log-analyzer/blob/main/docs/investigation-workflow.md)
