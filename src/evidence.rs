@@ -203,13 +203,22 @@ impl Context {
         })
     }
     pub fn observe(&mut self, coverage: &ParseCoverage, entries: &[LogEntry]) {
+        self.observe_selected(coverage, entries, |_| true);
+    }
+    pub(crate) fn observe_selected(
+        &mut self,
+        coverage: &ParseCoverage,
+        entries: &[LogEntry],
+        selected: impl Fn(&LogEntry) -> bool,
+    ) {
         let input_id =
             digest(&serde_json::to_vec(&json!([coverage.file, coverage.snapshot_sha256])).unwrap());
-        self.inputs.push(json!({"input_id": input_id, "file": coverage.file, "sha256": coverage.snapshot_sha256, "bytes": coverage.input_bytes, "coverage": coverage, "selected_entries": entries.iter().filter(|entry| self.filter.matches(entry)).count()}));
+        self.inputs.push(json!({"input_id": input_id, "file": coverage.file, "sha256": coverage.snapshot_sha256, "bytes": coverage.input_bytes, "coverage": coverage, "selected_entries": entries.iter().filter(|entry| self.filter.matches(entry) && selected(entry)).count()}));
         if self.collect_records {
             let input_ordinal = self.inputs.len() - 1;
             for entry in entries.iter().filter(|entry| {
                 self.filter.matches(entry)
+                    && selected(entry)
                     && self
                         .trace_selector
                         .as_ref()

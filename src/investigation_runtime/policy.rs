@@ -19,9 +19,12 @@ fn has_role(entry: &LogEntry, role: &Role) -> bool {
 }
 fn field(entry: &LogEntry, selector: &str) -> Option<String> {
     if let Some(field) = selector.strip_prefix("payload.") {
-        crate::extract::extract_payload_field(entry, field)?
-            .as_str()
-            .map(str::to_owned)
+        match crate::extract::extract_payload_field(entry, field)? {
+            Value::String(value) => Some(value.clone()),
+            Value::Number(value) => Some(value.to_string()),
+            Value::Bool(value) => Some(value.to_string()),
+            Value::Null | Value::Array(_) | Value::Object(_) => None,
+        }
     } else {
         entry.structured_field(selector).map(str::to_owned)
     }

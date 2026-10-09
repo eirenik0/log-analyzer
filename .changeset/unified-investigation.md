@@ -12,3 +12,7 @@ policy for domain attempts/resources and scoped observed relationships.
 
 Keep assessments and outcome availability tied to exact-selected evidence, and use
 decoded-first nested payload extraction for declared population and relationship keys.
+
+Keep canonical retained records and manifest counts exact-selected, preserve completed
+independent scopes and their source verification when later inputs fail, and support
+canonical numeric/boolean payload identity and join values.

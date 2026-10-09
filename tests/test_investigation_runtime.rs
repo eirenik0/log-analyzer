@@ -308,7 +308,7 @@ fn redacted_artifact_omits_payload_rules_query_and_paths() {
 #[test]
 fn exact_compound_selection_preserves_boundaries_and_substring_filters() {
     let temp = tempfile::tempdir().unwrap();
-    let (report, _) = investigate(
+    let (report, selected_artifact) = investigate(
         temp.path(),
         &[
             "--select",
@@ -317,6 +317,26 @@ fn exact_compound_selection_preserves_boundaries_and_substring_filters() {
         ],
     );
     assert_eq!(count(&report, "paired-lifecycles"), 1);
+    assert_eq!(
+        report["report_metadata"]["evidence"]["inputs"][0]["selected_entries"],
+        2
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["scope"]["selected_entries"],
+        2
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["scope"]["parsed_entries"],
+        6
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["scope"]["status"],
+        "parsed"
+    );
+    let retained: Value = serde_json::from_slice(&fs::read(selected_artifact).unwrap()).unwrap();
+    assert_eq!(retained["records"].as_array().unwrap().len(), 2);
+    let selected_identity = report["report_metadata"]["evidence"]["snapshot_id"].clone();
+    let selected_input_id = report["report_metadata"]["evidence"]["inputs"][0]["input_id"].clone();
     assert_eq!(
         report["findings"]
             .as_array()
@@ -333,8 +353,35 @@ fn exact_compound_selection_preserves_boundaries_and_substring_filters() {
     );
     assert!(count(&report, "physical-records") > 0);
     let temp = tempfile::tempdir().unwrap();
-    let (report, _) = investigate(temp.path(), &["--select", r#"{"scope":["other-run"]}"#]);
+    let (report, empty_artifact) =
+        investigate(temp.path(), &["--select", r#"{"scope":["other-run"]}"#]);
+    let retained: Value = serde_json::from_slice(&fs::read(empty_artifact).unwrap()).unwrap();
+    assert!(retained["records"].as_array().unwrap().is_empty());
     assert_eq!(count(&report, "physical-records"), 0);
+    assert_eq!(
+        report["report_metadata"]["evidence"]["inputs"][0]["selected_entries"],
+        0
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["scope"]["selected_entries"],
+        0
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["scope"]["parsed_entries"],
+        6
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["scope"]["status"],
+        "zero_filter_matches"
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["snapshot_id"],
+        selected_identity
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["inputs"][0]["input_id"],
+        selected_input_id
+    );
     assert_eq!(
         report["scopes"][0]["semantic_coverage"]["relevant_records"],
         0
@@ -952,4 +999,178 @@ fn policy_payload_paths_use_decoded_payload_then_per_field_envelope_fallback() {
             1
         );
     }
+}
+
+#[test]
+fn later_independent_capture_failure_does_not_downgrade_completed_scope() {
+    let temp = tempfile::tempdir().unwrap();
+    let missing = temp.path().join("missing.jsonl");
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        "examples/investigations/profile.toml",
+        "investigate",
+        "examples/investigations/slow.jsonl",
+        missing.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    assert_eq!(report["processing"]["status"], "partial");
+    assert_eq!(
+        report["processing"]["stop"]["scope_ids"],
+        json!(["scope-1"])
+    );
+    assert_eq!(report["scopes"][0]["completeness"], "complete");
+    assert_eq!(report["scopes"][0]["analysis_completion"], "complete");
+    assert_eq!(report["scopes"][1]["completeness"], "unavailable");
+    assert_eq!(report["scopes"][1]["analysis_completion"], "not_performed");
+    assert!(
+        report["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|assessment| assessment["scope_id"] == "scope-0")
+            .all(|assessment| assessment["status"] == "supported")
+    );
+    assert!(
+        report["populations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|population| population["completeness"] == "complete")
+    );
+    // Exhaustion during this earlier input's analysis still marks it affected.
+    let temp = tempfile::tempdir().unwrap();
+    let artifact = temp.path().join("work.json");
+    let data = fs::read(root().join("examples/investigations/slow.jsonl")).unwrap();
+    let limit = (data.len() + 80).to_string();
+    let report = success(&[
+        "--config",
+        "examples/investigations/profile.toml",
+        "investigate",
+        "examples/investigations/slow.jsonl",
+        missing.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--processing-max-work",
+        &limit,
+    ]);
+    check(&report, &artifact);
+    assert!(
+        report["processing"]["stop"]["scope_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("scope-0"))
+    );
+    assert_ne!(report["scopes"][0]["analysis_completion"], "complete");
+}
+
+#[test]
+fn unverifiable_independent_capture_preserves_earlier_source_verification() {
+    let temp = tempfile::tempdir().unwrap();
+    let invalid = temp.path().join("invalid.jsonl");
+    fs::write(&invalid, [0xff, 0xfe, b'\n']).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        "examples/investigations/profile.toml",
+        "investigate",
+        "examples/investigations/slow.jsonl",
+        invalid.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    assert_eq!(
+        report["artifact"]["verification"]["source_and_rules"],
+        "unavailable"
+    );
+    assert!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["scope_id"] == "scope-0")
+            .all(|finding| finding["verification"]["source_and_rules"] == "available")
+    );
+    assert!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["scope_id"] == "scope-1")
+            .all(|finding| finding["verification"]["source_and_rules"] == "unavailable")
+    );
+    let retained: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert!(
+        retained["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["verification"]["source_and_rules"] == "available")
+    );
+    assert_eq!(report["scopes"][0]["completeness"], "complete");
+}
+
+#[test]
+fn payload_identity_and_relationship_keys_accept_numeric_and_boolean_scalars() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("scalar.jsonl");
+    let profile = temp.path().join("profile.toml");
+    let config = fs::read_to_string(root().join("examples/investigations/domain-policy.toml"))
+        .unwrap()
+        .replace(
+            "extends = \"profile.toml\"",
+            &format!(
+                "extends = {:?}",
+                root()
+                    .join("examples/investigations/profile.toml")
+                    .to_str()
+                    .unwrap()
+            ),
+        )
+        .replace(
+            "identity_fields = [\"id\"]",
+            "identity_fields = [\"payload.identity\"]",
+        )
+        .replace(
+            "join_fields = [\"id\"]",
+            "join_fields = [\"payload.identity\"]",
+        );
+    fs::write(&profile, config).unwrap();
+    let mut rows = Vec::new();
+    for (index, identity) in [json!(17), json!(true)].into_iter().enumerate() {
+        for (second, phase) in [(0, "start"), (1, "end")] {
+            rows.push(json!({"ts":format!("2026-01-01T00:00:0{second}+02:00"),"component":"worker","component_id":"run","session":"run","operation":"run","id":format!("attempt-{index}"),"phase":phase,"outcome":"success","message":"observation","payload":{"identity":identity}}).to_string());
+        }
+    }
+    fs::write(&source, rows.join("\n") + "\n").unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    assert_eq!(count(&report, "policy-0"), 2);
+    assert_eq!(count(&report, "policy-1"), 2);
+    assert_eq!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |finding| finding["id"].as_str().unwrap().contains("relationship-0-")
+                    && finding["kind"] == "observation"
+            )
+            .count(),
+        2
+    );
 }

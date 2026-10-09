@@ -1,5 +1,6 @@
 //! Cooperative investigation budgets. Accounting bounds retained data, not process RSS.
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -26,6 +27,8 @@ pub(crate) struct Budget {
     pub configuration_bytes: u64,
     pub stop: Option<Value>,
     pub halted: bool,
+    pub active_scope: usize,
+    pub affected_scopes: BTreeSet<usize>,
     started: Instant,
 }
 impl Budget {
@@ -40,6 +43,8 @@ impl Budget {
             configuration_bytes: 0,
             stop: None,
             halted: false,
+            active_scope: 0,
+            affected_scopes: BTreeSet::new(),
             started: Instant::now(),
         }
     }
@@ -48,6 +53,7 @@ impl Budget {
     }
     pub fn stop(&mut self, stage: &str, reason: &str, limit: Option<&str>) -> bool {
         self.halted = true;
+        self.affected_scopes.insert(self.active_scope);
         if self.stop.is_none() {
             self.stop = Some(
                 json!({"stage":stage,"reason":reason,"limit_name":limit,"scope_ids":["scope-0"]}),

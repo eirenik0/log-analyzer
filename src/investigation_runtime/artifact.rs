@@ -237,13 +237,20 @@ pub(super) fn unavailable(report: &mut Value, reason: &str) {
         }
     }
 }
-pub(super) fn source_verification_unavailable(artifact: &mut Value, reason: &str) {
+pub(super) fn source_verification_unavailable(
+    artifact: &mut Value,
+    inputs: &std::collections::BTreeSet<u64>,
+    reason: &str,
+) {
     fn loss(value: &mut Value, reason: &str) {
         match value {
             Value::Object(map) => {
                 if let Some(verification) = map.get_mut("verification") {
                     verification["source_and_rules"] = json!("unavailable");
-                    verification["losses"] = json!([reason]);
+                    let losses = verification["losses"].as_array_mut().unwrap();
+                    if !losses.iter().any(|loss| loss == reason) {
+                        losses.push(json!(reason));
+                    }
                 }
                 for (key, child) in map {
                     if key != "verification" {
@@ -259,7 +266,29 @@ pub(super) fn source_verification_unavailable(artifact: &mut Value, reason: &str
             _ => (),
         }
     }
-    loss(artifact, reason);
+    artifact["verification"]["source_and_rules"] = json!("unavailable");
+    let losses = artifact["verification"]["losses"].as_array_mut().unwrap();
+    if !losses.iter().any(|loss| loss == reason) {
+        losses.push(json!(reason));
+    }
+    for record in artifact["records"].as_array_mut().unwrap() {
+        if record["occurrence"]["input_ordinal"]
+            .as_u64()
+            .is_some_and(|ordinal| inputs.contains(&ordinal))
+        {
+            loss(record, reason);
+        }
+    }
+    for finding in artifact["findings"].as_array_mut().unwrap() {
+        if finding["scope_id"]
+            .as_str()
+            .and_then(|scope| scope.strip_prefix("scope-"))
+            .and_then(|ordinal| ordinal.parse().ok())
+            .is_some_and(|ordinal| inputs.contains(&ordinal))
+        {
+            loss(finding, reason);
+        }
+    }
 }
 pub(super) fn reconcile_unavailable(report: &mut Value, cli: &Cli) -> Result<()> {
     let mut ids: std::collections::BTreeSet<_> = report["findings"]

@@ -212,7 +212,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut parsed_inputs = Vec::new();
     let mut parse_calls = 0usize;
     for (ordinal, path) in args.files.iter().enumerate() {
+        budget.active_scope = ordinal;
         if budget.stop.is_some() {
+            budget.affected_scopes.insert(ordinal);
             progress.push(json!({"input_ordinal":ordinal,"capture":"unread","consumed_bytes":0,"consumed_sha256":null,"remaining_bytes":null}));
             captures.push(json!({"input_ordinal":ordinal,"capture":"unread","encoding":"utf8","data":null,"data_omitted":true,"original_consumed_sha256":null,"stored_sha256":null}));
             continue;
@@ -251,7 +253,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         for entry in &mut parsed.entries {
             entry.source_input_ordinal = Some(ordinal);
         }
-        context.observe(&parsed.coverage, &parsed.entries);
+        context.observe_selected(&parsed.coverage, &parsed.entries, |entry| {
+            selected(entry, &selectors, &config)
+        });
         let (encoding, data) = match String::from_utf8(capture.data) {
             Ok(text) => ("utf8", json!(text)),
             Err(error) => {
@@ -279,13 +283,16 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut assessments = Vec::new();
     let mut correlation_calls = 0usize;
     for (ordinal, parsed) in parsed_inputs.iter().enumerate() {
+        budget.active_scope = ordinal;
         budget.begin_stage();
         let mut entries = Vec::new();
         for entry in parsed.entries.iter().filter(|entry| filter.matches(entry)) {
             if !budget.checkpoint("calculation", 1) {
                 break;
             }
-            records.push(findings::record(entry, &context, &snapshot));
+            if selected(entry, &selectors, &config) {
+                records.push(findings::record(entry, &context, &snapshot));
+            }
             entries.push(entry.clone());
         }
         budget.begin_stage();
@@ -397,41 +404,56 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if parsed.coverage.is_unparsed(){"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="failures" && !view.entries.is_empty() && !view.outcomes_supported{"unsupported"}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
         }
     }
-    if scopes.is_empty() {
-        scopes.push(json!({"id":"scope-0","input_ordinals":(0..args.files.len()).collect::<Vec<_>>(),"selection":"No source snapshot could be processed","extent":"processed_population","completeness":"unavailable","analysis_completion":"not_performed","correlation_scope":[],"semantic_coverage":{"status":"not_performed","relevant_records":null,"classified_records":null,"paired_events":null,"unmatched_events":null,"ambiguous_events":null,"rejected_events":null,"reason":"Capture unavailable"},"upstream_completeness":"unknown"}));
+    // Unread independent inputs retain their own unavailable analysis scopes.
+    for ordinal in parsed_inputs.len()..args.files.len() {
+        let scope_id = format!("scope-{ordinal}");
+        budget.affected_scopes.insert(ordinal);
+        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Source snapshot could not be processed","extent":"processed_population","completeness":"unavailable","analysis_completion":"not_performed","correlation_scope":[],"semantic_coverage":{"status":"not_performed","relevant_records":null,"classified_records":null,"paired_events":null,"unmatched_events":null,"ambiguous_events":null,"rejected_events":null,"reason":"Capture unavailable"},"upstream_completeness":"unknown"}));
         for goal in [
             "inspection",
             "failures",
             "slow_operations",
             "incomplete_lifecycles",
         ] {
-            assessments.push(json!({"goal":goal,"scope_id":"scope-0","status":"insufficient_evidence","reason":"No declared input could be processed before the capture stopped.","finding_ids":[]}));
+            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":"insufficient_evidence","reason":"The declared input could not be processed before capture stopped.","finding_ids":[]}));
         }
     }
     if let Some(stop) = &mut budget.stop {
-        stop["scope_ids"] = json!(
-            scopes
-                .iter()
-                .map(|scope| scope["id"].clone())
-                .collect::<Vec<_>>()
-        );
+        let affected: std::collections::BTreeSet<_> = budget
+            .affected_scopes
+            .iter()
+            .map(|ordinal| format!("scope-{ordinal}"))
+            .collect();
+        stop["scope_ids"] = json!(affected);
         for scope in &mut scopes {
-            scope["completeness"] = json!("partial");
-            scope["analysis_completion"] = json!("partial");
+            if affected.contains(scope["id"].as_str().unwrap()) {
+                if scope["completeness"] == "complete" {
+                    scope["completeness"] = json!("partial");
+                }
+                if scope["analysis_completion"] == "complete" {
+                    scope["analysis_completion"] = json!("partial");
+                }
+            }
         }
         for assessment in &mut assessments {
-            if assessment["status"] == "supported" {
+            if affected.contains(assessment["scope_id"].as_str().unwrap())
+                && assessment["status"] == "supported"
+            {
                 assessment["status"] = json!("insufficient_evidence");
                 assessment["reason"] = json!(
-                    "Processing stopped before a complete full-input assessment; retained calculations describe only the processed population."
+                    "Processing stopped before a complete assessment of this input; retained calculations describe only its processed population."
                 );
             }
         }
         for population in &mut populations {
-            population["completeness"] = json!("partial");
+            if affected.contains(population["scope_id"].as_str().unwrap()) {
+                population["completeness"] = json!("partial");
+            }
         }
         for sequence in &mut sequences {
-            sequence["completeness"] = json!("partial");
+            if affected.contains(sequence["scope_id"].as_str().unwrap()) {
+                sequence["completeness"] = json!("partial");
+            }
         }
     }
     // Instrumentation belongs to the effective query and its digest, never to evidence text.
@@ -447,6 +469,13 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     if cli.redact {
         artifact::redact(&mut retained);
     }
+    let captures_unverifiable_inputs: std::collections::BTreeSet<_> = retained["captured_inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|capture| capture["encoding"] == "bytes")
+        .filter_map(|capture| capture["input_ordinal"].as_u64())
+        .collect();
     if retained["captured_inputs"]
         .as_array()
         .unwrap()
@@ -463,6 +492,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         }
         artifact::source_verification_unavailable(
             &mut retained,
+            &captures_unverifiable_inputs,
             "A captured byte stream is not complete UTF-8; source text verification is unavailable.",
         );
     }

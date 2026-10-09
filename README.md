@@ -96,8 +96,9 @@ Input cutoffs retain consumed-prefix hashes, never a full-file hash claim; final
 JSONL fragments and unclosed multiline candidates are left open. Expansion checks
 run before row cloning. `--cancel-file path` requests cooperative cancellation when
 the file appears. Interrupted correlation publishes no tentative missing-end results.
-A cutoff makes full-input assessments insufficient while preserving completed
-processed-population facts. Reading exactly the input byte cap conservatively
+A cutoff makes affected full-input assessments insufficient while preserving completed
+processed-population facts. Independent inputs have separate scope completion;
+a later capture failure does not downgrade an earlier completed input. Reading exactly the input byte cap conservatively
 reports a prefix if physical EOF was not observed.
 
 The memory setting bounds a conservative reservation model for buffered/retained
@@ -118,6 +119,8 @@ atomic bundle requires a larger permitted budget, not automatic unlimited output
 `--redact` omits captured payloads, raw/message/field data and effective profile,
 replaces excerpts with source omission markers, and hides paths and domain identities.
 Arithmetic may remain checkable; source/rule verification losses are declared.
+Unavailable source text affects its own input scope; independent retained evidence
+keeps its source verification, with aggregate artifact losses still explicit.
 Keep the original query/profile/snapshot digests as opaque provenance.
 
 Optional strict version-1 `[investigation]` profile policy declares roles by existing
@@ -125,8 +128,11 @@ classification rule IDs, event/attempt/resource populations with explicit identi
 fields and occurrence/identity grouping, and source-target relationships with exact
 join fields, required scope fields and cardinality. All identity groups and joins
 also remain inside the effective correlation scope. String selectors reuse structured
-field names and `payload.<field>` selection; missing identity or ambiguous joins
-produce exclusions/unknowns. See [the synthetic policy](examples/investigations/domain-policy.toml).
+field names and `payload.<field>` selection. String, number and boolean payload
+identity/join values use canonical scalar text, matching structured fields: numeric
+`1` and string `"1"` intentionally share a declared identity. Null, objects and arrays
+are unsupported policy identities. Missing identity or ambiguous joins produce
+exclusions/unknowns. See [the synthetic policy](examples/investigations/domain-policy.toml).
 Declare screenshot attempts, poll sends, observed responses, cached failures and
 downstream links separately when the domain supports them. Repeated starts remain
 start occurrences; domain attempt/resource grouping needs explicit declarations.
