@@ -1,2 +1,6 @@
 # Preserve evaluation corpus bytes and hash proofs across platform checkouts.
 /evals/** text eol=lf
+
+# Investigation examples retain exact source and artifact byte proofs.
+/examples/investigations/** text eol=lf
+/examples/investigation-contract/** text eol=lf

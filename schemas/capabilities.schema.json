@@ -12,7 +12,8 @@
     "event_classification",
     "report_schemas",
     "bounded_reports",
-    "profile_validation"
+    "profile_validation",
+    "investigation_contracts"
   ],
   "properties": {
     "schema_version": {
@@ -141,6 +142,30 @@
             "type",
             "properties"
           ]
+        },
+        "evidence_artifact": {
+          "type": "object",
+          "required": [
+            "$schema",
+            "type",
+            "properties"
+          ],
+          "properties": {
+            "$schema": {
+              "const": "https://json-schema.org/draft/2020-12/schema"
+            },
+            "type": {
+              "const": "object"
+            },
+            "properties": {
+              "type": "object"
+            }
+          }
+        },
+        "investigation_contract_versions": {
+          "const": [
+            1
+          ]
         }
       },
       "required": [
@@ -148,7 +173,9 @@
         "capabilities",
         "investigation",
         "evidence_contract_version",
-        "profile_expectations"
+        "profile_expectations",
+        "evidence_artifact",
+        "investigation_contract_versions"
       ]
     },
     "bounded_reports": {
@@ -214,6 +241,47 @@
           "const": false
         }
       }
+    },
+    "investigation_contracts": {
+      "type": "object",
+      "properties": {
+        "versions": {
+          "const": [
+            1
+          ]
+        },
+        "artifact_version": {
+          "const": 1
+        },
+        "command_available": {
+          "const": false
+        },
+        "artifact_retrieval_available": {
+          "const": false
+        },
+        "schemas": {
+          "const": {
+            "1": "investigation",
+            "artifact": "evidence_artifact"
+          }
+        },
+        "occurrence_identity": {
+          "const": [
+            "snapshot_id",
+            "input_ordinal",
+            "reference_id"
+          ]
+        }
+      },
+      "required": [
+        "versions",
+        "artifact_version",
+        "command_available",
+        "artifact_retrieval_available",
+        "schemas",
+        "occurrence_identity"
+      ],
+      "additionalProperties": false
     }
   }
 }

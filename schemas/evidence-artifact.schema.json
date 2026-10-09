@@ -1,20 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Investigation result and retained report contract 1",
-  "type": "object",
-  "properties": {
-    "contract_version": {
-      "const": 1
-    }
-  },
-  "oneOf": [
-    {
-      "$ref": "#/$defs/agent_result"
-    },
-    {
-      "$ref": "#/$defs/retained_report"
-    }
-  ],
+  "title": "Retained evidence artifact contract 1",
   "$defs": {
     "metadata": {
       "type": "object",
@@ -2153,19 +2139,300 @@
         }
       ]
     },
-    "agent_result": {
+    "retained_record": {
       "type": "object",
       "properties": {
-        "contract_version": {
-          "const": 1
+        "occurrence": {
+          "$ref": "#/$defs/occurrence"
         },
-        "input_snapshot_id": {
-          "$ref": "#/$defs/digest"
+        "entity": {
+          "enum": [
+            "physical_records",
+            "normalized_records",
+            "extraction_rows"
+          ]
         },
-        "profile_sha256": {
-          "$ref": "#/$defs/digest"
+        "timestamp": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
         },
-        "findings": {
+        "timestamp_year_source": {
+          "enum": [
+            "source",
+            "inferred",
+            "unavailable"
+          ]
+        },
+        "timestamp_offset_source": {
+          "enum": [
+            "source",
+            "assumed",
+            "unavailable"
+          ]
+        },
+        "raw_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fields": {
+          "type": "object"
+        },
+        "data_omitted": {
+          "type": "boolean"
+        },
+        "verification": {
+          "$ref": "#/$defs/verification"
+        }
+      },
+      "required": [
+        "occurrence",
+        "entity",
+        "timestamp",
+        "timestamp_year_source",
+        "timestamp_offset_source",
+        "raw_text",
+        "message",
+        "fields",
+        "data_omitted",
+        "verification"
+      ],
+      "additionalProperties": false
+    },
+    "captured_input": {
+      "type": "object",
+      "properties": {
+        "input_ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capture": {
+          "enum": [
+            "complete",
+            "prefix",
+            "unread"
+          ]
+        },
+        "encoding": {
+          "enum": [
+            "utf8",
+            "bytes"
+          ]
+        },
+        "data": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "minItems": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data_omitted": {
+          "type": "boolean"
+        },
+        "original_consumed_sha256": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stored_sha256": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "input_ordinal",
+        "capture",
+        "encoding",
+        "data",
+        "data_omitted",
+        "original_consumed_sha256",
+        "stored_sha256"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "data_omitted": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "null"
+              },
+              "stored_sha256": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "data": {
+                "type": [
+                  "string",
+                  "array"
+                ]
+              },
+              "stored_sha256": {
+                "$ref": "#/$defs/digest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding": {
+                "const": "utf8"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "data": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sequence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "completeness": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "ordering": {
+          "const": "observed_timestamp_then_input_ordinal_then_record_ordinal"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "occurrence": {
+                "$ref": "#/$defs/occurrence"
+              },
+              "record_ordinal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "timestamp": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "classification_status": {
+                "enum": [
+                  "classified",
+                  "unclassified",
+                  "conflicting",
+                  "invalid"
+                ]
+              },
+              "rule_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 0
+              }
+            },
+            "required": [
+              "occurrence",
+              "record_ordinal",
+              "timestamp",
+              "classification_status",
+              "rule_ids"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "scope_id",
+        "completeness",
+        "ordering",
+        "events"
+      ],
+      "additionalProperties": false
+    },
+    "population_members": {
+      "type": "object",
+      "properties": {
+        "population_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "members": {
           "type": "array",
           "items": {
             "oneOf": [
@@ -2173,23 +2440,15 @@
                 "type": "object",
                 "properties": {
                   "kind": {
-                    "const": "observation"
+                    "const": "record"
                   },
-                  "claim": {
-                    "type": "string"
-                  },
-                  "supporting_refs": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/$defs/reference"
-                    },
-                    "minItems": 1
+                  "occurrence": {
+                    "$ref": "#/$defs/occurrence"
                   }
                 },
                 "required": [
                   "kind",
-                  "claim",
-                  "supporting_refs"
+                  "occurrence"
                 ],
                 "additionalProperties": false
               },
@@ -2197,225 +2456,211 @@
                 "type": "object",
                 "properties": {
                   "kind": {
-                    "const": "measurement"
-                  },
-                  "claim": {
-                    "type": "string"
-                  },
-                  "supporting_refs": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/$defs/reference"
-                    },
-                    "minItems": 1
-                  },
-                  "value": {
-                    "type": "number"
-                  },
-                  "unit": {
-                    "type": "string"
-                  },
-                  "boundaries": {
-                    "type": "object",
-                    "properties": {
-                      "start": {
-                        "$ref": "#/$defs/reference"
-                      },
-                      "end": {
-                        "$ref": "#/$defs/reference"
-                      }
-                    },
-                    "required": [
-                      "start",
-                      "end"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "profile_sha256": {
-                    "$ref": "#/$defs/digest"
-                  },
-                  "semantics": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "claim",
-                  "supporting_refs",
-                  "value",
-                  "unit",
-                  "boundaries",
-                  "profile_sha256",
-                  "semantics"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "hypothesis"
-                  },
-                  "claim": {
-                    "type": "string"
-                  },
-                  "supporting_refs": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/$defs/reference"
-                    },
-                    "minItems": 1
-                  },
-                  "confidence": {
                     "enum": [
-                      "low",
-                      "medium",
-                      "high"
+                      "event",
+                      "attempt",
+                      "operation",
+                      "resource"
                     ]
-                  }
-                },
-                "required": [
-                  "kind",
-                  "claim",
-                  "supporting_refs",
-                  "confidence"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "contrary_evidence"
                   },
-                  "claim": {
-                    "type": "string"
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
                   },
-                  "supporting_refs": {
+                  "identity": {
                     "type": "array",
                     "items": {
-                      "$ref": "#/$defs/reference"
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "value"
+                      ],
+                      "additionalProperties": false
                     },
                     "minItems": 1
-                  }
-                },
-                "required": [
-                  "kind",
-                  "claim",
-                  "supporting_refs"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "const": "unknown"
                   },
-                  "claim": {
-                    "type": "string"
-                  },
-                  "supporting_refs": {
+                  "source_occurrences": {
                     "type": "array",
                     "items": {
-                      "$ref": "#/$defs/reference"
-                    }
+                      "$ref": "#/$defs/occurrence"
+                    },
+                    "minItems": 1
                   },
-                  "reason": {
-                    "type": "string"
+                  "measurement_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 0
                   }
                 },
                 "required": [
                   "kind",
-                  "claim",
-                  "supporting_refs",
-                  "reason"
+                  "id",
+                  "identity",
+                  "source_occurrences",
+                  "measurement_ids"
                 ],
                 "additionalProperties": false
               }
             ]
-          }
-        },
-        "status": {
-          "enum": [
-            "supported",
-            "insufficient_evidence",
-            "unsupported_input",
-            "budget_exhausted"
-          ]
+          },
+          "minItems": 0
         }
       },
       "required": [
-        "contract_version",
-        "input_snapshot_id",
-        "profile_sha256",
-        "findings",
-        "status"
-      ]
-    },
-    "retained_report": {
-      "type": "object",
-      "properties": {
-        "contract_version": {
-          "const": 1
-        },
-        "report_metadata": {
-          "$ref": "#/$defs/metadata"
-        },
-        "processing": {
-          "$ref": "#/$defs/processing"
-        },
-        "scopes": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/scope"
-          },
-          "minItems": 0
-        },
-        "assessments": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/assessment"
-          },
-          "minItems": 1
-        },
-        "populations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/population"
-          },
-          "minItems": 0
-        },
-        "findings": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/finding"
-          },
-          "minItems": 0
-        },
-        "artifact": {
-          "$ref": "#/$defs/artifact_descriptor"
-        },
-        "presentation": {
-          "$ref": "#/$defs/presentation"
-        },
-        "retrieval": {
-          "$ref": "#/$defs/artifact_retrieval"
-        }
-      },
-      "required": [
-        "contract_version",
-        "report_metadata",
-        "processing",
-        "scopes",
-        "assessments",
-        "populations",
-        "findings",
-        "artifact",
-        "presentation",
-        "retrieval"
+        "population_id",
+        "members"
       ],
       "additionalProperties": false
     }
-  }
+  },
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": 1
+    },
+    "investigation_contract_version": {
+      "const": 1
+    },
+    "report_metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "processing": {
+      "$ref": "#/$defs/processing"
+    },
+    "scopes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scope"
+      },
+      "minItems": 0
+    },
+    "assessments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assessment"
+      },
+      "minItems": 1
+    },
+    "populations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/population"
+      },
+      "minItems": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      },
+      "minItems": 0
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/retained_record"
+      },
+      "minItems": 0
+    },
+    "captured_inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/captured_input"
+      },
+      "minItems": 0
+    },
+    "memberships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/population_members"
+      },
+      "minItems": 0
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sequence"
+      },
+      "minItems": 0
+    },
+    "content": {
+      "enum": [
+        "original",
+        "redacted"
+      ]
+    },
+    "effective_profile": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "effective_profile_omitted": {
+      "type": "boolean"
+    },
+    "retention": {
+      "$ref": "#/$defs/retention"
+    },
+    "verification": {
+      "$ref": "#/$defs/verification"
+    }
+  },
+  "required": [
+    "contract_version",
+    "investigation_contract_version",
+    "report_metadata",
+    "processing",
+    "scopes",
+    "assessments",
+    "populations",
+    "findings",
+    "records",
+    "captured_inputs",
+    "memberships",
+    "sequences",
+    "content",
+    "effective_profile",
+    "effective_profile_omitted",
+    "retention",
+    "verification"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "effective_profile_omitted": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effective_profile": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "effective_profile": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ]
 }

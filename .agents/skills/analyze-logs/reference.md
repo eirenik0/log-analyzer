@@ -62,3 +62,13 @@ Schemas are embedded in the actual executable's capabilities. For executable
 setup and templates, read the bundled [host guide](hosts.md); for concrete
 investigations, read the [failure](examples/debug-failure.md) or
 [performance](examples/performance.md) example when it fits the user's question.
+
+The [investigation contract](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/investigation-contract.md)
+defines retained reports and evidence artifacts. Check advertised command and
+retrieval availability before using them; published schemas alone do not enable
+a unified command. Preserve declared input occurrence identity, distinguish
+partial processing from full-input counts, and inspect verification losses when
+redaction removes source locations, payloads, queries or captured streams.
+Check coverage against retained evidence, retention against the artifact descriptor,
+and pagination against displayed findings and omissions. Exceptional presentation
+statuses must agree with budgets and usage; unknowns alone do not establish support.
