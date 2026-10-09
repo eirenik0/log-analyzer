@@ -42,7 +42,7 @@ class CrateReleaseGateTests(unittest.TestCase):
                         RELEASE_VERSION='0.3.0', GITHUB_REF='refs/heads/main',
                         GITHUB_OUTPUT=str(self.output), RUNNER_TEMP=str(self.root),
                         TEST_RELEASE_JSON=str(self.release_data))
-        workflow = (ROOT / '.github/workflows/publish-crate.yml').read_text()
+        workflow = (ROOT / '.github/workflows/publish.yml').read_text()
         step = workflow.split('      - name: Select and validate the release\n', 1)[1]
         self.script = textwrap.dedent(step.split('        run: |\n', 1)[1].split('\n      - uses:', 1)[0])
 

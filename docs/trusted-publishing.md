@@ -1,6 +1,6 @@
 # Publish a crate with GitHub Trusted Publishing
 
-`.github/workflows/publish-crate.yml` publishes the package from an existing
+`.github/workflows/publish.yml` publishes the package from an existing
 stable GitHub release. It uses GitHub OIDC and a short-lived crates.io token;
 no persistent crates.io token is stored in repository secrets. GitHub binary
 releases continue to use the existing Release workflow.
@@ -16,7 +16,7 @@ releases continue to use the existing Release workflow.
 4. In the crate's crates.io settings, register a GitHub trusted publisher:
    - Repository owner: `eirenik0`
    - Repository: `log-analyzer`
-   - Workflow filename: `publish-crate.yml`
+   - Workflow filename: `publish.yml`
    - Environment: `crates-io`
 
 Crates.io must associate this exact workflow/environment identity with a crate
