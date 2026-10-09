@@ -150,6 +150,12 @@ fn unsupported_python_abstains_and_partial_structure_never_claims_repair() {
     let (value, output) = prepare(root, input.to_str().unwrap(), "base", &[]);
     assert!(output.status.success());
     assert!(value["profile_preparation"]["candidate"].is_null());
+    assert!(
+        !value["profile_preparation"]["presentation"]["follow_up"]
+            .as_str()
+            .unwrap()
+            .contains("saved candidate")
+    );
     assert!(!root.join("prepared.toml").exists());
     assert_eq!(
         value["profile_preparation"]["missing_information"][0]["category"],
@@ -459,6 +465,11 @@ fn blank_input_is_not_an_unsupported_parser_claim() {
         value["profile_preparation"]["structure"]["status"],
         "unverified_empty"
     );
+    let follow_up = value["profile_preparation"]["presentation"]["follow_up"]
+        .as_str()
+        .unwrap();
+    assert!(follow_up.contains("nonempty sample"));
+    assert!(!follow_up.contains("saved candidate"));
     assert!(!root.join("prepared.toml").exists());
 }
 
@@ -497,4 +508,47 @@ fn copied_failed_assertion_is_redacted_after_main_assertion_page_is_bounded() {
     assert_eq!(copied["status"], "failed");
     assert!(!String::from_utf8_lossy(&output.stdout).contains("private-unmatched"));
     assert_ne!(copied["expected"], "private-unmatched");
+}
+
+#[test]
+fn report_output_protects_every_filesystem_template_ancestor() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let input = fixture(root);
+    let parent = profile(root, "parent", "session");
+    let middle = root.join("middle.toml");
+    let child = root.join("child.toml");
+    fs::write(
+        &middle,
+        "extends = 'parent.toml'\nprofile_name = 'middle'\n",
+    )
+    .unwrap();
+    fs::write(&child, "extends = 'middle.toml'\nprofile_name = 'child'\n").unwrap();
+    let original = fs::read(&parent).unwrap();
+    let (_, output) = prepare(
+        root,
+        &input,
+        child.to_str().unwrap(),
+        &["--output", &parent],
+    );
+    assert!(!output.status.success());
+    assert!(!root.join("prepared.toml").exists());
+    assert_eq!(fs::read(&parent).unwrap(), original);
+    let alias = root.join("parent-alias.toml");
+    fs::hard_link(&parent, &alias).unwrap();
+    let (_, output) = run(&[
+        "--config",
+        child.to_str().unwrap(),
+        "--output",
+        alias.to_str().unwrap(),
+        "prepare-profile",
+        &input,
+        "--candidate-output",
+        root.join("prepared.toml").to_str().unwrap(),
+        "--kind",
+        "request",
+    ]);
+    assert!(!output.status.success());
+    assert!(!root.join("prepared.toml").exists());
+    assert_eq!(fs::read(&parent).unwrap(), original);
 }

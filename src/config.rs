@@ -552,13 +552,21 @@ pub fn load_config(
 }
 
 pub fn load_config_from_path(path: &Path) -> Result<AnalyzerConfig, ConfigError> {
+    load_config_from_path_with_sources(path).map(|(config, _)| config)
+}
+
+pub(crate) fn load_config_from_path_with_sources(
+    path: &Path,
+) -> Result<(AnalyzerConfig, Vec<std::path::PathBuf>), ConfigError> {
     let path_display = path.display().to_string();
     let raw = fs::read_to_string(path).map_err(|source| ConfigError::Read {
         path: path_display.clone(),
         source,
     })?;
 
-    parse_config_toml_in(&raw, &path_display, path.parent())
+    let mut sources = vec![path.to_path_buf()];
+    let config = parse_config_toml_in_tracked(&raw, &path_display, path.parent(), &mut sources)?;
+    Ok((config, sources))
 }
 
 pub fn default_config() -> &'static AnalyzerConfig {
@@ -612,13 +620,22 @@ fn parse_config_toml_in(
     path_display: &str,
     base_dir: Option<&Path>,
 ) -> Result<AnalyzerConfig, ConfigError> {
+    parse_config_toml_in_tracked(raw, path_display, base_dir, &mut Vec::new())
+}
+
+fn parse_config_toml_in_tracked(
+    raw: &str,
+    path_display: &str,
+    base_dir: Option<&Path>,
+    sources: &mut Vec<std::path::PathBuf>,
+) -> Result<AnalyzerConfig, ConfigError> {
     // Same id form as parents (canonical path), so a cycle back to the root is found at once.
     let root_id = Path::new(path_display)
         .canonicalize()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| path_display.to_string());
     let mut chain = vec![root_id];
-    let value = resolve_extends(raw, path_display, base_dir, &mut chain)?;
+    let value = resolve_extends(raw, path_display, base_dir, &mut chain, sources)?;
     let config = value
         .try_into::<AnalyzerConfig>()
         .map_err(|source| ConfigError::Parse {
@@ -644,6 +661,7 @@ fn resolve_extends(
     path_display: &str,
     base_dir: Option<&Path>,
     chain: &mut Vec<String>,
+    sources: &mut Vec<std::path::PathBuf>,
 ) -> Result<toml::Value, ConfigError> {
     let mut value = toml::from_str::<toml::Value>(raw).map_err(|source| ConfigError::Parse {
         path: path_display.to_string(),
@@ -686,6 +704,7 @@ fn resolve_extends(
                 BUILTIN_TEMPLATE_NAMES.join(", ")
             ))
         })?;
+        sources.push(path.clone());
         let id = path.canonicalize().unwrap_or_else(|_| path.clone());
         (
             id.display().to_string(),
@@ -701,7 +720,13 @@ fn resolve_extends(
     }
 
     chain.push(parent_id.clone());
-    let mut merged = resolve_extends(&parent_raw, &parent_id, parent_dir.as_deref(), chain)?;
+    let mut merged = resolve_extends(
+        &parent_raw,
+        &parent_id,
+        parent_dir.as_deref(),
+        chain,
+        sources,
+    )?;
     chain.pop();
     merge_toml(&mut merged, value);
     Ok(merged)

@@ -1072,7 +1072,7 @@ parser/module mapping and session-prefix changes remain unverified heuristics.
 It never infers intended phases, correlation scope, completion or capture completeness.
 Global filters apply to sample validation; inventory uses the complete parsed sample.
 
-The candidate must be a new file in an existing directory. Starting profiles,
+The candidate must be a new file in an existing directory. Starting profiles and their inherited filesystem parents,
 inputs and assertions are protected from destination collisions. The exact saved
 TOML is reloaded and checked against stable input snapshots before creation.
 Wholly unsupported nonempty input and empty input create no candidate; partial
