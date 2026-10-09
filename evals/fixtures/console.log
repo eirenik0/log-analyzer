@@ -1,0 +1,2 @@
+background.js:12 worker (run-demo) | 2026-01-01T00:00:00.000Z [INFO] ready
+background.js:13 worker (run-demo) | 2026-01-01T00:00:01.000Z [ERROR] request failed

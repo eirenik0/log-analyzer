@@ -1,0 +1,4 @@
+core (context-a) | 2026-01-01T00:00:00.000Z [INFO] Request "fetch" [0--same] sent
+core (context-b) | 2026-01-01T00:00:01.000Z [INFO] Request "fetch" [0--same] sent
+core (context-a) | 2026-01-01T00:00:02.000Z [INFO] Request "fetch" [0--same] completed
+core (context-b) | 2026-01-01T00:00:04.000Z [INFO] Request "fetch" [0--same] completed

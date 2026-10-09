@@ -41,6 +41,7 @@ cargo check --locked
 cargo clippy --locked -- -D warnings
 cargo test --locked
 python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 -m unittest discover -s evals -p 'test_*.py'
 ```
 
 When the evaluation corpus is available, also run its documented checks after

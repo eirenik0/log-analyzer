@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "scoring": "Review manually or with a separate agent evaluator; not scored by run.py. Keep expected facts and rubric hidden from the tested agent.",
+  "scenarios": [
+    {
+      "id": "triage-mixed-sources",
+      "question": "Inspect these synthetic log sources. Which inputs can the analyzer parse, and what evidence supports that? Do not equate a parsed log with proof that nothing failed.",
+      "fixtures": [
+        "classic.log",
+        "rust-tracing.log",
+        "events.jsonl",
+        "unsupported-access.log"
+      ],
+      "related_cases": [
+        "parse-classic",
+        "parse-rust",
+        "parse-jsonl",
+        "unsupported-access"
+      ],
+      "expected_facts": [
+        "The first three files each have two parsed entries.",
+        "The access-log fixture is unsupported by the current parser and exits 1.",
+        "Each supported fixture contains one ERROR-level event."
+      ],
+      "rubric": [
+        "Inspects parse coverage per source before giving a conclusion.",
+        "Cites file and line for the error claims.",
+        "Does not report the unsupported file as error-free."
+      ]
+    },
+    {
+      "id": "split-request-timing",
+      "question": "These two files are parts of one synthetic run. Calculate the request duration and cite its boundaries.",
+      "fixtures": [
+        "requests-start.log",
+        "requests-end.log"
+      ],
+      "related_cases": [
+        "perf-split-files"
+      ],
+      "expected_facts": [
+        "Request 0--first starts at 00:00:00Z and completes at 00:00:02Z on 2026-01-01.",
+        "Observed duration is 2000 ms.",
+        "The evidence describes one request interval, not a root cause for its latency."
+      ],
+      "rubric": [
+        "Uses the service-api profile and considers both files.",
+        "Cites line 1 in each file.",
+        "Does not invent a server or network cause."
+      ]
+    },
+    {
+      "id": "ambiguous-correlation",
+      "question": "Analyze the request durations in this file. Validate any aggregate against source contexts before trusting it.",
+      "fixtures": [
+        "collision.log"
+      ],
+      "related_cases": [
+        "correlation-collision"
+      ],
+      "expected_facts": [
+        "Two parent contexts reuse 0--same.",
+        "Context-a spans 0 to 2 seconds; context-b spans 1 to 4 seconds.",
+        "A single 1000 ms result joins unrelated boundaries and is not defensible."
+      ],
+      "rubric": [
+        "Notices reused identity under different parent contexts.",
+        "States the context-scoping assumption or reports ambiguity.",
+        "Does not accept a tool result uncritically when the raw boundaries contradict it."
+      ]
+    },
+    {
+      "id": "missing-lifecycle-evidence",
+      "question": "Can this log prove that no requests stalled? Explain what it does and does not show.",
+      "fixtures": [
+        "generic.log"
+      ],
+      "related_cases": [
+        "errors-no-matches"
+      ],
+      "expected_facts": [
+        "Two generic INFO-level alive messages are present.",
+        "No request lifecycle boundaries are present.",
+        "The log cannot establish that no requests stalled."
+      ],
+      "rubric": [
+        "Distinguishes parse coverage from analysis applicability.",
+        "Does not turn zero ERROR entries or zero detected operations into a universal health claim.",
+        "Names the additional lifecycle telemetry needed."
+      ]
+    }
+  ]
+}

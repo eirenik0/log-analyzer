@@ -1,0 +1,4 @@
+worker | 2026-01-01T00:00:00.000Z [ERROR] request failed
+  at run (worker.js:10)
+  at main (main.js:20)
+worker | 2026-01-01T00:00:01.000Z [INFO] recovered

@@ -1,0 +1,905 @@
+{
+  "version": 1,
+  "kind": "deterministic_harness_baseline",
+  "binary_sha256": "77b8616791ba8cfaeb5acac294705db11542c9974961dd90defe4f69ab21ec3f",
+  "build": {
+    "package_version": "0.2.0",
+    "source_revision": "59a759d432f7ef8cea5f05ab015ce96861e8aea9",
+    "source_state": "dirty"
+  },
+  "corpus_sha256": "1c8843caf54d1fc8c85ebf21f71cf453a2bd39279544bb6a26e977b2cc533b31",
+  "harness_sha256": "0ae0f28331293b9f5472bd6de9e88eff1f53924e7bf5801a92dd75fdf3451935",
+  "model": null,
+  "configuration": {},
+  "adapter_files": [],
+  "repeats": 1,
+  "counts": {
+    "PASS": 26,
+    "FAIL": 0,
+    "ERROR": 0,
+    "XFAIL": 0,
+    "XPASS": 0
+  },
+  "arms": {
+    "analyzer": {
+      "runs": 13,
+      "tool_calls": 103,
+      "output_bytes": 1885986,
+      "elapsed_ms": 1205.436,
+      "tokens": null,
+      "provider_cost_usd": null
+    },
+    "search-script": {
+      "runs": 13,
+      "tool_calls": 62,
+      "output_bytes": 1210200,
+      "elapsed_ms": 449.527,
+      "tokens": null,
+      "provider_cost_usd": null
+    }
+  },
+  "scenarios": [
+    {
+      "id": "failure-triage",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "aa826dd945f14b2d08f44b39b939620b95dabe67d7a98ca838026d626001c29d",
+      "status": "PASS",
+      "tool_calls": 7,
+      "output_bytes": 139703,
+      "elapsed_ms": 85.979,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "0cb67d369212c16d0698bad6267859e4879720d05f3b01fa1fb0503d4c611389",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/failure.jsonl",
+              "sha256": "f04402a76e7f824185f0970cc2fd3b460fa833e6220d322d81d6963d65714d89",
+              "input_id": "6032ac5d34a215826fd518c748584729d1fc0b6e6cd49284c86488071ac2d5fd"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "failure-triage",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "aa826dd945f14b2d08f44b39b939620b95dabe67d7a98ca838026d626001c29d",
+      "status": "PASS",
+      "tool_calls": 4,
+      "output_bytes": 92837,
+      "elapsed_ms": 38.217,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "0cb67d369212c16d0698bad6267859e4879720d05f3b01fa1fb0503d4c611389",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/failure.jsonl",
+              "sha256": "f04402a76e7f824185f0970cc2fd3b460fa833e6220d322d81d6963d65714d89",
+              "input_id": "6032ac5d34a215826fd518c748584729d1fc0b6e6cd49284c86488071ac2d5fd"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "instruction-like-context",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "529cf8cfcda7772a38d65a927c7709c94aa8715abbd3177ffceaf3bc13836a98",
+      "status": "PASS",
+      "tool_calls": 7,
+      "output_bytes": 139702,
+      "elapsed_ms": 64.752,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "0cb67d369212c16d0698bad6267859e4879720d05f3b01fa1fb0503d4c611389",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/failure.jsonl",
+              "sha256": "f04402a76e7f824185f0970cc2fd3b460fa833e6220d322d81d6963d65714d89",
+              "input_id": "6032ac5d34a215826fd518c748584729d1fc0b6e6cd49284c86488071ac2d5fd"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "instruction-like-context",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "529cf8cfcda7772a38d65a927c7709c94aa8715abbd3177ffceaf3bc13836a98",
+      "status": "PASS",
+      "tool_calls": 4,
+      "output_bytes": 92836,
+      "elapsed_ms": 30.801,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "0cb67d369212c16d0698bad6267859e4879720d05f3b01fa1fb0503d4c611389",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/failure.jsonl",
+              "sha256": "f04402a76e7f824185f0970cc2fd3b460fa833e6220d322d81d6963d65714d89",
+              "input_id": "6032ac5d34a215826fd518c748584729d1fc0b6e6cd49284c86488071ac2d5fd"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "slow-info-comparison",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "7d3dc4fc72d6b17552c5f61d81c4af171c2acc3fbaa628c43c0b6520c7f692d7",
+      "status": "PASS",
+      "tool_calls": 16,
+      "output_bytes": 228921,
+      "elapsed_ms": 134.812,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "slow": {
+          "snapshot_id": "6effcb0ec34c2f45b7a368c44d93136e696c8c49f74b5b9d1599f37011bd08de",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/slow.jsonl",
+              "sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378",
+              "input_id": "a89eebb2886b82007acd1352c420a76331bb6ade989a89f217f0d1af7f5ec2ca"
+            }
+          ]
+        },
+        "baseline": {
+          "snapshot_id": "c0c3f23434aedce414062325b296a0518c3f3862777f3bf41db16941b857fb43",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/baseline.jsonl",
+              "sha256": "8b8f4c9c429d3baa275735b092ef5c1a7165f09bd19b643a20adf116f653391c",
+              "input_id": "1c4547fb75cbf1ae5fb20c19cc8bcc9dbe1a15847ace77462ed13a91099babe6"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "slow-info-comparison",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "7d3dc4fc72d6b17552c5f61d81c4af171c2acc3fbaa628c43c0b6520c7f692d7",
+      "status": "PASS",
+      "tool_calls": 10,
+      "output_bytes": 98996,
+      "elapsed_ms": 38.248,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "slow": {
+          "snapshot_id": "6effcb0ec34c2f45b7a368c44d93136e696c8c49f74b5b9d1599f37011bd08de",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/slow.jsonl",
+              "sha256": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378",
+              "input_id": "a89eebb2886b82007acd1352c420a76331bb6ade989a89f217f0d1af7f5ec2ca"
+            }
+          ]
+        },
+        "baseline": {
+          "snapshot_id": "c0c3f23434aedce414062325b296a0518c3f3862777f3bf41db16941b857fb43",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/baseline.jsonl",
+              "sha256": "8b8f4c9c429d3baa275735b092ef5c1a7165f09bd19b643a20adf116f653391c",
+              "input_id": "1c4547fb75cbf1ae5fb20c19cc8bcc9dbe1a15847ace77462ed13a91099babe6"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "reused-identity",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "39b41ea80b505cd9b693eaee11fde420c2dc47f63f6d28a13e3327f286904fac",
+      "status": "PASS",
+      "tool_calls": 8,
+      "output_bytes": 156232,
+      "elapsed_ms": 72.752,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "59c6b15895b63dac06b5e53f7f7609f334c81cebb5c4399fe4382f6bcbd42174",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/reused.jsonl",
+              "sha256": "db9310400efefe9d0c74a25c9df155cee7c280361f6515489881b99bcdd0de13",
+              "input_id": "172c6b293273af206a53cd0971ba8881cb8510fab2f650388186d18b32fe7805"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "reused-identity",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "39b41ea80b505cd9b693eaee11fde420c2dc47f63f6d28a13e3327f286904fac",
+      "status": "PASS",
+      "tool_calls": 5,
+      "output_bytes": 93698,
+      "elapsed_ms": 32.564,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "59c6b15895b63dac06b5e53f7f7609f334c81cebb5c4399fe4382f6bcbd42174",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/reused.jsonl",
+              "sha256": "db9310400efefe9d0c74a25c9df155cee7c280361f6515489881b99bcdd0de13",
+              "input_id": "172c6b293273af206a53cd0971ba8881cb8510fab2f650388186d18b32fe7805"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "incomplete-capture",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "3f7a68ae4f0e35cb673af8059451b8f3d92fb7161d3694f618035f4ce00752e3",
+      "status": "PASS",
+      "tool_calls": 6,
+      "output_bytes": 125910,
+      "elapsed_ms": 56.02,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "e2a3284d8d45da22945cd54db0f80ee32d865dcc79fb38b1c4a747cd6577bf20",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/truncated.jsonl",
+              "sha256": "bdab714e60c13de30a37e681e1137f7931db66d78c3126d327e1a1e34151ded8",
+              "input_id": "5ef7da7ea8a4dcd5c574c57d1bef2169eb61d16b905a7db19195b1c4f8baa2c2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "incomplete-capture",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "3f7a68ae4f0e35cb673af8059451b8f3d92fb7161d3694f618035f4ce00752e3",
+      "status": "PASS",
+      "tool_calls": 3,
+      "output_bytes": 91249,
+      "elapsed_ms": 29.127,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "e2a3284d8d45da22945cd54db0f80ee32d865dcc79fb38b1c4a747cd6577bf20",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/truncated.jsonl",
+              "sha256": "bdab714e60c13de30a37e681e1137f7931db66d78c3126d327e1a1e34151ded8",
+              "input_id": "5ef7da7ea8a4dcd5c574c57d1bef2169eb61d16b905a7db19195b1c4f8baa2c2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unsuitable-profile",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "0bcfb9df1e996dd9cb40af159ad715a11dd0e3490b75e0e369a5ac6b65343103",
+      "status": "PASS",
+      "tool_calls": 6,
+      "output_bytes": 120763,
+      "elapsed_ms": 53.675,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "547800b3940ccbc01793e3945b815b666131f6f7b9dda0019d4952ee3a4d0528",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/unsuitable.jsonl",
+              "sha256": "e68159736a0c21c131e29452043f89549676873fa7edfcd82616dedd69957477",
+              "input_id": "1d96451b3fd652991fd9ec33451dc9dd8cfdc48fea28808e7e2348d444aec90e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unsuitable-profile",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "0bcfb9df1e996dd9cb40af159ad715a11dd0e3490b75e0e369a5ac6b65343103",
+      "status": "PASS",
+      "tool_calls": 3,
+      "output_bytes": 90728,
+      "elapsed_ms": 29.044,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "547800b3940ccbc01793e3945b815b666131f6f7b9dda0019d4952ee3a4d0528",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "examples/investigations/unsuitable.jsonl",
+              "sha256": "e68159736a0c21c131e29452043f89549676873fa7edfcd82616dedd69957477",
+              "input_id": "1d96451b3fd652991fd9ec33451dc9dd8cfdc48fea28808e7e2348d444aec90e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "nested-export",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "36f27ea450d55eef98382d9702939c822ce8121a373be3db365467672a954d54",
+      "status": "PASS",
+      "tool_calls": 6,
+      "output_bytes": 131382,
+      "elapsed_ms": 57.176,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "e235914ff6eaf8b89a32c64f45976e84adbdce02e17e4e1f29d616d8219fefa6",
+          "profile_sha256": "9b7f3e75fb987ec53d33bb77db848bef19b8d3c0f8c4caf8967f2d18a2fde098",
+          "inputs": [
+            {
+              "label": "evals/fixtures/nested.jsonl",
+              "sha256": "ed2eab0b3a4950e60a2bea55689697dde1f9d994afbfdb390ad1aca613ba9e10",
+              "input_id": "05cf39d228aad1bfc261dba497c0d5706b56910552fa0490dd5d06676c654b57"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "nested-export",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "36f27ea450d55eef98382d9702939c822ce8121a373be3db365467672a954d54",
+      "status": "PASS",
+      "tool_calls": 4,
+      "output_bytes": 92777,
+      "elapsed_ms": 29.782,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "e235914ff6eaf8b89a32c64f45976e84adbdce02e17e4e1f29d616d8219fefa6",
+          "profile_sha256": "9b7f3e75fb987ec53d33bb77db848bef19b8d3c0f8c4caf8967f2d18a2fde098",
+          "inputs": [
+            {
+              "label": "evals/fixtures/nested.jsonl",
+              "sha256": "ed2eab0b3a4950e60a2bea55689697dde1f9d994afbfdb390ad1aca613ba9e10",
+              "input_id": "05cf39d228aad1bfc261dba497c0d5706b56910552fa0490dd5d06676c654b57"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "redacted-evidence",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "79bbef0964d1d40613813514a1f7fa94495ba8cc7682bbf01b88733ac18430fc",
+      "status": "PASS",
+      "tool_calls": 7,
+      "output_bytes": 140295,
+      "elapsed_ms": 174.617,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "700b5b88272257628a962432b1875d9da252b345f7210a88e3823b447c3025b0",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "evals/fixtures/redacted.jsonl",
+              "sha256": "1f984aa9953d4739575654919e38e4db8dcf75ee266ee2e7a8e95befa4e9dade",
+              "input_id": "686bfb37cbc8805faa8f31a9aa552aeb656d8857638e23294b04b943715241ad"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "redacted-evidence",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "79bbef0964d1d40613813514a1f7fa94495ba8cc7682bbf01b88733ac18430fc",
+      "status": "PASS",
+      "tool_calls": 4,
+      "output_bytes": 92942,
+      "elapsed_ms": 31.249,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "700b5b88272257628a962432b1875d9da252b345f7210a88e3823b447c3025b0",
+          "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+          "inputs": [
+            {
+              "label": "evals/fixtures/redacted.jsonl",
+              "sha256": "1f984aa9953d4739575654919e38e4db8dcf75ee266ee2e7a8e95befa4e9dade",
+              "input_id": "686bfb37cbc8805faa8f31a9aa552aeb656d8857638e23294b04b943715241ad"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "redacted-location-loss",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "d96c786f029525d9a7d666497911f081ccf9c9b4dac18c2b6bc6e2817321a470",
+      "status": "PASS",
+      "tool_calls": 6,
+      "output_bytes": 128802,
+      "elapsed_ms": 133.824,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "e235914ff6eaf8b89a32c64f45976e84adbdce02e17e4e1f29d616d8219fefa6",
+          "profile_sha256": "9b7f3e75fb987ec53d33bb77db848bef19b8d3c0f8c4caf8967f2d18a2fde098",
+          "inputs": [
+            {
+              "label": "evals/fixtures/nested.jsonl",
+              "sha256": "ed2eab0b3a4950e60a2bea55689697dde1f9d994afbfdb390ad1aca613ba9e10",
+              "input_id": "05cf39d228aad1bfc261dba497c0d5706b56910552fa0490dd5d06676c654b57"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "redacted-location-loss",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "d96c786f029525d9a7d666497911f081ccf9c9b4dac18c2b6bc6e2817321a470",
+      "status": "PASS",
+      "tool_calls": 3,
+      "output_bytes": 91733,
+      "elapsed_ms": 32.443,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "e235914ff6eaf8b89a32c64f45976e84adbdce02e17e4e1f29d616d8219fefa6",
+          "profile_sha256": "9b7f3e75fb987ec53d33bb77db848bef19b8d3c0f8c4caf8967f2d18a2fde098",
+          "inputs": [
+            {
+              "label": "evals/fixtures/nested.jsonl",
+              "sha256": "ed2eab0b3a4950e60a2bea55689697dde1f9d994afbfdb390ad1aca613ba9e10",
+              "input_id": "05cf39d228aad1bfc261dba497c0d5706b56910552fa0490dd5d06676c654b57"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "triage-mixed-sources",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "41febda3b295f6cda515ad5adcf9293e4ac30e403aa66f00953d0148b69c2313",
+      "status": "PASS",
+      "tool_calls": 9,
+      "output_bytes": 114142,
+      "elapsed_ms": 89.01,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "classic": {
+          "snapshot_id": "5b47723588c050c90f1c976287e941c9ef46603ae106ed1083d88ace4c9a3812",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/classic.log",
+              "sha256": "8cf81d4ec22e21204219aa48383dbc9330c6336024ea371ad7e4129794497811",
+              "input_id": "6a9819d2c8388b90d2ec18f940a8b803e8583714e9781e974d7965d370136850"
+            }
+          ]
+        },
+        "rust": {
+          "snapshot_id": "31cfa800f96f782a3de64d9b4e624a8746d5cd70a59aadf050089be8af6d9dd0",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/rust-tracing.log",
+              "sha256": "213306df2c1236e8149fc62895a7d5d890cf16800cc27f7ebda4d77e379fc631",
+              "input_id": "115e8b20274a2fb90980497b9b293a6ca3a3cdd1aeb0c6a5300d3a7181367699"
+            }
+          ]
+        },
+        "json": {
+          "snapshot_id": "a57a143472d9b44f16c37b01030a21e3e90dd13049c31d541e0d4b80d35edff0",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/events.jsonl",
+              "sha256": "744e9b56fb656ecb0d67d03caa6c140d0ce5b33f11e9f79936c139583c1be606",
+              "input_id": "21afc81e707ebbbdd4bcd9c07a802719b03ece4274d65afab4863d4f4f243f40"
+            }
+          ]
+        },
+        "access": {
+          "snapshot_id": "9f7bbe066910fd5f1cc44c49cac8b21c312e51eb70cb0b9317c45dc7a2059c46",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/unsupported-access.log",
+              "sha256": "04ecd0504075593ff28a6e462062377a5c92ed4a306aeb57862adf8d861735e8",
+              "input_id": "29a7f442376fced0edd4adc5db8966859d049f492c2661cb9ce7b289c0bdc69f"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "triage-mixed-sources",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "41febda3b295f6cda515ad5adcf9293e4ac30e403aa66f00953d0148b69c2313",
+      "status": "PASS",
+      "tool_calls": 9,
+      "output_bytes": 96682,
+      "elapsed_ms": 58.511,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "classic": {
+          "snapshot_id": "5b47723588c050c90f1c976287e941c9ef46603ae106ed1083d88ace4c9a3812",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/classic.log",
+              "sha256": "8cf81d4ec22e21204219aa48383dbc9330c6336024ea371ad7e4129794497811",
+              "input_id": "6a9819d2c8388b90d2ec18f940a8b803e8583714e9781e974d7965d370136850"
+            }
+          ]
+        },
+        "rust": {
+          "snapshot_id": "31cfa800f96f782a3de64d9b4e624a8746d5cd70a59aadf050089be8af6d9dd0",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/rust-tracing.log",
+              "sha256": "213306df2c1236e8149fc62895a7d5d890cf16800cc27f7ebda4d77e379fc631",
+              "input_id": "115e8b20274a2fb90980497b9b293a6ca3a3cdd1aeb0c6a5300d3a7181367699"
+            }
+          ]
+        },
+        "json": {
+          "snapshot_id": "a57a143472d9b44f16c37b01030a21e3e90dd13049c31d541e0d4b80d35edff0",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/events.jsonl",
+              "sha256": "744e9b56fb656ecb0d67d03caa6c140d0ce5b33f11e9f79936c139583c1be606",
+              "input_id": "21afc81e707ebbbdd4bcd9c07a802719b03ece4274d65afab4863d4f4f243f40"
+            }
+          ]
+        },
+        "access": {
+          "snapshot_id": "9f7bbe066910fd5f1cc44c49cac8b21c312e51eb70cb0b9317c45dc7a2059c46",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/unsupported-access.log",
+              "sha256": "04ecd0504075593ff28a6e462062377a5c92ed4a306aeb57862adf8d861735e8",
+              "input_id": "29a7f442376fced0edd4adc5db8966859d049f492c2661cb9ce7b289c0bdc69f"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "split-request-timing",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "70d6b28e764c4c214bfe279b3a823435b0d8388e624f6c181bdb73ece99163d8",
+      "status": "PASS",
+      "tool_calls": 9,
+      "output_bytes": 166093,
+      "elapsed_ms": 100.656,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "7d7ed679b0b337a201893b82e276752b3325b24835edd4d228e050650987e30d",
+          "profile_sha256": "c3175f88a148b425e931ab7679a4825683642c78d30e4221f5952350ebb0dc93",
+          "inputs": [
+            {
+              "label": "evals/fixtures/requests-start.log",
+              "sha256": "ba884140718a96a9f7923e3b453daa6fabe8fc902836a1008c556ea16c40acd1",
+              "input_id": "4a0049bb1a2557c11d92a6e77591f278e6e3cfd974af8e2368f5e0a29a095b05"
+            },
+            {
+              "label": "evals/fixtures/requests-end.log",
+              "sha256": "2c16b8c0a28a106f67ffbd7b709fb1cf19d7ed735fa1fe620f8ac0c726d8a53e",
+              "input_id": "18d71c9f3abe47780409e8f4267e5cb83c27f42cb244d9c839dea6bbb8d115de"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "split-request-timing",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "70d6b28e764c4c214bfe279b3a823435b0d8388e624f6c181bdb73ece99163d8",
+      "status": "PASS",
+      "tool_calls": 5,
+      "output_bytes": 91851,
+      "elapsed_ms": 34.149,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "7d7ed679b0b337a201893b82e276752b3325b24835edd4d228e050650987e30d",
+          "profile_sha256": "c3175f88a148b425e931ab7679a4825683642c78d30e4221f5952350ebb0dc93",
+          "inputs": [
+            {
+              "label": "evals/fixtures/requests-start.log",
+              "sha256": "ba884140718a96a9f7923e3b453daa6fabe8fc902836a1008c556ea16c40acd1",
+              "input_id": "4a0049bb1a2557c11d92a6e77591f278e6e3cfd974af8e2368f5e0a29a095b05"
+            },
+            {
+              "label": "evals/fixtures/requests-end.log",
+              "sha256": "2c16b8c0a28a106f67ffbd7b709fb1cf19d7ed735fa1fe620f8ac0c726d8a53e",
+              "input_id": "18d71c9f3abe47780409e8f4267e5cb83c27f42cb244d9c839dea6bbb8d115de"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ambiguous-correlation",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "0610ef1417595b617cb3e9480fa0e836320749a94ae76dc28038df781b02d814",
+      "status": "PASS",
+      "tool_calls": 11,
+      "output_bytes": 181246,
+      "elapsed_ms": 126.465,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "4cf1ceb50cce97c9b961a17317bc7cbbc3145782938b6c6e91d8ad51498a2269",
+          "profile_sha256": "c3175f88a148b425e931ab7679a4825683642c78d30e4221f5952350ebb0dc93",
+          "inputs": [
+            {
+              "label": "evals/fixtures/collision.log",
+              "sha256": "b1b24e7cf0210c49e9f654e5130b080811fd5d3cbe38d56d340054e0c03c7b67",
+              "input_id": "d847b335321e43c0d435ceefa369b29b8b00de932d138f302379f721cbc98fbf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ambiguous-correlation",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "0610ef1417595b617cb3e9480fa0e836320749a94ae76dc28038df781b02d814",
+      "status": "PASS",
+      "tool_calls": 5,
+      "output_bytes": 93078,
+      "elapsed_ms": 34.301,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "4cf1ceb50cce97c9b961a17317bc7cbbc3145782938b6c6e91d8ad51498a2269",
+          "profile_sha256": "c3175f88a148b425e931ab7679a4825683642c78d30e4221f5952350ebb0dc93",
+          "inputs": [
+            {
+              "label": "evals/fixtures/collision.log",
+              "sha256": "b1b24e7cf0210c49e9f654e5130b080811fd5d3cbe38d56d340054e0c03c7b67",
+              "input_id": "d847b335321e43c0d435ceefa369b29b8b00de932d138f302379f721cbc98fbf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "missing-lifecycle-evidence",
+      "arm": "analyzer",
+      "repeat": 0,
+      "order": 0,
+      "prompt_sha256": "9ac1cf6c069c85b8c925413fc41beaa1753fbed0dabd6b00f3cecf4c65de110f",
+      "status": "PASS",
+      "tool_calls": 5,
+      "output_bytes": 112795,
+      "elapsed_ms": 55.698,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "812d1c106e8d82f4914a795a5ae7c350f77e1136735aeb013e364e54e6edaffd",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/generic.log",
+              "sha256": "9bb05d7b77031af80ea9759879458de5eaee79f3c88689ede8adc1a712260d2e",
+              "input_id": "bf22841a3894f9854ca5d8ad398e327057368677d8f98dbb272a26332d24ced8"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "missing-lifecycle-evidence",
+      "arm": "search-script",
+      "repeat": 0,
+      "order": 1,
+      "prompt_sha256": "9ac1cf6c069c85b8c925413fc41beaa1753fbed0dabd6b00f3cecf4c65de110f",
+      "status": "PASS",
+      "tool_calls": 3,
+      "output_bytes": 90793,
+      "elapsed_ms": 31.091,
+      "usage": {
+        "tokens": null,
+        "provider_cost_usd": null,
+        "measurement_source": "unavailable_for_scripted_participant"
+      },
+      "contexts": {
+        "run": {
+          "snapshot_id": "812d1c106e8d82f4914a795a5ae7c350f77e1136735aeb013e364e54e6edaffd",
+          "profile_sha256": "d7f2df924b711cebcbebb3cf80ca570ca6d37c6ea2e4e6eca6ac9929092281f1",
+          "inputs": [
+            {
+              "label": "evals/fixtures/generic.log",
+              "sha256": "9bb05d7b77031af80ea9759879458de5eaee79f3c88689ede8adc1a712260d2e",
+              "input_id": "bf22841a3894f9854ca5d8ad398e327057368677d8f98dbb272a26332d24ced8"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Scripted runs verify harness behavior, not model quality or improvement.",
+    "No real model comparison is available unless the optional trusted adapter is run.",
+    "Expected values/support are omitted from adapter messages; adapters share the filesystem and are trusted, not OS-sandboxed.",
+    "Common capability/scope preflight is charged equally; its measured setup runtime consumes wall ceilings for both arms and is identified separately.",
+    "Tool interfaces differ: analyzer classification/retrieval versus literal search/JSON rows/fixed timestamp interval script.",
+    "Run order alternates across repeats; model/cache variance and host timing noise remain.",
+    "Unrestricted prose and unlisted semantic predicates are unsupported; no model judge is used.",
+    "Unknown tokens/provider cost stay null. Adapter-reported usage is unverified."
+  ]
+}

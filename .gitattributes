@@ -1,0 +1,2 @@
+# Preserve evaluation corpus bytes and hash proofs across platform checkouts.
+/evals/** text eol=lf
