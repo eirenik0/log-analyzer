@@ -292,7 +292,7 @@ impl Store {
         temporary.write_all(&serde_json::to_vec_pretty(&registry)?)?;
         temporary.write_all(b"\n")?;
         temporary.as_file().sync_all()?;
-        temporary.persist(&self.path).map_err(|e| e.error)?;
+        persist_registry(temporary, &self.path)?;
         drop(lock);
         self.view(&registry)
     }
@@ -305,6 +305,29 @@ impl Store {
         Ok(
             json!({"profile_mappings":{"version":1,"scope":self.scope,"registry":evidence::path_label(&self.path),"project_root":evidence::path_label(&self.root),"entries":entries,"raw_evidence_persisted":false}}),
         )
+    }
+}
+#[cfg(not(windows))]
+fn persist_registry(temporary: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+    temporary.persist(path).map(|_| ()).map_err(|e| e.error)
+}
+#[cfg(windows)]
+fn persist_registry(mut temporary: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+    // Windows can deny replacement while a reader has the old file open.
+    // Retain the synced temporary file and writer lock; never remove the old file.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match temporary.persist(path) {
+            Ok(_) => return Ok(()),
+            Err(error)
+                if matches!(error.error.raw_os_error(), Some(5 | 32 | 33))
+                    && Instant::now() < deadline =>
+            {
+                temporary = error.file;
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => return Err(error.error),
+        }
     }
 }
 // Resolve existing ancestors without creating a destination; later nonexistent
@@ -766,5 +789,41 @@ mod tests {
         }
         stop.store(true, Ordering::Release);
         assert!(reader.join().unwrap() > 0);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_replacement_waits_for_reader_and_preserves_old_file_on_timeout() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+        fs::write(&path, b"old registry").unwrap();
+        let blocked = || {
+            OpenOptions::new()
+                .read(true)
+                .share_mode(3)
+                .open(&path)
+                .unwrap()
+        };
+        let candidate = || {
+            let mut file = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+            file.write_all(b"new registry").unwrap();
+            file.as_file().sync_all().unwrap();
+            file
+        };
+        let reader = blocked();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(75));
+            drop(reader);
+        });
+        persist_registry(candidate(), &path).unwrap();
+        release.join().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new registry");
+        fs::write(&path, b"old registry").unwrap();
+        let reader = blocked();
+        let error = persist_registry(candidate(), &path).unwrap_err();
+        assert!(matches!(error.raw_os_error(), Some(5 | 32 | 33)));
+        assert_eq!(fs::read(&path).unwrap(), b"old registry");
+        drop(reader);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }
