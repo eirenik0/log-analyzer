@@ -143,6 +143,63 @@ pub fn validate_relations(
             )?;
         }
     }
+    let mut parsed_total = 0u64;
+    let mut selected_total = 0u64;
+    let mut unparsed = false;
+    for input in inputs {
+        let parsed = number(input, "/coverage/parsed_entries")?;
+        let selected = number(input, "/selected_entries")?;
+        require(
+            selected <= parsed,
+            "/report_metadata/evidence/inputs",
+            "selected coverage exceeds parsed coverage",
+        )?;
+        require(
+            input["bytes"] == input["coverage"]["input_bytes"]
+                && input["sha256"] == input["coverage"]["snapshot_sha256"],
+            "/report_metadata/evidence/inputs/coverage",
+            "coverage byte identity differs from input",
+        )?;
+        parsed_total = parsed_total.checked_add(parsed).ok_or_else(|| {
+            error(
+                "/report_metadata/evidence/scope",
+                "parsed coverage overflow",
+            )
+        })?;
+        selected_total = selected_total.checked_add(selected).ok_or_else(|| {
+            error(
+                "/report_metadata/evidence/scope",
+                "selected coverage overflow",
+            )
+        })?;
+        unparsed |= number(input, "/coverage/nonempty_lines")? > 0 && parsed == 0;
+    }
+    let expected_status = if inputs.is_empty() {
+        "not_applicable"
+    } else if unparsed {
+        "unparsed_input"
+    } else if parsed_total == 0 {
+        "empty_input"
+    } else if selected_total == 0 {
+        "zero_filter_matches"
+    } else {
+        "parsed"
+    };
+    require(
+        number(manifest, "/scope/parsed_entries")? == parsed_total
+            && number(manifest, "/scope/selected_entries")? == selected_total
+            && manifest["scope"]["status"] == expected_status,
+        "/report_metadata/evidence/scope",
+        "manifest parse coverage totals or status differ",
+    )?;
+    if manifest["redaction"]["applied"] == true && report["artifact"]["status"] != "unavailable" {
+        require(
+            report["artifact"]["content"] == "redacted"
+                && report["artifact"]["verification"]["source_and_rules"] == "unavailable",
+            "/artifact/content",
+            "applied redaction requires redacted persistence and declared verification losses",
+        )?;
+    }
     let progress = list(report, "/processing/inputs")?;
     require(
         progress.len() >= inputs.len(),
@@ -209,6 +266,11 @@ pub fn validate_relations(
                 "input outside captured manifest",
             )
         })?;
+        require(
+            number(input, "/selected_entries")? > 0,
+            "/occurrence/evidence_ref",
+            "source occurrence has no selected parse coverage",
+        )?;
         let reference = get(v, "/evidence_ref")?;
         require(
             reference["input_id"] == input["input_id"],
@@ -249,6 +311,28 @@ pub fn validate_relations(
     let scopes = index(list(report, "/scopes")?, "/scopes")?;
     for scope in scopes.values() {
         let ordinals = list(scope, "/input_ordinals")?;
+        let selected = ordinals.iter().try_fold(0u64, |total, ordinal| {
+            let input = ordinal
+                .as_u64()
+                .and_then(|v| usize::try_from(v).ok())
+                .and_then(|v| inputs.get(v));
+            total
+                .checked_add(
+                    input
+                        .and_then(|v| v["selected_entries"].as_u64())
+                        .unwrap_or(0),
+                )
+                .ok_or_else(|| error("/scopes/semantic_coverage", "scoped coverage overflow"))
+        })?;
+        for counter in ["relevant_records", "classified_records"] {
+            if let Some(count) = scope["semantic_coverage"][counter].as_u64() {
+                require(
+                    count <= selected,
+                    "/scopes/semantic_coverage",
+                    "semantic coverage exceeds selected parse coverage",
+                )?;
+            }
+        }
         let mut seen = BTreeSet::new();
         for ordinal in ordinals {
             let ordinal = ordinal
@@ -345,6 +429,19 @@ pub fn validate_relations(
             "/artifact/verification",
             "displayed verification differs from retained guarantees",
         )?;
+        require(
+            report["artifact"]["retention"] == artifact["retention"],
+            "/artifact/retention",
+            "displayed retention differs from retained policy",
+        )?;
+        if manifest["redaction"]["applied"] == true {
+            require(
+                artifact["effective_profile_omitted"] == true
+                    && artifact["effective_profile"].is_null(),
+                "/artifact/effective_profile",
+                "applied redaction cannot persist original effective rules",
+            )?;
+        }
         let captures = list(artifact, "/captured_inputs")?;
         require(
             captures.len() == progress.len(),
@@ -413,12 +510,32 @@ pub fn validate_relations(
                 )?;
             }
         }
+        if manifest["redaction"]["applied"] == true {
+            require(
+                original_captures.is_empty(),
+                "/artifact/captured_inputs",
+                "applied redaction cannot persist original captured bytes",
+            )?;
+        }
+        let mut retained_sources: BTreeMap<u64, BTreeSet<(u64, String)>> = BTreeMap::new();
         for record in list(artifact, "/records")? {
             let id = occurrence(get(record, "/occurrence")?)?;
+            let source = get(record, "/occurrence/evidence_ref")?;
+            retained_sources
+                .entry(id.input_ordinal)
+                .or_default()
+                .insert((number(source, "/line")?, source["row_path"].to_string()));
             require(
                 retained.insert(id, record).is_none(),
                 "/artifact/records",
                 "duplicate retained occurrence",
+            )?;
+        }
+        for (ordinal, sources) in retained_sources {
+            require(
+                sources.len() as u64 <= number(&inputs[ordinal as usize], "/selected_entries")?,
+                "/artifact/records",
+                "retained source records exceed selected parse coverage",
             )?;
         }
         let saved_findings = index(list(artifact, "/findings")?, "/artifact/findings")?;
@@ -1096,6 +1213,8 @@ pub fn validate_relations(
                 "partial scope cannot support a full-input goal",
             )?;
         }
+        let mut positive = false;
+        let mut deferred = false;
         for id in list(assessment, "/finding_ids")? {
             let id = id
                 .as_str()
@@ -1106,14 +1225,42 @@ pub fn validate_relations(
                     "/assessments/finding_ids",
                     "finding must be inline, retained or explicitly retrievable",
                 )?;
+                deferred = true;
                 summary.deferred_relations.push(format!("finding:{id}"));
                 continue;
             };
+            positive |= matches!(
+                finding["kind"].as_str(),
+                Some("observation" | "measurement" | "calculated_fact")
+            );
             require(
                 finding["scope_id"] == assessment["scope_id"],
                 "/assessments/finding_ids",
                 "finding belongs to another scope",
             )?;
+        }
+        if assessment["status"] == "supported" {
+            require(
+                positive || deferred,
+                "/assessments/finding_ids",
+                "supported assessment requires a positive finding",
+            )?;
+            if !positive && deferred {
+                summary.deferred_relations.push(format!(
+                    "supported_assessment:{}",
+                    text(assessment, "/goal")?
+                ));
+            }
+            for ordinal in list(scope, "/input_ordinals")? {
+                if let Some(input) = ordinal.as_u64().and_then(|v| inputs.get(v as usize)) {
+                    require(
+                        !(number(input, "/coverage/nonempty_lines")? > 0
+                            && number(input, "/coverage/parsed_entries")? == 0),
+                        "/assessments/status",
+                        "unparsed input cannot support a scoped assessment",
+                    )?;
+                }
+            }
         }
     }
     require(

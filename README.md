@@ -377,7 +377,7 @@ Supported shipped request/event grammar:
 **Compatibility and migration:** shipped profiles have strict whole-message
 lifecycle grammar; incidental substring matches in extra prose are unsupported.
 Legacy-only custom configurations keep their marker semantics. Version-1 explicit
-rules keep their grammar; version 1 adds direction/endpoint and `first_field`
+rules keep their grammar; version 2 adds direction/endpoint and `first_field`
 mappings, including the declared `payload.KEY` namespace. First-field lookup uses
 presence order; a wrong type or empty value is invalid, not skipped. No present
 alternative means missing correlation identity. Direction is optional in custom

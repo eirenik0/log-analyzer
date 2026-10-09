@@ -10,3 +10,7 @@ and artifact retrieval remain explicitly unavailable pending implementation.
 
 Reject reused measurement boundaries, inconsistent manifest identity digests,
 unsupported evidence-free assessments, and mismatched consumed-byte usage.
+
+Reconcile parse coverage, persisted redaction and artifact retention, and require
+positive evidence for supported assessments. Restore event-rule version-2 attribution
+in the README independently of investigation schema 1.

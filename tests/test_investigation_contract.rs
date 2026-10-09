@@ -542,3 +542,110 @@ fn byte_usage_matches_consumed_inputs_or_is_explicitly_unavailable() {
     let raw = refresh(&mut report, &artifact);
     validate_relations(&report, Some(&raw)).unwrap();
 }
+
+#[test]
+fn unparsed_coverage_cannot_carry_supported_measurements() {
+    for clear_semantics in [false, true] {
+        let (mut report, mut artifact) = fixture("supported");
+        for document in [&mut report, &mut artifact] {
+            document["report_metadata"]["evidence"]["inputs"][0]["coverage"]["parsed_entries"] =
+                json!(0);
+            document["report_metadata"]["evidence"]["inputs"][0]["selected_entries"] = json!(0);
+            document["report_metadata"]["evidence"]["scope"]["parsed_entries"] = json!(0);
+            document["report_metadata"]["evidence"]["scope"]["selected_entries"] = json!(0);
+            document["report_metadata"]["evidence"]["scope"]["status"] = json!("unparsed_input");
+            if clear_semantics {
+                document["scopes"][0]["semantic_coverage"]["relevant_records"] = json!(0);
+                document["scopes"][0]["semantic_coverage"]["classified_records"] = json!(0);
+            }
+        }
+        reject(
+            report,
+            artifact,
+            if clear_semantics {
+                "source occurrence has no selected parse coverage"
+            } else {
+                "semantic coverage exceeds"
+            },
+        );
+    }
+}
+#[test]
+fn manifest_coverage_totals_and_status_match_each_input() {
+    for (field, value) in [
+        ("parsed_entries", json!(0)),
+        ("selected_entries", json!(0)),
+        ("status", json!("unparsed_input")),
+    ] {
+        let (mut report, mut artifact) = fixture("supported");
+        for document in [&mut report, &mut artifact] {
+            document["report_metadata"]["evidence"]["scope"][field] = value.clone();
+        }
+        reject(report, artifact, "parse coverage totals or status differ");
+    }
+}
+#[test]
+fn applied_redaction_rejects_original_persistence_and_verification() {
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["report_metadata"]["evidence"]["redaction"]["applied"] = json!(true);
+    }
+    reject(
+        report,
+        artifact,
+        "applied redaction requires redacted persistence",
+    );
+    let (mut report, mut artifact) = fixture("redacted");
+    for verification in [
+        &mut report["artifact"]["verification"],
+        &mut artifact["verification"],
+    ] {
+        verification["source_and_rules"] = json!("available");
+        verification["losses"] = json!([]);
+    }
+    reject(
+        report,
+        artifact,
+        "applied redaction requires redacted persistence",
+    );
+}
+#[test]
+fn redacted_artifact_cannot_retain_original_capture_or_profile() {
+    let (report, mut artifact) = fixture("redacted");
+    let (_, original) = fixture("supported");
+    artifact["captured_inputs"] = original["captured_inputs"].clone();
+    reject(report, artifact, "cannot persist original captured bytes");
+    let (report, mut artifact) = fixture("redacted");
+    artifact["effective_profile"] = original["effective_profile"].clone();
+    artifact["effective_profile_omitted"] = json!(false);
+    reject(report, artifact, "cannot persist original effective rules");
+}
+#[test]
+fn unknown_only_assessment_is_not_supported() {
+    let (mut report, mut artifact) = fixture("supported");
+    let (unsupported, _) = fixture("unsupported");
+    for document in [&mut report, &mut artifact] {
+        document["findings"]
+            .as_array_mut()
+            .unwrap()
+            .push(unsupported["findings"][0].clone());
+        document["assessments"][0]["finding_ids"] = json!(["unknown-1"]);
+    }
+    report["presentation"]["displayed_findings"] = json!(7);
+    report["presentation"]["total_findings"] = json!(7);
+    reject(report, artifact, "requires a positive finding");
+}
+#[test]
+fn artifact_retention_matches_the_descriptor() {
+    for policy in [
+        json!({"policy":"until_deleted","expires_at":null}),
+        json!({"policy":"expires_at","expires_at":"2026-12-01T00:00:00Z"}),
+    ] {
+        let (mut report, mut artifact) = fixture("supported");
+        report["artifact"]["retention"] = policy.clone();
+        reject(report.clone(), artifact.clone(), "retention differs");
+        artifact["retention"] = policy;
+        let raw = refresh(&mut report, &artifact);
+        validate_relations(&report, Some(&raw)).unwrap();
+    }
+}

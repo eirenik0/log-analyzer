@@ -197,3 +197,12 @@ snapshot digest remains checkable. Reported non-null input-byte usage must equal
 the checked sum of consumed input bytes. A supported assessment references at least
 one finding. Measured intervals require distinct boundary occurrences, even when
 the observed timestamps are equal.
+
+Coverage validation reconciles per-input parsed/selected totals and manifest status,
+checks semantic counters against scoped selected records, and bounds retained source
+occurrences by selected parse coverage. Supported assessments require a positive
+observation, measurement or calculated fact; unknowns and hypotheses alone do not
+establish support. A bounded page may defer that check to explicitly retrievable facts.
+Applied redaction requires redacted artifact content and unavailable independent
+source/rule verification; original captured byte streams and effective rules must
+not be persisted. Descriptor retention must match the retained artifact's policy.
