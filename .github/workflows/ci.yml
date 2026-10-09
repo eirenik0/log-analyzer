@@ -72,3 +72,13 @@ jobs:
       - run: python -m unittest discover -s evals -p 'test_*.py'
       - run: cargo test
       - run: cargo run -- --help
+
+  test-publishing:
+    name: Test crate publishing gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s scripts -p 'test_crate_publish.py'

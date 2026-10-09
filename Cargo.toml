@@ -2,6 +2,10 @@
 name = "log-analyzer"
 version = "0.3.0"
 edition = "2024"
+description = "Structured log analysis with parsing, filtering, comparison, and performance diagnostics"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/eirenik0/log-analyzer"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "env"] }

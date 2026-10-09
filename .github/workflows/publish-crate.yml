@@ -1,0 +1,102 @@
+name: Publish crate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing stable GitHub release version, without v (for example 0.3.0)'
+        required: true
+        type: string
+      dry-run:
+        description: 'Validate and build the package without publishing'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-crate
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate released package
+    runs-on: ubuntu-latest
+    outputs:
+      revision: ${{ steps.release.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test the release gate
+        run: python -m unittest discover -s scripts -p 'test_crate_publish.py'
+      - name: Select and validate the release
+        id: release
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != 'refs/heads/main' ]; then
+            echo 'Run this workflow from main.' >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os, re
+          version = os.environ['RELEASE_VERSION']
+          if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version):
+              raise SystemExit('Expected a stable MAJOR.MINOR.PATCH version without a v prefix.')
+          PY
+          gh release view "v$RELEASE_VERSION" --json tagName,isDraft,isPrerelease > "$RUNNER_TEMP/crate-release.json"
+          git checkout --detach "refs/tags/v$RELEASE_VERSION"
+          python - <<'PY'
+          import json, os, pathlib, tomllib
+          version = os.environ['RELEASE_VERSION']
+          release = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / 'crate-release.json').read_text())
+          if release['tagName'] != f'v{version}' or release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('Expected a published, stable GitHub release for this version.')
+          package = tomllib.loads(pathlib.Path('Cargo.toml').read_text())['package']
+          if package['version'] != version:
+              raise SystemExit('Release tag and Cargo.toml versions differ.')
+          if not package.get('description') or not (package.get('license') or package.get('license-file')):
+              raise SystemExit('Declare the package description and its approved license before publishing.')
+          if package.get('publish') is False or (isinstance(package.get('publish'), list) and 'crates-io' not in package['publish']):
+              raise SystemExit('Cargo.toml does not permit publishing to crates.io.')
+          PY
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify the package without publishing
+        run: cargo publish --locked --registry crates-io --dry-run
+
+  publish:
+    name: Publish through crates.io Trusted Publishing
+    needs: validate
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.revision }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Obtain a short-lived crates.io token
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish the verified release
+        run: cargo publish --locked --registry crates-io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
