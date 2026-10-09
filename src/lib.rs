@@ -21,11 +21,14 @@ pub mod evidence;
 pub mod extract;
 pub mod filter;
 pub mod investigation;
+pub mod investigation_policy;
+mod investigation_runtime;
 pub mod llm_processor;
 pub mod normalize;
 mod output;
 pub mod parser;
 pub mod perf_analyzer;
+mod processing;
 mod profile_mappings;
 mod profile_preparation;
 pub mod profile_resolution;
@@ -422,6 +425,12 @@ fn render_analysis_report(
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut cli = cli_parse();
     cli.prepare_common_reports()?;
+    if matches!(
+        &cli.command,
+        Commands::Investigate(_) | Commands::InvestigationEvidence(_)
+    ) {
+        return investigation_runtime::run(&cli);
+    }
     // Capability schemas are static binary content, never user log data.
     let mut output_guard = output::OutputGuard::new(
         cli.redact && !matches!(&cli.command, Commands::Capabilities),
@@ -553,6 +562,9 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
         }
         Commands::ResolveProfile { .. } => {
             unreachable!("resolution returned before config loading")
+        }
+        Commands::Investigate(_) | Commands::InvestigationEvidence(_) => {
+            unreachable!("dedicated investigation dispatch")
         }
         Commands::PrepareProfile(_) => {
             unreachable!("preparation returned before legacy analysis")

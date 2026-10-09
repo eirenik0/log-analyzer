@@ -189,7 +189,8 @@ insufficient, conflicting, unsupported, output-limited, processing-limited, reda
 measured-zero and zero-filter-match results. The cutoff fixture contains a later
 out-of-order start that invalidates the apparent prefix pair. Tests also cover
 repeated declarations and mutation of still-schema-valid facts and artifact contents.
-These are contract fixtures, not output from an already implemented unified command.
+These are hand-authored contract fixtures. `investigate` now produces the retained
+report/artifact shapes, with runtime regressions checking their relational invariants.
 
 Distinct resource identities use only the population’s declared identity fields
 and correlation scope; extra descriptive fields cannot create another resource.

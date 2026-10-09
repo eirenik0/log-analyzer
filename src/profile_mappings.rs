@@ -341,6 +341,13 @@ impl StagedReport {
             temporary: tempfile::NamedTempFile::new_in(parent)?,
         })
     }
+    pub(crate) fn save_compact(mut self, report: &Value) -> Result<()> {
+        serde_json::to_writer(&mut self.temporary, report)?;
+        self.temporary.write_all(b"\n")?;
+        self.temporary.as_file().sync_all()?;
+        persist_registry(self.temporary, &self.path)?;
+        Ok(())
+    }
     pub(crate) fn save(mut self, report: &Value) -> Result<()> {
         let rendered = serde_json::to_string_pretty(report)?;
         self.temporary

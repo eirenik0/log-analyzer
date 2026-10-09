@@ -255,10 +255,10 @@
           "const": 1
         },
         "command_available": {
-          "const": false
+          "const": true
         },
         "artifact_retrieval_available": {
-          "const": false
+          "const": true
         },
         "schemas": {
           "const": {

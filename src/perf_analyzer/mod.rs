@@ -73,6 +73,18 @@ pub fn analyze_performance_with_config(
     op_type_filter: Option<&str>,
     config: &AnalyzerConfig,
 ) -> PerfAnalysisResults {
+    analyze_performance_checked(logs, filter, op_type_filter, config, |_| true)
+        .expect("unlimited correlation cannot be interrupted")
+}
+
+/// One shared correlation pass. Interrupted work publishes no tentative group outcomes.
+pub(crate) fn analyze_performance_checked(
+    logs: &[LogEntry],
+    filter: &LogFilter,
+    op_type_filter: Option<&str>,
+    config: &AnalyzerConfig,
+    mut checkpoint: impl FnMut(u64) -> bool,
+) -> Option<PerfAnalysisResults> {
     let mut results = PerfAnalysisResults::new();
 
     let filtered: Vec<_> = logs.iter().filter(|entry| filter.matches(entry)).collect();
@@ -112,6 +124,9 @@ pub fn analyze_performance_with_config(
     let mut suppressions: std::collections::BTreeMap<(String, String), usize> =
         std::collections::BTreeMap::new();
     for entry in filtered {
+        if !checkpoint(1) {
+            return None;
+        }
         let evidence = &entry.classification;
         let counts = &mut results.operation_coverage.classification;
         counts.selected_records += 1;
@@ -276,6 +291,11 @@ pub fn analyze_performance_with_config(
     }
     let mut pending_groups: std::collections::VecDeque<_> = groups.into_iter().collect();
     while let Some((key, mut events)) = pending_groups.pop_front() {
+        let sorting_work =
+            (events.len() as u64).saturating_mul(u64::from(events.len().max(1).ilog2()) + 1);
+        if !checkpoint(sorting_work) {
+            return None;
+        }
         // Inferred years cannot establish boundary chronology (including New Year).
         if events
             .iter()
@@ -302,6 +322,9 @@ pub fn analyze_performance_with_config(
         let mut seen_rows = std::collections::HashSet::new();
         let mut unordered_timestamps = std::collections::HashSet::new();
         for event in &events {
+            if !checkpoint(1) {
+                return None;
+            }
             if bucket_time != Some(event.entry.timestamp) {
                 bucket_time = Some(event.entry.timestamp);
                 bucket_file = Some(&event.entry.source_file);
@@ -321,6 +344,9 @@ pub fn analyze_performance_with_config(
             let mut outstanding = 0i64;
             let mut boundaries = events.into_iter().peekable();
             while let Some(event) = boundaries.next() {
+                if !checkpoint(1) {
+                    return None;
+                }
                 let timestamp = event.entry.timestamp;
                 outstanding += if event.start { 1 } else { -1 };
                 segment.push(event);
@@ -389,6 +415,9 @@ pub fn analyze_performance_with_config(
         }
         let mut pending: Option<BoundaryEvent<'_>> = None;
         for event in events {
+            if !checkpoint(1) {
+                return None;
+            }
             if event.start {
                 pending = Some(event);
             } else if let Some(start) = pending.take() {
@@ -512,8 +541,14 @@ pub fn analyze_performance_with_config(
         "observed_pairs"
     }
     .into();
+    if !checkpoint((logs.len() as u64).saturating_mul(u64::from(logs.len().max(1).ilog2()) + 1)) {
+        return None;
+    }
     results.calculate_stats();
-    results
+    if !checkpoint(0) {
+        return None;
+    }
+    Some(results)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -596,5 +631,42 @@ impl BoundaryEvent<'_> {
             source: source(self.entry),
             context: self.entry.message.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod checked_tests {
+    use super::*;
+    #[test]
+    fn interrupted_correlation_never_publishes_a_tentative_missing_end() {
+        let config = crate::config::load_config_from_path(std::path::Path::new(
+            "examples/investigations/profile.toml",
+        ))
+        .unwrap();
+        let entries =
+            crate::parser::parse_log_file_report("examples/investigations/slow.jsonl", &config)
+                .unwrap()
+                .entries;
+        let mut complete =
+            analyze_performance_with_config(&entries, &LogFilter::new(), None, &config);
+        assert_eq!(complete.operations.len(), 3);
+        for stop in [0, 3, 6, 8, 10, 15] {
+            let mut calls = 0;
+            let interrupted =
+                analyze_performance_checked(&entries, &LogFilter::new(), None, &config, |_| {
+                    calls += 1;
+                    calls <= stop
+                });
+            assert!(interrupted.is_none());
+        }
+        let mut cached =
+            analyze_performance_checked(&entries, &LogFilter::new(), None, &config, |_| true)
+                .unwrap();
+        complete.stats.sort_by(|a, b| a.name.cmp(&b.name));
+        cached.stats.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(
+            serde_json::to_value(complete).unwrap(),
+            serde_json::to_value(cached).unwrap()
+        );
     }
 }

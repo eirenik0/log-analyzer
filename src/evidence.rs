@@ -53,7 +53,7 @@ pub(crate) fn path_label(path: &std::path::Path) -> String {
 }
 
 /// Preserve normal paths; non-UTF-8 paths expose a safe display and byte identity.
-fn path_value(path: &std::path::Path) -> Value {
+pub(crate) fn path_value(path: &std::path::Path) -> Value {
     match path.to_str() {
         Some(path) => json!(path),
         None => {

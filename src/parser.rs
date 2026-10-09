@@ -242,6 +242,7 @@ fn unsupported_python_header(line: &str) -> bool {
         && !SYSLOG_ENTRY.is_match(line)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finish_candidate(
     text: &str,
     line_number: usize,
@@ -250,34 +251,62 @@ fn finish_candidate(
     config: &AnalyzerConfig,
     entries: &mut Vec<LogEntry>,
     coverage: &mut ParseCoverage,
+    controls: &mut Option<&mut crate::processing::Budget>,
 ) {
+    if let Some(budget) = controls.as_deref_mut()
+        && !budget.record(
+            text.len(),
+            config.normalization.as_ref().map_or(0, |r| r.fields.len()),
+            false,
+        )
+    {
+        return;
+    }
+    if config.normalization.is_some()
+        && let Some(budget) = controls.as_deref_mut()
+    {
+        // The physical root reserves transient storage; only emitted row attempts
+        // consume normalized-record capacity.
+        budget.records -= 1;
+    }
     coverage.structural_diagnostics.physical_candidate_blocks += 1;
     if let Some(rules) = &config.normalization {
-        for (row_path, row) in crate::normalize::normalize(text, line_number, rules) {
-            let parsed = row.and_then(|value| {
-                parse_json_line_entry(&value.to_string(), line_number, config).map_err(|_| {
-                    crate::normalize::RowDiagnostic {
-                        line: line_number,
-                        row_path: row_path.clone(),
-                        field: "timestamp_or_message".into(),
-                        reason: "invalid_normalized_entry".into(),
+        crate::normalize::visit_normalized(
+            text,
+            line_number,
+            rules,
+            |_, _| {
+                controls
+                    .as_deref_mut()
+                    .is_none_or(|budget| budget.record(text.len(), rules.fields.len(), true))
+            },
+            |row_path, row| {
+                let parsed = row.and_then(|value| {
+                    parse_json_line_entry(&value.to_string(), line_number, config).map_err(|_| {
+                        crate::normalize::RowDiagnostic {
+                            line: line_number,
+                            row_path: row_path.clone(),
+                            field: "timestamp_or_message".into(),
+                            reason: "invalid_normalized_entry".into(),
+                        }
+                    })
+                });
+                match parsed {
+                    Ok(mut entry) => {
+                        entry.normalized_record = Some(entry.raw_logline.clone());
+                        entry.source_file = Some(crate::evidence::path_label(path));
+                        entry.source_row_path = Some(row_path);
+                        entry.raw_logline = text.to_string();
+                        entries.push(entry);
                     }
-                })
-            });
-            match parsed {
-                Ok(mut entry) => {
-                    entry.normalized_record = Some(entry.raw_logline.clone());
-                    entry.source_file = Some(crate::evidence::path_label(path));
-                    entry.source_row_path = Some(row_path);
-                    entry.raw_logline = text.to_string();
-                    entries.push(entry);
+                    Err(diagnostic) => {
+                        coverage.rejected_candidates += 1;
+                        coverage.normalization_diagnostics.push(diagnostic);
+                    }
                 }
-                Err(diagnostic) => {
-                    coverage.rejected_candidates += 1;
-                    coverage.normalization_diagnostics.push(diagnostic);
-                }
-            }
-        }
+                true
+            },
+        );
         return;
     }
     if format != LogFormat::JsonLines && !line_starts_entry(text, format) {
@@ -350,7 +379,24 @@ pub fn parse_log_file_report(
     let path = path.as_ref();
     let file = File::open(path)?;
     let mut reader = BufReader::new(crate::evidence::SnapshotReader::new(file));
-    let mut lines = std::io::Read::by_ref(&mut reader).lines().enumerate();
+    let lines = std::io::Read::by_ref(&mut reader)
+        .lines()
+        .map(|line| line.map(std::borrow::Cow::Owned));
+    let mut parsed = parse_lines(lines, path, config, true, None)?;
+    let (digest, bytes) = reader.into_inner().finish();
+    parsed.coverage.snapshot_sha256 = digest;
+    parsed.coverage.input_bytes = bytes;
+    Ok(parsed)
+}
+
+fn parse_lines<'a>(
+    lines: impl Iterator<Item = std::io::Result<std::borrow::Cow<'a, str>>>,
+    path: &Path,
+    config: &AnalyzerConfig,
+    physical_eof: bool,
+    mut controls: Option<&mut crate::processing::Budget>,
+) -> Result<ParsedLogFile, ParseError> {
+    let mut lines = lines.enumerate();
     let mut samples = Vec::new();
     let mut sample_indices = Vec::new();
     let mut skipped_leading_blank_lines = 0;
@@ -368,6 +414,12 @@ pub fn parse_log_file_report(
                 break;
             };
             let line = line?;
+            if controls
+                .as_deref_mut()
+                .is_some_and(|budget| !budget.physical_size(line.len()))
+            {
+                break;
+            }
             if line.trim().is_empty() && samples.is_empty() {
                 skipped_leading_blank_lines += 1;
                 continue;
@@ -380,9 +432,15 @@ pub fn parse_log_file_report(
     let format = if config.normalization.is_some() {
         LogFormat::JsonLines
     } else {
-        detect_format_from_lines(samples.iter().map(String::as_str), config.parser.format)
+        detect_format_from_lines(
+            samples.iter().map(|line| line.as_ref()),
+            config.parser.format,
+        )
     };
-    let mut structural_diagnostics = StructuralDiagnostics::new(selection, &samples);
+    let mut structural_diagnostics = StructuralDiagnostics::new(
+        selection,
+        &samples.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+    );
     structural_diagnostics.blank_lines = skipped_leading_blank_lines;
     let mut coverage = ParseCoverage {
         file: crate::evidence::path_label(path),
@@ -407,6 +465,12 @@ pub fn parse_log_file_report(
         .map(|(index, line)| (index, Ok(line)));
     for (index, line) in replay.chain(lines) {
         let line = line?;
+        if controls
+            .as_deref_mut()
+            .is_some_and(|budget| !budget.physical_size(line.len()))
+        {
+            break;
+        }
         if !line.trim().is_empty() {
             coverage.nonempty_lines += 1;
             coverage
@@ -428,6 +492,7 @@ pub fn parse_log_file_report(
                     config,
                     &mut entries,
                     &mut coverage,
+                    &mut controls,
                 );
             }
         } else if line_starts_entry(&line, format)
@@ -443,22 +508,37 @@ pub fn parse_log_file_report(
                     config,
                     &mut entries,
                     &mut coverage,
+                    &mut controls,
                 );
             }
-            current_log = Some(line);
+            if controls.as_deref().is_some_and(|budget| budget.halted) {
+                break;
+            }
+            current_log = Some(line.into_owned());
             current_line_number = index + 1;
         } else if let Some(text) = &mut current_log {
             coverage.structural_diagnostics.attached_nonempty_lines +=
                 usize::from(!line.trim().is_empty());
+            if controls.as_deref_mut().is_some_and(|budget| {
+                !budget.physical_size(text.len().saturating_add(1).saturating_add(line.len()))
+            }) {
+                break;
+            }
             text.push('\n');
             text.push_str(&line);
         } else if !line.trim().is_empty() {
             // An unrecognized leading block is one candidate, not one per stack frame.
-            current_log = Some(line);
+            if controls.as_deref().is_some_and(|budget| budget.halted) {
+                break;
+            }
+            current_log = Some(line.into_owned());
             current_line_number = index + 1;
         }
     }
-    if let Some(text) = current_log {
+    if physical_eof
+        && controls.as_deref().is_none_or(|budget| !budget.halted)
+        && let Some(text) = current_log
+    {
         finish_candidate(
             &text,
             current_line_number,
@@ -467,17 +547,50 @@ pub fn parse_log_file_report(
             config,
             &mut entries,
             &mut coverage,
+            &mut controls,
         );
     }
-    let (digest, bytes) = reader.into_inner().finish();
-    coverage.snapshot_sha256 = digest;
-    coverage.input_bytes = bytes;
     coverage.parsed_entries = entries.len();
     coverage.structural_diagnostics.observed_status = coverage
         .structural_diagnostics
         .observed_format_matches
         .status();
     Ok(ParsedLogFile { entries, coverage })
+}
+
+/// Parse the retained capture once. A cutoff never closes a pending physical record.
+pub(crate) fn parse_capture(
+    path: &Path,
+    data: &[u8],
+    physical_eof: bool,
+    config: &AnalyzerConfig,
+    budget: &mut crate::processing::Budget,
+) -> Result<ParsedLogFile, ParseError> {
+    config
+        .validate_event_rules()
+        .map_err(ParseError::InvalidLogFormat)?;
+    let text = match std::str::from_utf8(data) {
+        Ok(text) => text,
+        Err(error) if !physical_eof && error.error_len().is_none() => {
+            std::str::from_utf8(&data[..error.valid_up_to()]).expect("validated UTF-8 prefix")
+        }
+        Err(_) => return Err(ParseError::InvalidLogFormat("capture is not UTF-8".into())),
+    };
+    let lines = text
+        .split_inclusive('\n')
+        .filter(|line| physical_eof || line.ends_with('\n'))
+        .map(|line| {
+            Ok(std::borrow::Cow::Borrowed(
+                line.strip_suffix('\n')
+                    .unwrap_or(line)
+                    .strip_suffix('\r')
+                    .unwrap_or(line.strip_suffix('\n').unwrap_or(line)),
+            ))
+        });
+    let mut parsed = parse_lines(lines, path, config, physical_eof, Some(budget))?;
+    parsed.coverage.input_bytes = data.len() as u64;
+    parsed.coverage.snapshot_sha256 = crate::evidence::digest(data);
+    Ok(parsed)
 }
 
 /// Reject nonempty files with no recognized entries for all parser callers.
@@ -2071,4 +2184,73 @@ pub(crate) fn record_correlation_scope(
                 .map(|value| crate::event_rules::bounded_scope_value(&value))
         })
         .collect::<Option<Vec<_>>>()
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+    #[test]
+    fn cutoff_does_not_close_multiline_candidate_or_partial_json_scalar() {
+        let config =
+            crate::config::load_config_from_path(Path::new("examples/investigations/profile.toml"))
+                .unwrap();
+        let data = include_bytes!("../examples/investigations/slow.jsonl");
+        let first = data.iter().position(|byte| *byte == b'\n').unwrap() + 1;
+        let mut budget = crate::processing::test_budget();
+        let captured = parse_capture(
+            Path::new("source"),
+            &data[..first + 5],
+            false,
+            &config,
+            &mut budget,
+        )
+        .unwrap();
+        assert_eq!(captured.entries.len(), 1);
+        let classic = crate::config::default_config();
+        let text = b"worker | 2026-01-01T00:00:00+02:00 [INFO ] first\ncontinuation\n";
+        let mut budget = crate::processing::test_budget();
+        assert!(
+            parse_capture(Path::new("source"), text, false, classic, &mut budget)
+                .unwrap()
+                .entries
+                .is_empty()
+        );
+        let mut budget = crate::processing::test_budget();
+        assert_eq!(
+            parse_capture(Path::new("source"), text, true, classic, &mut budget)
+                .unwrap()
+                .entries
+                .len(),
+            1
+        );
+    }
+    #[test]
+    fn bounded_capture_and_unlimited_wrapper_share_records_and_coverage() {
+        let config =
+            crate::config::load_config_from_path(Path::new("examples/investigations/profile.toml"))
+                .unwrap();
+        let path = Path::new("examples/investigations/slow.jsonl");
+        let unlimited = parse_log_file_report(path, &config).unwrap();
+        let mut budget = crate::processing::test_budget();
+        let bounded = parse_capture(
+            path,
+            &std::fs::read(path).unwrap(),
+            true,
+            &config,
+            &mut budget,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(unlimited.coverage).unwrap(),
+            serde_json::to_value(bounded.coverage).unwrap()
+        );
+        for (left, right) in unlimited.entries.iter().zip(bounded.entries.iter()) {
+            assert_eq!(left.raw_logline, right.raw_logline);
+            assert_eq!(
+                serde_json::to_value(&left.classification).unwrap(),
+                serde_json::to_value(&right.classification).unwrap()
+            );
+            assert_eq!(left.source_timestamp, right.source_timestamp);
+        }
+    }
 }

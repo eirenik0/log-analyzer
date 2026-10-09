@@ -1,0 +1,35 @@
+extends = "profile.toml"
+profile_name = "investigation-domain-example"
+[investigation]
+version = 1
+[[investigation.roles]]
+id = "observed-start"
+rule_ids = ["begin"]
+[[investigation.roles]]
+id = "observed-end"
+rule_ids = ["finish"]
+[[investigation.populations]]
+id = "declared-attempts"
+entity = "attempts"
+roles = ["observed-start", "observed-end"]
+identity_fields = ["id"]
+grouping = "identity"
+[[investigation.populations]]
+id = "declared-resources"
+entity = "resources"
+roles = ["observed-start", "observed-end"]
+identity_fields = ["id"]
+grouping = "identity"
+[[investigation.populations]]
+id = "start-occurrences"
+entity = "events"
+roles = ["observed-start"]
+identity_fields = ["id"]
+grouping = "occurrence"
+[[investigation.relationships]]
+id = "declared-start-end"
+source_role = "observed-start"
+target_role = "observed-end"
+join_fields = ["id"]
+required_scope_fields = ["session"]
+cardinality = "one_to_one"

@@ -187,6 +187,57 @@ fn relevant(entry: &LogEntry, kind: OperationKind) -> bool {
     }
 }
 
+/// Source-identity witnesses shared by validation and investigation; never correlates.
+pub(crate) fn scope_adequacy(
+    logs: &[LogEntry],
+    config: &AnalyzerConfig,
+    mut checkpoint: impl FnMut(u64) -> bool,
+) -> Option<Vec<Value>> {
+    // Different source identities under one effective pairing key are witnesses of
+    // possible aliasing, not proof that component IDs are the intended domain scope.
+    type ScopeKey = (String, String, String, Vec<String>);
+    let mut identities: BTreeMap<ScopeKey, (BTreeSet<Vec<String>>, Vec<SourceLocation>)> =
+        BTreeMap::new();
+    let mut witness_config = config.clone();
+    for entry in logs {
+        if !checkpoint((config.perf.correlation_scope_fields.len() + 1) as u64) {
+            return None;
+        }
+        if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification
+            && let Some(id) = &semantics.correlation_id
+        {
+            let scope = perf_analyzer::correlation_scope(entry, config).unwrap_or_default();
+            let group = identities
+                .entry((
+                    semantics.kind.label().into(),
+                    semantics.name.clone(),
+                    id.clone(),
+                    scope,
+                ))
+                .or_default();
+            let mut source_identity = vec![entry.component_id.clone()];
+            for field in &config.perf.correlation_scope_fields {
+                witness_config.perf.correlation_scope_fields = vec![field.clone()];
+                let value = crate::parser::record_correlation_scope(entry, &witness_config)
+                    .and_then(|values| values.into_iter().next());
+                source_identity.push(format!(
+                    "{field}={}",
+                    value.as_deref().unwrap_or("<unavailable>")
+                ));
+            }
+            group.0.insert(source_identity);
+            group.1.push(crate::evidence::source(entry));
+        }
+    }
+    let mut diagnostics = Vec::new();
+    for ((_kind, name, correlation_id, scope), (identities, witnesses)) in identities {
+        if identities.len() > 1 {
+            diagnostics.push(json!({"reason":"scope_adequacy_unknown","name":name,"correlation_id":correlation_id,"scope":scope,"source_identities":identities,"witnesses":witnesses}));
+        }
+    }
+    Some(diagnostics)
+}
+
 pub fn analyze(
     inputs: &[Vec<LogEntry>],
     config: &AnalyzerConfig,
@@ -262,41 +313,10 @@ pub fn analyze(
             diagnostics.push(json!({"reason":"intentional_start_only","source":crate::evidence::source(entry),"classification":entry.classification}));
         }
     }
-    // Different source identities under one effective pairing key are witnesses of
-    // possible aliasing, not proof that component IDs are the intended domain scope.
-    type ScopeKey = (String, String, Vec<String>);
-    let mut identities: BTreeMap<ScopeKey, (BTreeSet<Vec<String>>, Vec<SourceLocation>)> =
-        BTreeMap::new();
-    let mut witness_config = config.clone();
-    for entry in &requested {
-        if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification
-            && let Some(id) = &semantics.correlation_id
-        {
-            let scope = perf_analyzer::correlation_scope(entry, config).unwrap_or_default();
-            let group = identities
-                .entry((semantics.name.clone(), id.clone(), scope))
-                .or_default();
-            let mut source_identity = vec![entry.component_id.clone()];
-            for field in &config.perf.correlation_scope_fields {
-                witness_config.perf.correlation_scope_fields = vec![field.clone()];
-                let value = crate::parser::record_correlation_scope(entry, &witness_config)
-                    .and_then(|values| values.into_iter().next());
-                source_identity.push(format!(
-                    "{field}={}",
-                    value.as_deref().unwrap_or("<unavailable>")
-                ));
-            }
-            group.0.insert(source_identity);
-            group.1.push(crate::evidence::source(entry));
-        }
-    }
-    let mut scope_aliases = 0;
-    for ((name, correlation_id, scope), (identities, witnesses)) in identities {
-        if identities.len() > 1 {
-            scope_aliases += 1;
-            diagnostics.push(json!({"reason":"scope_adequacy_unknown","name":name,"correlation_id":correlation_id,"scope":scope,"source_identities":identities,"witnesses":witnesses}));
-        }
-    }
+    let aliases =
+        scope_adequacy(&requested, config, |_| true).expect("unlimited witness inventory");
+    let scope_aliases = aliases.len();
+    diagnostics.extend(aliases);
     let mut checks = Vec::new();
     if let Some(facts) = expectations {
         for fact in &facts.records {

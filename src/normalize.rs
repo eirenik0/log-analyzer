@@ -35,6 +35,29 @@ pub fn normalize(
     line: usize,
     rules: &NormalizationRules,
 ) -> Vec<(String, Result<Value, RowDiagnostic>)> {
+    let mut rows = Vec::new();
+    visit_normalized(
+        text,
+        line,
+        rules,
+        |_, _| true,
+        |path, row| {
+            rows.push((path, row));
+            true
+        },
+    );
+    rows
+}
+
+/// Visit one normalized row at a time; a false callback stops expansion.
+/// `allow` runs before any per-row clone or field mapping.
+pub(crate) fn visit_normalized(
+    text: &str,
+    line: usize,
+    rules: &NormalizationRules,
+    mut allow: impl FnMut(&str, &Value) -> bool,
+    mut emit: impl FnMut(String, Result<Value, RowDiagnostic>) -> bool,
+) -> bool {
     let failure = |row_path: &str, field: &str, reason: &str| RowDiagnostic {
         line,
         row_path: row_path.into(),
@@ -43,134 +66,137 @@ pub fn normalize(
     };
     let mut root: Value = match serde_json::from_str(text) {
         Ok(value) => value,
-        Err(_) => return vec![(String::new(), Err(failure("", "", "invalid_json")))],
+        Err(_) => return emit(String::new(), Err(failure("", "", "invalid_json"))),
     };
     for path in &rules.decode_paths {
         let Some(value) = root.pointer_mut(path) else {
-            return vec![(
+            return emit(
                 path.clone(),
                 Err(failure(path, path, "missing_decode_path")),
-            )];
+            );
         };
         let Some(encoded) = value.as_str() else {
-            return vec![(
+            return emit(
                 path.clone(),
                 Err(failure(path, path, "decode_requires_string")),
-            )];
+            );
         };
         let decoded = match serde_json::from_str(encoded) {
             Ok(v) => v,
             Err(_) => {
-                return vec![(
+                return emit(
                     path.clone(),
                     Err(failure(path, path, "invalid_json_string")),
-                )];
+                );
             }
         };
         *value = decoded;
     }
     let Some(selected) = root.pointer(&rules.root_path) else {
-        return vec![(
+        return emit(
             rules.root_path.clone(),
             Err(failure(&rules.root_path, "", "missing_root_path")),
-        )];
+        );
     };
-    let rows: Vec<(String, &Value)> = if rules.expand_rows {
+    let rows: Box<dyn Iterator<Item = (String, &Value)> + '_> = if rules.expand_rows {
         match selected.as_array() {
-            Some(rows) if !rows.is_empty() => rows
-                .iter()
-                .enumerate()
-                .map(|(i, row)| (format!("{}/{}", rules.root_path, i), row))
-                .collect(),
+            Some(rows) if !rows.is_empty() => Box::new(
+                rows.iter()
+                    .enumerate()
+                    .map(|(i, row)| (format!("{}/{}", rules.root_path, i), row)),
+            ),
             Some(_) => {
-                return vec![(
+                return emit(
                     rules.root_path.clone(),
                     Err(failure(&rules.root_path, "", "empty_expansion")),
-                )];
+                );
             }
             None => {
-                return vec![(
+                return emit(
                     rules.root_path.clone(),
                     Err(failure(&rules.root_path, "", "expansion_requires_array")),
-                )];
+                );
             }
         }
     } else {
-        vec![(rules.root_path.clone(), selected)]
+        Box::new(std::iter::once((rules.root_path.clone(), selected)))
     };
-    rows.into_iter()
-        .map(|(path, row)| {
-            let result = (|| {
-                let mut row = row.clone();
-                for pointer in &rules.row_decode_paths {
-                    let encoded = row
-                        .pointer(pointer)
-                        .and_then(Value::as_str)
-                        .ok_or_else(|| failure(&path, pointer, "row_decode_requires_string"))?;
-                    let decoded = serde_json::from_str(encoded)
-                        .map_err(|_| failure(&path, pointer, "invalid_json_string"))?;
-                    *row.pointer_mut(pointer).expect("validated pointer") = decoded;
+    for (path, row) in rows {
+        // Check expansion/work/retention budgets before cloning a row.
+        if !allow(&path, row) {
+            return false;
+        }
+        let result = (|| {
+            let mut row = row.clone();
+            for pointer in &rules.row_decode_paths {
+                let encoded = row
+                    .pointer(pointer)
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| failure(&path, pointer, "row_decode_requires_string"))?;
+                let decoded = serde_json::from_str(encoded)
+                    .map_err(|_| failure(&path, pointer, "invalid_json_string"))?;
+                *row.pointer_mut(pointer).expect("validated pointer") = decoded;
+            }
+            let mut mapped = if rules.fields.is_empty() {
+                row.as_object()
+                    .cloned()
+                    .ok_or_else(|| failure(&path, "", "row_requires_object_or_field_mapping"))?
+            } else {
+                serde_json::Map::new()
+            };
+            for (field, pointer) in &rules.fields {
+                let value = row
+                    .pointer(pointer)
+                    .ok_or_else(|| failure(&path, field, "missing_field"))?;
+                if value.is_null() {
+                    return Err(failure(&path, field, "null_field"));
                 }
-                let mut mapped = if rules.fields.is_empty() {
-                    row.as_object()
-                        .cloned()
-                        .ok_or_else(|| failure(&path, "", "row_requires_object_or_field_mapping"))?
-                } else {
-                    serde_json::Map::new()
+                if matches!(
+                    field.as_str(),
+                    "timestamp" | "level" | "component" | "component_id" | "message"
+                ) && !value.is_string()
+                    && !(field == "timestamp" && rules.timestamp_unit.is_some() && value.is_i64())
+                {
+                    return Err(failure(&path, field, "wrong_field_type"));
+                }
+                mapped.insert(field.clone(), value.clone());
+            }
+            let timestamp = mapped
+                .get("timestamp")
+                .ok_or_else(|| failure(&path, "timestamp", "missing_field"))?;
+            if let Some(unit) = rules.timestamp_unit {
+                let n = timestamp
+                    .as_i64()
+                    .ok_or_else(|| failure(&path, "timestamp", "timestamp_requires_integer"))?;
+                let scale = match unit {
+                    TimestampUnit::Seconds => 1,
+                    TimestampUnit::Milliseconds => 1000,
+                    TimestampUnit::Microseconds => 1_000_000,
+                    TimestampUnit::Nanoseconds => 1_000_000_000,
                 };
-                for (field, pointer) in &rules.fields {
-                    let value = row
-                        .pointer(pointer)
-                        .ok_or_else(|| failure(&path, field, "missing_field"))?;
-                    if value.is_null() {
-                        return Err(failure(&path, field, "null_field"));
-                    }
-                    if matches!(
-                        field.as_str(),
-                        "timestamp" | "level" | "component" | "component_id" | "message"
-                    ) && !value.is_string()
-                        && !(field == "timestamp"
-                            && rules.timestamp_unit.is_some()
-                            && value.is_i64())
-                    {
-                        return Err(failure(&path, field, "wrong_field_type"));
-                    }
-                    mapped.insert(field.clone(), value.clone());
-                }
-                let timestamp = mapped
-                    .get("timestamp")
-                    .ok_or_else(|| failure(&path, "timestamp", "missing_field"))?;
-                if let Some(unit) = rules.timestamp_unit {
-                    let n = timestamp
-                        .as_i64()
-                        .ok_or_else(|| failure(&path, "timestamp", "timestamp_requires_integer"))?;
-                    let scale = match unit {
-                        TimestampUnit::Seconds => 1,
-                        TimestampUnit::Milliseconds => 1000,
-                        TimestampUnit::Microseconds => 1_000_000,
-                        TimestampUnit::Nanoseconds => 1_000_000_000,
-                    };
-                    let date = chrono::DateTime::from_timestamp(
-                        n.div_euclid(scale),
-                        (n.rem_euclid(scale) * (1_000_000_000 / scale)) as u32,
-                    )
-                    .ok_or_else(|| failure(&path, "timestamp", "timestamp_out_of_range"))?;
-                    mapped.insert(
-                        "timestamp".into(),
-                        json!(date.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)),
-                    );
-                } else if !timestamp.is_string() {
-                    return Err(failure(
-                        &path,
-                        "timestamp",
-                        "timestamp_requires_string_or_explicit_unit",
-                    ));
-                }
-                Ok(Value::Object(mapped))
-            })();
-            (path, result)
-        })
-        .collect()
+                let date = chrono::DateTime::from_timestamp(
+                    n.div_euclid(scale),
+                    (n.rem_euclid(scale) * (1_000_000_000 / scale)) as u32,
+                )
+                .ok_or_else(|| failure(&path, "timestamp", "timestamp_out_of_range"))?;
+                mapped.insert(
+                    "timestamp".into(),
+                    json!(date.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)),
+                );
+            } else if !timestamp.is_string() {
+                return Err(failure(
+                    &path,
+                    "timestamp",
+                    "timestamp_requires_string_or_explicit_unit",
+                ));
+            }
+            Ok(Value::Object(mapped))
+        })();
+        if !emit(path, result) {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn schema_preview(file: &std::path::Path, samples: usize) -> Result<Value, std::io::Error> {
