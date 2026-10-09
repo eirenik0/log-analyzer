@@ -37,7 +37,18 @@ Claude permissions and fork context apply only to this wrapper.
 def sync(check=False):
     files = generated_files()
     existing = {p.relative_to(TARGET) for p in TARGET.rglob('*') if p.is_file()}
-    changed = sorted(str(p) for p, data in files.items() if not (TARGET / p).is_file() or (TARGET / p).read_bytes() != data)
+    def matches(relative, expected):
+        destination = TARGET / relative
+        if not destination.is_file():
+            return False
+        actual = destination.read_bytes()
+        # Git may convert checked-out Markdown to CRLF on Windows. Only these
+        # two rendered documents normalize newlines; copied resources stay exact.
+        if relative in (Path('SKILL.md'), Path('workflow.md')):
+            actual = actual.replace(b'\r\n', b'\n')
+        return actual == expected
+
+    changed = sorted(str(p) for p, data in files.items() if not matches(p, data))
     stale = sorted(str(p) for p in existing - files.keys())
     if check:
         if changed or stale:

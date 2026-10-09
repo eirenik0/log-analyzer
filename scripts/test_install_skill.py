@@ -1,5 +1,6 @@
 """Exercise standalone installation using an isolated source and destination."""
 import os
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -7,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -201,6 +203,27 @@ class StandaloneSkillLinksTests(unittest.TestCase):
     def test_claude_generated_bundle_has_no_drift(self):
         result = subprocess.run([os.sys.executable, str(ROOT / 'scripts/sync-skills.py'), '--check'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_generated_crlf_checkout_passes_but_content_drift_still_fails(self):
+        spec = importlib.util.spec_from_file_location('sync_skills', ROOT / 'scripts/sync-skills.py')
+        generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generator)
+        with tempfile.TemporaryDirectory(prefix='skill line endings ') as directory:
+            root = Path(directory)
+            source, target = root / 'canonical', root / 'claude'
+            shutil.copytree(generator.SOURCE, source)
+            with patch.object(generator, 'SOURCE', source), patch.object(generator, 'TARGET', target):
+                generator.sync()
+                for name in ('SKILL.md', 'workflow.md'):
+                    page = target / name
+                    page.write_bytes(page.read_bytes().replace(b'\n', b'\r\n'))
+                generator.sync(check=True)
+                page = target / 'workflow.md'
+                page.write_bytes(page.read_bytes() + b'Unexpected workflow drift\r\n')
+                with self.assertRaisesRegex(SystemExit, 'workflow.md'):
+                    generator.sync(check=True)
+                generator.sync()
+                generator.sync(check=True)
 
     def test_portable_metadata_and_pi_resource_paths(self):
         skill = ROOT / '.agents/skills/analyze-logs'

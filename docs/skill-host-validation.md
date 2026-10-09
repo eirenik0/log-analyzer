@@ -16,6 +16,8 @@ a claim that every provider/model supports the workflow equally well.
 - Existing directory symlinks, symlink overlap, dangling destinations, ancestor
   and descendant overlap rejection, and child symlink overwrite prevention.
 - Missing executable guidance and discovery without claiming compatibility.
+- Generated Markdown tolerates Windows CRLF checkout conversion while rejecting
+  actual workflow-content drift.
 - Portable name/description metadata, optional Codex display metadata, Pi package
   paths and Claude plugin paths, and no drift in the generated Claude bundle.
 
