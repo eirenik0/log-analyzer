@@ -38,3 +38,6 @@ Check outcome and opposite-boundary recognition per selected operation family,
 respecting literal mappings and structured identity/value constraints. Withhold
 unsupported zeros and missing-boundary claims; retain positive facts with explicit
 partial coverage when recognition capabilities differ.
+
+Preserve nonempty and rejection coverage when physical or multiline record-size
+limits interrupt parsing, including automatic-sampling cutoffs.

@@ -2143,3 +2143,132 @@ fn restrictive_end_outcomes_withhold_absence_claims_but_complementary_rules_cove
         }
     }
 }
+
+#[test]
+fn record_size_cutoffs_preserve_nonempty_and_rejected_coverage() {
+    let short = json!({"ts":"2026-01-01T00:00:00+02:00","message":"sample"}).to_string();
+    let large = json!({"ts":"2026-01-01T00:00:00+02:00","message":"x".repeat(300)}).to_string();
+    let classic = fs::read_to_string(root().join("evals/fixtures/classic.log"))
+        .unwrap()
+        .lines()
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(classic.len() < 160 && classic.len() + 121 > 160);
+    for (index, (format, data, nonempty, blanks, rejection_line, reason)) in [
+        (
+            "json-lines",
+            large.clone() + "\n",
+            1,
+            0,
+            Some(1),
+            "physical_record_limit",
+        ),
+        (
+            "classic",
+            classic.clone() + &"x".repeat(300) + "\n",
+            1,
+            0,
+            Some(1),
+            "physical_record_limit",
+        ),
+        (
+            "auto",
+            large.clone() + "\n",
+            1,
+            0,
+            Some(1),
+            "physical_record_limit",
+        ),
+        (
+            "auto",
+            format!("{short}\n{large}\n"),
+            2,
+            0,
+            Some(2),
+            "physical_record_limit",
+        ),
+        (
+            "auto",
+            format!("\n{short}\n{large}\n"),
+            2,
+            1,
+            Some(3),
+            "physical_record_limit",
+        ),
+        (
+            "classic",
+            format!("{classic}\n{}\n", "c".repeat(120)),
+            2,
+            0,
+            Some(1),
+            "multiline_record_limit",
+        ),
+        (
+            "classic",
+            format!("{classic}\n{}\n", "c".repeat(300)),
+            2,
+            0,
+            Some(2),
+            "physical_record_limit",
+        ),
+        ("json-lines", " ".repeat(300) + "\n", 0, 1, None, ""),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("limit.toml");
+        fs::write(
+            &profile,
+            format!("extends = \"base\"\n[parser]\nformat = {format:?}\n"),
+        )
+        .unwrap();
+        let source = temp.path().join("limit.log");
+        fs::write(&source, data).unwrap();
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--record-max-bytes",
+            "160",
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(report["processing"]["status"], "partial");
+        let coverage = &report["report_metadata"]["evidence"]["inputs"][0]["coverage"];
+        assert_eq!(coverage["nonempty_lines"], nonempty, "case {index}");
+        assert_eq!(
+            coverage["structural_diagnostics"]["blank_lines"], blanks,
+            "case {index}"
+        );
+        assert_eq!(coverage["parsed_entries"], 0);
+        assert_eq!(
+            coverage["rejected_candidates"],
+            u64::from(rejection_line.is_some())
+        );
+        if let Some(line) = rejection_line {
+            assert_eq!(
+                report["report_metadata"]["evidence"]["scope"]["status"],
+                "unparsed_input"
+            );
+            let diagnostics = coverage["structural_diagnostics"]["diagnostics"]
+                .as_array()
+                .unwrap();
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(diagnostics[0]["line"], line);
+            assert_eq!(diagnostics[0]["reason"], reason);
+        } else {
+            assert_eq!(
+                report["report_metadata"]["evidence"]["scope"]["status"],
+                "empty_input"
+            );
+        }
+        let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+        assert!(retained["records"].as_array().unwrap().is_empty());
+    }
+}

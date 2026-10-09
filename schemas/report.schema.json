@@ -273,7 +273,10 @@
                       "selected_parser_mismatch",
                       "unsupported_header",
                       "unrecognized_leading_block",
-                      "invalid_selected_record"
+                      "invalid_selected_record",
+                      "physical_record_limit",
+                      "multiline_record_limit",
+                      "processing_stopped_before_parse"
                     ]
                   },
                   "evidence_ref": {

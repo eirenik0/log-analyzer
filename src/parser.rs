@@ -399,6 +399,7 @@ fn parse_lines<'a>(
     let mut samples = Vec::new();
     let mut sample_indices = Vec::new();
     let mut skipped_leading_blank_lines = 0;
+    let mut sampling_stop = None;
     let selection = if config.normalization.is_some() {
         "normalization"
     } else if config.parser.format == LogFormat::Auto {
@@ -417,6 +418,13 @@ fn parse_lines<'a>(
                 .as_deref_mut()
                 .is_some_and(|budget| !budget.physical_size(line.len()))
             {
+                sampling_stop = Some((
+                    index,
+                    !line.trim().is_empty(),
+                    controls
+                        .as_deref()
+                        .is_some_and(|budget| line.len() > budget.limits.record_bytes),
+                ));
                 break;
             }
             if line.trim().is_empty() && samples.is_empty() {
@@ -454,6 +462,31 @@ fn parse_lines<'a>(
         normalization_diagnostics: Vec::new(),
         structural_diagnostics,
     };
+    if let Some((index, nonempty, oversized)) = sampling_stop {
+        coverage.nonempty_lines = samples
+            .iter()
+            .filter(|line| !line.trim().is_empty())
+            .count()
+            + usize::from(nonempty);
+        coverage.structural_diagnostics.blank_lines +=
+            samples.iter().filter(|line| line.trim().is_empty()).count() + usize::from(!nonempty);
+        if nonempty {
+            coverage.rejected_candidates += 1;
+            coverage.structural_diagnostics.physical_candidate_blocks += 1;
+            coverage.structural_diagnostics.reject(
+                index + 1,
+                if oversized {
+                    "physical_record_limit"
+                } else {
+                    "processing_stopped_before_parse"
+                },
+            );
+        }
+        return Ok(ParsedLogFile {
+            entries: Vec::new(),
+            coverage,
+        });
+    }
     let mut entries = Vec::new();
     let mut current_log: Option<String> = None;
     let mut current_line_number = 0;
@@ -464,22 +497,37 @@ fn parse_lines<'a>(
         .map(|(index, line)| (index, Ok(line)));
     for (index, line) in replay.chain(lines) {
         let line = line?;
+        let nonempty = !line.trim().is_empty();
+        coverage.nonempty_lines += usize::from(nonempty);
+        coverage.structural_diagnostics.blank_lines += usize::from(!nonempty);
         if controls
             .as_deref_mut()
             .is_some_and(|budget| !budget.physical_size(line.len()))
         {
+            if nonempty {
+                coverage.rejected_candidates += 1;
+                coverage.structural_diagnostics.physical_candidate_blocks += 1;
+                coverage.structural_diagnostics.reject(
+                    index + 1,
+                    if controls
+                        .as_deref()
+                        .is_some_and(|budget| line.len() > budget.limits.record_bytes)
+                    {
+                        "physical_record_limit"
+                    } else {
+                        "processing_stopped_before_parse"
+                    },
+                );
+            }
             break;
         }
-        if !line.trim().is_empty() {
-            coverage.nonempty_lines += 1;
+        if nonempty {
             coverage
                 .structural_diagnostics
                 .observed_format_matches
                 .observe(&line);
             coverage.structural_diagnostics.unsupported_python_headers +=
                 usize::from(unsupported_python_header(&line));
-        } else {
-            coverage.structural_diagnostics.blank_lines += 1;
         }
         if format == LogFormat::JsonLines {
             if !line.trim().is_empty() {
@@ -521,6 +569,19 @@ fn parse_lines<'a>(
             if controls.as_deref_mut().is_some_and(|budget| {
                 !budget.physical_size(text.len().saturating_add(1).saturating_add(line.len()))
             }) {
+                coverage.rejected_candidates += 1;
+                coverage.structural_diagnostics.physical_candidate_blocks += 1;
+                coverage.structural_diagnostics.reject(
+                    current_line_number,
+                    if controls.as_deref().is_some_and(|budget| {
+                        text.len().saturating_add(1).saturating_add(line.len())
+                            > budget.limits.record_bytes
+                    }) {
+                        "multiline_record_limit"
+                    } else {
+                        "processing_stopped_before_parse"
+                    },
+                );
                 break;
             }
             text.push('\n');
