@@ -1185,3 +1185,10 @@ performance problems using compact, verifiable evidence from logs. The local Rus
 CLI calculates; the consuming agent chooses queries and explains findings.** Link
 the [portable workflow](docs/investigation-workflow.md) and disclose the installed
 build's capabilities and evaluation limits. The project name remains Log Analyzer.
+
+## Publishing to crates.io
+
+The **Publish crate** workflow supports GitHub Trusted Publishing with short-lived
+OIDC credentials. It validates an existing stable GitHub release and defaults to a
+package dry run. See [setup and publishing instructions](docs/trusted-publishing.md)
+for crate ownership, licensing, and the one-time crates.io configuration.
