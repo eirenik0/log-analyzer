@@ -56,7 +56,9 @@ and collection/ID selector. It never parses or correlates sources again. Optiona
 `--verify-sources` hashes current files separately and reports unchanged, changed,
 missing or unavailable. Prefix verification compares only consumed bytes and reports
 `prefix_unchanged`, `prefix_changed` or `prefix_shortened`; retained facts stay about the captured
-snapshot. Artifact reads and optional source verification have byte limits.
+snapshot. Every declared input receives a verification result; unread sources are
+unavailable because no retained snapshot exists. Artifact reads and optional source
+verification have byte limits.
 Artifacts stay local until deleted, are never overwritten and need caller-managed
 retention. Retrieval saves only new `--output` files.
 

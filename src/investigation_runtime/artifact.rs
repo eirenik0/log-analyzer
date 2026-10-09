@@ -709,10 +709,20 @@ fn verify_sources(retained: &Value, max_bytes: u64) -> Value {
         .as_array()
         .unwrap();
     let mut remaining = max_bytes;
-    let states: Vec<_> = inputs
+    let states: Vec<_> = retained["processing"]["inputs"]
+        .as_array()
+        .unwrap()
         .iter()
         .enumerate()
-        .map(|(ordinal, input)| verify_source(retained, ordinal, input, &mut remaining))
+        .map(|(ordinal, progress)| {
+            if progress["capture"] == "unread" {
+                return json!({"input_ordinal":ordinal,"status":"unavailable","reason":"Source was not captured; no retained snapshot to verify","facts":"retained_snapshot"});
+            }
+            match inputs.get(ordinal) {
+                Some(input) => verify_source(retained, ordinal, input, &mut remaining),
+                None => json!({"input_ordinal":ordinal,"status":"unavailable","reason":"Retained source manifest is unavailable","facts":"retained_snapshot"}),
+            }
+        })
         .collect();
     json!({"status":"checked","inputs":states,"verified_bytes":max_bytes-remaining,"facts":"retained_snapshot","reason":"Current file identity does not rewrite retained evidence"})
 }

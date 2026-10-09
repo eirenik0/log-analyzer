@@ -19,3 +19,6 @@ canonical numeric/boolean payload identity and join values.
 
 Apply the expanded-row budget only when normalization expands arrays; ordinary
 normalized records continue to consume the general record budget.
+
+Charge early normalization rejections against the general record limit and report
+verification availability for every declared input, including unread sources.

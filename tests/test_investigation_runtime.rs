@@ -1218,3 +1218,120 @@ fn ordinary_normalization_does_not_consume_array_expansion_capacity() {
         }
     }
 }
+
+#[test]
+fn early_normalization_failures_consume_general_record_capacity() {
+    for (index, (settings, row, reason)) in [
+        ("", "{invalid", "invalid_json"),
+        ("root_path = \"/rows\"\n", "{}", "missing_root_path"),
+        (
+            "decode_paths = [\"/encoded\"]\n",
+            "{}",
+            "missing_decode_path",
+        ),
+        (
+            "decode_paths = [\"/encoded\"]\n",
+            "{\"encoded\":1}",
+            "decode_requires_string",
+        ),
+        (
+            "decode_paths = [\"/encoded\"]\n",
+            "{\"encoded\":\"invalid\"}",
+            "invalid_json_string",
+        ),
+        (
+            "root_path = \"/rows\"\n",
+            "{\"rows\":[]}",
+            "empty_expansion",
+        ),
+        (
+            "root_path = \"/rows\"\n",
+            "{\"rows\":{}}",
+            "expansion_requires_array",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("normalization.toml");
+        fs::write(&profile, format!("extends = \"base\"\n[parser]\nformat = \"json-lines\"\n[normalization]\nexpand_rows = true\n{settings}")).unwrap();
+        let source = temp.path().join("rejected.jsonl");
+        fs::write(&source, format!("{row}\n{row}\n{row}\n")).unwrap();
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--processing-max-records",
+            "1",
+            "--processing-max-expanded-records",
+            "0",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(report["processing"]["status"], "partial", "{reason}");
+        assert_eq!(
+            report["processing"]["stop"]["limit_name"], "records",
+            "{reason}"
+        );
+        assert_eq!(report["processing"]["usage"]["records"], 0);
+        assert_eq!(report["processing"]["usage"]["expanded_records"], 0);
+        let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+        let text = retained.to_string();
+        assert!(text.contains(reason), "missing rejection {reason}");
+    }
+}
+
+#[test]
+fn source_verification_reports_every_declared_input_including_unread_sources() {
+    for first_missing in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("missing.jsonl");
+        let existing = root().join("examples/investigations/slow.jsonl");
+        let first = if first_missing { &missing } else { &existing };
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--config",
+            "examples/investigations/profile.toml",
+            "investigate",
+            first.to_str().unwrap(),
+            missing.to_str().unwrap(),
+            existing.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+        ]);
+        check(&report, &artifact);
+        // A subsequently created source still has no captured identity to compare.
+        fs::write(&missing, fs::read(&existing).unwrap()).unwrap();
+        let page = success(&[
+            "investigation-evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            report["artifact"]["stored_sha256"].as_str().unwrap(),
+            "--verify-sources",
+        ]);
+        let states = page["artifact_retrieval"]["source_verification"]["inputs"]
+            .as_array()
+            .unwrap();
+        assert_eq!(states.len(), 3);
+        for (ordinal, state) in states.iter().enumerate() {
+            assert_eq!(state["input_ordinal"], ordinal);
+            assert_eq!(
+                state["status"],
+                if ordinal == 0 && !first_missing {
+                    "unchanged"
+                } else {
+                    "unavailable"
+                }
+            );
+            if state["status"] == "unavailable" {
+                assert!(state["current_sha256"].is_null());
+                assert!(state["reason"].as_str().unwrap().contains("not captured"));
+            }
+        }
+        assert_eq!(page["artifact_retrieval"]["parse_passes"], 0);
+    }
+}

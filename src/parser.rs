@@ -262,21 +262,20 @@ fn finish_candidate(
     {
         return;
     }
-    if config.normalization.is_some()
-        && let Some(budget) = controls.as_deref_mut()
-    {
-        // The physical root reserves transient storage; only emitted row attempts
-        // consume normalized-record capacity.
-        budget.records -= 1;
-    }
     coverage.structural_diagnostics.physical_candidate_blocks += 1;
     if let Some(rules) = &config.normalization {
+        let mut first_row = true;
         crate::normalize::visit_normalized(
             text,
             line_number,
             rules,
             |_, _| {
                 controls.as_deref_mut().is_none_or(|budget| {
+                    if first_row {
+                        // Early normalization failures retain the physical record charge.
+                        budget.records -= 1;
+                        first_row = false;
+                    }
                     budget.record(text.len(), rules.fields.len(), rules.expand_rows)
                 })
             },
