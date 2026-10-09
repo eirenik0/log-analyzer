@@ -985,7 +985,13 @@ Create your own profile from templates:
 # In this repository
 cp config/templates/custom-start.toml config/profiles/my-team.toml
 
-# If only the skill is installed globally
+# If only the skill is installed globally, create the destination first
+mkdir -p ./config/profiles
+
+# Codex or Pi global installation
+cp ~/.agents/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
+
+# Claude Code global installation (alternative to the Codex/Pi command)
 cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/my-team.toml
 
 # Then run with your custom profile
