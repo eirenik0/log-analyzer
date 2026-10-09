@@ -101,7 +101,10 @@ budget when array expansion is disabled. `--cancel-file path` requests cooperati
 the file appears. Interrupted correlation publishes no tentative missing-end results.
 A cutoff makes affected full-input assessments insufficient while preserving completed
 processed-population facts. Independent inputs have separate scope completion;
-a later capture failure does not downgrade an earlier completed input. Identity-only
+a later capture failure does not downgrade an earlier completed input. Rejected physical or normalized records make declared-input support insufficient;
+known processed counts and elapsed measurements remain retained. Paired-population
+distributions require measurable source timestamps for every pair; individual
+reliable intervals remain available when that requirement is unmet. Identity-only
 classification does not establish lifecycle support or authorize zero lifecycle
 counts. Mixed identity-only and boundary evidence retains observed boundary facts
 while declaring incomplete lifecycle coverage. Reading exactly the input byte cap conservatively

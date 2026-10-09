@@ -26,3 +26,10 @@ verification availability for every declared input, including unread sources.
 Keep identity recognition separate from lifecycle support: identity-only selections
 withhold lifecycle populations, while mixed selections retain observed boundaries
 and declare incomplete lifecycle coverage.
+
+Withhold full-input support when physical or normalized candidates are rejected,
+retaining exact processed facts and explicitly partial populations and scopes.
+
+Withhold paired-population elapsed distributions when some pairs lack source
+timestamp provenance, preserving reliable individual measurements and unavailable
+interval findings.

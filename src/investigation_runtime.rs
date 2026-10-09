@@ -317,12 +317,15 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 .collect::<Vec<_>>()
         });
         let scope_id = format!("scope-{ordinal}");
+        let structural_loss = parsed.coverage.rejected_candidates > 0
+            || !parsed.coverage.normalization_diagnostics.is_empty()
+            || parsed.coverage.is_unparsed();
         let semantic_status = if config.event_classifier().is_none() {
             "unsupported"
         } else if perf.is_some() {
             if view.conflicting > 0 || view.ambiguous > 0 {
                 "conflicting"
-            } else if view.relevant == 0 || view.rejected > 0 {
+            } else if view.relevant == 0 || view.rejected > 0 || structural_loss {
                 "insufficient_evidence"
             } else {
                 "supported"
@@ -331,7 +334,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "not_performed"
         };
         let coverage = perf.as_ref().map(|_| &view);
-        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":"complete","analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Explicit effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
+        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":if structural_loss{"partial"}else{"complete"},"analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Explicit effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
         budget.begin_stage();
         findings::build(
             &entries,
@@ -379,6 +382,14 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &mut findings,
             );
         }
+        if structural_loss {
+            for population in populations.iter_mut().filter(|p| p["scope_id"] == scope_id) {
+                population["completeness"] = json!("partial");
+            }
+            for sequence in sequences.iter_mut().filter(|s| s["scope_id"] == scope_id) {
+                sequence["completeness"] = json!("partial");
+            }
+        }
         let lifecycle_status = if semantic_status == "supported" && view.boundaries == 0 {
             "unsupported"
         } else if semantic_status == "supported" && view.identity_only > 0 {
@@ -408,7 +419,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "slow_operations",
             "incomplete_lifecycles",
         ] {
-            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if parsed.coverage.is_unparsed(){"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && !view.entries.is_empty() && !view.outcomes_supported{"unsupported"}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
+            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if structural_loss{"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && !view.entries.is_empty() && !view.outcomes_supported{"unsupported"}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if structural_loss {"Rejected or unparsed source candidates may contain relevant evidence; retained calculations cover only parsed selected records. See per-input coverage diagnostics."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
         }
     }
     // Unread independent inputs retain their own unavailable analysis scopes.

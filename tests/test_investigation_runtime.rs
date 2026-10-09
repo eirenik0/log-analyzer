@@ -1461,3 +1461,140 @@ fn intentional_start_only_semantics_preserve_counts_without_missing_end_claims()
             .any(|f| f["claim"].as_str().unwrap().contains("no observed end"))
     );
 }
+
+#[test]
+fn structural_rejections_withhold_full_input_support_but_preserve_parsed_measurements() {
+    for normalized in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("partial.jsonl");
+        let profile = temp.path().join("profile.toml");
+        let mut config =
+            fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap();
+        let data = fs::read_to_string(root().join("examples/investigations/slow.jsonl")).unwrap();
+        if normalized {
+            config.push_str("\n[normalization]\nexpand_rows = true\nroot_path = \"/rows\"\n");
+            let mut rows: Vec<Value> = data
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+            for row in &mut rows {
+                row["timestamp"] = row["ts"].clone();
+            }
+            rows.push(json!({"timestamp":"invalid","message":"unparsed normalized row"}));
+            fs::write(&source, json!({"rows":rows}).to_string() + "\n").unwrap();
+        } else {
+            fs::write(&source, data + "{not valid json}\n").unwrap();
+        }
+        fs::write(&profile, config).unwrap();
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--config",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(report["processing"]["status"], "complete");
+        assert_eq!(report["scopes"][0]["completeness"], "partial");
+        assert_eq!(report["scopes"][0]["analysis_completion"], "complete");
+        assert_eq!(count(&report, "paired-lifecycles"), 3);
+        for goal in ["failures", "slow_operations", "incomplete_lifecycles"] {
+            assert_eq!(
+                report["assessments"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|a| a["goal"] == goal)
+                    .unwrap()["status"],
+                "insufficient_evidence",
+                "{goal}"
+            );
+        }
+        assert_eq!(
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|f| f["kind"] == "measurement")
+                .count(),
+            3
+        );
+        assert!(
+            report["populations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|p| p["completeness"] == "partial" && p["basis"] == "processed_population")
+        );
+    }
+}
+
+#[test]
+fn mixed_timestamp_provenance_retains_pairs_without_partial_population_distributions() {
+    for all_reliable in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("timestamps.jsonl");
+        let rows:Vec<_> = [
+            ("offset","start","2026-01-01T10:00:00+02:00"),
+            ("offset","end","2026-01-01T10:00:02+02:00"),
+            ("other","start",if all_reliable {"2026-01-01T11:00:00+02:00"}else{"2026-01-01T11:00:00"}),
+            ("other","end",if all_reliable {"2026-01-01T11:00:03+02:00"}else{"2026-01-01T11:00:03"}),
+        ].into_iter().map(|(id,phase,ts)|json!({"ts":ts,"level":"INFO","message":"timestamp boundary","operation":id,"phase":phase,"id":id,"session":"a","outcome":"success"}).to_string()).collect();
+        fs::write(&source, rows.join("\n") + "\n").unwrap();
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--config",
+            "examples/investigations/profile.toml",
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        assert_eq!(count(&report, "paired-lifecycles"), 2);
+        let findings = report["findings"].as_array().unwrap();
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f["kind"] == "measurement")
+                .count(),
+            if all_reliable { 2 } else { 1 }
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f["details"]["calculation"] == "distribution")
+                .count(),
+            if all_reliable { 5 } else { 0 }
+        );
+        assert_eq!(
+            report["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["goal"] == "slow_operations")
+                .unwrap()["status"],
+            if all_reliable {
+                "supported"
+            } else {
+                "insufficient_evidence"
+            }
+        );
+        if !all_reliable {
+            assert!(findings.iter().any(|f| {
+                f["id"]
+                    .as_str()
+                    .unwrap()
+                    .contains("distribution-unavailable")
+                    && f["kind"] == "unknown"
+            }));
+            assert!(findings.iter().any(|f| {
+                f["id"].as_str().unwrap().contains("interval-unavailable") && f["kind"] == "unknown"
+            }));
+        }
+    }
+}

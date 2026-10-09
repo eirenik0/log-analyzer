@@ -177,6 +177,7 @@ pub(super) fn build(
         operation_rules.extend(retained.iter().filter(|entry| matches!(&entry.classification, Some(ClassifiedRecord::Event { semantics, .. }) if semantics.phase.is_some())).flat_map(|entry| rules(entry)));
     }
     if !operation_rules.is_empty() {
+        let paired_count = operation_members.len();
         let population_id = population(
             scope,
             "paired-lifecycles",
@@ -194,7 +195,9 @@ pub(super) fn build(
             populations,
             memberships,
         );
-        if !durations.is_empty() {
+        if durations.len() != paired_count {
+            findings.push(fact(format!("{population_id}-distribution-unavailable"),scope,"unknown","Elapsed distributions are unavailable for this paired population.",Vec::new(),json!({"reason":"Not every paired member has source timestamp provenance; individual reliable measurements remain available.","supporting_occurrences":[]})));
+        } else if !durations.is_empty() {
             durations.sort_unstable();
             let count = durations.len();
             for (statistic, value, method) in [
