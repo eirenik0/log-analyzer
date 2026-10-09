@@ -248,6 +248,7 @@ Presentation limits require serialized usage for each declared size budget.
 remaining items. `mandatory_metadata_over_budget` requires an exceeded size budget
 and no displayed items. A `page` makes progress while declaring omissions.
 
-Declared serialized usage cannot be smaller than the compact UTF-8 representation
-of the provided report plus its final newline. Exact pretty-printed wire size requires
+Declared serialized usage cannot be smaller than a conservative JSON syntax lower
+bound plus its final newline. The bound discounts each number to one character,
+allowing shorter scientific notation than the validator’s numeric spelling. Exact pretty-printed wire size requires
 the original report bytes; relational validation cannot reconstruct those spaces.

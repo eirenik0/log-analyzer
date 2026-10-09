@@ -1197,6 +1197,35 @@ fn presentation_usage_cannot_underreport_the_document_size() {
         let (mut report, artifact) = fixture("supported");
         report["presentation"][budget] = json!(1);
         report["presentation"][usage] = json!(1);
-        reject(report, artifact, "below compact document size");
+        reject(report, artifact, "below minimum document size");
     }
+}
+
+#[test]
+fn presentation_usage_accepts_shorter_scientific_number_spelling() {
+    let (mut report, mut artifact) = fixture("supported");
+    for doc in [&mut report, &mut artifact] {
+        let details = &mut doc["findings"][4]["details"];
+        details["statistic"] = json!("mean");
+        details["method"] = json!("arithmetic_mean");
+        details["value"] = json!(4000.0);
+    }
+    refresh(&mut report, &artifact);
+    report["presentation"]["budget_bytes"] = json!(100000);
+    report["presentation"]["serialized_bytes"] = json!(0);
+    report["presentation"]["serialized_characters"] = json!(0);
+    for _ in 0..4 {
+        let wire = report.to_string().replace("4000.0", "4e3") + "\n";
+        report["presentation"]["serialized_bytes"] = json!(wire.len());
+        report["presentation"]["serialized_characters"] = json!(wire.chars().count());
+    }
+    let wire = report.to_string().replace("4000.0", "4e3") + "\n";
+    assert_eq!(
+        wire.len() as u64,
+        report["presentation"]["serialized_bytes"].as_u64().unwrap()
+    );
+    let parsed: Value = serde_json::from_str(&wire).unwrap();
+    assert_eq!(parsed, report);
+    shape(&parsed, "investigation.schema.json");
+    validate_relations(&parsed, Some(&bytes(&artifact))).unwrap();
 }

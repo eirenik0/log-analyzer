@@ -1608,16 +1608,22 @@ pub fn validate_relations(
         || !presentation["serialized_characters"].is_null()
     {
         let compact = report.to_string();
+        // Equivalent JSON may use shorter scientific notation. Discount every
+        // numeric spelling to one character for a conservative syntax lower bound.
+        let discount = numeric_spelling_discount(report);
         for (key, minimum) in [
-            ("serialized_bytes", compact.len() + 1),
-            ("serialized_characters", compact.chars().count() + 1),
+            ("serialized_bytes", compact.len() - discount + 1),
+            (
+                "serialized_characters",
+                compact.chars().count() - discount + 1,
+            ),
         ] {
             require(
                 presentation[key]
                     .as_u64()
                     .is_none_or(|usage| usage >= minimum as u64),
                 "/presentation",
-                "serialized usage is below compact document size including newline",
+                "serialized usage is below minimum document size including newline",
             )?;
         }
     }
@@ -1629,6 +1635,15 @@ pub fn validate_relations(
         )?;
     }
     Ok(summary)
+}
+
+fn numeric_spelling_discount(value: &Value) -> usize {
+    match value {
+        Value::Number(number) => number.to_string().len().saturating_sub(1),
+        Value::Array(values) => values.iter().map(numeric_spelling_discount).sum(),
+        Value::Object(values) => values.values().map(numeric_spelling_discount).sum(),
+        _ => 0,
+    }
 }
 
 fn check_bundle(
