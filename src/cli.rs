@@ -218,7 +218,7 @@ pub struct Cli {
 
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
-    /// Print build identity, commands, formats, presets and embedded report schemas as JSON
+    /// Print build identity, commands, formats, presets, report schemas and contract availability as JSON
     Capabilities,
     /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
     Schema {

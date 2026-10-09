@@ -1,0 +1,768 @@
+{
+  "contract_version": 1,
+  "investigation_contract_version": 1,
+  "report_metadata": {
+    "active_profile": "investigation-example",
+    "build": {
+      "package_version": "0.3.0",
+      "source_revision": "9b35994bc918034a17f31cbb564a1b3977fa9a49",
+      "source_state": "dirty"
+    },
+    "event_classification_contract": 2,
+    "evidence": {
+      "contract_version": 1,
+      "inputs": [
+        {
+          "bytes": 392,
+          "coverage": {
+            "configured_parser": "json-lines",
+            "file": "examples/investigation-contract/zero.jsonl",
+            "input_bytes": 392,
+            "nonempty_lines": 2,
+            "normalization_diagnostics": [],
+            "parsed_entries": 2,
+            "profile": "investigation-example",
+            "rejected_candidates": 0,
+            "selected_parser": "json-lines",
+            "snapshot_sha256": "50054bd8478674b160cc95118b973ade8723529f1f9291c4d8ee82cfc4372c5a"
+          },
+          "file": "examples/investigation-contract/zero.jsonl",
+          "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+          "selected_entries": 2,
+          "sha256": "50054bd8478674b160cc95118b973ade8723529f1f9291c4d8ee82cfc4372c5a"
+        }
+      ],
+      "omissions": {
+        "basis": "legacy_view_before_common_pagination",
+        "details": {
+          "ambiguous_groups": 0,
+          "operations": 0,
+          "orphans": 0,
+          "stats": 0,
+          "threshold_violations": 0,
+          "unmatched_events": 0
+        },
+        "pagination": "see_retrieval_collections",
+        "records": null,
+        "retrieval": "rerun_without_display_limits"
+      },
+      "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+      "query": {
+        "command": {
+          "Perf": {
+            "files": [
+              "examples/investigation-contract/zero.jsonl"
+            ],
+            "op_type": null,
+            "orphans_only": false,
+            "sort_by": "Duration",
+            "threshold_ms": 1000,
+            "top_n": 0
+          }
+        },
+        "filter": null
+      },
+      "query_sha256": "9c80ec6cd16b8e12f8df30295cf6c3a96be9e204b9f9b1525fa5e0f6613ab631",
+      "redaction": {
+        "applied": false,
+        "legacy_sanitization": false,
+        "masked_id_fields": []
+      },
+      "scope": {
+        "capture_completeness": "unknown",
+        "coverage_basis": "before_display_limits",
+        "parsed_entries": 2,
+        "selected_entries": 2,
+        "status": "parsed"
+      },
+      "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82"
+    },
+    "schema_version": 1
+  },
+  "processing": {
+    "status": "complete",
+    "stop": null,
+    "limits": {
+      "input_bytes": null,
+      "records": null,
+      "expanded_records": null,
+      "work_units": null,
+      "elapsed_ms": null,
+      "memory_bytes": null,
+      "artifact_bytes": null
+    },
+    "usage": {
+      "input_bytes": 392,
+      "records": 2,
+      "expanded_records": null,
+      "work_units": null,
+      "elapsed_ms": null,
+      "memory_bytes": null,
+      "artifact_bytes": null
+    },
+    "inputs": [
+      {
+        "input_ordinal": 0,
+        "capture": "complete",
+        "consumed_bytes": 392,
+        "consumed_sha256": "50054bd8478674b160cc95118b973ade8723529f1f9291c4d8ee82cfc4372c5a",
+        "remaining_bytes": 0
+      }
+    ]
+  },
+  "scopes": [
+    {
+      "id": "scope-1",
+      "input_ordinals": [
+        0
+      ],
+      "selection": "effective global filter selects parsed records in the declared inputs",
+      "extent": "declared_input",
+      "completeness": "complete",
+      "analysis_completion": "complete",
+      "correlation_scope": [],
+      "semantic_coverage": {
+        "status": "supported",
+        "relevant_records": 2,
+        "classified_records": 2,
+        "paired_events": 2,
+        "unmatched_events": 0,
+        "ambiguous_events": 0,
+        "rejected_events": 0,
+        "reason": "Observed sample only; upstream completeness and clock synchronization are unknown."
+      },
+      "upstream_completeness": "unknown"
+    }
+  ],
+  "assessments": [
+    {
+      "goal": "slow_operations",
+      "scope_id": "scope-1",
+      "status": "supported",
+      "reason": "Assessment applies only to the declared scope and observed semantics.",
+      "finding_ids": [
+        "measurement-0",
+        "paired-count",
+        "paired-p95",
+        "record-count"
+      ]
+    }
+  ],
+  "populations": [
+    {
+      "id": "paired-lifecycles",
+      "scope_id": "scope-1",
+      "entity": "operations",
+      "definition": "Existing perf start/end pairs in the processed population; this does not establish logical retry grouping.",
+      "identity_fields": [
+        "name",
+        "correlation_id",
+        "scope"
+      ],
+      "rule_ids": [
+        "begin",
+        "finish"
+      ],
+      "exclusions": [],
+      "completeness": "complete",
+      "basis": "processed_population",
+      "count": 1,
+      "membership": {
+        "collection": "/memberships/0/members",
+        "count": 1,
+        "sha256": "172f9983502d51e1badc855498f6b482d259a9accdd61dcbd2424aaa82bbcfbe"
+      }
+    },
+    {
+      "id": "parsed-records",
+      "scope_id": "scope-1",
+      "entity": "physical_records",
+      "definition": "Filter-selected parsed physical source record occurrences before presentation limits.",
+      "identity_fields": [],
+      "rule_ids": [],
+      "exclusions": [],
+      "completeness": "complete",
+      "basis": "processed_population",
+      "count": 2,
+      "membership": {
+        "collection": "/memberships/1/members",
+        "count": 2,
+        "sha256": "b8f16b5f32e168b579d74a7128bd2f6d1adf2946fa82165c3e541d3ef7a4aeea"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "id": "measurement-0",
+      "kind": "measurement",
+      "claim": "Observed work source-timestamp interval is 0 ms.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [
+        {
+          "occurrence": {
+            "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+              "line": 1,
+              "location_redacted": false,
+              "reference_id": "dd4fdebc63897e15d9f2e74f9b7f8c906e1302a4ec50e877070c2ada77daa1e1",
+              "row_path": null
+            }
+          },
+          "text": "request start",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+              "line": 2,
+              "location_redacted": false,
+              "reference_id": "1fd4b895d8b70e85b46607da7c5697b47a71e3f31cc1897e7e5ae34ad05d16eb",
+              "row_path": null
+            }
+          },
+          "text": "request end",
+          "omitted_characters": 0,
+          "verification": {
+            "artifact_integrity": "available",
+            "arithmetic": "not_applicable",
+            "source_and_rules": "available",
+            "losses": []
+          }
+        }
+      ],
+      "details": {
+        "value": 0,
+        "unit": "ms",
+        "semantics": "start_to_finish",
+        "profile_sha256": "3c56f3a48936359c3f6a6790742d42230af9f99c9a51a303f022efbf03ad65e3",
+        "boundaries": {
+          "start": {
+            "occurrence": {
+              "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+                "line": 1,
+                "location_redacted": false,
+                "reference_id": "dd4fdebc63897e15d9f2e74f9b7f8c906e1302a4ec50e877070c2ada77daa1e1",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:00+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "start",
+            "rule_id": "begin"
+          },
+          "end": {
+            "occurrence": {
+              "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+                "line": 2,
+                "location_redacted": false,
+                "reference_id": "1fd4b895d8b70e85b46607da7c5697b47a71e3f31cc1897e7e5ae34ad05d16eb",
+                "row_path": null
+              }
+            },
+            "timestamp": "2026-01-01T00:00:00+02:00",
+            "timestamp_year_source": "source",
+            "timestamp_offset_source": "source",
+            "event": "end",
+            "rule_id": "finish"
+          }
+        },
+        "clock_relationship": "unknown"
+      }
+    },
+    {
+      "id": "paired-count",
+      "kind": "calculated_fact",
+      "claim": "1 paired lifecycles in the processed population.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [],
+      "details": {
+        "calculation": "count",
+        "population_id": "paired-lifecycles",
+        "value": 1,
+        "unit": "operations",
+        "semantics": "cardinality_of_declared_processed_population",
+        "method": "cardinality"
+      }
+    },
+    {
+      "id": "paired-p95",
+      "kind": "calculated_fact",
+      "claim": "95th percentile of retained paired-lifecycle intervals.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [],
+      "details": {
+        "calculation": "distribution",
+        "population_id": "paired-lifecycles",
+        "measurement_ids": [
+          "measurement-0"
+        ],
+        "sample_count": 1,
+        "value": 0,
+        "unit": "ms",
+        "statistic": "p95",
+        "method": "sorted_index_floor_n_times_percentile_over_100"
+      }
+    },
+    {
+      "id": "record-count",
+      "kind": "calculated_fact",
+      "claim": "2 filter-selected parsed physical record occurrences.",
+      "scope_id": "scope-1",
+      "author": "rust",
+      "limitations": [
+        "Upstream capture completeness is unknown."
+      ],
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "available",
+        "source_and_rules": "available",
+        "losses": []
+      },
+      "evidence": [],
+      "details": {
+        "calculation": "count",
+        "population_id": "parsed-records",
+        "value": 2,
+        "unit": "records",
+        "semantics": "cardinality_of_declared_processed_population",
+        "method": "cardinality"
+      }
+    }
+  ],
+  "records": [
+    {
+      "occurrence": {
+        "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+          "line": 1,
+          "location_redacted": false,
+          "reference_id": "dd4fdebc63897e15d9f2e74f9b7f8c906e1302a4ec50e877070c2ada77daa1e1",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:00+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:00+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"demo\",\"session\":\"demo\",\"message\":\"request start\",\"phase\":\"start\",\"operation\":\"work\",\"id\":\"request-1\"}",
+      "message": "request start",
+      "fields": {
+        "id": "request-1",
+        "operation": "work",
+        "phase": "start",
+        "session": "demo",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "begin"
+          ],
+          "semantics": {
+            "correlation_id": "request-1",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "work",
+            "outcome": null,
+            "phase": "start",
+            "scope": [
+              "demo"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    },
+    {
+      "occurrence": {
+        "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+        "input_ordinal": 0,
+        "evidence_ref": {
+          "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+          "line": 2,
+          "location_redacted": false,
+          "reference_id": "1fd4b895d8b70e85b46607da7c5697b47a71e3f31cc1897e7e5ae34ad05d16eb",
+          "row_path": null
+        }
+      },
+      "entity": "physical_records",
+      "timestamp": "2026-01-01T00:00:00+02:00",
+      "timestamp_year_source": "source",
+      "timestamp_offset_source": "source",
+      "raw_text": "{\"ts\":\"2026-01-01T00:00:00+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"demo\",\"session\":\"demo\",\"message\":\"request end\",\"phase\":\"end\",\"outcome\":\"success\",\"operation\":\"work\",\"id\":\"request-1\"}",
+      "message": "request end",
+      "fields": {
+        "id": "request-1",
+        "operation": "work",
+        "outcome": "success",
+        "phase": "end",
+        "session": "demo",
+        "classification": {
+          "legacy": false,
+          "profile": "investigation-example",
+          "rule_ids": [
+            "finish"
+          ],
+          "semantics": {
+            "correlation_id": "request-1",
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": "work",
+            "outcome": "success",
+            "phase": "end",
+            "scope": [
+              "demo"
+            ]
+          },
+          "status": "event"
+        }
+      },
+      "data_omitted": false,
+      "verification": {
+        "artifact_integrity": "available",
+        "arithmetic": "not_applicable",
+        "source_and_rules": "available",
+        "losses": []
+      }
+    }
+  ],
+  "captured_inputs": [
+    {
+      "input_ordinal": 0,
+      "capture": "complete",
+      "encoding": "utf8",
+      "data": "{\"ts\":\"2026-01-01T00:00:00+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"demo\",\"session\":\"demo\",\"message\":\"request start\",\"phase\":\"start\",\"operation\":\"work\",\"id\":\"request-1\"}\n{\"ts\":\"2026-01-01T00:00:00+02:00\",\"level\":\"INFO\",\"component\":\"worker\",\"component_id\":\"demo\",\"session\":\"demo\",\"message\":\"request end\",\"phase\":\"end\",\"outcome\":\"success\",\"operation\":\"work\",\"id\":\"request-1\"}\n",
+      "data_omitted": false,
+      "original_consumed_sha256": "50054bd8478674b160cc95118b973ade8723529f1f9291c4d8ee82cfc4372c5a",
+      "stored_sha256": "50054bd8478674b160cc95118b973ade8723529f1f9291c4d8ee82cfc4372c5a"
+    }
+  ],
+  "memberships": [
+    {
+      "population_id": "paired-lifecycles",
+      "members": [
+        {
+          "kind": "operation",
+          "id": "paired-lifecycle-0",
+          "identity": [
+            {
+              "field": "name",
+              "value": "work"
+            },
+            {
+              "field": "correlation_id",
+              "value": "request-1"
+            },
+            {
+              "field": "scope",
+              "value": "[\"demo\"]"
+            }
+          ],
+          "source_occurrences": [
+            {
+              "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+                "line": 1,
+                "location_redacted": false,
+                "reference_id": "dd4fdebc63897e15d9f2e74f9b7f8c906e1302a4ec50e877070c2ada77daa1e1",
+                "row_path": null
+              }
+            },
+            {
+              "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+              "input_ordinal": 0,
+              "evidence_ref": {
+                "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+                "line": 2,
+                "location_redacted": false,
+                "reference_id": "1fd4b895d8b70e85b46607da7c5697b47a71e3f31cc1897e7e5ae34ad05d16eb",
+                "row_path": null
+              }
+            }
+          ],
+          "measurement_ids": [
+            "measurement-0"
+          ]
+        }
+      ]
+    },
+    {
+      "population_id": "parsed-records",
+      "members": [
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+              "line": 1,
+              "location_redacted": false,
+              "reference_id": "dd4fdebc63897e15d9f2e74f9b7f8c906e1302a4ec50e877070c2ada77daa1e1",
+              "row_path": null
+            }
+          }
+        },
+        {
+          "kind": "record",
+          "occurrence": {
+            "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+              "line": 2,
+              "location_redacted": false,
+              "reference_id": "1fd4b895d8b70e85b46607da7c5697b47a71e3f31cc1897e7e5ae34ad05d16eb",
+              "row_path": null
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "sequence-1",
+      "scope_id": "scope-1",
+      "completeness": "complete",
+      "ordering": "observed_timestamp_then_input_ordinal_then_record_ordinal",
+      "events": [
+        {
+          "occurrence": {
+            "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+              "line": 1,
+              "location_redacted": false,
+              "reference_id": "dd4fdebc63897e15d9f2e74f9b7f8c906e1302a4ec50e877070c2ada77daa1e1",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 0,
+          "timestamp": "2026-01-01T00:00:00+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "begin"
+          ]
+        },
+        {
+          "occurrence": {
+            "snapshot_id": "cc5392f35ca98a0f1cd248423db2b570311a6d7e160022ec7f51bd90239f5a82",
+            "input_ordinal": 0,
+            "evidence_ref": {
+              "input_id": "f862bb3e1f871a03c2428f3fd8be05d203b2b804c70ea791c46a8c64c3b817eb",
+              "line": 2,
+              "location_redacted": false,
+              "reference_id": "1fd4b895d8b70e85b46607da7c5697b47a71e3f31cc1897e7e5ae34ad05d16eb",
+              "row_path": null
+            }
+          },
+          "record_ordinal": 1,
+          "timestamp": "2026-01-01T00:00:00+02:00",
+          "classification_status": "classified",
+          "rule_ids": [
+            "finish"
+          ]
+        }
+      ]
+    }
+  ],
+  "content": "original",
+  "effective_profile": {
+    "event_rules": {
+      "rules": [
+        {
+          "adapter": {
+            "conditions": [
+              {
+                "equals": "start",
+                "field": "phase"
+              }
+            ],
+            "type": "structured"
+          },
+          "id": "begin",
+          "mapping": {
+            "correlation_id": {
+              "field": "id",
+              "from": "field"
+            },
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": {
+              "field": "operation",
+              "from": "field"
+            },
+            "outcome": null,
+            "phase": {
+              "from": "literal",
+              "value": "start"
+            },
+            "scope": [
+              {
+                "field": "session",
+                "from": "field"
+              }
+            ]
+          }
+        },
+        {
+          "adapter": {
+            "conditions": [
+              {
+                "equals": "end",
+                "field": "phase"
+              }
+            ],
+            "type": "structured"
+          },
+          "id": "finish",
+          "mapping": {
+            "correlation_id": {
+              "field": "id",
+              "from": "field"
+            },
+            "direction": null,
+            "endpoint": null,
+            "kind": "request",
+            "name": {
+              "field": "operation",
+              "from": "field"
+            },
+            "outcome": {
+              "field": "outcome",
+              "from": "field"
+            },
+            "phase": {
+              "from": "literal",
+              "value": "end"
+            },
+            "scope": [
+              {
+                "field": "session",
+                "from": "field"
+              }
+            ]
+          }
+        }
+      ],
+      "version": 2
+    },
+    "normalization": null,
+    "parser": {
+      "command_payload_markers": [],
+      "command_prefix": "",
+      "command_start_marker": "",
+      "event_emit_markers": [],
+      "event_payload_separator": "payload",
+      "event_receive_markers": [],
+      "format": "json-lines",
+      "json_indicators": [],
+      "module_depth": 2,
+      "module_strip_prefix": "",
+      "request_endpoint_marker": "",
+      "request_payload_markers": [],
+      "request_prefix": "",
+      "request_receive_markers": [],
+      "request_send_markers": []
+    },
+    "perf": {
+      "command_completion_markers": [],
+      "command_start_markers": [],
+      "correlation_scope_fields": [
+        "component_id"
+      ],
+      "event_correlation_keys": [
+        "trace_id",
+        "traceId",
+        "request_id",
+        "requestId",
+        "id",
+        "key"
+      ]
+    },
+    "profile": {
+      "known_commands": [],
+      "known_components": [],
+      "known_requests": []
+    },
+    "profile_name": "investigation-example",
+    "timeline": {
+      "events": [],
+      "pairs": []
+    }
+  },
+  "effective_profile_omitted": false,
+  "retention": {
+    "policy": "unspecified",
+    "expires_at": null
+  },
+  "verification": {
+    "artifact_integrity": "available",
+    "arithmetic": "available",
+    "source_and_rules": "available",
+    "losses": []
+  }
+}

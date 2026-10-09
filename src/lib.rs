@@ -20,6 +20,7 @@ pub mod event_rules;
 pub mod evidence;
 pub mod extract;
 pub mod filter;
+pub mod investigation;
 pub mod llm_processor;
 pub mod normalize;
 mod output;

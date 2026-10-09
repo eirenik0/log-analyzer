@@ -43,6 +43,24 @@ blocking spans are estimates to the last observed session record, not proof of
 completion or blocking work. `process --limit 0` still compacts payloads; use
 `search --payloads` for original parsed payload evidence.
 
+Investigation schema 1 accepts both the existing agent-result shape and the retained
+report shape. It is embedded as `report_schemas.investigation`; retained artifact
+contract 1 is `evidence_artifact`.
+See [`investigation-contract.md`](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/investigation-contract.md).
+Check `capabilities.investigation_contracts` for actual command/retrieval availability;
+schema publication alone is not feature availability. Continue the existing version-1
+workflow until the unified command is advertised. Repeated declared inputs require
+occurrence identity as well as source references; partial processing does not justify
+full-input counts or completion, and redaction may prevent source/rule verification.
+The retained contract requires redacted record payloads to be omitted and excerpts
+to contain only the source omission marker (or its declared prefix). Retained
+manifest paths and queries use omission markers too. Exceptional presentation
+statuses must agree with budgets, usage, and displayed/remaining counts.
+Supported assessments require positive findings; unknowns alone cannot establish support.
+Check coverage against retained evidence and artifact retention against its descriptor.
+Applied redaction omits captured stream data and is reflected in verification losses.
+Check collection pagination against displayed findings and declared omissions.
+
 The evidence-engine workflow is included in the prepared `0.3.0` version. Check
 `--version` and `capabilities` on the actual executable before relying on it.
 

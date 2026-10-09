@@ -220,6 +220,17 @@ including all declared inputs and the same document in `--output`.
 Aggregate inventories require record retrieval before citing an occurrence;
 legacy error blocking spans are explicitly estimates.
 
+Investigation report contract v1 and retained artifact contract v1 are published in
+[`docs/design/investigation-contract.md`](docs/design/investigation-contract.md),
+with [synthetic examples](examples/investigation-contract/). `capabilities` embeds
+these under `report_schemas.investigation` and `evidence_artifact`, and separately
+advertises implementation availability. Schema 1 accepts both the existing agent-result shape and the retained report
+shape. These contracts separate assessment, processing completion, presentation
+omissions, occurrence/population identity and verification after redaction. A unified
+investigation command and saved-artifact retrieval are not yet implemented.
+Applied redaction in the retained contract omits record payloads and exposes only
+source omission markers in excerpts; arithmetic can remain independently checkable.
+
 ## Bounded investigation output
 
 Use `--report-max-chars`, `--report-max-bytes`, or `--report-max-items` for compact
@@ -443,7 +454,7 @@ profile_name = "my-team"
 known_components = ["api", "worker"]
 ```
 
-Tables merge key by key and the child wins. Arrays and scalars are replaced whole, so a child `[[event_rules.rules]]` list replaces the parent's list. An omitted `profile_name` is inherited. Chains are allowed up to 8 profiles, counting the child and every parent (including built-ins); cycles and unknown parents are errors. A built-in name wins over a file with the same name; use `./base.toml` for the file. Version 2 `event_rules` cannot coexist with legacy marker keys, so a profile that extends one with `event_rules` (all built-ins do, even when empty) must not set the legacy keys.
+Tables merge key by key and the child wins. Arrays and scalars are replaced whole, so a child `[[event_rules.rules]]` list replaces the parent's list. An omitted `profile_name` is inherited. Chains are allowed up to 8 profiles, counting the child and every parent (including built-ins); cycles and unknown parents are errors. A built-in name wins over a file with the same name; use `./base.toml` for the file. Explicit `event_rules` cannot coexist with legacy marker keys, so a profile that extends one with `event_rules` (all built-ins do, even when empty) must not set the legacy keys.
 
 See [Profile Configuration](#profile-configuration) for the full reference and examples.
 
