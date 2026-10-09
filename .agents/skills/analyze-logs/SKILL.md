@@ -99,6 +99,6 @@ The bundled [failure](examples/debug-failure.md) and
 [performance](examples/performance.md) examples show the checked investigation
 sequence. Their synthetic commands require a repository checkout; use absolute
 input/profile paths for real captures.
-The [command reference](reference.md) and actual binary help describe syntax,
-profiles, inheritance, normalization and retrieval. The existing executable
+The [evidence reference](reference.md) explains retrieval and source verification.
+Use actual binary help and the README for command syntax and profile configuration. The existing executable
 example runner verifies these workflows. The [published synthetic evaluation baseline](https://github.com/eirenik0/log-analyzer/blob/main/evals/README.md) verifies the harness; model quality and token savings remain unmeasured.

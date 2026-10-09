@@ -38,7 +38,10 @@ repository. Only synthetic `examples/investigations/failure.jsonl`,
 failed, its lifecycle duration, and whether the capture established a cause.
 The executable was copied to a temporary PATH directory. Invocations used
 `--report-max-items 3` and `--report-max-bytes 18000` for bounded reports.
-No session transcripts, credentials or customer data are committed.
+No session transcripts, credentials or customer data are committed. Hosted review
+subsequently replaced the long bundled command catalog with focused retrieval
+and citation notes; command syntax now routes to actual CLI help and the README.
+The smoke observations below precede this reference-only cleanup.
 
 - **Codex CLI 0.160.0:** `.agents/skills` discovery and explicit `$analyze-logs`
   invocation worked. The agent resolved the installed skill, host setup,
