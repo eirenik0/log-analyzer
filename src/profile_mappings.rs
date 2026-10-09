@@ -311,12 +311,12 @@ impl Store {
 struct Committed {
     report: Value,
 }
-struct StagedReport {
+pub(crate) struct StagedReport {
     path: PathBuf,
     temporary: tempfile::NamedTempFile,
 }
 impl StagedReport {
-    fn prepare(path: &Path) -> Result<Self> {
+    pub(crate) fn prepare(path: &Path) -> Result<Self> {
         match fs::symlink_metadata(path) {
             Ok(metadata) => {
                 if !metadata.is_file()
@@ -341,7 +341,7 @@ impl StagedReport {
             temporary: tempfile::NamedTempFile::new_in(parent)?,
         })
     }
-    fn save(mut self, report: &Value) -> Result<()> {
+    pub(crate) fn save(mut self, report: &Value) -> Result<()> {
         let rendered = serde_json::to_string_pretty(report)?;
         self.temporary
             .write_all(crate::output::format_report(&rendered).as_bytes())?;
@@ -397,7 +397,7 @@ fn persist_registry(mut temporary: tempfile::NamedTempFile, path: &Path) -> std:
 }
 // Resolve existing ancestors without creating a destination; later nonexistent
 // components remain normalized so inspection cannot overwrite its own store.
-fn destination_identity(path: &Path) -> Result<PathBuf> {
+pub(crate) fn destination_identity(path: &Path) -> Result<PathBuf> {
     let absolute = if path.is_absolute() {
         path.to_owned()
     } else {
@@ -427,7 +427,7 @@ fn destination_identity(path: &Path) -> Result<PathBuf> {
     }
     Ok(resolved)
 }
-fn same_destination(a: &Path, b: &Path, compare_contents: bool) -> bool {
+pub(crate) fn same_destination(a: &Path, b: &Path, compare_contents: bool) -> bool {
     #[cfg(unix)]
     let _ = compare_contents;
     if a == b {

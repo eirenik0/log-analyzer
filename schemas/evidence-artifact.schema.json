@@ -262,6 +262,9 @@
               },
               "reason": {
                 "type": "string"
+              },
+              "evidence_ref": {
+                "$ref": "#/$defs/reference"
               }
             },
             "required": [
@@ -397,6 +400,9 @@
                       "unrecognized_leading_block",
                       "invalid_selected_record"
                     ]
+                  },
+                  "evidence_ref": {
+                    "$ref": "#/$defs/reference"
                   }
                 },
                 "required": [

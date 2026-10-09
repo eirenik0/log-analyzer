@@ -299,6 +299,7 @@ impl Context {
         }
         for key in [
             "profile_validation",
+            "profile_preparation",
             "search",
             "extract",
             "trace",

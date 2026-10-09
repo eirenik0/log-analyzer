@@ -293,6 +293,33 @@ pub enum Commands {
         #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
         expected: Option<PathBuf>,
     },
+    /// Save a separate editable candidate and report sample validation plus missing domain knowledge (JSON)
+    PrepareProfile {
+        #[arg(required = true, num_args = 1..)]
+        #[serde(serialize_with = "crate::evidence::serialize_paths")]
+        files: Vec<PathBuf>,
+        /// New candidate file; existing files are never replaced
+        #[arg(long)]
+        #[serde(serialize_with = "crate::evidence::serialize_path")]
+        candidate_output: PathBuf,
+        #[arg(long, value_enum)]
+        kind: OperationType,
+        #[arg(long, value_enum, default_value = "timing")]
+        purpose: crate::profile_validation::Purpose,
+        /// Independently established source-addressed assertions, never generated from the candidate
+        #[arg(long)]
+        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+        expected: Option<PathBuf>,
+        /// Existing TOML or built-in starting point; defaults to base
+        #[arg(long, conflicts_with_all = ["config", "preset"])]
+        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+        template: Option<PathBuf>,
+        #[arg(long)]
+        profile_name: Option<String>,
+        /// Maximum representative records per diagnostic array; omitted counts remain visible
+        #[arg(long, default_value = "20", value_parser = clap::value_parser!(u32).range(1..=100))]
+        witness_limit: u32,
+    },
     /// Resolve profiles deterministically; automatic choices require supplied semantic assertions (JSON)
     ResolveProfile {
         #[arg(required = true, num_args = 1..)]
@@ -620,7 +647,7 @@ impl Cli {
             return Ok(());
         }
         match &mut self.command {
-            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } | Commands::ProfileMappings { .. } =>
+            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } | Commands::ProfileMappings { .. } | Commands::PrepareProfile { .. } =>
                 return Err("Common report budgets support info/search/extract/perf/trace/process/comparisons/errors; this command is unsupported".into()),
             Commands::Process { limit, .. } => *limit = 0,
             Commands::Perf { top_n, .. } => *top_n = 0,

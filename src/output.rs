@@ -368,6 +368,11 @@ impl OutputState {
                 {
                     return Value::String(self.path_text(text));
                 }
+                if path.starts_with("profile_preparation.")
+                    && matches!(leaf, "path" | "file" | "source_file")
+                {
+                    return Value::String(self.path_text(text));
+                }
                 if path == "profile_resolution.mappings.reason" {
                     return Value::String(self.path_text(text));
                 }
@@ -829,6 +834,104 @@ impl OutputState {
                 self.restore_validation_metadata(validation, &mut value["profile_validation"], "");
                 self.redact_validation_addresses(&original, &mut value);
             }
+            if let Some(preparation) = original.get("profile_preparation") {
+                let target = &mut value["profile_preparation"];
+                for key in [
+                    "version",
+                    "requested",
+                    "creation",
+                    "presentation",
+                    "report_save",
+                    "limitations",
+                ] {
+                    target[key] = preparation[key].clone();
+                }
+                target["provenance"]["inherited"]["sha256"] =
+                    preparation["provenance"]["inherited"]["sha256"].clone();
+                target["provenance"]["inherited"]["lifecycle_rules"] =
+                    preparation["provenance"]["inherited"]["lifecycle_rules"].clone();
+                target["provenance"]["observed"]["basis"] =
+                    preparation["provenance"]["observed"]["basis"].clone();
+                for (i, item) in preparation["provenance"]["heuristic_changes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                {
+                    for key in ["section", "basis", "verified", "unknown"] {
+                        target["provenance"]["heuristic_changes"][i][key] = item[key].clone();
+                    }
+                }
+                target["structure"]["status"] = preparation["structure"]["status"].clone();
+                if preparation["candidate"].is_object() {
+                    for key in ["sha256", "status", "activation"] {
+                        target["candidate"][key] = preparation["candidate"][key].clone();
+                    }
+                }
+                self.restore_validation_metadata(
+                    &preparation["sample_validation"],
+                    &mut target["sample_validation"],
+                    "",
+                );
+                for key in ["status", "reason", "covered_records", "unknown"] {
+                    if let Some(item) = preparation["semantic_proof"].get(key) {
+                        target["semantic_proof"][key] = item.clone();
+                    }
+                }
+                if let Some(address) = preparation["semantic_proof"].get("missing_at") {
+                    for key in ["input", "line"] {
+                        target["semantic_proof"]["missing_at"][key] = address[key].clone();
+                    }
+                    target["semantic_proof"]["missing_at"]["row_path"] = address["row_path"]
+                        .as_str()
+                        .map(|p| Value::String(self.path_text(p)))
+                        .unwrap_or(Value::Null);
+                }
+                if let Some(omissions) = target["presentation"]["omissions"].as_array_mut() {
+                    for omission in omissions {
+                        if let Some(path) = omission["path"].as_str() {
+                            omission["path"] = json!(self.path_text(path));
+                        }
+                    }
+                }
+                let wrapper = json!({"profile_validation":preparation["sample_validation"]});
+                let mut redacted_wrapper =
+                    json!({"profile_validation":target["sample_validation"]});
+                self.redact_validation_addresses(&wrapper, &mut redacted_wrapper);
+                target["sample_validation"] = redacted_wrapper["profile_validation"].take();
+                for (i, item) in preparation["missing_information"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                {
+                    for (j, witness) in item["witnesses"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .enumerate()
+                    {
+                        self.restore_validation_metadata(
+                            witness,
+                            &mut target["missing_information"][i]["witnesses"][j],
+                            "",
+                        );
+                        let wrapper = json!({"profile_validation":{"expected_results":[witness]}});
+                        let mut redacted_wrapper = json!({"profile_validation":{"expected_results":[target["missing_information"][i]["witnesses"][j]]}});
+                        self.redact_validation_addresses(&wrapper, &mut redacted_wrapper);
+                        target["missing_information"][i]["witnesses"][j] =
+                            redacted_wrapper["profile_validation"]["expected_results"][0].take();
+                    }
+                    for key in ["category", "reason", "next_step", "unknown"] {
+                        target["missing_information"][i][key] = item[key].clone();
+                    }
+                }
+                if let Some(files) = preparation["structure"]["files"].as_array() {
+                    for (i, source) in files.iter().enumerate() {
+                        restore_coverage_metadata(source, &mut target["structure"]["files"][i]);
+                    }
+                }
+            }
             if let Some(resolution) = original.get("profile_resolution") {
                 if let Some(coverage) = original.get("coverage") {
                     value["coverage"] = self.value_at(coverage, "coverage");
@@ -1098,6 +1201,9 @@ fn resolver_container(path: &str, value: &Value) -> bool {
         return false;
     }
     if path == "profile_mappings" || path.starts_with("profile_mappings.") {
+        return true;
+    }
+    if path == "profile_preparation" || path.starts_with("profile_preparation.") {
         return true;
     }
     if path == "coverage.files" {
@@ -1485,6 +1591,46 @@ fn restore_performance_metadata(
 // do not match source records. These are data disclosures, not generated labels.
 fn validation_contexts(report: &Value) -> Vec<(String, String, Value)> {
     let mut contexts = Vec::new();
+    if let Some(validation) = report.pointer("/profile_preparation/sample_validation") {
+        let wrapper = json!({"profile_validation":validation});
+        for (field, path, value) in validation_contexts(&wrapper) {
+            contexts.push((
+                field,
+                path.replacen(
+                    "/profile_validation",
+                    "/profile_preparation/sample_validation",
+                    1,
+                ),
+                value,
+            ));
+        }
+    }
+    if let Some(items) = report
+        .pointer("/profile_preparation/missing_information")
+        .and_then(Value::as_array)
+    {
+        for (i, item) in items.iter().enumerate() {
+            for (j, witness) in item["witnesses"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let wrapper = json!({"profile_validation":{"expected_results":[witness]}});
+                for (field, path, value) in validation_contexts(&wrapper) {
+                    contexts.push((
+                        field,
+                        path.replacen(
+                            "/profile_validation/expected_results/0",
+                            &format!("/profile_preparation/missing_information/{i}/witnesses/{j}"),
+                            1,
+                        ),
+                        value,
+                    ));
+                }
+            }
+        }
+    }
     if let Some(candidates) = report
         .pointer("/profile_resolution/candidates")
         .and_then(Value::as_array)

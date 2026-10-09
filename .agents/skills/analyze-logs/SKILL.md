@@ -49,7 +49,13 @@ working directory. Skill installation does not install the Rust executable.
    `validate-profile --kind request|event|command`; use independently known positive,
    negative and pair facts with `--expected` when available. Recognition support
    does not imply timing support. Generate/edit separate TOML candidates and validate
-   them before selecting them. Never choose a profile by match count or similar wording.
+   them before selecting them. When advertised, use profile preparation to create a
+   separate candidate after abstention; inspect structural support, unverified
+   heuristics, missing domain knowledge and independent semantic proof separately.
+   Candidate creation does not establish suitability or activate a profile. Retrieve
+   omitted witnesses through the saved candidate and stop on unavailable evidence;
+   do not turn repeated generation into proof. Never choose a profile by match count
+   or similar wording.
 5. Inspect per-source parse rejection, normalization, classification, identity/scope,
    boundary and chronology diagnostics. Empty input, no filter matches, unparsed
    input, zero errors and unavailable analysis are distinct. Sample suitability

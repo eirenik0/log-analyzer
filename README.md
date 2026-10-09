@@ -1055,6 +1055,53 @@ An explicit CLI choice bypasses the association and persistent lookup. Resolutio
 reports version 2 for mapping provenance; the embedded report schema retains
 version-1 resolution and the supplied association contract remains version 1.
 
+### Prepare a separate profile candidate
+
+When resolution abstains, `prepare-profile` combines sample inventory generation,
+rule witnesses, validation and scope/boundary diagnostics in one JSON report:
+
+```bash
+log-analyzer prepare-profile examples/profile-validation.jsonl --template examples/profile-candidate.toml --candidate-output prepared-profile.toml --kind request --purpose timing --expected examples/profile-expectations.json
+log-analyzer --config prepared-profile.toml validate-profile examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
+```
+
+`--template` accepts a built-in template name or TOML path; otherwise the command
+uses the explicit global config/preset or base profile. It preserves supplied
+lifecycle rules. Observed components, commands and requests are inventory;
+parser/module mapping and session-prefix changes remain unverified heuristics.
+It never infers intended phases, correlation scope, completion or capture completeness.
+Global filters apply to sample validation; inventory uses the complete parsed sample.
+
+The candidate must be a new file in an existing directory. Starting profiles,
+inputs and assertions are protected from destination collisions. The exact saved
+TOML is reloaded and checked against stable input snapshots before creation.
+Wholly unsupported nonempty input and empty input create no candidate; partial
+structural support can create a candidate while reporting insufficient evidence.
+Unsupported Python headers require parser/normalization work rather than guessed
+rules. Creation never activates a profile or saves a persistent mapping.
+
+Inspect `creation`, `structure`, `sample_validation`, `semantic_proof` and
+`missing_information` separately. Validation runs without expected facts; missing
+or partial independent facts cannot verify the requested population and timing
+pairs. A successful exit can report an unsuitable candidate or abstention.
+There is no automatic repair/retry loop. If a report cannot be saved after candidate
+creation, stdout reports the committed candidate and failed delivery; validate the
+saved file rather than retrying creation.
+
+`--witness-limit` bounds representatives (default 20, maximum 100). Representatives
+with an atomic string over 512 Unicode scalars or serialized size over 4096 scalars
+are omitted whole, preserving exact retained identities, source addresses and facts.
+Presentation omissions count size and count limits; outcome metadata, coverage totals
+and opaque retrieval identities remain exact. Per-source coverage, including its
+parser diagnostic counters and existing diagnostic limits, is exempt from preparation
+limits. Use the saved candidate with
+`validate-profile` and common report cursors for omitted evidence, or `info` for
+unparsed input. Preparation itself rejects common budgets/cursors because replay
+must not create files. Limits bound presentation, not processing memory/work.
+
+`--redact` protects the report, including copied assertion witnesses. The executable
+candidate remains unredacted so its rules retain their meaning; inspect it before sharing.
+
 ### Persistent source/profile mappings
 
 `resolve-profile` reads the project registry at
