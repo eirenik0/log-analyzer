@@ -554,9 +554,18 @@ fn unparsed_coverage_cannot_carry_supported_measurements() {
             document["report_metadata"]["evidence"]["scope"]["parsed_entries"] = json!(0);
             document["report_metadata"]["evidence"]["scope"]["selected_entries"] = json!(0);
             document["report_metadata"]["evidence"]["scope"]["status"] = json!("unparsed_input");
+            document["processing"]["usage"]["records"] = json!(0);
             if clear_semantics {
-                document["scopes"][0]["semantic_coverage"]["relevant_records"] = json!(0);
-                document["scopes"][0]["semantic_coverage"]["classified_records"] = json!(0);
+                for counter in [
+                    "relevant_records",
+                    "classified_records",
+                    "paired_events",
+                    "unmatched_events",
+                    "ambiguous_events",
+                    "rejected_events",
+                ] {
+                    document["scopes"][0]["semantic_coverage"][counter] = json!(0);
+                }
             }
         }
         reject(
@@ -704,4 +713,288 @@ fn pagination_metadata_agrees_with_findings_and_omissions() {
     let (mut report, artifact) = fixture("supported");
     report["presentation"]["status"] = json!("page");
     reject(report, artifact, "page presentation has no omissions");
+}
+
+#[test]
+fn calculated_facts_cannot_claim_lost_source_verification_without_excerpts() {
+    let (mut report, mut artifact) = fixture("redacted");
+    for document in [&mut report, &mut artifact] {
+        document["findings"][3]["verification"]["source_and_rules"] = json!("available");
+        document["findings"][3]["verification"]["losses"] = json!([]);
+    }
+    assert!(
+        report["findings"][3]["evidence"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    reject(
+        report,
+        artifact,
+        "finding claims source verification after applied redaction",
+    );
+}
+#[test]
+fn contrary_targets_can_be_deferred_to_explicit_retrieval() {
+    let (mut report, mut artifact) = fixture("supported");
+    let mut contrary = artifact["findings"][0].clone();
+    contrary["kind"] = json!("contrary_evidence");
+    contrary["id"] = json!("contrary-1");
+    contrary["details"] = json!({"against_finding_id":"measurement-1","supporting_occurrences":[contrary["evidence"][0]["occurrence"].clone()]});
+    artifact["findings"]
+        .as_array_mut()
+        .unwrap()
+        .push(contrary.clone());
+    report["findings"] = json!([contrary]);
+    report["presentation"]["status"] = json!("page");
+    report["presentation"]["total_findings"] = json!(7);
+    report["presentation"]["displayed_findings"] = json!(1);
+    report["presentation"]["omitted_findings"] = json!(6);
+    report["presentation"]["collections"] =
+        json!([{"path":"/findings","total":7,"prior":0,"displayed":1,"remaining":6}]);
+    let raw = refresh(&mut report, &artifact);
+    shape(&report, "investigation.schema.json");
+    shape(&artifact, "evidence-artifact.schema.json");
+    let deferred = validate_relations(&report, None).unwrap();
+    assert!(
+        deferred
+            .deferred_relations
+            .contains(&"contrary_target:measurement-1".to_string())
+    );
+    assert!(
+        validate_relations(&report, Some(&raw))
+            .unwrap()
+            .deferred_relations
+            .is_empty()
+    );
+    report["retrieval"]["targets"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|t| t["id"] != "measurement-1");
+    assert!(
+        validate_relations(&report, None)
+            .unwrap_err()
+            .to_string()
+            .contains("contrary evidence target missing")
+    );
+}
+
+#[test]
+fn semantic_event_counts_obey_record_cardinality() {
+    for field in [
+        "paired_events",
+        "unmatched_events",
+        "ambiguous_events",
+        "rejected_events",
+    ] {
+        let (mut report, mut artifact) = fixture("supported");
+        for document in [&mut report, &mut artifact] {
+            document["scopes"][0]["semantic_coverage"][field] = json!(999999);
+        }
+        reject(report, artifact, "semantic coverage exceeds");
+    }
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["scopes"][0]["semantic_coverage"]["classified_records"] = json!(0);
+    }
+    reject(
+        report,
+        artifact,
+        "semantic event count exceeds its containing population",
+    );
+}
+#[test]
+fn measurement_verification_ignores_unrelated_source_losses() {
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["findings"] = json!([document["findings"][0].clone()]);
+        document["assessments"][0]["finding_ids"] = json!(["measurement-0"]);
+        document["populations"] = json!([]);
+    }
+    artifact["memberships"] = json!([]);
+    artifact["records"][1]["data_omitted"] = json!(true);
+    artifact["records"][1]["raw_text"] = Value::Null;
+    artifact["records"][1]["message"] = Value::Null;
+    artifact["records"][1]["verification"]["source_and_rules"] = json!("unavailable");
+    artifact["records"][1]["verification"]["losses"] = json!(["unrelated record omitted"]);
+    artifact["verification"]["source_and_rules"] = json!("unavailable");
+    artifact["verification"]["losses"] = json!(["unrelated record omitted"]);
+    report["artifact"]["verification"] = artifact["verification"].clone();
+    report["presentation"]["total_findings"] = json!(1);
+    report["presentation"]["displayed_findings"] = json!(1);
+    report["presentation"]["collections"] =
+        json!([{"path":"/findings","total":1,"prior":0,"displayed":1,"remaining":0}]);
+    let raw = refresh(&mut report, &artifact);
+    shape(&report, "investigation.schema.json");
+    shape(&artifact, "evidence-artifact.schema.json");
+    validate_relations(&report, Some(&raw)).unwrap();
+}
+
+#[test]
+fn multiple_excerpts_from_one_occurrence_match_their_own_projection() {
+    let (mut report, mut artifact) = fixture("supported");
+    let mut raw_excerpt = artifact["findings"][0]["evidence"][0].clone();
+    raw_excerpt["text"] = artifact["records"][0]["raw_text"].clone();
+    for document in [&mut report, &mut artifact] {
+        document["findings"][0]["evidence"]
+            .as_array_mut()
+            .unwrap()
+            .push(raw_excerpt.clone());
+    }
+    let raw = refresh(&mut report, &artifact);
+    shape(&report, "investigation.schema.json");
+    shape(&artifact, "evidence-artifact.schema.json");
+    validate_relations(&report, Some(&raw)).unwrap();
+    report["findings"][0]["evidence"][2]["text"] = json!("invented excerpt");
+    reject(report, artifact, "invalid excerpt projection");
+}
+#[test]
+fn redacted_excerpt_cannot_claim_verification_without_an_artifact() {
+    let (mut report, _) = fixture("redacted");
+    report["findings"][0]["evidence"][0]["verification"]["source_and_rules"] = json!("available");
+    report["findings"][0]["evidence"][0]["verification"]["losses"] = json!([]);
+    shape(&report, "investigation.schema.json");
+    assert!(
+        validate_relations(&report, None)
+            .unwrap_err()
+            .to_string()
+            .contains("excerpt claims source verification after applied redaction")
+    );
+}
+
+#[test]
+fn physical_witnesses_do_not_double_count_normalized_source_rows() {
+    let (mut report, mut artifact) = fixture("supported");
+    let mut normalized = artifact["records"][0].clone();
+    normalized["entity"] = json!("normalized_records");
+    normalized["data_omitted"] = json!(true);
+    normalized["raw_text"] = Value::Null;
+    normalized["message"] = Value::Null;
+    normalized["fields"] = json!({});
+    normalized["verification"]["source_and_rules"] = json!("unavailable");
+    normalized["verification"]["losses"] = json!(["normalized content omitted"]);
+    let reference = &mut normalized["occurrence"]["evidence_ref"];
+    reference["row_path"] = json!("$.rows[0]");
+    reference["reference_id"] = json!(digest(
+        json!([
+            reference["input_id"],
+            reference["line"],
+            reference["row_path"],
+            null
+        ])
+        .to_string()
+        .as_bytes()
+    ));
+    artifact["records"]
+        .as_array_mut()
+        .unwrap()
+        .push(normalized.clone());
+    artifact["verification"]["source_and_rules"] = json!("unavailable");
+    artifact["verification"]["losses"] = json!(["normalized content omitted"]);
+    report["artifact"]["verification"] = artifact["verification"].clone();
+    let raw = refresh(&mut report, &artifact);
+    shape(&report, "investigation.schema.json");
+    shape(&artifact, "evidence-artifact.schema.json");
+    validate_relations(&report, Some(&raw)).unwrap();
+    for i in 1..7 {
+        let reference = &mut normalized["occurrence"]["evidence_ref"];
+        reference["row_path"] = json!(format!("$.rows[{i}]"));
+        reference["reference_id"] = json!(digest(
+            json!([
+                reference["input_id"],
+                reference["line"],
+                reference["row_path"],
+                null
+            ])
+            .to_string()
+            .as_bytes()
+        ));
+        artifact["records"]
+            .as_array_mut()
+            .unwrap()
+            .push(normalized.clone());
+    }
+    reject(
+        report,
+        artifact,
+        "retained source records exceed selected parse coverage",
+    );
+}
+
+#[test]
+fn unapplied_mask_flags_do_not_disable_identity_checks() {
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["report_metadata"]["evidence"]["redaction"]["masked_id_fields"] =
+            json!(["session"]);
+    }
+    let raw = refresh(&mut report, &artifact);
+    validate_relations(&report, Some(&raw)).unwrap();
+    for document in [&mut report, &mut artifact] {
+        document["report_metadata"]["evidence"]["query"]["filter"] = json!("changed");
+    }
+    reject(report, artifact, "query identity digest mismatch");
+}
+#[test]
+fn record_usage_matches_parsed_coverage_or_is_unavailable() {
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["processing"]["usage"]["records"] = json!(0);
+    }
+    reject(
+        report,
+        artifact,
+        "record usage differs from parsed coverage",
+    );
+    let (mut report, mut artifact) = fixture("supported");
+    for document in [&mut report, &mut artifact] {
+        document["processing"]["usage"]["records"] = Value::Null;
+    }
+    let raw = refresh(&mut report, &artifact);
+    validate_relations(&report, Some(&raw)).unwrap();
+}
+#[test]
+fn contrary_evidence_cannot_target_another_scope() {
+    let (mut report, mut artifact) = fixture("supported");
+    let mut contrary = artifact["findings"][0].clone();
+    contrary["id"] = json!("contrary-1");
+    contrary["kind"] = json!("contrary_evidence");
+    contrary["scope_id"] = json!("another-scope");
+    contrary["details"] = json!({"against_finding_id":"measurement-1","supporting_occurrences":[contrary["evidence"][0]["occurrence"].clone()]});
+    for document in [&mut report, &mut artifact] {
+        let mut scope = document["scopes"][0].clone();
+        scope["id"] = json!("another-scope");
+        document["scopes"].as_array_mut().unwrap().push(scope);
+        document["findings"]
+            .as_array_mut()
+            .unwrap()
+            .push(contrary.clone());
+    }
+    reject(
+        report,
+        artifact,
+        "contrary evidence target belongs to another scope",
+    );
+}
+#[test]
+fn unavailable_artifact_cannot_advertise_integrity_verification() {
+    let (mut report, _) = fixture("supported");
+    report["artifact"]["status"] = json!("unavailable");
+    report["artifact"]["content"] = json!("unavailable");
+    report["artifact"]["location"] = Value::Null;
+    report["artifact"]["stored_sha256"] = Value::Null;
+    report["retrieval"]["status"] = json!("unavailable");
+    report["retrieval"]["reason"] = json!("artifact not retained");
+    let validator = jsonschema::validator_for(&schema("investigation.schema.json")).unwrap();
+    assert!(!validator.is_valid(&report));
+    assert!(
+        validate_relations(&report, None)
+            .unwrap_err()
+            .to_string()
+            .contains("unavailable artifact cannot claim")
+    );
+    report["artifact"]["verification"]["artifact_integrity"] = json!("unavailable");
+    report["artifact"]["verification"]["losses"] = json!(["artifact not retained"]);
+    shape(&report, "investigation.schema.json");
+    validate_relations(&report, None).unwrap();
 }

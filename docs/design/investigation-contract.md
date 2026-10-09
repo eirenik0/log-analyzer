@@ -211,3 +211,23 @@ Applied redaction omits captured stream data and its stored-byte digest entirely
 a changed declared original hash is not proof of sanitization. Presentation collection
 counts reconcile prior, displayed and remaining items against totals, actual arrays
 and retained artifact collections. A complete presentation has known zero omissions.
+
+Finding-level source verification requires retained rules and the finding’s dependent
+source data even when it has no excerpts. Unrelated record losses do not invalidate a
+measurement. Empty-population and absence claims require retained scoped captures. Contrary-evidence targets omitted from a page may
+be explicitly retrieved; report-only validation records that deferred relation.
+
+Semantic event counters are bounded by selected records and their containing
+populations. Ambiguous and rejected counts overlap unmatched counts and are not
+summed as disjoint sets. Raw-source comparison preserves blank continuation lines.
+
+Record usage, when available, equals parsed-entry coverage. Declared mask fields
+without applied redaction do not disable identity verification. Contrary evidence
+can target only a finding in the same scope. An unavailable artifact declares its
+integrity unavailable. Integral statistics (sum, minimum, maximum and percentiles)
+use exact JSON integers; sums use checked arithmetic. Only means use floating point.
+
+Source verification indexes each consumed text stream once. Physical witnesses and
+normalized records share a logical source: count normalized paths per physical line
+when present, otherwise count that line once. Multiple excerpts of one occurrence
+are matched by their own text projection and verification guarantees.

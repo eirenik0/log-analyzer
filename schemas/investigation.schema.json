@@ -1889,6 +1889,13 @@
               },
               "content": {
                 "const": "unavailable"
+              },
+              "verification": {
+                "properties": {
+                  "artifact_integrity": {
+                    "const": "unavailable"
+                  }
+                }
               }
             }
           },

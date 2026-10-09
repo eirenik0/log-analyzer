@@ -122,9 +122,7 @@ pub fn validate_relations(
         "/report_metadata/evidence/snapshot_id",
         "snapshot identity digest mismatch",
     )?;
-    if manifest["redaction"]["applied"] == true
-        || !list(manifest, "/redaction/masked_id_fields")?.is_empty()
-    {
+    if manifest["redaction"]["applied"] == true {
         summary
             .deferred_relations
             .push("unredacted_query_and_input_identity".into());
@@ -227,6 +225,13 @@ pub fn validate_relations(
             )?;
         }
     }
+    if !report["processing"]["usage"]["records"].is_null() {
+        require(
+            number(report, "/processing/usage/records")? == parsed_total,
+            "/processing/usage/records",
+            "record usage differs from parsed coverage",
+        )?;
+    }
     if !report["processing"]["usage"]["input_bytes"].is_null() {
         let consumed = progress.iter().try_fold(0u64, |total, input| {
             total
@@ -324,12 +329,37 @@ pub fn validate_relations(
                 )
                 .ok_or_else(|| error("/scopes/semantic_coverage", "scoped coverage overflow"))
         })?;
-        for counter in ["relevant_records", "classified_records"] {
+        for counter in [
+            "relevant_records",
+            "classified_records",
+            "paired_events",
+            "unmatched_events",
+            "ambiguous_events",
+            "rejected_events",
+        ] {
             if let Some(count) = scope["semantic_coverage"][counter].as_u64() {
                 require(
                     count <= selected,
                     "/scopes/semantic_coverage",
                     "semantic coverage exceeds selected parse coverage",
+                )?;
+            }
+        }
+        for (part, whole) in [
+            ("paired_events", "classified_records"),
+            ("paired_events", "relevant_records"),
+            ("unmatched_events", "relevant_records"),
+            ("ambiguous_events", "unmatched_events"),
+            ("rejected_events", "unmatched_events"),
+        ] {
+            if let (Some(part_count), Some(whole_count)) = (
+                scope["semantic_coverage"][part].as_u64(),
+                scope["semantic_coverage"][whole].as_u64(),
+            ) {
+                require(
+                    part_count <= whole_count,
+                    "/scopes/semantic_coverage",
+                    "semantic event count exceeds its containing population",
                 )?;
             }
         }
@@ -519,23 +549,34 @@ pub fn validate_relations(
                 )?;
             }
         }
-        let mut retained_sources: BTreeMap<u64, BTreeSet<(u64, String)>> = BTreeMap::new();
+        let mut retained_rows: BTreeMap<u64, BTreeMap<u64, BTreeSet<String>>> = BTreeMap::new();
         for record in list(artifact, "/records")? {
             let id = occurrence(get(record, "/occurrence")?)?;
             let source = get(record, "/occurrence/evidence_ref")?;
-            retained_sources
+            let line = number(source, "/line")?;
+            let rows = retained_rows
                 .entry(id.input_ordinal)
                 .or_default()
-                .insert((number(source, "/line")?, source["row_path"].to_string()));
+                .entry(line)
+                .or_default();
+            if !source["row_path"].is_null() {
+                rows.insert(source["row_path"].to_string());
+            }
             require(
                 retained.insert(id, record).is_none(),
                 "/artifact/records",
                 "duplicate retained occurrence",
             )?;
         }
-        for (ordinal, sources) in retained_sources {
+        for (ordinal, lines) in retained_rows {
+            let selected = number(&inputs[ordinal as usize], "/selected_entries")?;
+            let represented = lines.values().try_fold(0u64, |count, rows| {
+                count
+                    .checked_add(rows.len().max(1) as u64)
+                    .ok_or_else(|| error("/artifact/records", "retained source count overflow"))
+            })?;
             require(
-                sources.len() as u64 <= number(&inputs[ordinal as usize], "/selected_entries")?,
+                represented <= selected,
                 "/artifact/records",
                 "retained source records exceed selected parse coverage",
             )?;
@@ -565,37 +606,45 @@ pub fn validate_relations(
             }
             for excerpt in list(displayed, "/evidence")? {
                 let source = get(excerpt, "/occurrence")?;
-                let original = list(saved, "/evidence")?
+                let originals: Vec<_> = list(saved, "/evidence")?
                     .iter()
-                    .find(|v| v["occurrence"] == *source)
-                    .ok_or_else(|| {
-                        error(
-                            "/findings/evidence",
-                            "displayed witness not in retained finding",
-                        )
-                    })?;
-                let displayed_text = text(excerpt, "/text")?;
-                let original_text = text(original, "/text")?;
+                    .filter(|v| v["occurrence"] == *source)
+                    .collect();
                 require(
-                    original_text.starts_with(displayed_text)
-                        && excerpt["verification"] == original["verification"]
-                        && number(excerpt, "/omitted_characters")?
-                            == number(original, "/omitted_characters")?
-                                .checked_add(
-                                    original_text
-                                        .chars()
-                                        .count()
-                                        .saturating_sub(displayed_text.chars().count())
-                                        as u64,
-                                )
-                                .ok_or_else(|| {
-                                    error(
-                                        "/findings/evidence/omitted_characters",
-                                        "excerpt omission count overflow",
-                                    )
-                                })?,
+                    !originals.is_empty(),
                     "/findings/evidence",
-                    "invalid excerpt projection or verification",
+                    "displayed witness not in retained finding",
+                )?;
+                let displayed_text = text(excerpt, "/text")?;
+                let omitted = number(excerpt, "/omitted_characters")?;
+                let mut matched = false;
+                let mut overflow = false;
+                for original in originals {
+                    let original_text = text(original, "/text")?;
+                    if !original_text.starts_with(displayed_text)
+                        || excerpt["verification"] != original["verification"]
+                    {
+                        continue;
+                    }
+                    let clipped =
+                        (original_text.chars().count() - displayed_text.chars().count()) as u64;
+                    match number(original, "/omitted_characters")?.checked_add(clipped) {
+                        Some(expected) if omitted == expected => {
+                            matched = true;
+                            break;
+                        }
+                        None => overflow = true,
+                        _ => {}
+                    }
+                }
+                require(
+                    matched,
+                    "/findings/evidence",
+                    if overflow {
+                        "excerpt omission count overflow"
+                    } else {
+                        "invalid excerpt projection or verification"
+                    },
                 )?;
             }
         }
@@ -870,17 +919,17 @@ pub fn validate_relations(
     }
     if let Some(artifact) = artifact.as_ref() {
         let profile_available = artifact["effective_profile_omitted"] == false;
+        let mut indexed_sources: BTreeMap<u64, Vec<&str>> = BTreeMap::new();
         for record in retained.values() {
             if record["verification"]["source_and_rules"] == "available" {
                 let source = get(record, "/occurrence")?;
-                let bytes = original_captures
-                    .get(&number(source, "/input_ordinal")?)
-                    .ok_or_else(|| {
-                        error(
-                            "/artifact/records/verification",
-                            "original source bytes not retained",
-                        )
-                    })?;
+                let ordinal = number(source, "/input_ordinal")?;
+                let bytes = original_captures.get(&ordinal).ok_or_else(|| {
+                    error(
+                        "/artifact/records/verification",
+                        "original source bytes not retained",
+                    )
+                })?;
                 require(
                     profile_available
                         && source["evidence_ref"]["location_redacted"] != true
@@ -889,18 +938,18 @@ pub fn validate_relations(
                     "source or rule verification prerequisites lost",
                 )?;
                 let raw = text(record, "/raw_text")?;
-                let source_text = std::str::from_utf8(bytes)
-                    .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?;
+                let source_lines = match indexed_sources.entry(ordinal) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        let source_text = std::str::from_utf8(bytes)
+                            .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?;
+                        entry.insert(source_text.lines().collect())
+                    }
+                    std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                };
                 let line = usize::try_from(number(source, "/evidence_ref/line")?)
                     .map_err(|_| error("/artifact/records/raw_text", "line too large"))?;
-                let fragment = source_text
-                    .lines()
-                    .skip(line - 1)
-                    .take(raw.lines().count())
-                    .collect::<Vec<_>>()
-                    .join("\n");
                 require(
-                    fragment == raw.trim_end_matches('\n'),
+                    raw_lines_match(source_lines, line, raw),
                     "/artifact/records/raw_text",
                     "raw record differs from retained input",
                 )?;
@@ -923,6 +972,72 @@ pub fn validate_relations(
         let scope = scopes
             .get(text(finding, "/scope_id")?)
             .ok_or_else(|| error("/findings/scope_id", "unknown scope"))?;
+        if finding["verification"]["source_and_rules"] == "available" {
+            require(
+                manifest["redaction"]["applied"] != true,
+                "/findings/verification",
+                "finding claims source verification after applied redaction",
+            )?;
+            if let Some(artifact) = artifact.as_ref() {
+                require(
+                    artifact["effective_profile_omitted"] == false,
+                    "/findings/verification",
+                    "finding claims unavailable effective rules",
+                )?;
+                let mut dependencies = Vec::new();
+                if finding["kind"] == "calculated_fact" {
+                    let population = populations
+                        .get(text(finding, "/details/population_id")?)
+                        .ok_or_else(|| {
+                            error("/findings/verification", "unknown finding population")
+                        })?;
+                    for member in list(artifact, text(population, "/membership/collection")?)? {
+                        if member["kind"] == "record" {
+                            dependencies.push(get(member, "/occurrence")?);
+                        } else {
+                            dependencies.extend(list(member, "/source_occurrences")?);
+                        }
+                    }
+                    if finding["details"]["calculation"] == "distribution" {
+                        for id in list(finding, "/details/measurement_ids")? {
+                            if let Some(measurement) = id.as_str().and_then(|id| findings.get(id)) {
+                                require(
+                                    measurement["verification"]["source_and_rules"] == "available",
+                                    "/findings/verification",
+                                    "calculation claims unavailable sample source verification",
+                                )?;
+                            }
+                        }
+                    }
+                } else {
+                    for excerpt in list(finding, "/evidence")? {
+                        dependencies.push(get(excerpt, "/occurrence")?);
+                    }
+                }
+                for source in &dependencies {
+                    let id = occurrence(source)?;
+                    require(
+                        original_captures.contains_key(&id.input_ordinal)
+                            && retained.get(&id).is_some_and(|record| {
+                                record["verification"]["source_and_rules"] == "available"
+                            }),
+                        "/findings/verification",
+                        "finding claims unavailable dependent source verification",
+                    )?;
+                }
+                if dependencies.is_empty() {
+                    require(
+                        list(scope, "/input_ordinals")?.iter().all(|ordinal| {
+                            ordinal
+                                .as_u64()
+                                .is_some_and(|id| original_captures.contains_key(&id))
+                        }),
+                        "/findings/verification",
+                        "absence claim lacks retained scoped captures",
+                    )?;
+                }
+            }
+        }
         for excerpt in list(finding, "/evidence")? {
             let source = get(excerpt, "/occurrence")?;
             let id = occurrence(source)?;
@@ -931,6 +1046,13 @@ pub fn validate_relations(
                 "/findings/evidence",
                 "witness outside finding scope",
             )?;
+            if manifest["redaction"]["applied"] == true {
+                require(
+                    excerpt["verification"]["source_and_rules"] == "unavailable",
+                    "/findings/evidence/verification",
+                    "excerpt claims source verification after applied redaction",
+                )?;
+            }
             if source["evidence_ref"]["location_redacted"] == true {
                 require(
                     excerpt["verification"]["source_and_rules"] == "unavailable",
@@ -1129,37 +1251,7 @@ pub fn validate_relations(
                             "/findings/details/sample_count",
                             "distribution population differs from sample count",
                         )?;
-                        let (expected, method) = match text(details, "/statistic")? {
-                            "sum" => (samples.iter().map(|v| *v as f64).sum(), "sum"),
-                            "mean" => (
-                                samples.iter().map(|v| *v as f64).sum::<f64>()
-                                    / samples.len() as f64,
-                                "arithmetic_mean",
-                            ),
-                            "minimum" => (samples[0] as f64, "minimum"),
-                            "maximum" => (samples[samples.len() - 1] as f64, "maximum"),
-                            name @ ("p50" | "p95" | "p99") => {
-                                let percentile: usize = name[1..].parse().map_err(|_| {
-                                    error("/findings/details/statistic", "invalid percentile")
-                                })?;
-                                (
-                                    samples[samples.len() * percentile / 100] as f64,
-                                    "sorted_index_floor_n_times_percentile_over_100",
-                                )
-                            }
-                            _ => {
-                                return Err(error(
-                                    "/findings/details/statistic",
-                                    "unsupported statistic",
-                                ));
-                            }
-                        };
-                        require(
-                            details["value"].as_f64() == Some(expected)
-                                && details["method"] == method,
-                            "/findings/details",
-                            "distribution value or method differs",
-                        )?;
+                        check_distribution_value(details, &samples)?;
                     }
                     _ => {
                         return Err(error(
@@ -1188,10 +1280,26 @@ pub fn validate_relations(
                 if finding["kind"] == "contrary_evidence" {
                     let against = text(details, "/against_finding_id")?;
                     require(
-                        findings.contains_key(against) && finding["id"] != against,
+                        finding["id"] != against,
                         "/findings/details/against_finding_id",
-                        "contrary evidence target missing or self-referential",
+                        "contrary evidence target is self-referential",
                     )?;
+                    if let Some(target) = findings.get(against) {
+                        require(
+                            target["scope_id"] == finding["scope_id"],
+                            "/findings/details/against_finding_id",
+                            "contrary evidence target belongs to another scope",
+                        )?;
+                    } else {
+                        require(
+                            artifact.is_none() && can_retrieve("finding", against),
+                            "/findings/details/against_finding_id",
+                            "contrary evidence target missing and not retrievable",
+                        )?;
+                        summary
+                            .deferred_relations
+                            .push(format!("contrary_target:{against}"));
+                    }
                 }
             }
             _ => return Err(error("/findings/kind", "unsupported finding kind")),
@@ -1288,6 +1396,13 @@ pub fn validate_relations(
                 "total differs from retained findings",
             )?;
         }
+    }
+    if report["artifact"]["status"] == "unavailable" {
+        require(
+            report["artifact"]["verification"]["artifact_integrity"] == "unavailable",
+            "/artifact/verification/artifact_integrity",
+            "unavailable artifact cannot claim available integrity",
+        )?;
     }
     let mut collection_paths = BTreeSet::new();
     let mut omitted_collection_items = false;
@@ -1406,4 +1521,117 @@ fn check_bundle(
         )?;
     }
     Ok(())
+}
+
+fn check_distribution_value(details: &Value, samples: &[u64]) -> Result<(), ContractError> {
+    require(
+        !samples.is_empty(),
+        "/findings/details/sample_count",
+        "distribution has no samples",
+    )?;
+    let (matches, method) = match text(details, "/statistic")? {
+        "sum" => {
+            let sum = samples.iter().try_fold(0u64, |sum, value| {
+                sum.checked_add(*value).ok_or_else(|| {
+                    error(
+                        "/findings/details/value",
+                        "integer distribution sum overflow",
+                    )
+                })
+            })?;
+            (details["value"].as_u64() == Some(sum), "sum")
+        }
+        "mean" => (
+            details["value"].as_f64()
+                == Some(samples.iter().map(|v| *v as f64).sum::<f64>() / samples.len() as f64),
+            "arithmetic_mean",
+        ),
+        "minimum" => (details["value"].as_u64() == Some(samples[0]), "minimum"),
+        "maximum" => (
+            details["value"].as_u64() == Some(samples[samples.len() - 1]),
+            "maximum",
+        ),
+        name @ ("p50" | "p95" | "p99") => {
+            let percentile: usize = name[1..]
+                .parse()
+                .map_err(|_| error("/findings/details/statistic", "invalid percentile"))?;
+            let index =
+                (samples.len() / 100) * percentile + (samples.len() % 100) * percentile / 100;
+            (
+                details["value"].as_u64() == Some(samples[index]),
+                "sorted_index_floor_n_times_percentile_over_100",
+            )
+        }
+        _ => {
+            return Err(error(
+                "/findings/details/statistic",
+                "unsupported statistic",
+            ));
+        }
+    };
+    require(
+        matches && details["method"] == method,
+        "/findings/details",
+        "distribution value or method differs",
+    )
+}
+
+fn raw_lines_match(source_lines: &[&str], line: usize, raw: &str) -> bool {
+    source_lines
+        .get(line.saturating_sub(1)..)
+        .is_some_and(|remaining| {
+            remaining
+                .iter()
+                .copied()
+                .take(raw.lines().count())
+                .eq(raw.lines())
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{check_distribution_value, raw_lines_match};
+    use serde_json::json;
+
+    #[test]
+    fn integer_statistics_do_not_round_large_values() {
+        let exact = (1u64 << 53) + 1;
+        for (statistic, method) in [
+            ("sum", "sum"),
+            ("minimum", "minimum"),
+            ("maximum", "maximum"),
+            ("p95", "sorted_index_floor_n_times_percentile_over_100"),
+        ] {
+            let mut details = json!({"statistic":statistic,"method":method,"value":exact});
+            check_distribution_value(&details, &[exact]).unwrap();
+            details["value"] = json!(exact - 1);
+            assert!(check_distribution_value(&details, &[exact]).is_err());
+        }
+        let details = json!({"statistic":"sum","method":"sum","value":0});
+        assert!(
+            check_distribution_value(&details, &[u64::MAX, 1])
+                .unwrap_err()
+                .to_string()
+                .contains("sum overflow")
+        );
+    }
+    use std::io::Write;
+
+    #[test]
+    fn native_blank_continuation_lines_preserve_source_verification() {
+        let input = "worker | 2026-10-07T10:00:00Z [INFO ] started\n\n\n";
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(input.as_bytes()).unwrap();
+        let entries = crate::parser::parse_log_file(file.path().to_str().unwrap()).unwrap();
+        assert_eq!(entries.len(), 1);
+        let raw = &entries[0].raw_logline;
+        assert!(raw.ends_with("\n\n"));
+        let source_lines: Vec<_> = input.lines().collect();
+        assert!(raw_lines_match(&source_lines, 1, raw));
+        assert!(!raw_lines_match(
+            &source_lines,
+            1,
+            &raw.replace("started", "invented")
+        ));
+    }
 }

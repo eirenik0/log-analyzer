@@ -17,3 +17,10 @@ in the README independently of investigation schema 1.
 
 Require capability discovery metadata, reconcile collection pagination, and omit
 captured stream data under applied redaction regardless of claimed source digests.
+
+Validate finding source guarantees by dependencies, support retrievable contrary
+evidence targets, preserve blank continuation lines, and bound semantic event counts.
+
+Index source verification, handle mixed normalized witnesses and multiple excerpts,
+preserve exact integer statistics, and enforce record usage, scope, and unavailable
+artifact-integrity guarantees.
