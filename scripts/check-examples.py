@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import time
 
@@ -248,12 +249,28 @@ def findings_for(example, reports):
     raise AssertionError(f'unknown maintained workflow: {kind}')
 
 
+def skill_commands(example, document):
+    """Bind the published command sequence to the fixture's semantic assertions."""
+    blocks = re.findall(r'^```sh\n(.*?)^```$', document, re.MULTILINE | re.DOTALL)
+    commands = [shlex.split(block.replace('\\\n', '')) for block in blocks]
+    expected = [['log-analyzer', 'capabilities']]
+    expected.extend(['log-analyzer', *[arg.replace('{root}/', '') for arg in step['args']]]
+                    for step in example['steps'])
+    require(commands == expected, f'{example["id"]}: skill example commands differ from checked workflow')
+    return [command[1:] for command in commands[1:]]
+
+
 def run_workflow(binary, example):
     runner = Runner(binary, **example.get('budgets', {}))
     reports, stop = {}, None
+    commands = [step['args'] for step in example['steps']]
+    if example.get('skill_example'):
+        commands = skill_commands(example, (ROOT / example['skill_example']).read_text(encoding='utf-8'))
     try:
-        for step in example['steps']:
-            args = [a.replace('{root}', str(ROOT)) for a in step['args']]
+        for step, command in zip(example['steps'], commands):
+            args = [a.replace('{root}', str(ROOT)) for a in command]
+            # Resolve documented fixture paths for the same absolute citation checks.
+            args = [str(ROOT / a) if a.startswith('examples/') else a for a in args]
             report = runner.retrieve(args, step.get('exit', 0))
             for check in step.get('checks', []):
                 require(pointer(report, check['path']) == check['value'], f'{example["id"]}/{step["id"]}: {check["path"]} mismatch')
