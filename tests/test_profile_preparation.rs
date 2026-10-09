@@ -587,3 +587,51 @@ fn global_source_conflicts_are_rejected_before_loading_or_candidate_creation() {
         }
     }
 }
+
+#[test]
+fn embedded_identifiers_in_preparation_query_paths_are_redacted_on_stdout_and_disk() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let original_input = fixture(root);
+    let input = root.join("input-private-id-run.jsonl");
+    let rows = fs::read_to_string(&original_input)
+        .unwrap()
+        .replace("\"component_id\":\"a\"", "\"component_id\":\"private-id\"");
+    fs::write(&input, rows).unwrap();
+    let template = profile(root, "source", "session");
+    let original_expected = facts(root, "a");
+    let expected = root.join("expected-private-id-facts.json");
+    fs::rename(original_expected, &expected).unwrap();
+    let candidate = root.join("prepared-private-id-profile.toml");
+    let report = root.join("saved-private-id-report.json");
+    let (value, output) = run(&[
+        "--redact",
+        "--mask-id",
+        "component_id",
+        "--output",
+        report.to_str().unwrap(),
+        "prepare-profile",
+        input.to_str().unwrap(),
+        "--candidate-output",
+        candidate.to_str().unwrap(),
+        "--expected",
+        expected.to_str().unwrap(),
+        "--template",
+        &template,
+        "--kind",
+        "request",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("private-id"));
+    assert!(!fs::read_to_string(&report).unwrap().contains("private-id"));
+    let query = &value["report_metadata"]["evidence"]["query"]["command"]["PrepareProfile"];
+    for key in ["candidate_output", "expected"] {
+        assert!(query[key].as_str().unwrap().contains("[MASKED_ID:"));
+    }
+    assert!(candidate.is_file());
+    log_analyzer::config::load_config_from_path(&candidate).unwrap();
+}

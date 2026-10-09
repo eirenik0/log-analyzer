@@ -382,7 +382,9 @@ impl OutputState {
                 {
                     return Value::String(self.path_text(text));
                 }
-                if path.ends_with(".ValidateProfile.expected")
+                if path.ends_with(".PrepareProfile.expected")
+                    || path.ends_with(".PrepareProfile.candidate_output")
+                    || path.ends_with(".ValidateProfile.expected")
                     || path.ends_with(".ResolveProfile.expected")
                     || path.ends_with(".ResolveProfile.association")
                     || path.ends_with(".ResolveProfile.candidate_config")
