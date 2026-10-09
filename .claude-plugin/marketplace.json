@@ -10,7 +10,7 @@
     {
       "name": "log-analyzer",
       "description": "Local evidence engine for AI log investigations: deterministic parsing, scoped timing and verifiable sources.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "eirenik0"
       },

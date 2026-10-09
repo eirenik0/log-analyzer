@@ -1,6 +1,7 @@
 [package]
 versioned_files = [
     "Cargo.toml",
+    "Cargo.lock",
     { path = ".claude-plugin/plugin.json", regex = '"version": "(?<version>\d+\.\d+\.\d+)"' },
     { path = ".claude-plugin/marketplace.json", regex = '"version": "(?<version>\d+\.\d+\.\d+)"' }
 ]

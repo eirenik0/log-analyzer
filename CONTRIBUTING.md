@@ -64,3 +64,16 @@ not a substitute for maintainer judgment.
 Repository administrators manage required checks in GitHub settings. The release
 workflow currently pushes its version commit directly to `main`; preserve an
 explicit administrator release exception until releases use pull requests.
+
+## Prepared releases
+
+The single-package Knope configuration uses `default:` as its changeset key;
+prefer `knope document-change` to generate the file. `knope prepare-release`
+updates Cargo.toml/Cargo.lock, plugin versions and CHANGELOG.md, and consumes the
+pending changesets. Review and merge this prepared version before publication.
+
+To publish it later, dispatch the Release workflow on main with `prepared-version`
+set to the exact stable version (for example `0.3.0`). Use `dry-run` to validate
+without publishing. This path checks synchronized metadata and release notes,
+skips another version bump, and pins tests, builds and publication to one captured
+commit. Leave `prepared-version` empty for the ordinary prepare-and-release path.
