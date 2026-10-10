@@ -31,7 +31,8 @@ log-analyzer --version
 
 ## Unified investigation and retained evidence
 
-Capture, parse/classify and correlate each independent input once, then inspect
+Capture each independent input once, detect its built-in profile when needed,
+then parse/classify and correlate the captured input once. Inspect
 calculated findings, source boundaries, explicit populations and per-goal support:
 
 ```bash
@@ -62,10 +63,26 @@ verification have byte limits.
 Artifacts stay local until deleted, are never overwritten and need caller-managed
 retention. Retrieval saves only new `--output` files.
 
-Start with an explicit validated `--config`/`--preset`. This initial workflow does
-not repeat automatic profile discovery: generic base inspection remains useful,
-but unavailable lifecycle semantics are stated explicitly. Invalid configurations
-remain CLI errors. Recognition, timing, failures and incomplete-lifecycle evidence
+Bare `investigate` automatically checks built-in lifecycle grammars on captured
+prefixes: at most 128 physical lines and 64 KiB per input, sharing a 256 KiB total
+sample allowance equally across inputs. Exactly one matching profile, with lifecycle
+evidence in every nonempty input and no observed parsing/classification loss, is
+selected. Overlapping grammars (including common `eyes`/`custom-start` wording),
+mixed profiles, unknown formats and insufficient evidence fall back to generic
+`base`; the highest match count never breaks a tie. Detection is sample-based
+inference, not independent validation or proof of completion. Unsampled content may
+differ, so inspect full-analysis coverage and per-goal support.
+
+Use `--config` or `--preset` to override and bypass detection; `--preset base` keeps
+inspection generic. Invalid explicit configurations remain errors. Detection never
+rereads source files or loads persistent mappings/custom profiles. The query's
+`execution.profile_selection` reports the status, candidates, sample extents,
+limitations and next step. `detection_parse_passes` and `analysis_parse_passes` explain
+`parse_passes`; detection work/time and temporary memory share processing limits,
+while `probe_records` are separate from processed analysis record counts. Retrieval
+still performs zero parsing. Other analysis commands retain their existing defaults.
+
+Recognition, timing, failures and incomplete-lifecycle evidence
 have separate support requirements; scope aliases and missing timestamp provenance
 prevent a timing support claim. Each supplied file is an independent run, even
 when IDs or paths repeat. Analyze related capture fragments together through the
@@ -339,7 +356,16 @@ be checked on the actual capture. Generic `base` behavior remains separate from
 input size in bytes, parsed entry count, and rejected candidate count before
 filtering. JSON reports expose these under `coverage.files`, with aggregate
 `parsed_entries`, `filter_matches`, and `status`. `info -F json` includes entry,
-component, and level totals.
+component, and level totals. It also provides advisory `info.next_steps`, mirrored
+in text output: run an initial bounded investigation using automatic detection or
+an explicit override, inspect support, and resolve/validate remaining semantic gaps.
+The structural disclaimer means lifecycle semantics and upstream capture
+completeness are **not assessed by structure**, not that investigation is unavailable.
+If no semantic profile is justified, explicit `--preset base` still provides generic
+facts and unavailable-goal diagnostics. The skill requires this initial investigation
+before custom parsing; scripts then address a documented gap in the selected
+profile, supported relationships or processed evidence. Bounded input inspection
+for profile assertions can precede it.
 
 An input file with non-whitespace content but no recognized entries fails with
 exit status **1**, even if other input files parse successfully. Its coverage
@@ -1133,8 +1159,8 @@ redaction, bounds, and scope/capture limitations.
 
 ## Resolve a profile explicitly
 
-`resolve-profile` is an opt-in, read-only JSON interface. Existing commands keep
-all their defaults. Discovery reports selected identity/digest and provenance,
+`resolve-profile` is an opt-in, read-only JSON interface, separate from the bounded
+grammar inference in `investigate`. Discovery reports selected identity/digest and provenance,
 stably ordered alternatives, per-candidate structural coverage, independent
 recognition/timing assessments, scope diagnostics, assertions and unresolved
 assumptions. It does not activate a profile or write configuration:
@@ -1157,7 +1183,7 @@ explicit choices exit 1 with useful generic base-profile inspection and diagnost
 The outer metadata describes that generic inspection; each candidate owns its
 consumed-byte, effective-profile, query identity and source references.
 
-Automatic selection requires no reported structural rejections and independently supplied
+Selection by this resolver requires no reported structural rejections and independently supplied
 semantic assertions, not names, filenames, language, rule IDs or match counts.
 For recognition, every selected record classified as the requested kind needs
 passing `/status = "event"`, `/semantics/kind`, exact name, phase, correlation ID,

@@ -29,21 +29,47 @@ Inspect content before sharing. Optional masking cannot guarantee secrecy.
    tool/output/time/token budgets. Freeze active files; never declare a source
    twice or assume arbitrary files share a run. Unified investigation treats
    each input independently and cannot pair across files.
-4. Select an explicit `--config`/`--preset` or the generic base profile. A parser
-   match does not establish semantic suitability. If application knowledge is
-   missing, state the missing roles, identities, boundaries or outcomes. Use
-   advertised profile resolution/preparation only to produce an explicit candidate;
-   inspect support and validate against independently known facts before selecting
-   it. Never select by match count or similar wording. See [the reference](reference.md)
-   and binary help for resolution, validation and persistent mappings. Save,
-   replace or forget mappings only when explicitly requested, with current
-   independent assertions and an inspected entry digest where required.
+4. Use `investigate`'s advertised automatic built-in profile detection by default.
+   Honor a supplied `--config`/`--preset` override. Inspect `profile_selection`,
+   sampled coverage and per-goal support: grammar inference does not establish
+   independent semantic suitability or completion. For a remaining semantic gap,
+   use advertised resolution/preparation and validate against independently known
+   facts before applying an override. Older binaries without detection use an
+   explicit profile or generic `base`. Never choose a profile by match count or
+   similar wording. See [the reference](reference.md) and binary help. Save, replace
+   or forget mappings only when explicitly requested, with independent assertions
+   and an inspected entry digest where required.
+
+## Before custom parsing
+
+Run an initial bounded `investigate` before writing or running custom parsers,
+lifecycle grep pipelines or timestamp-calculation scripts. Bounded source inspection
+to locate inputs or check profile assertions can precede this; it does not replace
+the initial investigation.
+
+An `info` structural disclaimer such as “capture/semantics unknown” does not mean
+investigation is unavailable. Let the analyzer detect a built-in profile, or honor
+an explicit override. Ambiguous or unrecognized samples fall back to generic base
+analysis with explicit gaps; inspect those results before refining a profile. Do
+not invent semantics or select the highest match count. Use the stated compatibility
+path only when unified investigation is unavailable.
+
+Inspect the initial report's processing coverage, per-goal support and needed retained
+evidence before deciding on a script. Document the specific remaining gap: the
+input/profile, attempted command or retained assessment, unsupported field/relationship
+or processing boundary, and the question the script will answer. Reuse retained
+records when they contain the needed data. Custom analysis may fill that gap within
+the same budgets and citation/scope constraints; it must not silently replace supported
+analyzer calculations. A processing cutoff is a gap in consumed evidence, not proof
+that custom parsing is more accurate. If compatibility, access or budgets prevent the
+initial investigation, disclose that blocker rather than claiming this workflow ran.
 
 ## Calculate once, retrieve as needed
 
 When `investigation_contracts.command_available` and
-`artifact_retrieval_available` are true, invoke `investigate` with the selected
-profile, declared processing limits, a fresh artifact path and bounded presentation.
+`artifact_retrieval_available` are true, invoke `investigate` with automatic
+detection or an explicit profile override, declared processing limits, a fresh
+artifact path and bounded presentation.
 Inspect coverage, per-goal support, population completeness, exclusions, processing
 stop reasons and verification losses before interpreting findings. Resolve explicit
 missing application knowledge rather than repeating broad queries.

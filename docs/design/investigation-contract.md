@@ -34,6 +34,18 @@ fields, capture completeness and analysis completion. Independent runs remain
 separate unless independently supported rules establish a relationship. Identical
 resource or request suffixes, paths, filenames or languages do not establish one run.
 
+## Automatic profile inference
+
+Without an explicit config/preset, `investigate` probes bounded prefixes of the same
+captured bytes later analyzed. The effective query records candidate observations,
+sample extents and selection/fallback status in `execution.profile_selection`.
+This built-in grammar inference does not claim independent semantic validation;
+assertion-based `resolve-profile` remains a separate interface. Explicit overrides
+bypass probing. Detection work/time and scratch memory share processing budgets,
+with scratch released between probes; its record counts are separate from analysis
+records. `parse_passes` includes both `detection_parse_passes` and
+`analysis_parse_passes`. Retained retrieval still performs no source parsing.
+
 ## Assessment, processing and presentation
 
 Assessments are per goal and scope. `supported` means the referenced finding answers

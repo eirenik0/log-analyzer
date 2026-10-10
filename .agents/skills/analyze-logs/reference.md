@@ -90,10 +90,31 @@ Check coverage against retained evidence, retention against the artifact descrip
 and pagination against displayed findings and omissions. Exceptional presentation
 statuses must agree with budgets and usage; unknowns alone do not establish support.
 
+## When `info` reports unknown semantics
+
+Structural coverage describes recognized input shapes, not lifecycle support. Its
+unknown-semantics disclaimer is not a reason to skip `investigate`. Start with its
+advertised default built-in profile detection (or an explicit override). Inspect
+`report_metadata.evidence.query.execution.profile_selection`: inference uses bounded
+captured prefixes, requires one matching lifecycle grammar across nonempty inputs,
+and falls back to base on ambiguity or insufficient evidence. It is not independent
+semantic validation. Preserve unavailable goals; use resolution and independently
+validated overrides only for remaining gaps. `--preset base` disables detection.
+
+Before custom parsing, record the initial investigation's concrete gap and intended
+supplement. For example, “the selected profile recognizes request boundaries but has
+no resource-to-request relationship; inspect the retained resource outcome records”
+is a scoped gap. “The analyzer returned unknown” is not enough. Do not reinterpret
+raw result records as authoritative terminal events without application semantics.
+When reviewing an execution trace, compare actual call order: a cutoff encountered
+after a script was written cannot explain why that script was first chosen.
+
 ## Deterministic profile resolution
 
 Use `resolve-profile --help` and capability `profile_resolution.version` before
-using discovery. Existing defaults remain explicit. Precedence is explicit CLI,
+using discovery. This assertion-based resolver is separate from `investigate`'s
+bounded grammar inference; other analysis commands retain their defaults. Resolver
+precedence is explicit CLI,
 revalidated supplied read-only association, revalidated project/user mappings
 (version 2), then one independently asserted candidate. Never substitute a candidate for an invalid explicit choice.
 

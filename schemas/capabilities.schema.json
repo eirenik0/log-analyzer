@@ -272,6 +272,16 @@
             "input_ordinal",
             "reference_id"
           ]
+        },
+        "profile_detection": {
+          "const": {
+            "default": true,
+            "method": "unique_builtin_lifecycle_grammar",
+            "overrides": [
+              "config",
+              "preset"
+            ]
+          }
         }
       },
       "required": [

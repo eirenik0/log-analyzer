@@ -197,6 +197,12 @@ fn write_output_file(
         .map_err(|e| format!("Failed to write output file '{}': {}", path.display(), e).into())
 }
 
+const INFO_NEXT_STEPS: &[&str] = &[
+    "Structural checks do not assess lifecycle semantics or upstream capture completeness; this does not make investigate unavailable.",
+    "Run a bounded investigate before custom parsing. It detects built-in profiles from captured samples by default; --config and --preset override detection, including --preset base for generic inspection.",
+    "Inspect profile_selection, coverage and retained evidence. For unresolved semantics use resolve-profile and validate-profile against independently known facts; document a specific remaining gap before custom parsing.",
+];
+
 #[derive(serde::Serialize)]
 struct AnalysisCoverage {
     files: Vec<parser::ParseCoverage>,
@@ -350,7 +356,7 @@ fn coverage_text_with_mode(coverage: &AnalysisCoverage, bounded: bool) -> String
         if bounded && !exceptional {
             let _ = writeln!(
                 text,
-                "  Structure summary: sample={}/{} input={} attached={} unverified; capture/semantics unknown.",
+                "  Structure: sample={}/{} input={} attached={} unverified; capture/semantics not assessed.",
                 structure.sample_status,
                 structure.sampled_nonempty_lines,
                 structure.observed_status,
@@ -361,7 +367,7 @@ fn coverage_text_with_mode(coverage: &AnalysisCoverage, bounded: bool) -> String
             let consumed = &structure.observed_format_matches;
             let _ = writeln!(
                 text,
-                "    Structure: {}; sample={}/{}; observed={}; headers(classic/rust/syslog/json; sample/consumed)={}/{},{}/{},{}/{},{}/{}; blocks={}, attached={} (unverified), blank={}, Python={}; capture/semantics unknown.",
+                "    Structure: {}; sample={}/{}; observed={}; headers(classic/rust/syslog/json; sample/consumed)={}/{},{}/{},{}/{},{}/{}; blocks={}, attached={} (unverified), blank={}, Python={}; capture completeness and lifecycle semantics not assessed by structure.",
                 structure.selection,
                 structure.sample_status,
                 structure.sampled_nonempty_lines,
@@ -812,6 +818,7 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
                 }
                 let report = serde_json::json!({"info": {
                     "total_entries": filtered_logs.len(), "levels": levels, "components": components,
+                    "next_steps": INFO_NEXT_STEPS,
                 }}).to_string();
                 let rendered = render_analysis_report(&report, format, &coverage)?;
                 report_print!("{rendered}");
@@ -825,6 +832,10 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
             // Display log summary with enhanced options
             display_log_summary(&filtered_logs, *samples, *json_schema, *payloads, *timeline);
             print_profile_insights(&filtered_logs, &analyzer_config);
+            report_println!("\nNext steps:");
+            for step in INFO_NEXT_STEPS {
+                report_println!("  {step}");
+            }
 
             // Show filtering information if applied
             if let Some(ref filter_expr) = cli.filter {

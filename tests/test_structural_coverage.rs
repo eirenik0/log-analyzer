@@ -269,7 +269,9 @@ fn shared_cli_reports_disclose_identical_structural_coverage_and_schema() {
             "{text}"
         );
         assert!(text.contains("attached=1 (unverified)"));
-        assert!(text.contains("capture/semantics unknown"));
+        assert!(
+            text.contains("capture completeness and lifecycle semantics not assessed by structure")
+        );
     }
     fs::write(
         &file,
@@ -431,7 +433,7 @@ fn clean_and_blank_text_reports_expose_full_structural_observations() {
                 "headers(classic/rust/syslog/json; sample/consumed)",
                 "attached=0 (unverified)",
                 "Python=0",
-                "capture/semantics unknown",
+                "capture completeness and lifecycle semantics not assessed by structure",
             ] {
                 assert!(text.contains(expected), "missing {expected}: {text}");
             }
@@ -462,7 +464,7 @@ fn bounded_clean_errors_label_the_structural_summary() {
         .unwrap();
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.contains("Structure summary:"));
+    assert!(text.contains("Structure: sample="));
     assert!(text.contains("attached=1 unverified"));
-    assert!(text.contains("capture/semantics unknown"));
+    assert!(text.contains("capture/semantics not assessed"));
 }

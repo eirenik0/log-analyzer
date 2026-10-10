@@ -357,7 +357,12 @@ pub struct InvestigationEvidenceArgs {
 
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
-    /// One bounded capture/parse/correlation per independent input, with reusable evidence (JSON)
+    /// Bounded investigation with automatic built-in profile detection and reusable evidence (JSON)
+    ///
+    /// Samples captured input prefixes using built-in grammars, then parses and correlates
+    /// each independent input once. --config or --preset bypass detection. Ambiguous or
+    /// unrecognized samples use generic base analysis; inspect profile_selection and
+    /// per-goal support. Detection shares processing budgets and never rereads sources.
     Investigate(InvestigateArgs),
     /// Retrieve retained evidence without reparsing or correlating source logs (JSON)
     InvestigationEvidence(InvestigationEvidenceArgs),
@@ -484,6 +489,11 @@ pub enum Commands {
     },
 
     /// List components, event types, log levels, and statistics in one or more log files
+    ///
+    /// Structural coverage does not assess lifecycle semantics. Run a bounded
+    /// investigate before custom parsing; it detects built-in profiles automatically.
+    /// --config/--preset override detection. Inspect profile_selection and per-goal
+    /// support; use resolve-profile/validate-profile for remaining semantic gaps.
     #[command(alias = "i", alias = "inspect")]
     Info {
         /// One or more log files to analyze

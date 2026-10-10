@@ -1,5 +1,6 @@
 //! Runtime orchestration; the public contract validator remains independent.
 mod artifact;
+mod auto_profile;
 mod findings;
 mod policy;
 mod selection;
@@ -152,7 +153,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             Ok(selector)
         })
         .collect::<Result<_>>()?;
-    let (config, profile_sources) = if let Some(path) = &cli.config {
+    let (mut config, profile_sources) = if let Some(path) = &cli.config {
         config::load_config_from_path_with_sources(path)?
     } else {
         (
@@ -187,7 +188,6 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             })
         })
         .collect();
-    let mut context = evidence::Context::new(cli, &config)?;
     let mut budget = Budget::new(Limits {
         input_bytes: args.input_max_bytes,
         records: args.processing_max_records,
@@ -206,19 +206,60 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             .saturating_add(query_bytes)
             .saturating_mul(16),
     );
+    let automatic = cli.config.is_none() && cli.preset.is_none();
+    // Capture once: detection and analysis must see exactly the same source bytes.
+    let mut cached = Vec::new();
+    let (detection, detection_parse_calls) = if automatic {
+        for (ordinal, path) in args.files.iter().enumerate() {
+            budget.active_scope = ordinal;
+            cached.push(if budget.stop.is_some() {
+                None
+            } else {
+                match capture(path, &mut budget) {
+                    Ok(capture) => Some(capture),
+                    Err(_) => {
+                        budget.stop("capture", "io_error", None);
+                        None
+                    }
+                }
+            });
+        }
+        let (selected, detection, passes) = auto_profile::detect(&args.files, &cached, &mut budget);
+        if let Some(selected) = selected {
+            budget.reserve(
+                "profile_detection",
+                (serde_json::to_vec(&selected)?.len() as u64).saturating_mul(16),
+            );
+            config = selected;
+        }
+        (detection, passes)
+    } else {
+        (
+            json!({"status":"explicit","profile":config.profile_name}),
+            0,
+        )
+    };
+    let mut context = evidence::Context::new(cli, &config)?;
     let mut progress = Vec::new();
     let mut captures = Vec::new();
     let mut parsed_inputs = Vec::new();
     let mut parse_calls = 0usize;
     for (ordinal, path) in args.files.iter().enumerate() {
         budget.active_scope = ordinal;
-        if budget.stop.is_some() {
+        if budget.stop.is_some() && (!automatic || cached[ordinal].is_none()) {
             budget.affected_scopes.insert(ordinal);
             progress.push(json!({"input_ordinal":ordinal,"capture":"unread","consumed_bytes":0,"consumed_sha256":null,"remaining_bytes":null}));
             captures.push(json!({"input_ordinal":ordinal,"capture":"unread","encoding":"utf8","data":null,"data_omitted":true,"original_consumed_sha256":null,"stored_sha256":null}));
             continue;
         }
-        let capture = match capture(path, &mut budget) {
+        let captured = if automatic {
+            cached[ordinal]
+                .take()
+                .ok_or_else(|| "Input was not captured".into())
+        } else {
+            capture(path, &mut budget)
+        };
+        let capture = match captured {
             Ok(capture) => capture,
             Err(_) => {
                 budget.stop("capture", "io_error", None);
@@ -337,7 +378,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "not_performed"
         };
         let coverage = perf.as_ref().map(|_| &view);
-        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":if structural_loss{"partial"}else{"complete"},"analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Explicit effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
+        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":if structural_loss{"partial"}else{"complete"},"analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
         budget.begin_stage();
         findings::build(
             &entries,
@@ -484,7 +525,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         }
     }
     // Instrumentation belongs to the effective query and its digest, never to evidence text.
-    metadata["evidence"]["query"]["execution"] = json!({"parse_passes":parse_calls,"correlation_passes":correlation_calls,"input_relationship":"independent_runs","record_max_bytes":args.record_max_bytes,"profile_selection":"explicit_or_generic_base","source_locations":source_locations});
+    metadata["evidence"]["query"]["execution"] = json!({"parse_passes":parse_calls + detection_parse_calls,"analysis_parse_passes":parse_calls,"detection_parse_passes":detection_parse_calls,"correlation_passes":correlation_calls,"input_relationship":"independent_runs","record_max_bytes":args.record_max_bytes,"profile_selection":detection,"source_locations":source_locations});
     metadata["evidence"]["query_sha256"] = json!(evidence::digest(
         metadata["evidence"]["query"].to_string().as_bytes()
     ));

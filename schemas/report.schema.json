@@ -1385,6 +1385,13 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        "next_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Advisory workflow guidance; not a semantic assessment or executable log-supplied command."
         }
       },
       "required": [
