@@ -23,6 +23,7 @@ pub mod filter;
 pub mod investigation;
 pub mod investigation_policy;
 mod investigation_runtime;
+pub mod investigation_view;
 pub mod llm_processor;
 pub mod normalize;
 mod output;

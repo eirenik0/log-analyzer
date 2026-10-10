@@ -303,7 +303,10 @@ pub(super) fn analyze(
                 "observation",
                 &claim,
                 excerpts,
-                json!({"resource_status":resource_status,"supporting_occurrences":support}),
+                json!({"resource_status":resource_status,"rule_id":rule.id,
+                    "viewport":viewport.map(|(value, _)| json!({"width":value[&rule.width_field],"height":value[&rule.height_field]})),
+                    "fingerprint":fingerprint.map(|fingerprint| json!({"sha256":fingerprint.sha256.to_ascii_lowercase(),"label":fingerprint.label})),
+                    "supporting_occurrences":support}),
             ));
             index += 1;
         }

@@ -304,3 +304,28 @@ height_field = "height"
 [[resource_observations.fingerprints]]
 sha256 = "8617e027d9070bad2f37098c59e09dd1818d6af11bcef176ac1ec1cd5e3fc0a2"
 label = "transparent, undrawn 300x150 Chromium PNG"
+
+[investigation_view]
+source_fields = ["component", "component_id", "event.name", "event.kind", "event.phase"]
+
+[[investigation_view.groups]]
+id = "resource-fingerprints"
+title = "Resource observations by component and viewport"
+max_groups = 12
+select = [{path = "/details/resource_status", equals = "fingerprint_match"}]
+by = [
+  {label = "Component", path = "/evidence/0/fields/component"},
+  {label = "Viewport", path = "/details/viewport", template = "{/width}x{/height}"},
+  {label = "Fingerprint", path = "/details/fingerprint", template = "{/label}"}
+]
+
+[[investigation_view.groups]]
+id = "component-performance"
+title = "Performance by component"
+max_groups = 8
+select = [{path = "/kind", equals = "measurement"}, {path = "/details/unit", equals = "ms"}]
+by = [{label = "Component", path = "/evidence/0/fields/component"}]
+measurements = [
+  {label = "Mean elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "mean"},
+  {label = "Max elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "max"}
+]

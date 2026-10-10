@@ -204,6 +204,16 @@ new destination, `--json` for the full contract, and `--summary` for the existin
 concise decision brief. Presentation limits imply JSON. `evidence` always returns
 JSON and reads the retained artifact without repeating parsing or correlation.
 
+The readable report can apply the resolved profile's `investigation_view`: ordered
+sections select findings and group them by components, operation names, viewports
+or other declared source fields. Numeric summaries use already measured values
+and matching units. This is the `perf` overview pattern applied through profile
+configuration. Parsing and correlation happen before grouping; grouping happens
+before individual pagination. Captures remain separate, missing data stays unknown,
+and the same retained individual findings and citations support drill-down. Counts
+are findings, sections can overlap, and summed intervals are not a critical path.
+The report describes observations and measured process steps, not a proven cause.
+
 Input sizes plan bounded defaults: 16 MiB–1 GiB captured bytes, 1,000,000 record
 attempts, 100,000 expanded rows, 500,000,000 work units, 180 seconds, 1 GiB artifact
 storage and 8 MiB per record. Memory accounting is 512 times planned bytes, clamped

@@ -71,6 +71,14 @@ ERROR/WARN records, supported measurements and assessment limits. A fresh local
 `log-analyzer-evidence-*` directory stores `evidence.json`; its path and SHA-256
 appear at the end. Profile fingerprint matches appear before source warnings and
 empty manifests; ordering highlights evidence without claiming a root cause.
+Readable output uses the profile's optional `investigation_view` to organize
+processed findings into sections: for example, resource observations by component
+and viewport, followed by performance by component. Configuration selects findings,
+group dimensions and measured summaries; the core has no application-specific
+grouping rules. Each independent capture remains separate. Missing dimensions and
+measurements stay unknown. At most 20 groups appear across sections, with explicit
+omissions and representative citations. Individual JSON findings, measured values,
+evidence references and pagination remain available without grouping.
 When findings are omitted, the printed `Next` command includes
 a continuation cursor to retrieve the following page. Use `--artifact PATH` to choose a new destination. Existing
 artifacts are never replaced. For agents, request JSON explicitly:
@@ -94,9 +102,54 @@ flowchart LR
   C --> D[Parse and analyze one independent input]
   D --> E[Retain evidence and release parsed working set]
   E --> D
-  E --> F[Readable report or JSON plus artifact]
+  E --> V[Configured sections, groups and measured summaries]
+  V --> F[Readable report or individual JSON plus artifact]
   F --> G[evidence: retrieve retained records and findings]
 ```
+
+To organize a profile's measurements like the `perf` component view, add:
+
+```toml
+[investigation_view]
+source_fields = ["component", "event.name", "actor_kind"]
+
+[[investigation_view.groups]]
+id = "component-performance"
+title = "Performance by component and operation"
+select = [{ path = "/kind", equals = "measurement" }, { path = "/details/unit", equals = "ms" }]
+by = [
+  { label = "Component", path = "/evidence/0/fields/component" },
+  { label = "Operation", path = "/evidence/0/fields/event.name" }
+]
+max_groups = 12
+measurements = [
+  { label = "Mean elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "mean" },
+  { label = "Max elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "max" }
+]
+```
+
+Selectors are ANDed exact scalar comparisons at JSON pointers in each finding.
+Dimensions can reference any finding field; `source_fields` projects up to eight
+named source fields into evidence excerpts. Native `component`, `component_id`,
+`level` and offset-preserving `timestamp`, classified `event.*` semantics, and
+arbitrary structured fields such as `actor_kind` are supported. Evidence index 0
+selects that finding's first cited record, not every record in a component.
+An optional dimension `template`, such as `"{/width}x{/height}"` for a viewport
+object, formats relative JSON pointers without changing the full grouping key.
+Section order follows configuration; up to eight definitions, eight dimensions
+and four measurements per definition are allowed. `max_groups` is 1–20, subject
+to the 20-group overall limit. Missing and oversized dimensions form an explicit
+unknown group within their capture.
+
+Aggregates support `min`, `max`, `mean` and `sum` of finite numeric values whose
+reported unit matches exactly. They report measured and unavailable counts;
+missing values never become zero. Counts are findings, sections may overlap, and
+summed elapsed intervals are not a critical path or CPU time. Groups summarize
+the processed population before individual pagination, so their counts may exceed
+the current page. Remove `investigation_view` to retain the individual text view.
+If artifact storage fails, text retains individual findings for direct inspection.
+Redacted output clears projected source fields and hides configured titles, labels
+and templates; measurement units use a generic display label.
 
 Source severity counts and representative ERROR/FATAL/WARN/WARNING excerpts remain
 visible even when the profile cannot classify domain outcomes. A severity record

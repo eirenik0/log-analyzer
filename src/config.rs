@@ -66,6 +66,8 @@ pub struct AnalyzerConfig {
     pub investigation: Option<crate::investigation_policy::InvestigationPolicy>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub resource_observations: Vec<crate::resource_observations::ResourceObservationRules>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub investigation_view: Option<crate::investigation_view::InvestigationView>,
     pub profile: ProfileRules,
     #[serde(skip_serializing_if = "SessionsRules::is_empty")]
     pub sessions: SessionsRules,
@@ -83,6 +85,7 @@ impl Default for AnalyzerConfig {
             normalization: None,
             investigation: None,
             resource_observations: Vec::new(),
+            investigation_view: None,
             profile: ProfileRules::default(),
             sessions: SessionsRules::default(),
         }
@@ -208,6 +211,9 @@ impl AnalyzerConfig {
             policy.validate(self)?;
         }
         crate::resource_observations::validate(&self.resource_observations)?;
+        if let Some(view) = &self.investigation_view {
+            view.validate()?;
+        }
         Ok(())
     }
 

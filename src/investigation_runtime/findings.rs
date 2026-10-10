@@ -21,7 +21,11 @@ pub(super) fn record(entry: &LogEntry, context: &evidence::Context, snapshot: &V
 }
 pub(super) fn excerpt(entry: &LogEntry, context: &evidence::Context, snapshot: &Value) -> Value {
     let text: String = entry.message.chars().take(512).collect();
-    json!({"occurrence":occurrence(entry,context,snapshot),"text":text,"omitted_characters":entry.message.chars().count().saturating_sub(512),"verification":verification(false,"not_applicable")})
+    let mut result = json!({"occurrence":occurrence(entry,context,snapshot),"text":text,"omitted_characters":entry.message.chars().count().saturating_sub(512),"verification":verification(false,"not_applicable")});
+    if let Some(fields) = context.finding_fields(entry) {
+        result["fields"] = fields;
+    }
+    result
 }
 pub(super) fn rules(entry: &LogEntry) -> Vec<String> {
     match &entry.classification {

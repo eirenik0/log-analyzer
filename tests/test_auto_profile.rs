@@ -606,6 +606,7 @@ fn global_detection_cutoffs_mark_every_input_despite_complete_generic_parsing() 
     let mut profile = log_analyzer::config::load_config(None, Some("eyes")).unwrap();
     let configured_bytes = serde_json::to_vec(&profile).unwrap().len();
     profile.resource_observations.clear();
+    profile.investigation_view = None;
     let resource_allowance =
         ((configured_bytes - serde_json::to_vec(&profile).unwrap().len()) as u64) * 16;
     for (baseline, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {

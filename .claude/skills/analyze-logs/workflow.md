@@ -8,7 +8,16 @@ Investigation defaults to readable text and creates a fresh evidence artifact.
 When findings are paginated, its printed `Next` command includes the continuation
 cursor; run those arguments to resume after the displayed findings. Fingerprint
 matches are presented before source warnings and empty manifests; ordering does
-not establish failure severity or cause.
+not establish failure severity or cause. The resolved profile's optional
+`investigation_view` defines ordered readable sections with exact scalar selectors,
+JSON-pointer grouping dimensions and min/max/mean/sum of measured values with
+matching units. Groups may use components, operations, viewports or other declared
+source fields. Capture scopes remain separate; missing data stays unknown. Counts
+cover all processed findings, not unique resources or failures; sections may overlap
+and sums of elapsed intervals are not a critical path. At most 20 groups are shown
+across sections, with omissions and representative citations. Source fields are
+cleared in redacted output. Grouping does not advance the individual findings
+cursor; JSON findings and evidence retrieval remain individual observations.
 Use `--json` for a full structured report or `--summary` for concise findings,
 limitations and next steps; other analysis commands and evidence retrieval default
 to JSON. Summaries do not

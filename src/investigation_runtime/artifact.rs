@@ -144,6 +144,9 @@ pub(super) fn redact(artifact: &mut Value) {
         finding["verification"] = super::findings::verification(true, &arithmetic);
         for excerpt in finding["evidence"].as_array_mut().unwrap() {
             excerpt["text"] = json!("[REDACTED SOURCE]");
+            if excerpt.get("fields").is_some() {
+                excerpt["fields"] = json!({});
+            }
             excerpt["omitted_characters"] = json!(0);
             excerpt["verification"] = super::findings::verification(true, "not_applicable");
         }

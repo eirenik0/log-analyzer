@@ -757,6 +757,18 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     } else {
         artifact::unavailable(&mut report, "artifact byte limit exceeded");
     }
+    let overview = (!args.brief
+        && matches!(cli.effective_format(), crate::cli::OutputFormat::Text))
+    .then(|| {
+        presentation::finding_overview(
+            &report,
+            config
+                .investigation_view
+                .as_ref()
+                .filter(|_| report["artifact"]["status"] != "unavailable"),
+            cli.redact,
+        )
+    });
     artifact::present(&mut report, cli, 0)?;
     if report["artifact"]["status"] == "unavailable" {
         artifact::reconcile_unavailable(&mut report, cli)?;
@@ -771,7 +783,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     {
         format!("{}\n", serde_json::to_string(&report)?)
     } else {
-        presentation::text(&report)
+        presentation::text(&report, overview.as_ref().expect("text overview"))
     };
     if let Some(staged) = staged_report
         && let Err(error) = staged.save_text(&rendered)

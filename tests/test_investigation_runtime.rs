@@ -2724,6 +2724,17 @@ height_field = "h"
 [[resource_observations.fingerprints]]
 sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 label = "synthetic reference image"
+[investigation_view]
+source_fields = ["component", "actor_kind"]
+[[investigation_view.groups]]
+id = "reference-observations"
+title = "Resource observations"
+select = [{path = "/details/resource_status", equals = "fingerprint_match"}]
+by = [
+  {label = "Viewport", path = "/details/viewport", template = "{/width}x{/height}"},
+  {label = "Fingerprint", path = "/details/fingerprint", template = "{/label}"}
+]
+
 "#;
 
 fn resource_line(scope: &str, message: &str, payload: Value) -> String {
@@ -2816,6 +2827,435 @@ fn resource_profiles_resolve_automatically_for_all_inputs_and_abstain_on_ambigui
     assert_eq!(
         investigate()["report_metadata"]["profile_selection"]["status"],
         "ambiguous"
+    );
+}
+
+#[test]
+fn readable_resource_overview_groups_all_captures_and_viewports_without_changing_findings() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, RESOURCE_PROFILE).unwrap();
+    let scope = "run-one:operation-one";
+    let manifest = resource_line(scope, "manifest listing", json!(["asset:reference"]));
+    let batch = resource_line(
+        scope,
+        "asset batch",
+        json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":"a".repeat(64)}]}}}]),
+    );
+    let first = temp.path().join("first.log");
+    let second = temp.path().join("second.log");
+    fs::write(
+        &first,
+        format!(
+            "{}{}{}{}{}{}{}",
+            batch,
+            resource_line(scope, "dimensions", json!({"w":1280,"h":720})),
+            manifest.repeat(30),
+            resource_line(scope, "dimensions", json!({"w":1920,"h":1080})),
+            manifest.repeat(7),
+            resource_line(scope, "new snapshot", Value::Null),
+            manifest.repeat(2)
+        ),
+    )
+    .unwrap();
+    fs::write(
+        &second,
+        format!(
+            "{}{}{}",
+            batch,
+            resource_line(scope, "dimensions", json!({"w":1280,"h":720})),
+            manifest.repeat(5)
+        ),
+    )
+    .unwrap();
+    let artifact = temp.path().join("text-evidence.json");
+    let output = run(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        first.to_str().unwrap(),
+        second.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    for row in [
+        "[scope-0] Viewport: 1280x720, Fingerprint: synthetic reference image — 30 findings",
+        "[scope-0] Viewport: 1920x1080, Fingerprint: synthetic reference image — 7 findings",
+        "[scope-0] Viewport: unknown, Fingerprint: synthetic reference image — 2 findings",
+        "[scope-1] Viewport: 1280x720, Fingerprint: synthetic reference image — 5 findings",
+    ] {
+        assert!(text.contains(row), "missing {row}: {text}");
+    }
+    assert_eq!(
+        text.lines()
+            .filter(|line| line.starts_with("- [") && line.contains(" — "))
+            .count(),
+        4
+    );
+    assert!(
+        text.contains(
+            "20 individual findings on this page are represented in the grouped overview"
+        )
+    );
+    let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    assert_eq!(
+        retained["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["details"]["resource_status"] == "fingerprint_match")
+            .count(),
+        44
+    );
+    assert!(text.contains("Counts are findings, not unique resources, records or failures"));
+
+    let json_artifact = temp.path().join("json-evidence.json");
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        first.to_str().unwrap(),
+        second.to_str().unwrap(),
+        "--artifact",
+        json_artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &json_artifact);
+    assert_eq!(report["findings"], retained["findings"]);
+    let next = text
+        .lines()
+        .find_map(|line| line.strip_prefix("Next: "))
+        .unwrap();
+    let args: Vec<_> = next
+        .split_whitespace()
+        .skip(1)
+        .map(|arg| arg.trim_matches('\''))
+        .collect();
+    let page = success(&args);
+    assert_eq!(page["artifact_retrieval"]["prior"], 20);
+    assert_eq!(
+        page["artifact_retrieval"]["items"],
+        json!(&retained["findings"].as_array().unwrap()[20..40])
+    );
+}
+
+#[test]
+fn readable_resource_overview_bounds_groups_and_keeps_distinct_fingerprints_separate() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, format!("{RESOURCE_PROFILE}\n[[resource_observations.fingerprints]]\nsha256 = \"{}\"\nlabel = \"another reference\"\n", "b".repeat(64))).unwrap();
+    let scope = "run-one:operation-one";
+    let mut data = resource_line(
+        scope,
+        "asset batch",
+        json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":"a".repeat(64)},{"address":"asset:other","digest":"b".repeat(64)}]}}}]),
+    );
+    let manifest = resource_line(scope, "manifest listing", json!(["asset:reference"]));
+    for index in 0..21 {
+        data.push_str(&resource_line(
+            scope,
+            "dimensions",
+            json!({"w":100+index,"h":100}),
+        ));
+        data.push_str(&manifest);
+        if index == 0 {
+            data.push_str(&resource_line(
+                scope,
+                "manifest listing",
+                json!(["asset:other"]),
+            ));
+        }
+    }
+    data.push_str(&resource_line(
+        scope,
+        "dimensions",
+        json!({"w":100,"h":100}),
+    ));
+    data.push_str(&manifest.repeat(3));
+    let source = temp.path().join("resources.log");
+    fs::write(&source, data).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let output = run(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.contains(
+            "[scope-0] Viewport: 100x100, Fingerprint: synthetic reference image — 4 findings"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("[scope-0] Viewport: 100x100, Fingerprint: another reference — 1 findings"),
+        "{text}"
+    );
+    assert_eq!(
+        text.lines()
+            .filter(|line| line.starts_with("- [") && line.contains(" — "))
+            .count(),
+        20
+    );
+    assert!(text.contains("2 additional matching findings are outside the displayed groups"));
+    let retained: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(
+        retained["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["details"]["resource_status"] == "fingerprint_match")
+            .count(),
+        25
+    );
+}
+
+#[test]
+fn configured_views_group_measured_performance_by_components_and_arbitrary_source_fields() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    let views = r#"
+[investigation_view]
+source_fields = ["component", "actor_kind", "event.name"]
+[[investigation_view.groups]]
+id = "components"
+title = "Performance by component"
+select = [{path = "/kind", equals = "measurement"}]
+by = [{label = "Component", path = "/evidence/0/fields/component"}]
+measurements = [
+ {label = "Mean elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "mean"},
+ {label = "Max elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "max"},
+ {label = "Unavailable unit", path = "/details/value", unit_path = "/details/unit", unit = "seconds", aggregate = "sum"}
+]
+[[investigation_view.groups]]
+id = "actors"
+title = "Intervals by actor"
+select = [{path = "/kind", equals = "measurement"}]
+by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
+"#;
+    fs::write(
+        &profile,
+        format!(
+            "{}{views}",
+            fs::read_to_string(root().join("examples/investigations/profile.toml")).unwrap()
+        ),
+    )
+    .unwrap();
+    let source = temp.path().join("input.jsonl");
+    let data: String = fs::read_to_string(root().join("examples/investigations/slow.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let mut record: Value = serde_json::from_str(line).unwrap();
+            record["actor_kind"] = if record["id"] == "parent" {
+                json!("controller")
+            } else {
+                json!("worker")
+            };
+            format!("{record}\n")
+        })
+        .collect();
+    fs::write(&source, data).unwrap();
+    let artifact = temp.path().join("text.json");
+    let output = run(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    for expected in [
+        "Performance by component",
+        "Component: worker — 3 findings",
+        "Mean elapsed: 4000.00 ms (3 measured, 0 unavailable)",
+        "Max elapsed: 8000.00 ms",
+        "Unavailable unit: unknown (0 measured, 3 unavailable)",
+        "Actor: controller — 1 findings",
+        "Actor: worker — 2 findings",
+    ] {
+        assert!(text.contains(expected), "missing {expected}: {text}");
+    }
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        temp.path().join("json.json").to_str().unwrap(),
+        "--complete-output",
+    ]);
+    let retained: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(report["findings"], retained["findings"]);
+    let measurements: Vec<_> = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|finding| finding["kind"] == "measurement")
+        .collect();
+    assert_eq!(measurements.len(), 3);
+    assert!(
+        measurements
+            .iter()
+            .all(|finding| finding["evidence"][0]["fields"]["event.name"].is_string())
+    );
+    let redacted_artifact = temp.path().join("redacted.json");
+    let redacted = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        redacted_artifact.to_str().unwrap(),
+        "--redact",
+        "--complete-output",
+    ]);
+    check(&redacted, &redacted_artifact);
+    assert!(
+        redacted["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|finding| finding["evidence"].as_array().unwrap())
+            .all(|excerpt| excerpt
+                .get("fields")
+                .is_none_or(|fields| fields == &json!({})))
+    );
+    let private_view = fs::read_to_string(&profile)
+        .unwrap()
+        .replace("Performance by component", "private-config-title")
+        .replace("label = \"Component\"", "label = \"private-config-label\"")
+        .replace(
+            "path = \"/evidence/0/fields/component\"}",
+            "path = \"/evidence/0/fields/component\", template = \"private-config-template\"}",
+        );
+    fs::write(&profile, private_view).unwrap();
+    let output = run(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        temp.path().join("redacted-text.json").to_str().unwrap(),
+        "--redact",
+    ]);
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("Configured findings"), "{text}");
+    assert!(!text.contains("private-config"), "{text}");
+    assert!(text.contains("configured unit (3 measured"), "{text}");
+}
+
+#[test]
+fn invalid_view_configuration_is_rejected_and_grouping_can_be_disabled() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("input.log");
+    fs::write(&source, [
+        resource_line("run-one:operation-one", "manifest listing", json!(["asset:reference"])),
+        resource_line("run-one", "asset batch", json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":"a".repeat(64)}]}}}])),
+    ].concat()).unwrap();
+    for (index, data) in [
+        RESOURCE_PROFILE.replace("/details/viewport", "details/viewport"),
+        RESOURCE_PROFILE.replace("{/width}x{/height}", "{/width"),
+        RESOURCE_PROFILE.replace(
+            "source_fields = [\"component\", \"actor_kind\"]",
+            "source_fields = [\"component\", \"component\"]",
+        ),
+        RESOURCE_PROFILE.replace(
+            "id = \"reference-observations\"",
+            "max_groups = 0\nid = \"reference-observations\"",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let profile = temp.path().join(format!("bad-{index}.toml"));
+        fs::write(&profile, data).unwrap();
+        let output = run(&[
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+        ]);
+        assert!(!output.status.success(), "invalid view accepted: {index}");
+    }
+    let profile = temp.path().join("enabled.toml");
+    fs::write(&profile, RESOURCE_PROFILE).unwrap();
+    let output = run(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        temp.path().join("enabled.json").to_str().unwrap(),
+    ]);
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("processed findings):")
+    );
+    let output = run(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        temp.path().join("unavailable.json").to_str().unwrap(),
+        "--artifact-max-bytes",
+        "100",
+    ]);
+    assert!(output.status.success());
+    assert!(!temp.path().join("unavailable.json").exists());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!text.contains("processed findings):"), "{text}");
+    assert!(
+        text.contains("Resource matches profile-declared fingerprint"),
+        "{text}"
+    );
+    assert!(text.contains("Evidence artifact unavailable"), "{text}");
+    let profile = temp.path().join("disabled.toml");
+    fs::write(
+        &profile,
+        RESOURCE_PROFILE
+            .split("[investigation_view]")
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    let output = run(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        temp.path().join("disabled.json").to_str().unwrap(),
+    ]);
+    assert!(output.status.success());
+    assert!(
+        !String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("processed findings):")
     );
 }
 
