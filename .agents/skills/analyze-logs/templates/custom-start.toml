@@ -33,6 +33,7 @@ json_indicators = [
 event_correlation_keys = ["key"]
 
 [profile]
+detection_requires_session_scope = true
 # Optional: known entities (used by `info` profile insights)
 known_components = ["api", "worker"]
 known_commands = ["sync", "publish"]

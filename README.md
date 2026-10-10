@@ -69,7 +69,9 @@ log-analyzer investigate captures/*.log
 The default output explains processing completion, per-file coverage, observed
 ERROR/WARN records, supported measurements and assessment limits. A fresh local
 `log-analyzer-evidence-*` directory stores `evidence.json`; its path and SHA-256
-appear at the end. When findings are omitted, the printed `Next` command includes
+appear at the end. Profile fingerprint matches appear before source warnings and
+empty manifests; ordering highlights evidence without claiming a root cause.
+When findings are omitted, the printed `Next` command includes
 a continuation cursor to retrieve the following page. Use `--artifact PATH` to choose a new destination. Existing
 artifacts are never replaced. For agents, request JSON explicitly:
 
@@ -176,7 +178,10 @@ recursively in `ROOT/config` (the working directory unless `--project-root` is s
 replaces that directory. Detection uses captured prefixes: at most 128 physical
 lines and 64 KiB per input, sharing a 256 KiB total sample allowance equally across inputs. Exactly one matching profile, with lifecycle or configured resource
 evidence in every nonempty input and no observed parsing/classification loss, is
-selected. Overlapping grammars (including common `eyes`/`custom-start` wording),
+selected. Profiles can set `[profile].detection_requires_session_scope = true`
+to require lifecycle evidence with a component-ID segment matching their configured
+session prefixes; built-in domain and starter profiles use this to distinguish
+shared lifecycle wording. Overlapping grammars without distinguishing scope,
 mixed profiles, unknown formats and insufficient evidence fall back to generic
 `base`; the highest match count never breaks a tie. Detection is sample-based
 inference, not independent validation or proof of completion. Unsampled content may

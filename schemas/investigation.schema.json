@@ -1362,6 +1362,15 @@
                     "$ref": "#/$defs/occurrence"
                   },
                   "minItems": 1
+                },
+                "resource_status": {
+                  "enum": [
+                    "fingerprint_match",
+                    "different_fingerprint",
+                    "unconfigured_fingerprint",
+                    "unavailable",
+                    "empty_manifest"
+                  ]
                 }
               },
               "required": [

@@ -676,14 +676,14 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let processing = json!({"status":if budget.stop.is_none(){"complete"}else{"partial"},"stop":budget.stop,"limits":budget.limits_json(),"usage":usage,"inputs":progress});
     findings.sort_by_key(|finding| {
         let id = finding["id"].as_str().unwrap_or("");
-        if id.contains("observed-errors") {
-            0
-        } else if id.contains("observed-warnings") {
-            1
-        } else if id.contains("resource-observation") {
-            2
-        } else {
-            3
+        match finding["details"]["resource_status"].as_str() {
+            Some("fingerprint_match") => 0,
+            _ if id.contains("observed-errors") => 1,
+            Some("different_fingerprint" | "unconfigured_fingerprint") => 2,
+            _ if id.contains("observed-warnings") => 3,
+            Some("unavailable") => 4,
+            Some("empty_manifest") => 6,
+            _ => 5,
         }
     });
     let retention = json!({"policy":"until_deleted","expires_at":null});

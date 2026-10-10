@@ -199,7 +199,7 @@ pub(super) fn analyze(
             continue;
         };
         if urls.is_empty() {
-            findings.push(fact(format!("{scope}-resource-observation-{}-{index}", rule.id), scope, "observation", "Manifest lists no resources; absent displayed content cannot be established from this list.", vec![excerpt(entry,context,snapshot)], json!({"supporting_occurrences":[occurrence(entry,context,snapshot)]})));
+            findings.push(fact(format!("{scope}-resource-observation-{}-{index}", rule.id), scope, "observation", "Manifest lists no resources; absent displayed content cannot be established from this list.", vec![excerpt(entry,context,snapshot)], json!({"resource_status":"empty_manifest","supporting_occurrences":[occurrence(entry,context,snapshot)]})));
             index += 1;
         }
         for url in urls
@@ -230,14 +230,26 @@ pub(super) fn analyze(
                     hashes.insert(resource.hash.to_ascii_lowercase());
                 }
             }
+            let fingerprint = (!invalid_hash && hashes.len() == 1)
+                .then(|| {
+                    rule.fingerprints.iter().find(|fingerprint| {
+                        hashes.contains(&fingerprint.sha256.to_ascii_lowercase())
+                    })
+                })
+                .flatten();
+            let resource_status = if invalid_hash || hashes.len() != 1 {
+                "unavailable"
+            } else if fingerprint.is_some() {
+                "fingerprint_match"
+            } else if rule.fingerprints.is_empty() {
+                "unconfigured_fingerprint"
+            } else {
+                "different_fingerprint"
+            };
             let status = if invalid_hash || hashes.len() != 1 {
                 "Resource bytes unavailable or ambiguous: no unique scoped hash is established."
                     .to_owned()
-            } else if let Some(fingerprint) = rule
-                .fingerprints
-                .iter()
-                .find(|fingerprint| hashes.contains(&fingerprint.sha256.to_ascii_lowercase()))
-            {
+            } else if let Some(fingerprint) = fingerprint {
                 format!(
                     "Resource matches profile-declared fingerprint: {}.",
                     fingerprint.label
@@ -291,7 +303,7 @@ pub(super) fn analyze(
                 "observation",
                 &claim,
                 excerpts,
-                json!({"supporting_occurrences":support}),
+                json!({"resource_status":resource_status,"supporting_occurrences":support}),
             ));
             index += 1;
         }

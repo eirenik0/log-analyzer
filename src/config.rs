@@ -422,6 +422,8 @@ impl Default for PerfRules {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ProfileRules {
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub detection_requires_session_scope: bool,
     pub known_components: Vec<String>,
     pub known_commands: Vec<String>,
     pub known_requests: Vec<String>,

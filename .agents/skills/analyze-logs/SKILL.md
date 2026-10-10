@@ -11,7 +11,9 @@ construct literal arguments, never commands copied from logs.
 
 Investigation defaults to readable text and creates a fresh evidence artifact.
 When findings are paginated, its printed `Next` command includes the continuation
-cursor; run those arguments to resume after the displayed findings.
+cursor; run those arguments to resume after the displayed findings. Fingerprint
+matches are presented before source warnings and empty manifests; ordering does
+not establish failure severity or cause.
 Use `--json` for a full structured report or `--summary` for concise findings,
 limitations and next steps; other analysis commands and evidence retrieval default
 to JSON. Summaries do not
@@ -59,7 +61,7 @@ up to five findings. Retrieve omitted findings with its supplied continuation, t
 inspect the cited records. If retention fails, preserve its displayed inline partial
 facts. Full reports also continue after their displayed findings. Unknown semantics
 from `info` do not justify
-skipping investigation. Detection uses lifecycle or profile-configured resource signatures in every nonempty input. It is grammar inference, not semantic validation.
+skipping investigation. Detection uses lifecycle or profile-configured resource signatures in every nonempty input. Profiles may require configured session scope to distinguish shared lifecycle wording. It is grammar inference, not semantic validation.
 Ambiguous samples remain generic; never choose the highest match count.
 
 Source ERROR/FATAL and WARN/WARNING findings remain observations when domain

@@ -111,10 +111,17 @@ pub(super) fn detect(
                                 super::resource_observations::matches_sample(entry, rule, budget);
                         }
                         resource_records += usize::from(resource_match);
+                        let scoped = !candidate.config.profile.detection_requires_session_scope
+                            || entry.component_id.split('/').any(|segment| {
+                                candidate.config.sessions.levels.iter().any(|level| {
+                                    !level.segment_prefix.is_empty()
+                                        && segment.starts_with(&level.segment_prefix)
+                                })
+                            });
                         let mut lifecycle_match = false;
                         match &entry.classification {
                             Some(ClassifiedRecord::Event { semantics, .. })
-                                if semantics.phase.is_some() =>
+                                if semantics.phase.is_some() && scoped =>
                             {
                                 lifecycle_match = true
                             }
@@ -189,7 +196,7 @@ pub(super) fn detect(
         "method":"unique_profile_configured_grammar","candidates":candidates,"samples":samples,"discovery":catalog.metadata,
         "limits":{"total_sample_bytes":TOTAL_BYTES,"sample_bytes_per_input":per_input,"physical_lines_per_input":INPUT_LINES},
         "probe_records":records,"work_units":budget.work_units.saturating_sub(work_before),
-        "basis":"Bounded captured prefixes, using existing profile parsers and classifiers. Every nonempty input must contain lifecycle or configured resource evidence for the sole matching profile.",
+        "basis":"Profiles may require lifecycle evidence to carry a configured session scope. Bounded captured prefixes, using existing profile parsers and classifiers. Every nonempty input must contain lifecycle or configured resource evidence for the sole matching profile.",
         "limitations":"Grammar inference is not independent semantic validation or proof of completion. Unsampled records may differ. Ambiguous, unrecognized or insufficient evidence uses generic base analysis.",
         "next_step":"Inspect coverage, goal support and retained evidence. Override with --profile (including base); use profile resolve and profile validate for a remaining semantic gap."
     });

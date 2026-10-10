@@ -2660,7 +2660,7 @@ fn discovery_samples_every_input_and_keeps_heterogeneous_profiles_unavailable() 
             .unwrap()
             .contains("semantic validation")
     );
-    assert_eq!(selection["status"], "ambiguous");
+    assert_eq!(selection["status"], "insufficient_evidence");
     assert_eq!(report["processing"]["inputs"][1]["capture"], "complete");
 }
 
@@ -2816,6 +2816,66 @@ fn resource_profiles_resolve_automatically_for_all_inputs_and_abstain_on_ambigui
     assert_eq!(
         investigate()["report_metadata"]["profile_selection"]["status"],
         "ambiguous"
+    );
+}
+
+#[test]
+fn fingerprint_matches_lead_the_first_page_despite_warnings_and_empty_manifests() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, RESOURCE_PROFILE).unwrap();
+    let source = temp.path().join("resources.jsonl");
+    let scope = "run-one:operation-one";
+    let mut data = String::new();
+    for index in 0..260 {
+        data.push_str(&format!("{}\n", json!({"timestamp":"2025-01-01T00:00:00Z","level":"WARN","message":format!("synthetic warning {index}"),"context":scope})));
+        data.push_str(&resource_line(scope, "manifest listing", json!([])));
+    }
+    data.push_str(&resource_line(
+        scope,
+        "manifest listing",
+        json!(["asset:reference"]),
+    ));
+    data.push_str(&resource_line(scope, "asset batch", json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":"a".repeat(64)}]}}}])));
+    fs::write(&source, data).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    check(&report, &artifact);
+    assert_eq!(report["findings"].as_array().unwrap().len(), 20);
+    assert!(report["presentation"]["omitted_findings"].as_u64().unwrap() > 500);
+    assert_eq!(
+        report["findings"][0]["details"]["resource_status"],
+        "fingerprint_match"
+    );
+    assert!(
+        report["findings"][0]["claim"]
+            .as_str()
+            .unwrap()
+            .contains("synthetic reference image")
+    );
+    assert!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|finding| finding["details"]["resource_status"] != "empty_manifest")
+    );
+    let retained: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(
+        retained["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["details"]["resource_status"] == "empty_manifest")
+            .count(),
+        260
     );
 }
 

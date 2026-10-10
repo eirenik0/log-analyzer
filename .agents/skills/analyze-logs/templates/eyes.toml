@@ -11,6 +11,7 @@ json_indicators = ["with settings {", "with body [", "with body {", "with body",
 event_correlation_keys = ["key"]
 
 [profile]
+detection_requires_session_scope = true
 known_components = [
   "core",
   "core-base",

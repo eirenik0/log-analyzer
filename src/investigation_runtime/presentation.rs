@@ -166,7 +166,7 @@ pub(super) fn text(report: &Value) -> String {
             );
         }
     }
-    output.push_str("No causal root cause is inferred from counts or blank canvas fingerprints.\n");
+    output.push_str("No causal root cause is inferred from counts or resource fingerprints.\n");
     if report["presentation"]["omitted_findings"]
         .as_u64()
         .unwrap_or(0)
