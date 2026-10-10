@@ -4,14 +4,14 @@ Question: what failed, how long did its lifecycle take, and can the capture expl
 
 Use a repository checkout for these synthetic paths. For real captures, select a
 validated explicit profile and stable absolute paths. Agree on budgets first and
-check `capabilities`. Use this path when the unified command and artifact retrieval
+check `capabilities`, including `profiles.option` for `--profile`. Use this path when the unified command and artifact retrieval
 are available. Every input is an independent run; split related files cannot form
 cross-file pairs here.
 
 Choose a fresh artifact destination whose parent exists:
 
 ```sh
-log-analyzer --config examples/investigations/profile.toml \
+log-analyzer --profile examples/investigations/profile.toml \
   --report-max-items 5 investigate examples/investigations/failure.jsonl \
   --artifact /tmp/failure-evidence-UNIQUE.json
 ```

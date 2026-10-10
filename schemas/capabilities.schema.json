@@ -278,6 +278,7 @@
             "default": true,
             "method": "unique_profile_lifecycle_grammar",
             "overrides": [
+              "profile",
               "config",
               "preset"
             ],
@@ -312,6 +313,40 @@
         "presentation",
         "common_cursors"
       ]
+    },
+    "profiles": {
+      "type": "object",
+      "required": [
+        "option",
+        "environment",
+        "builtins",
+        "selection",
+        "compatibility_aliases"
+      ],
+      "properties": {
+        "option": {
+          "const": "profile"
+        },
+        "environment": {
+          "const": "LOG_ANALYZER_PROFILE"
+        },
+        "builtins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selection": {
+          "const": "builtin_name_or_file_path"
+        },
+        "compatibility_aliases": {
+          "const": [
+            "config",
+            "preset"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

@@ -199,7 +199,7 @@ fn write_output_file(
 
 const INFO_NEXT_STEPS: &[&str] = &[
     "Structural checks do not assess lifecycle semantics or upstream capture completeness; this does not make investigate unavailable.",
-    "Run a bounded investigate before custom parsing. It detects built-in and config-folder profiles from captured samples by default; --config and --preset override detection, including --preset base for generic inspection.",
+    "Run a bounded investigate before custom parsing. It detects built-in and config-folder profiles from captured samples by default; --profile overrides detection, including --profile base for generic inspection.",
     "Inspect profile_selection, coverage and retained evidence. For unresolved semantics use resolve-profile and validate-profile against independently known facts; document a specific remaining gap before custom parsing.",
 ];
 
@@ -497,7 +497,7 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     let analyzer_config = config::load_config(cli.config.as_deref(), cli.preset.as_deref())
-        .map_err(|e| format!("Failed to load config: {}", e))?;
+        .map_err(|e| format!("Failed to load profile: {}", e))?;
     output::set_metadata(
         build_info::metadata(&analyzer_config.profile_name),
         matches!(&cli.command, Commands::GenerateConfig { .. }),
@@ -550,12 +550,12 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
         if let Some(ref filter_expr) = cli.filter {
             report_eprintln!("Filter: {}", filter_expr);
         }
-        report_eprintln!("Config profile: {}", analyzer_config.profile_name);
+        report_eprintln!("Profile: {}", analyzer_config.profile_name);
         if let Some(config_path) = &cli.config {
-            report_eprintln!("Config file: {}", config_path.display());
+            report_eprintln!("Profile file: {}", config_path.display());
         }
         if let Some(preset) = &cli.preset {
-            report_eprintln!("Config preset: {}", preset);
+            report_eprintln!("Built-in profile: {}", preset);
         }
     }
 

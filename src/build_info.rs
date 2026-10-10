@@ -64,6 +64,15 @@ fn capability_report(commands: Vec<String>) -> Value {
         json!(crate::config::builtin_template_names()),
     );
     report.insert(
+        "profiles".into(),
+        json!({
+            "option":"profile", "environment":"LOG_ANALYZER_PROFILE",
+            "builtins":crate::config::builtin_template_names(),
+            "selection":"builtin_name_or_file_path",
+            "compatibility_aliases":["config","preset"]
+        }),
+    );
+    report.insert(
         "event_classification".into(),
         event_classification_capability(),
     );
@@ -75,7 +84,7 @@ fn report_schemas_capability() -> Value {
 }
 
 fn investigation_contracts_capability() -> Value {
-    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"profile_detection":{"default":true,"method":"unique_profile_lifecycle_grammar","overrides":["config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"},"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
+    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"profile_detection":{"default":true,"method":"unique_profile_lifecycle_grammar","overrides":["profile","config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"},"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
 }
 
 fn bounded_reports_capability() -> Value {

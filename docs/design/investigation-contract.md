@@ -36,7 +36,7 @@ resource or request suffixes, paths, filenames or languages do not establish one
 
 ## Automatic profile inference
 
-Without an explicit config/preset, `investigate` probes bounded prefixes of the same
+Without an explicit profile selection (`--profile`, or compatibility `--config`/`--preset`), `investigate` probes bounded prefixes of the same
 captured bytes later analyzed. The effective query records candidate observations,
 sample extents and selection/fallback status in `execution.profile_selection`.
 This grammar inference includes built-ins and bounded TOML discovery in `./config`

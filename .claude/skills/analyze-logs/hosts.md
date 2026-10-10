@@ -35,16 +35,16 @@ Claude standalone uses `.claude/skills/analyze-logs/` or
 unless you intend the host's precedence/collision behavior.
 
 - Codex: use `/skills` or the skill selector to confirm discovery, then
-  `$analyze-logs What failed in /absolute/capture.jsonl? --config /absolute/profile.toml`.
+  `$analyze-logs What failed in /absolute/capture.jsonl? --profile /absolute/profile.toml`.
   Codex scans `.agents/skills` from its working directory through the repository
   root. Restart if a change has not appeared. `agents/openai.yaml` supplies optional
   display metadata; it grants no tool permissions.
 - Pi: confirm startup discovery, then
-  `/skill:analyze-logs What failed in /absolute/capture.jsonl? --config /absolute/profile.toml`.
+  `/skill:analyze-logs What failed in /absolute/capture.jsonl? --profile /absolute/profile.toml`.
   Grant project trust when prompted; use `/reload` after changes. Pi also discovers
   shared `.agents/skills` locations. Skill commands may be hidden by
   `enableSkillCommands`, but manually entered `/skill:analyze-logs` still works.
-- Claude standalone: `/analyze-logs What failed in /absolute/capture.jsonl? --config /absolute/profile.toml`.
+- Claude standalone: `/analyze-logs What failed in /absolute/capture.jsonl? --profile /absolute/profile.toml`.
   Claude plugin: `/log-analyzer:analyze-logs` with the same arguments. The generated
   Claude wrapper alone retains `context: fork` and Claude Bash permission metadata.
 
@@ -88,7 +88,8 @@ compatible.
 
 Use stable absolute input and profile paths accessible to the host and executable.
 A permission or missing-file error is an access limitation, not an empty capture.
-Select `--preset` or `--config` explicitly. Copy a suitable template from this
+For an explicit selection, use `--profile NAME_OR_FILE` when capabilities advertise
+`profiles.option`; older binaries use `--preset NAME` or `--config FILE`. Copy a suitable template from this
 installed skill's `templates/` into the user's project when needed, edit it for
 the actual grammar, and validate it against the capture and independent facts.
 Bundled examples use repository synthetic fixtures; they are not implicit inputs

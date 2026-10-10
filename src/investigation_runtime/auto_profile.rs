@@ -165,7 +165,7 @@ pub(super) fn detect(
         "probe_records":records,"work_units":budget.work_units.saturating_sub(work_before),
         "basis":"Bounded captured prefixes, using existing profile parsers and classifiers. Every nonempty input must contain lifecycle evidence for the sole matching profile.",
         "limitations":"Grammar inference is not independent semantic validation or proof of completion. Unsampled records may differ. Ambiguous, unrecognized or insufficient evidence uses generic base analysis.",
-        "next_step":"Inspect coverage, goal support and retained evidence. Override with --config or --preset (including base); use resolve-profile and validate-profile for a remaining semantic gap."
+        "next_step":"Inspect coverage, goal support and retained evidence. Override with --profile (including base); use resolve-profile and validate-profile for a remaining semantic gap."
     });
     let sources = std::mem::take(&mut catalog.sources);
     drop(catalog);

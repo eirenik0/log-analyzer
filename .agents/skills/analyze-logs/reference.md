@@ -90,6 +90,23 @@ Check coverage against retained evidence, retention against the artifact descrip
 and pagination against displayed findings and omissions. Exceptional presentation
 statuses must agree with budgets and usage; unknowns alone do not establish support.
 
+## Selecting a profile
+
+A profile supplies parsing, normalization and lifecycle/correlation rules. Built-in
+profiles and TOML profile files use the same global `--profile NAME_OR_FILE` option.
+Check `capabilities.profiles.option == "profile"` before using it. Exact built-in
+names select built-ins; other values are file paths. Use `./eyes` for a file named
+`eyes`. `LOG_ANALYZER_PROFILE` is the environment equivalent. Do not combine it with
+legacy selectors, including environment defaults. Older binaries use `--preset NAME`
+or `--config FILE`; those hidden compatibility aliases retain their original meanings.
+Present `--profile` as the single current selector, not three parallel choices.
+
+Use automatic detection for initial investigation unless an override is supplied.
+Inspect the selected name, `origins` and effective `profile_sha256`; origin is not
+proof of semantic suitability. File-based profiles may inherit built-ins or other
+files through `extends`. Configuration storage keys and legacy report fields may
+still say `config` or `preset`; do not rewrite persisted contracts to match prose.
+
 ## When `info` reports unknown semantics
 
 Structural coverage describes recognized input shapes, not lifecycle support. Its
@@ -98,11 +115,11 @@ advertised default profile detection (or an explicit override). Inspect
 `report_metadata.evidence.query.execution.profile_selection`: inference uses bounded
 captured prefixes against built-ins and the working directory's `config` folder
 (or `--profiles-dir`). Inspect discovery diagnostics and candidate origin/dependency
-hashes; identical effective configs share a candidate. Detection requires one matching
+hashes; identical effective profiles share a candidate. Detection requires one matching
 lifecycle grammar across nonempty inputs,
 and falls back to base on ambiguity or insufficient evidence. It is not independent
 semantic validation. Preserve unavailable goals; use resolution and independently
-validated overrides only for remaining gaps. `--preset base` disables detection.
+validated overrides only for remaining gaps. `--profile base` disables detection.
 
 Before custom parsing, record the initial investigation's concrete gap and intended
 supplement. For example, “the selected profile recognizes request boundaries but has
@@ -132,7 +149,7 @@ candidate witnesses through common cursors. The outer evidence belongs to generi
 inspection; candidate normalization and source references have their own profile
 and input identities. `--association` reads a strict supplied contract without
 writing it; remembering project/source mappings is separate. Freeze inputs because
-candidates read them separately. Apply the selected preset/config explicitly to
+candidates read them separately. Apply the selected profile explicitly to
 subsequent commands.
 
 

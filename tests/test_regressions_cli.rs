@@ -19,14 +19,14 @@ fn write_file(path: &Path, content: &str) {
 }
 
 #[test]
-fn config_help_explains_profile_inheritance() {
+fn profile_help_explains_profile_inheritance() {
     for args in [vec!["--help"], vec!["info", "--help"]] {
         let output = command().args(&args).output().expect("command should run");
         assert!(output.status.success());
         let help = String::from_utf8(output.stdout).expect("UTF-8 help");
         let help = help.split_whitespace().collect::<Vec<_>>().join(" ");
         for expected in [
-            "--config",
+            "--profile",
             "`extends`",
             "relative to the child profile",
             "at most eight profiles",

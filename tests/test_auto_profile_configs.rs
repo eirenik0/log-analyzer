@@ -85,6 +85,14 @@ fn default_config_folder_is_recursive_and_tracks_inherited_sources() {
         artifact["effective_profile"]["profile_name"],
         "investigation-example"
     );
+    assert_eq!(
+        selection(&report)["origins"],
+        local_candidate(&report)["origins"]
+    );
+    assert_eq!(
+        selection(&report)["profile_sha256"],
+        local_candidate(&report)["profile_sha256"]
+    );
     let origins = local_candidate(&report)["origins"].as_array().unwrap();
     assert_eq!(origins.len(), 1);
     let dependencies = origins[0]["dependencies"].as_array().unwrap();

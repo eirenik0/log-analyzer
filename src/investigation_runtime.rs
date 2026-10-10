@@ -209,7 +209,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let automatic = cli.config.is_none() && cli.preset.is_none();
     // Capture once: detection and analysis must see exactly the same source bytes.
     let mut cached = Vec::new();
-    let (detection, detection_parse_calls) = if automatic {
+    let (mut detection, detection_parse_calls) = if automatic {
         for (ordinal, path) in args.files.iter().enumerate() {
             budget.active_scope = ordinal;
             cached.push(if budget.stop.is_some() {
@@ -255,6 +255,23 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             json!({"status":"explicit","profile":config.profile_name}),
             0,
         )
+    };
+    let profile_digest = evidence::profile_digest(&config)?;
+    detection["profile_sha256"] = json!(profile_digest);
+    detection["origins"] = if let Some(path) = &cli.config {
+        json!([{"config":evidence::path_value(path)}])
+    } else if let Some(name) = &cli.preset {
+        json!([{"preset":name}])
+    } else {
+        detection["candidates"]
+            .as_array()
+            .and_then(|candidates| {
+                candidates
+                    .iter()
+                    .find(|candidate| candidate["profile_sha256"] == profile_digest)
+            })
+            .map(|candidate| candidate["origins"].clone())
+            .unwrap_or_else(|| json!([{"preset":"base"}]))
     };
     let mut context = evidence::Context::new(cli, &config)?;
     let mut progress = Vec::new();

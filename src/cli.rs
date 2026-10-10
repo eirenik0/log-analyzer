@@ -224,22 +224,30 @@ pub struct Cli {
     #[serde(skip_serializing)]
     pub output: Option<PathBuf>,
 
-    /// Path to a TOML profile; supports `extends` inheritance
+    /// Built-in profile name or TOML profile file
     ///
-    /// A top-level `extends` names a built-in profile or a parent file resolved
-    /// relative to the child profile. Tables merge with child values winning;
-    /// arrays and scalars replace inherited values. Chains allow at most eight
-    /// profiles, counting the child and every parent, including built-ins.
+    /// Exact built-in names (base, eyes, custom-start, service-api, event-pipeline)
+    /// select built-ins; every other value is a file path. Use ./eyes to load a
+    /// file named eyes. A top-level `extends` names a built-in profile or a parent
+    /// file resolved relative to the child profile. Tables merge with child values
+    /// winning; arrays and scalars replace inherited values. Chains allow at most
+    /// eight profiles, counting the child and every parent, including built-ins.
     /// Cycles and unknown parents are errors.
-    #[arg(long, global = true, env = "LOG_ANALYZER_CONFIG")]
+    #[arg(long, global = true, env = "LOG_ANALYZER_PROFILE", conflicts_with_all = ["config", "preset"])]
+    #[serde(skip_serializing)]
+    pub profile: Option<PathBuf>,
+
+    /// Compatibility alias for --profile FILE (always a TOML file)
+    #[arg(long, global = true, hide = true, env = "LOG_ANALYZER_CONFIG")]
     #[serde(skip_serializing)]
     pub config: Option<PathBuf>,
 
-    /// Built-in preset/profile to use instead of --config (base, eyes, custom-start, service-api, event-pipeline)
+    /// Compatibility alias for --profile NAME (always a built-in)
     #[arg(
         long,
         global = true,
         env = "LOG_ANALYZER_PRESET",
+        hide = true,
         conflicts_with = "config"
     )]
     pub preset: Option<String>,
@@ -284,7 +292,7 @@ pub struct PrepareProfileArgs {
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
     pub expected: Option<PathBuf>,
     /// Existing TOML or built-in starting point; defaults to base
-    #[arg(long, conflicts_with_all = ["config", "preset"])]
+    #[arg(long, conflicts_with_all = ["profile", "config", "preset"])]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
     pub template: Option<PathBuf>,
     #[arg(long)]
@@ -297,7 +305,7 @@ pub struct PrepareProfileArgs {
 #[derive(serde::Serialize, clap::Args)]
 pub struct InvestigateArgs {
     /// Discover TOML profiles recursively in this directory (default: ./config).
-    /// Ignored with an explicit --config or --preset.
+    /// Ignored with an explicit --profile.
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
     pub profiles_dir: Option<PathBuf>,
@@ -365,13 +373,13 @@ pub enum Commands {
     /// Bounded investigation with automatic profile detection and reusable evidence (JSON)
     ///
     /// Samples captured input prefixes using built-ins and TOML profiles from ./config,
-    /// then parses and correlates each independent input once. --config or --preset bypass detection. Ambiguous or
+    /// then parses and correlates each independent input once. --profile bypasses detection. Ambiguous or
     /// unrecognized samples use generic base analysis; inspect profile_selection and
     /// per-goal support. Detection shares processing budgets and never rereads sources.
     Investigate(InvestigateArgs),
     /// Retrieve retained evidence without reparsing or correlating source logs (JSON)
     InvestigationEvidence(InvestigationEvidenceArgs),
-    /// Print build identity, commands, formats, presets, report schemas and contract availability as JSON
+    /// Print build identity, commands, formats, profiles, report schemas and contract availability as JSON
     Capabilities,
     /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
     Schema {
@@ -380,7 +388,7 @@ pub enum Commands {
         #[arg(long, default_value="3", value_parser=clap::value_parser!(u32).range(1..=20))]
         samples: u32,
     },
-    /// Validate the selected preset or editable TOML candidate against sample evidence (JSON)
+    /// Validate the selected built-in or file-based profile against sample evidence (JSON)
     ValidateProfile {
         #[arg(required = true, num_args = 1..)]
         #[serde(serialize_with = "crate::evidence::serialize_paths")]
@@ -497,7 +505,7 @@ pub enum Commands {
     ///
     /// Structural coverage does not assess lifecycle semantics. Run a bounded
     /// investigate before custom parsing; it detects built-in and config-folder profiles automatically.
-    /// --config/--preset override detection. Inspect profile_selection and per-goal
+    /// --profile overrides detection. Inspect profile_selection and per-goal
     /// support; use resolve-profile/validate-profile for remaining semantic gaps.
     #[command(alias = "i", alias = "inspect")]
     Info {
@@ -726,10 +734,25 @@ impl Cli {
     }
 
     pub fn prepare_common_reports(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Normalize once so every command, provenance check and source protection
+        // follows the same existing file/built-in loading paths.
+        if let Some(profile) = self.profile.take() {
+            if self.config.is_some() || self.preset.is_some() {
+                return Err("--profile conflicts with --config and --preset".into());
+            }
+            if let Some(name) = profile
+                .to_str()
+                .filter(|name| crate::config::builtin_template_names().contains(name))
+            {
+                self.preset = Some(name.to_owned());
+            } else {
+                self.config = Some(profile);
+            }
+        }
         if matches!(&self.command, Commands::PrepareProfile(args) if args.template.is_some())
             && (self.config.is_some() || self.preset.is_some())
         {
-            return Err("--template conflicts with --config and --preset".into());
+            return Err("--template conflicts with --profile, --config and --preset".into());
         }
         if matches!(
             &self.command,

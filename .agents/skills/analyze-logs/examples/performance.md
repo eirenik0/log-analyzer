@@ -2,14 +2,14 @@
 
 Question: which elapsed intervals differ, even if neither run logs an ERROR?
 
-Check `capabilities`, establish budgets and use the same intended explicit profile
+Check `capabilities` (including `profiles.option` for `--profile`), establish budgets and use the same intended explicit profile
 for both independent captures. Choose two fresh artifact paths with existing parents:
 
 ```sh
-log-analyzer --config examples/investigations/profile.toml \
+log-analyzer --profile examples/investigations/profile.toml \
   --report-max-items 5 investigate examples/investigations/slow.jsonl \
   --artifact /tmp/slow-evidence-UNIQUE.json
-log-analyzer --config examples/investigations/profile.toml \
+log-analyzer --profile examples/investigations/profile.toml \
   --report-max-items 5 investigate examples/investigations/baseline.jsonl \
   --artifact /tmp/baseline-evidence-UNIQUE.json
 ```
