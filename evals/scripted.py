@@ -50,6 +50,11 @@ def execute(tools, public):
                 result = tools.invoke({'group': group, 'tool': 'interval', 'input': input_index, 'end_input': end_index, 'start': [start['ref']['line'], start['ref']['row_path']], 'end': [end['ref']['line'], end['ref']['row_path']]})
                 operations.append({'name': identity[0], 'scope': identity[1], 'id': identity[2], 'duration': result['elapsed_ms'], 'start': start['ref'], 'end': end['ref'], 'start_time': start_time, 'end_time': end_time, 'outcome': end['fields'].get('outcome')})
         observations[group] = rows, operations
+    return interpret(public, observations), {'tokens': None, 'provider_cost_usd': None, 'measurement_source': 'unavailable_for_scripted_participant'}
+
+
+def interpret(public, observations):
+    """Interpret supplied source/operation facts; no tools or hidden truth."""
     facts, statuses = [], {}
     for task in public['tasks']:
         group, subject, predicate = task['group'], task['subject'], task['predicate']
@@ -91,4 +96,4 @@ def execute(tools, public):
         else: raise AssertionError('unsupported scripted predicate')
         facts.append(fact)
         statuses[group] = 'unsupported_input' if predicate == 'parsing_supported' and fact['value'] is False else 'insufficient_evidence' if fact['kind'] == 'unknown' or statuses.get(group) == 'insufficient_evidence' else 'supported'
-    return {'status': statuses, 'findings': facts}, {'tokens': None, 'provider_cost_usd': None, 'measurement_source': 'unavailable_for_scripted_participant'}
+    return {'status': statuses, 'findings': facts}

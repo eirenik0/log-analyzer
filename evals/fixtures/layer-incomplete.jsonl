@@ -1,0 +1,2 @@
+{"ts":"2026-06-04T12:30:00+03:00","level":"INFO","message":"synthetic boundary","operation":"probe","phase":"start","id":"shared-heldout","session":"heldout"}
+{"ts":"2026-06-04T12:30:03+03:00","level":"INFO","message":"capture boundary","session":"heldout"}

@@ -258,8 +258,10 @@ incompatibility is an explicit stopping condition.
 The [published evaluation baseline](evals/results/baseline.json) contains 13
 synthetic scenarios across 26 scripted analyzer/search-and-script runs. It checks
 typed claim correctness, exact citations, abstention and omissions, and records
-calls, output bytes and elapsed time. It verifies deterministic harness behavior;
-no real-model comparison, investigation-time improvement or token savings have
+calls, output bytes and elapsed time. It verifies deterministic harness behavior.
+The [layered scripted result](evals/results/layers-scripted.json) additionally separates tool truth, supplied-fact interpretation
+and complete legacy/unified workflows; its scripted checks make no model-quality
+claims. No real-model comparison, investigation-time improvement or token savings have
 been measured. Tokens and provider cost remain unavailable. See the
 [evaluation methods and limits](evals/README.md).
 
@@ -1557,7 +1559,14 @@ unsupported causes, abstention and important omissions. Mandatory CI runs a synt
 CLI corpus and paired scripted analyzer/search investigations without credentials.
 The [first published baseline](evals/results/baseline.json) verifies the harness;
 optional repeated same-model comparisons remain unmeasured until an adapter is run.
-Missing tokens/provider cost stay unavailable.
+The new layered smoke separates independently checked tool truth, interpretation
+of supplied verified facts, and paired legacy/unified workflows. It includes frozen
+held-out variants and retains answers, known partial usage and independent attempt
+statuses after failures. Canonical artifact records include parsed severity.
+Real-model runs require an explicit provider allocation; none have been executed.
+Unrestricted prose/causal judgment uses a separately documented calibration and
+review protocol, whose review runs remain unperformed. Missing tokens/provider
+cost stay unavailable; known partial usage keeps its completeness indicator.
 
 ## Repository and release wording
 

@@ -1,5 +1,6 @@
 """Grounded typed-claim scoring and read-only tools for investigation evaluations."""
 from copy import deepcopy
+from attempt import BudgetExceeded
 from datetime import datetime
 import hashlib
 import importlib.util
@@ -135,14 +136,14 @@ class Tools:
 
     def remaining(self):
         remaining = self.budgets['wall_seconds'] - (time.monotonic() - self.started)
-        require(remaining > 0, 'wall budget exhausted')
+        if remaining <= 0: raise BudgetExceeded('wall budget exhausted')
         return remaining
 
-    def record(self, request, output, started):
+    def record(self, request, output, started, received_bytes=None):
         encoded = json.dumps(output, ensure_ascii=False).encode()
-        self.output_bytes += len(encoded)
-        require(self.output_bytes <= self.budgets['output_bytes'], 'output budget exhausted')
+        self.output_bytes += len(encoded) if received_bytes is None else received_bytes
         self.calls.append({'request': request, 'output': output, 'elapsed_ms': round((time.monotonic() - started) * 1000, 3)})
+        if self.output_bytes > self.budgets['output_bytes']: raise BudgetExceeded('output budget exhausted')
         def collect(value):
             if isinstance(value, dict):
                 if {'reference_id', 'input_id', 'line', 'row_path', 'location_redacted'} <= set(value):
@@ -197,16 +198,20 @@ class Tools:
 
     def invoke(self, request):
         started = time.monotonic()
+        before = len(self.calls)
         try:
             return self._invoke(request)
         except Exception as error:
-            self.calls.append({'request': request, 'error': str(error), 'elapsed_ms': round((time.monotonic() - started) * 1000, 3)})
+            if len(self.calls) == before:
+                self.calls.append({'request': request, 'error': str(error), 'elapsed_ms': round((time.monotonic() - started) * 1000, 3)})
+            else:
+                self.calls[-1]['error'] = str(error)
             raise
 
     def _invoke(self, request):
         started = time.monotonic()
         self.remaining()
-        require(len(self.calls) < self.budgets['tool_calls'], 'tool-call budget exhausted')
+        if len(self.calls) >= self.budgets['tool_calls']: raise BudgetExceeded('tool-call budget exhausted')
         require(isinstance(request, dict) and request.get('group') in self.contexts, 'undeclared input group')
         group = request['group']
         inputs = self.contexts[group]['inputs']
@@ -231,9 +236,14 @@ class Tools:
             if self.scenario.get('redact_location'):
                 args += (['--redact'] if not self.scenario.get('redact') else []) + ['--mask-id', 'row_path']
             args += [command, *[i['file'] for i in inputs], *options]
-            result = subprocess.run(args, capture_output=True, env=self.env, cwd=ROOT, timeout=self.remaining())
+            try:
+                result = subprocess.run(args, capture_output=True, env=self.env, cwd=ROOT, timeout=self.remaining())
+            except subprocess.TimeoutExpired as error:
+                self.output_bytes += len(error.stdout or b'')
+                raise
+            self.output_bytes += len(result.stdout)
+            if self.output_bytes > self.budgets['output_bytes']: raise BudgetExceeded('output budget exhausted')
             require(result.returncode in {0, 1}, 'analyzer command failed')
-            require(len(result.stdout) <= self.budgets['output_bytes'] - self.output_bytes, 'output budget exhausted')
             output = {'exit': result.returncode, 'report': json.loads(result.stdout)}
             evidence = output['report']['report_metadata']['evidence']
             require((evidence['snapshot_id'], evidence['profile_sha256']) == (self.contexts[group]['snapshot_id'], self.contexts[group]['profile_sha256']), 'tool snapshot/profile changed')
@@ -263,7 +273,7 @@ class Tools:
                     require(isinstance(request.get('needle'), str), 'literal search needle required')
                     records = [r for r in records if request['needle'] in r['raw']]
                 output = {'records': records[offset:offset + 5], 'next_offset': offset + 5 if offset + 5 < len(records) else None, 'total': len(records)}
-        return self.record(request, output, started)
+        return self.record(request, output, started, received_bytes=0 if self.arm == 'analyzer' else None)
 
 
 def contexts_for(binary, scenario):

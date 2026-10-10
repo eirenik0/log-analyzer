@@ -8,11 +8,97 @@ cargo build --release
 python3 -m unittest discover -s evals -p 'test_*.py'
 python3 evals/run.py --binary target/release/log-analyzer --strict
 python3 evals/agents.py --binary target/release/log-analyzer
+python3 evals/layers.py --binary target/release/log-analyzer --repeats 2
 ```
 
 `cargo test` also executes the CLI corpus and paired scripted investigations, then
 validates returned pages and generated investigation contracts against the actual
 binary's advertised schemas. CI runs scorer regressions without credentials.
+
+## Three separate evaluation layers
+
+The [published layered smoke](results/layers-scripted.json) records 98 scripted
+attempts with corpus, harness and binary hashes.
+
+`layers.py` reports tool correctness, verified-fact interpretation and the complete
+workflow separately. It reuses the strict typed scorer without treating that scorer
+as a natural-language judge. [The prose/causal protocol](prose-review.md) supplies
+calibration anchors, independent reviewers and reconciliation rules. Reviewer
+calibration and actual unrestricted-prose review have **not been run**.
+
+`layer-cases.json` freezes source/profile/fact-packet hashes, incident families,
+development/held-out splits, compatibility eligibility and visible exclusion reasons.
+Ten historical cases and four public held-out variants cover failures, INFO-only
+timing, scoped identities, incomplete capture, unsuitable profiles, nested records,
+redacted locations, mixed grammars and unparsed input. The four variants change
+identities, scopes, UTC offsets, durations and capture boundaries. Historical split-
+file timing remains explicitly ineligible because unified inputs are independent;
+named redacted identities use a different disclosure contract. A duplicate fixture
+question remains in the historical smoke instead of duplicating paired totals.
+Exclusions are semantic compatibility decisions, not removals of failed attempts.
+
+The default two repetitions produce **98 scripted attempts**: 14 direct tool checks,
+28 interpretation runs and 56 paired workflow runs. Tool checks compare direct Rust
+records, severity, source-backed intervals/boundaries and capture uncertainty with
+independently authored fixture facts. They do not grade through the artifact adapter.
+`verified-facts.json` contains source/operation packets, not expected answers, statuses,
+omission labels or scoring hints. Only interpretation participants receive those
+packets; reconstruction/profile tools are disabled. Its arithmetic and source
+addresses are checked independently. Workflow participants receive the original
+question/scope and obtain facts through delivered tools only.
+
+Legacy uses bounded info/perf/profile-validation pages; unified uses one investigate
+per group and checksum-bound retained pages. The broker only joins explicit operation
+memberships to measurements and canonical records. It does not parse raw logs, pair
+events, recover redacted fields or manufacture absent values. Parsed severity is
+retained as `records[].fields.level`; older artifacts lacking it fail explicitly.
+Artifact/item validation uses advertised schemas; retrieval page envelopes use
+separate pinned broker field/hash/count/cursor invariants. Rust integration
+cross-checks actual delivered items and reports plus schema composition regressions.
+
+Both workflow arms receive the same supplied explicit profile, immutable context,
+80 calls, 2 MB output and 60 seconds. Common capability/scope preflight, including its
+info invocation, bytes and runtime, is charged to every arm. The broker records
+profile-resolution status, delivered validation/support checks, repeated queries,
+custom interval scripts, command invocations, calls, elapsed time, output bytes and
+model usage. Automatic profile resolution and participant attention are not measured.
+Engine instrumentation omitted by an older or redacted response stays null. Counts
+of participant engine passes exclude common preflight; command invocations remain
+separate from unknown engine work.
+
+Execution status, answer availability, budget compliance, schema validation and
+factual score are independent fields. Received final answers and valid incremental
+usage are saved before later process-exit, protocol, deadline, budget or validation
+failures. A schema-valid wrong answer can have validation passed and factual score
+failed. A failed execution can still have a received factually correct answer.
+Failed attempts and their known output/cost stay in aggregates. Tool output bytes
+count received subprocess stdout, including nonzero exits, malformed output and
+captured timeout prefixes, plus serialized local broker/fact output. No bytes-to-token
+estimate is used. Known partial usage has a completeness label and missing-response/
+missing-attempt counts; missing usage is null, never measured zero.
+
+Real models remain opt-in with trusted adapters, fixed model/configuration and at
+least two repeats. An explicit total provider allocation is required:
+
+```sh
+python3 evals/layers.py --binary target/release/log-analyzer --repeats 3 \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --adapter /absolute/path/to/adapter
+```
+
+The protocol reports **incremental usage per response**, not cumulative conversation
+usage. The broker includes remaining tool/wall/provider budgets, preserves known
+overspend, and halts later paid calls when spend is missing. Missing spend means
+unknown compliance, not measured overspend. Provider reporting is unverified; the
+adapter must enforce its requested remaining allocation before incurring new cost.
+No provider runtime or inference is embedded in the Rust analyzer. Adapters share the
+filesystem: withholding truth/rubrics is a trusted protocol boundary, not an OS sandbox.
+
+Use `--report PATH` for local traces/answers and `--publish PATH` for the sanitized
+projection. Published smoke results establish reproducible harness checks only;
+public held-out scripted repetitions establish neither model reliability nor broad
+accuracy, time, token or cost improvement. Codex/Pi/Claude packaging is reused from
+the existing portable skill work; interactive host behavior remains untested here.
 
 ## CLI corpus and historical migrations
 
@@ -82,8 +168,9 @@ it is not a claim of general redaction equivalence. Both arms preserve original
 source identities through a permitted local mapping. Raw tool traces stay local.
 
 Tokens and provider cost are null when unavailable. There is no byte-to-token
-estimate or zero substituted for missing usage. Adapter-reported usage is labeled
-unverified and totals are null if any turn is missing a measurement.
+estimate or zero substituted for missing usage. Adapter-reported incremental usage is labeled
+unverified. Complete totals are null when a turn is missing, while known partial
+totals and completeness/missing counts are retained even for failed attempts.
 
 ## Optional same-model comparisons
 
@@ -92,7 +179,8 @@ writes one JSON object frame on stdout per process invocation (no diagnostic tex
 
 ```sh
 python3 evals/agents.py --binary target/release/log-analyzer \
-  --model YOUR_MODEL_ID --configuration non-secret-config.json --repeats 3 \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --repeats 3 \
   --report target/evals/model-comparison.json --adapter /absolute/path/to/adapter
 ```
 
