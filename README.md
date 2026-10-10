@@ -127,7 +127,9 @@ or inherited files. TOML destinations within the discovery directory are protect
 even when discovery stops before reaching them. Redacted reports omit discovery
 paths, profile names and queries, while `report_metadata.profile_selection` preserves
 a sanitized selection status, sample coverage, candidate diagnostics and discovery
-limits. This summary is also present in unredacted reports.
+limits. This summary is also present in unredacted reports. A processing cutoff during
+shared discovery or detection marks every input scope as partial, even when later
+generic parsing completes.
 
 Recognition, timing, failures and incomplete-lifecycle evidence
 have separate support requirements; scope aliases and missing timestamp provenance

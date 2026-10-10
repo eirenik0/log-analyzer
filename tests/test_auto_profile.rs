@@ -483,3 +483,80 @@ fn redaction_retains_probe_parse_failures_for_non_utf8_capture() {
         assert!(!value.to_string().contains("input.log"));
     }
 }
+
+#[test]
+fn global_detection_cutoffs_mark_every_input_despite_complete_generic_parsing() {
+    for (limit, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir(dir.path().join("config")).unwrap();
+        for name in ["a.jsonl", "b.jsonl"] {
+            fs::write(dir.path().join(name), "{\"timestamp\": \"2026-01-01T00:00:00Z\", \"message\": \"Operation \\\"sync\\\" started\"}\n").unwrap();
+        }
+        let mut command = Command::new(env!("CARGO_BIN_EXE_log-analyzer"));
+        for (name, _) in std::env::vars().filter(|(name, _)| name.starts_with("LOG_ANALYZER_")) {
+            command.env_remove(name);
+        }
+        let output = command
+            .current_dir(dir.path())
+            .args([
+                "investigate",
+                "a.jsonl",
+                "b.jsonl",
+                "--artifact",
+                "artifact.json",
+                "--complete-output",
+                "--processing-max-memory-bytes",
+                &limit.to_string(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let bytes = fs::read(dir.path().join("artifact.json")).unwrap();
+        log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+        let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+        for value in [&report, &artifact] {
+            assert_eq!(value["processing"]["stop"]["stage"], stage);
+            assert_eq!(value["processing"]["stop"]["reason"], "memory_limit");
+            assert_eq!(
+                value["report_metadata"]["profile_selection"]["status"],
+                "budget_stopped"
+            );
+            assert_eq!(value["report_metadata"]["active_profile"], "base");
+            assert_eq!(value["processing"]["usage"]["records"], 2);
+            assert!(
+                value["processing"]["inputs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|input| input["capture"] == "complete")
+            );
+            assert_eq!(
+                value["processing"]["stop"]["scope_ids"],
+                json!(["scope-0", "scope-1"])
+            );
+            for scope in value["scopes"].as_array().unwrap() {
+                assert_eq!(scope["completeness"], "partial");
+                assert_eq!(scope["analysis_completion"], "partial");
+            }
+            assert!(
+                value["assessments"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|assessment| assessment["status"] != "supported")
+            );
+            assert!(
+                value["populations"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|population| population["completeness"] == "partial")
+            );
+        }
+    }
+}
