@@ -59,6 +59,55 @@ are omitted from primary help. `generate-config` returns a JSON object containin
 
 ## Unified investigation and retained evidence
 
+Start with a normal log file or several independent captures:
+
+```bash
+log-analyzer investigate application.log
+log-analyzer investigate captures/*.log
+```
+
+The default output explains processing completion, per-file coverage, observed
+ERROR/WARN records, supported measurements and assessment limits. A fresh local
+`log-analyzer-evidence-*` directory stores `evidence.json`; its path and SHA-256
+appear at the end. Use `--artifact PATH` to choose a new destination. Existing
+artifacts are never replaced. For agents, request JSON explicitly:
+
+```bash
+log-analyzer --profile examples/investigations/profile.toml investigate \
+  examples/investigations/slow.jsonl --artifact evidence.json --json --report-max-items 5
+log-analyzer evidence evidence.json \
+  --expected-sha256 <artifact.stored_sha256> --collection /findings --report-max-items 5
+```
+
+`--summary` selects a concise JSON decision brief with up to five findings. JSON presentation budgets
+also imply JSON. `evidence` always returns JSON; `investigation-evidence` remains
+an alias for existing automation. Investigation captures, parses/classifies and
+correlates each independent input once; bounded profile discovery samples the immutable captured bytes. Retrieval reads only the retained artifact.
+
+```mermaid
+flowchart LR
+  A[Log files] --> B[Plan file sizes and capture input bytes]
+  B --> C[Explicit profile or sample every captured input]
+  C --> D[Parse and analyze one independent input]
+  D --> E[Retain evidence and release parsed working set]
+  E --> D
+  E --> F[Readable report or JSON plus artifact]
+  F --> G[evidence: retrieve retained records and findings]
+```
+
+Source severity counts and representative ERROR/FATAL/WARN/WARNING excerpts remain
+visible even when the profile cannot classify domain outcomes. A severity record
+is an observation, not a proven operation failure or causal diagnosis. Unknown or
+unparsed evidence never becomes a clean-result claim.
+
+Profiles can declare `[[resource_observations]]` rules for scoped resource joins,
+geometry and known fingerprints. Investigation applies the selected profile's
+rules automatically; no domain-specific CLI switch is needed. Message markers,
+identity fields/prefixes, payload paths and fingerprint labels live in TOML.
+Unique ownership is required; missing or conflicting hashes remain unknown.
+A fingerprint match is a profile-declared observation and does not establish
+rendered content or root cause. Empty manifests do not prove absent content.
+
 For an agent's first call, use the concise capability and investigation summaries:
 
 ```bash
@@ -124,7 +173,7 @@ retention. Retrieval saves only new `--output` files.
 Bare `investigate` automatically checks built-ins and TOML profiles discovered
 recursively in `ROOT/config` (the working directory unless `--project-root` is supplied). `--profiles-dir DIR`
 replaces that directory. Detection uses captured prefixes: at most 128 physical
-lines and 64 KiB per input, sharing a 256 KiB total sample allowance equally across inputs. Exactly one matching profile, with lifecycle
+lines and 64 KiB per input, sharing a 256 KiB total sample allowance equally across inputs. Exactly one matching profile, with lifecycle or configured resource
 evidence in every nonempty input and no observed parsing/classification loss, is
 selected. Overlapping grammars (including common `eyes`/`custom-start` wording),
 mixed profiles, unknown formats and insufficient evidence fall back to generic
@@ -214,10 +263,15 @@ values. Legacy `--filter` keeps substring semantics and runs before correlation;
 removing an end through a filter cannot establish a hang. Elapsed source intervals
 preserve UTC offsets and do not measure CPU time, critical-path time or causes.
 
-Processing limits are separate from output limits. Defaults are 16 MiB captured
-input, 100,000 record attempts, 10,000 expanded-row attempts, 10,000,000 charged
-work units, a cooperative 30-second deadline, a 512 MiB conservative data allowance,
-64 MiB artifact storage and 256 KiB per physical line/multiline record. See
+Processing limits are separate from output limits. The default total input cap
+plans the declared file sizes plus an EOF probe, with a 16 MiB minimum and 1 GiB
+ceiling. Other defaults are 1,000,000 record attempts, 100,000 expanded-row attempts,
+500,000,000 charged work units, a cooperative 180-second deadline, 1 GiB artifact
+storage and 8 MiB per physical line/multiline record. Conservative data allowance
+is 512 times planned input bytes, bounded between 512 MiB and 32 GiB; this is
+accounting, not a RAM allocation or RSS ceiling. Explicit limits override planning.
+Oversized captures can still stop at these finite ceilings; inspect every input's
+capture and scope status. See
 `investigate --help` for overrides. Work accounts for parsing bytes, loop steps
 and sorting reservations; it is not a CPU instruction count. Rejected candidates
 consume attempt capacity; reported record usage counts successfully parsed records.

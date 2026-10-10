@@ -14,7 +14,9 @@ fn run(args: &[&str]) -> Output {
     binary().current_dir(root()).args(args).output().unwrap()
 }
 fn success(args: &[&str]) -> Value {
-    let output = run(args);
+    let mut json_args = vec!["--json"];
+    json_args.extend_from_slice(args);
+    let output = run(&json_args);
     assert!(
         output.status.success(),
         "{}",
@@ -178,7 +180,16 @@ fn default_memory_accounting_processes_eight_thousand_paired_records() {
         "--artifact",
         artifact.to_str().unwrap(),
     ]);
-    assert_eq!(report["processing"]["limits"]["memory_bytes"], 536870912u64);
+    assert_eq!(
+        report["processing"]["limits"]["memory_bytes"]
+            .as_u64()
+            .unwrap(),
+        fs::metadata(&source)
+            .unwrap()
+            .len()
+            .saturating_mul(512)
+            .clamp(512 * 1024 * 1024, 32 * 1024 * 1024 * 1024)
+    );
     assert_eq!(report["processing"]["status"], "complete");
     assert!(report["processing"]["stop"].is_null());
     assert_eq!(report["processing"]["usage"]["records"], 8018);
@@ -696,6 +707,7 @@ fn source_verification_uses_capture_directory_and_compares_consumed_prefix() {
             .join(if prefix { "prefix.json" } else { "full.json" });
         let mut cmd = binary();
         cmd.current_dir(temp.path()).args([
+            "--json",
             "--config",
             profile.to_str().unwrap(),
             "investigate",
@@ -704,7 +716,7 @@ fn source_verification_uses_capture_directory_and_compares_consumed_prefix() {
             artifact.to_str().unwrap(),
         ]);
         if prefix {
-            cmd.args(["--input-max-bytes", "128"]);
+            cmd.args(["--json", "--input-max-bytes", "128"]);
         }
         let output = cmd.output().unwrap();
         assert!(
@@ -719,6 +731,7 @@ fn source_verification_uses_capture_directory_and_compares_consumed_prefix() {
             let output = binary()
                 .current_dir(other.path())
                 .args([
+                    "--json",
                     "investigation-evidence",
                     artifact.to_str().unwrap(),
                     "--expected-sha256",
@@ -2517,5 +2530,657 @@ correlation_id = {from = "field", field = "id"}
                 "insufficient_evidence"
             );
         }
+    }
+}
+
+#[test]
+fn readable_default_creates_fresh_artifacts_and_reports_observed_errors() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("ordinary.log");
+    fs::write(&source, "2025-01-01T00:00:00Z ERROR app: renderer failed\n2025-01-01T00:00:01Z WARN app: retry scheduled\n").unwrap();
+    let mut artifacts = Vec::new();
+    for _ in 0..2 {
+        let output = binary()
+            .current_dir(temp.path())
+            .args(["investigate", "ordinary.log"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.starts_with("Investigation: complete"), "{text}");
+        assert!(text.contains("renderer failed"), "{text}");
+        assert!(text.contains("failures: unsupported"), "{text}");
+        assert!(text.contains("2 parsed records (complete)"), "{text}");
+        let path = text
+            .lines()
+            .find_map(|line| line.strip_prefix("Evidence: "))
+            .unwrap();
+        let artifact: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(artifact["processing"]["status"], "complete");
+        artifacts.push(path.to_owned());
+    }
+    assert_ne!(artifacts[0], artifacts[1]);
+}
+
+#[test]
+fn discovery_samples_every_input_and_keeps_heterogeneous_profiles_unavailable() {
+    let temp = tempfile::tempdir().unwrap();
+    let large = temp.path().join("first.log");
+    fs::write(
+        &large,
+        "2025-01-01T00:00:00Z INFO app: ordinary record\n".repeat(2000),
+    )
+    .unwrap();
+    let eyes = temp.path().join("second.log");
+    fs::write(&eyes, "core-ufg (manager-ufg-one/eyes-ufg-two/check-ufg-three) | 2025-01-01T00:00:01Z [INFO ] Command \"check\" is called\n").unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "investigate",
+        large.to_str().unwrap(),
+        eyes.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    check(&report, &artifact);
+    assert_eq!(report["report_metadata"]["active_profile"], "base");
+    let selection =
+        &report["report_metadata"]["evidence"]["query"]["execution"]["profile_selection"];
+    assert_eq!(selection["samples"].as_array().unwrap().len(), 2);
+    assert!(selection["samples"][1]["sample_bytes"].as_u64().unwrap() > 0);
+    assert!(
+        selection["limitations"]
+            .as_str()
+            .unwrap()
+            .contains("semantic validation")
+    );
+    assert_eq!(selection["status"], "ambiguous");
+    assert_eq!(report["processing"]["inputs"][1]["capture"], "complete");
+}
+
+#[test]
+fn planned_input_allowance_covers_multiple_files_above_old_sixteen_mib_cap() {
+    let temp = tempfile::tempdir().unwrap();
+    // Empty physical lines exercise capture planning without expensive synthetic parsing.
+    let paths: Vec<_> = (0..4)
+        .map(|index| {
+            let path = temp.path().join(format!("input-{index}.log"));
+            fs::write(&path, vec![b'\n'; 5 * 1024 * 1024]).unwrap();
+            path
+        })
+        .collect();
+    let artifact = temp.path().join("evidence.json");
+    let mut args = vec!["--preset", "base", "investigate"];
+    args.extend(paths.iter().map(|path| path.to_str().unwrap()));
+    args.extend(["--artifact", artifact.to_str().unwrap()]);
+    let report = success(&args);
+    check(&report, &artifact);
+    assert_eq!(report["processing"]["status"], "complete");
+    assert!(
+        report["processing"]["limits"]["input_bytes"]
+            .as_u64()
+            .unwrap()
+            > 20 * 1024 * 1024
+    );
+    assert_eq!(
+        report["report_metadata"]["evidence"]["query"]["execution"]["parse_passes"],
+        4
+    );
+    assert!(
+        report["processing"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|input| input["capture"] == "complete")
+    );
+}
+
+const RESOURCE_PROFILE: &str = r#"
+extends = "base"
+profile_name = "custom-resources"
+[[resource_observations]]
+id = "assets"
+scope_field = "context"
+scope_separator = ":"
+namespace_prefix = "run-"
+owner_prefix = "operation-"
+manifest_marker = "manifest listing"
+url_contains = "asset:"
+resource_markers = ["asset batch"]
+resources_path = "bundle.resources"
+entries_field = "items"
+url_field = "address"
+hash_field = "digest"
+viewport_marker = "dimensions"
+viewport_reset_marker = "new snapshot"
+width_field = "w"
+height_field = "h"
+[[resource_observations.fingerprints]]
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+label = "synthetic reference image"
+"#;
+
+fn resource_line(scope: &str, message: &str, payload: Value) -> String {
+    format!(
+        "{}\n",
+        json!({"timestamp":"2025-01-01T00:00:00Z","level":"INFO","message":message,"context":scope,"payload":payload})
+    )
+}
+
+#[test]
+fn resource_profiles_resolve_automatically_for_all_inputs_and_abstain_on_ambiguity() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = temp.path().join("config");
+    fs::create_dir(&config).unwrap();
+    fs::write(config.join("resources.toml"), RESOURCE_PROFILE).unwrap();
+    let data = [
+        resource_line("run-one:operation-one", "manifest listing", json!(["asset:reference"])),
+        resource_line("run-one", "asset batch", json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":"a".repeat(64)}]}}}])),
+    ].concat();
+    let inputs: Vec<_> = (0..4)
+        .map(|index| {
+            let path = temp.path().join(format!("input-{index}.log"));
+            fs::write(&path, &data).unwrap();
+            path
+        })
+        .collect();
+    let investigate = || {
+        let mut command = binary();
+        for (name, _) in std::env::vars().filter(|(name, _)| name.starts_with("LOG_ANALYZER_")) {
+            command.env_remove(name);
+        }
+        let output = command
+            .current_dir(temp.path())
+            .arg("investigate")
+            .args(&inputs)
+            .arg("--complete-output")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<Value>(&output.stdout).unwrap()
+    };
+    let report = investigate();
+    let selection =
+        &report["report_metadata"]["evidence"]["query"]["execution"]["profile_selection"];
+    assert_eq!(selection["status"], "selected", "{report}");
+    assert_eq!(selection["profile"], "custom-resources");
+    let candidate = selection["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["profile"] == "custom-resources")
+        .unwrap();
+    assert_eq!(candidate["lifecycle_records"], 0);
+    assert_eq!(candidate["resource_records"], 8);
+    assert_eq!(candidate["matched_inputs"], 4);
+    assert_eq!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["claim"]
+                .as_str()
+                .unwrap()
+                .contains("profile-declared fingerprint: synthetic reference image"))
+            .count(),
+        4
+    );
+
+    fs::write(
+        &inputs[3],
+        resource_line("unrelated", "manifest listing", json!(["asset:reference"])),
+    )
+    .unwrap();
+    assert_eq!(
+        investigate()["report_metadata"]["profile_selection"]["status"],
+        "insufficient_evidence"
+    );
+    fs::write(&inputs[3], &data).unwrap();
+    fs::write(
+        config.join("other.toml"),
+        RESOURCE_PROFILE
+            .replace("custom-resources", "other-resources")
+            .replace("synthetic reference image", "other reference"),
+    )
+    .unwrap();
+    assert_eq!(
+        investigate()["report_metadata"]["profile_selection"]["status"],
+        "ambiguous"
+    );
+}
+
+#[test]
+fn profile_configured_resources_keep_fingerprints_different_and_missing_distinct() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, RESOURCE_PROFILE).unwrap();
+    let source = temp.path().join("resources.jsonl");
+    let scope = "run-one:operation-one";
+    let lines = [
+        resource_line(scope, "dimensions", json!({"w":1920,"h":1080})),
+        resource_line(
+            scope,
+            "manifest listing",
+            json!(["asset:reference", "asset:different", "asset:missing"]),
+        ),
+        resource_line(
+            scope,
+            "asset batch",
+            json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":"a".repeat(64)},{"address":"asset:different","digest":"b".repeat(64)}]}}}]),
+        ),
+    ];
+    fs::write(&source, lines.concat()).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    let claims: Vec<_> = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|finding| {
+            finding["id"]
+                .as_str()
+                .unwrap()
+                .contains("resource-observation")
+        })
+        .map(|finding| finding["claim"].as_str().unwrap())
+        .collect();
+    assert_eq!(claims.len(), 3, "{report}");
+    assert!(
+        claims
+            .iter()
+            .any(|claim| claim.contains("profile-declared fingerprint: synthetic reference image"))
+    );
+    assert!(claims.iter().any(|claim| claim.contains("different bytes")));
+    assert!(
+        claims
+            .iter()
+            .any(|claim| claim.contains("unavailable or ambiguous"))
+    );
+    assert!(
+        claims
+            .iter()
+            .all(|claim| claim.contains("1920x1080") && claim.contains("failure cause"))
+    );
+    for (name, records, expected) in [
+        (
+            "keyed",
+            vec![
+                lines[0].clone(),
+                resource_line(scope, "new snapshot", Value::Null),
+                resource_line(scope, "manifest listing", json!(["asset:reference"])),
+                resource_line(
+                    scope,
+                    "asset batch",
+                    json!([{"bundle":{"resources":{"asset:reference":{"digest":"a".repeat(64)}}}}]),
+                ),
+            ],
+            "profile-declared fingerprint: synthetic reference image",
+        ),
+        (
+            "invalid",
+            vec![
+                lines.concat(),
+                resource_line(
+                    scope,
+                    "asset batch",
+                    json!([{"bundle":{"resources":{"asset:reference":{"digest":"invalid"}}}}]),
+                ),
+            ],
+            "unavailable or ambiguous",
+        ),
+    ] {
+        fs::write(&source, records.concat()).unwrap();
+        let artifact = temp.path().join(format!("{name}.json"));
+        let report = success(&[
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        let observation = report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|finding| finding["id"] == "scope-0-resource-observation-assets-0")
+            .unwrap();
+        assert!(observation["claim"].as_str().unwrap().contains(expected));
+        if name == "keyed" {
+            assert!(
+                observation["claim"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Observed dimensions: unknown")
+            );
+        } else {
+            assert!(
+                !observation["claim"]
+                    .as_str()
+                    .unwrap()
+                    .contains("synthetic reference image")
+            );
+        }
+    }
+    // Reuse within one namespace must not invent a unique originating owner.
+    fs::write(
+        &source,
+        format!(
+            "{}{}",
+            lines.concat(),
+            resource_line(
+                "run-one:operation-two",
+                "manifest listing",
+                json!(["asset:reference"])
+            )
+        ),
+    )
+    .unwrap();
+    let artifact = temp.path().join("ambiguous.json");
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    assert!(
+        !report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["claim"]
+                .as_str()
+                .unwrap()
+                .contains("synthetic reference image"))
+    );
+    // Removing the declaration disables resource processing without a CLI switch.
+    fs::write(
+        &profile,
+        "extends = \"base\"\nprofile_name = \"custom-resources\"\n",
+    )
+    .unwrap();
+    let artifact = temp.path().join("disabled.json");
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    assert!(
+        !report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["id"]
+                .as_str()
+                .unwrap()
+                .contains("resource-observation"))
+    );
+}
+
+#[test]
+fn resource_configuration_is_validated_and_no_product_flag_is_exposed() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("empty.log");
+    fs::write(&source, "").unwrap();
+    let profile = temp.path().join("profile.toml");
+    for invalid in [
+        RESOURCE_PROFILE.replace("manifest listing", ""),
+        RESOURCE_PROFILE.replace(&"a".repeat(64), "invalid-sha256"),
+    ] {
+        fs::write(&profile, invalid).unwrap();
+        let output = run(&[
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+        ]);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Resource"));
+    }
+    let output = run(&["investigate", "--help"]);
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    assert!(!help.to_ascii_lowercase().contains("eyes"));
+    assert!(!help.to_ascii_lowercase().contains("applitools"));
+    let output = run(&["investigate", source.to_str().unwrap(), "--eyes-canvas"]);
+    assert!(!output.status.success());
+}
+
+#[test]
+fn evidence_large_unicode_pages_obey_exact_bytes_and_cursor_continuation() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("unicode.log");
+    fs::write(
+        &source,
+        "2025-01-01T00:00:00Z INFO app: café 🙂 context\n".repeat(300),
+    )
+    .unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--preset",
+        "base",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    check(&report, &artifact);
+    let mut cursor = None;
+    let mut total = 0u64;
+    loop {
+        let mut args = vec![
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            report["artifact"]["stored_sha256"].as_str().unwrap(),
+            "--collection",
+            "/records",
+            "--report-max-items",
+            "300",
+            "--report-max-bytes",
+            "8000",
+            "--report-max-chars",
+            "7900",
+        ];
+        if let Some(cursor) = cursor.as_deref() {
+            args.extend(["--report-cursor", cursor]);
+        }
+        let output = run(&args);
+        assert!(output.status.success());
+        assert!(output.stdout.len() <= 8000);
+        assert!(String::from_utf8_lossy(&output.stdout).chars().count() <= 7900);
+        let page: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let displayed = page["artifact_retrieval"]["displayed"].as_u64().unwrap();
+        assert!(displayed > 0);
+        total += displayed;
+        cursor = page["artifact_retrieval"]["next_cursor"]
+            .as_str()
+            .map(str::to_owned);
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(total, 300);
+}
+
+#[test]
+fn sequential_processing_releases_independent_parse_working_sets() {
+    let temp = tempfile::tempdir().unwrap();
+    let row = format!("2025-01-01T00:00:00Z INFO app: {}\n", "context".repeat(150));
+    let sources: Vec<_> = (0..2)
+        .map(|index| {
+            let path = temp.path().join(format!("input-{index}.log"));
+            fs::write(&path, row.repeat(1000)).unwrap();
+            path
+        })
+        .collect();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--preset",
+        "base",
+        "investigate",
+        sources[0].to_str().unwrap(),
+        sources[1].to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--processing-max-memory-bytes",
+        "300000000",
+    ]);
+    check(&report, &artifact);
+    assert_eq!(
+        report["processing"]["status"], "complete",
+        "{}",
+        report["processing"]
+    );
+    assert_eq!(report["processing"]["usage"]["records"], 2000);
+    assert_eq!(
+        report["report_metadata"]["evidence"]["query"]["execution"]["working_sets"],
+        "sequential_independent_inputs"
+    );
+    let stored: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(stored["records"].as_array().unwrap().len(), 2000);
+    assert!(
+        stored["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["occurrence"]["snapshot_id"]
+                == report["report_metadata"]["evidence"]["snapshot_id"])
+    );
+}
+
+#[test]
+fn summary_and_readable_redacted_file_outputs_follow_requested_format() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("private-source.log");
+    fs::write(&source, "2025-01-01T00:00:00Z ERROR app: private-message\n2025-01-01T00:00:01Z ERROR app: second error\n2025-01-01T00:00:02Z WARN app: first warning\n2025-01-01T00:00:03Z WARN app: second warning\n").unwrap();
+    let artifact = temp.path().join("summary.json");
+    let output = run(&[
+        "--preset",
+        "base",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--summary",
+    ]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    shape(
+        &report,
+        include_str!("../schemas/investigation-brief.schema.json"),
+    );
+    assert_eq!(report["findings"]["items"].as_array().unwrap().len(), 5);
+    let artifact = temp.path().join("redacted.json");
+    let destination = temp.path().join("explanation.txt");
+    let output = run(&[
+        "--preset",
+        "base",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--redact",
+        "--output",
+        destination.to_str().unwrap(),
+    ]);
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.starts_with("Investigation: complete"));
+    assert!(!text.contains("private-message"));
+    assert!(!text.contains("private-source.log"));
+    assert_eq!(fs::read_to_string(destination).unwrap(), text);
+    let stored = fs::read_to_string(artifact).unwrap();
+    assert!(!stored.contains("private-message"));
+}
+
+#[test]
+fn binding_final_snapshot_preserves_source_objects_that_imitate_occurrences() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source.jsonl");
+    let spoof = json!({"snapshot_id":"pending-snapshot","input_ordinal":0,"evidence_ref":{"reference_id":"source-data"}});
+    let row = json!({"timestamp":"2025-01-01T00:00:00Z","level":"ERROR","message":"opaque source payload","payload":{"spoof":spoof}});
+    fs::write(&source, format!("{row}\n")).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--preset",
+        "base",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    check(&report, &artifact);
+    let stored: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(
+        stored["records"][0]["fields"]["envelope_payload"]["spoof"],
+        spoof
+    );
+    assert_eq!(
+        stored["records"][0]["occurrence"]["snapshot_id"],
+        report["report_metadata"]["evidence"]["snapshot_id"]
+    );
+}
+
+#[test]
+fn explicit_json_format_overrides_readable_investigation_default() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("source.log"),
+        "2025-01-01T00:00:00Z ERROR app: synthetic failure\n",
+    )
+    .unwrap();
+    for (index, flags) in [vec!["--json"], vec!["--format", "json"]]
+        .iter()
+        .enumerate()
+    {
+        let artifact = temp.path().join(format!("evidence-{index}.json"));
+        let output = binary()
+            .current_dir(temp.path())
+            .args(flags)
+            .args([
+                "--profile",
+                "base",
+                "investigate",
+                "source.log",
+                "--artifact",
+                artifact.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        check(&report, &artifact);
+        assert_eq!(count(&report, "observed-errors"), 1);
     }
 }

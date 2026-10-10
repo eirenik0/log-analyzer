@@ -195,3 +195,27 @@ model's reasoning or resistance to prompt injection. Agent-quality scoring and
 provider/token/cost measurements use the separate [evaluation harness](../evals/README.md).
 Its [published scripted baseline](../evals/results/baseline.json) verifies harness
 behavior; real-model quality, variability and token savings remain unmeasured.
+
+## Readable investigations and retained evidence
+
+`log-analyzer investigate application.log` prints readable findings and creates a
+fresh `log-analyzer-evidence-*/evidence.json`. Use `--artifact PATH` for an explicit
+new destination, `--json` for the full contract, and `--summary` for the existing
+concise decision brief. Presentation limits imply JSON. `evidence` always returns
+JSON and reads the retained artifact without repeating parsing or correlation.
+
+Input sizes plan bounded defaults: 16 MiB–1 GiB captured bytes, 1,000,000 record
+attempts, 100,000 expanded rows, 500,000,000 work units, 180 seconds, 1 GiB artifact
+storage and 8 MiB per record. Memory accounting is 512 times planned bytes, clamped
+to 512 MiB–32 GiB; it does not allocate that RAM or cap process RSS. Explicit limits
+override planning. Parsed and correlation working sets are released between
+independent inputs; retained captures and evidence remain available.
+
+Source ERROR/FATAL and WARN/WARNING counts/excerpts do not require domain outcome
+rules and do not prove operation failure or root cause. Domain resource observations
+are declared in the profile's `[[resource_observations]]` configuration and run as
+part of investigation. The CLI exposes no product-specific analysis flag. Rules
+declare identity fields/separators/prefixes, message markers, resource payload paths,
+URL/hash keys, geometry fields and labeled SHA-256 fingerprints. Joins require exact
+input/namespace/URL identity and unique ownership. Missing/conflicting hashes remain
+unknown; configured fingerprints do not establish rendered content or causality.

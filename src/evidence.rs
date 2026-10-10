@@ -177,7 +177,8 @@ impl Context {
             profile_digest: profile_digest(config)?,
             query,
             filter,
-            collect_records: cli.common_reports(),
+            collect_records: cli.common_reports()
+                && !matches!(cli.command, crate::cli::Commands::Investigate(_)),
             legacy_sanitize_records: !cli.redact
                 && matches!(
                     &cli.command,

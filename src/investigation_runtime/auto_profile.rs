@@ -67,6 +67,7 @@ pub(super) fn detect(
         let passes_before = passes;
         let mut parse_failures = 0;
         let mut matched = 0;
+        let mut resource_records = 0;
         let mut matched_inputs = 0;
         let mut invalid = 0;
         for (ordinal, (capture, length)) in captures.iter().zip(&lengths).enumerate() {
@@ -98,11 +99,24 @@ pub(super) fn detect(
                         || !parsed.coverage.normalization_diagnostics.is_empty();
                     let mut input_matches = 0;
                     for entry in &parsed.entries {
+                        if budget.stop.is_some() {
+                            break;
+                        }
+                        let mut resource_match = false;
+                        for rule in &candidate.config.resource_observations {
+                            if !budget.checkpoint("profile_detection", 1) {
+                                break;
+                            }
+                            resource_match |=
+                                super::resource_observations::matches_sample(entry, rule, budget);
+                        }
+                        resource_records += usize::from(resource_match);
+                        let mut lifecycle_match = false;
                         match &entry.classification {
                             Some(ClassifiedRecord::Event { semantics, .. })
                                 if semantics.phase.is_some() =>
                             {
-                                input_matches += 1
+                                lifecycle_match = true
                             }
                             Some(
                                 ClassifiedRecord::Conflict { .. }
@@ -110,8 +124,9 @@ pub(super) fn detect(
                             ) => invalid += 1,
                             _ => {}
                         }
+                        matched += usize::from(lifecycle_match);
+                        input_matches += usize::from(lifecycle_match || resource_match);
                     }
-                    matched += input_matches;
                     matched_inputs += usize::from(input_matches > 0);
                 }
                 Err(_) => {
@@ -128,9 +143,10 @@ pub(super) fn detect(
             "status":if !performed {"not_performed"} else if budget.stop.is_some() || parse_failures > 0 {"partial"} else {"complete"},
             "parse_passes":passes - passes_before,"parse_failures":parse_failures,"structural_loss":structural_loss,
             "lifecycle_records":performed.then_some(matched),
+            "resource_records":performed.then_some(resource_records),
             "matched_inputs":performed.then_some(matched_inputs),
             "invalid_or_conflicting_records":performed.then_some(invalid)}));
-        if matched > 0 {
+        if matched + resource_records > 0 {
             matches.push((
                 index,
                 matched_inputs,
@@ -170,10 +186,10 @@ pub(super) fn detect(
         (status == "selected").then(|| catalog.candidates.swap_remove(matches[0].0).config);
     let metadata = json!({
         "status":status,"profile":selected.as_ref().map_or("base", |c| c.profile_name.as_str()),
-        "method":"unique_profile_lifecycle_grammar","candidates":candidates,"samples":samples,"discovery":catalog.metadata,
+        "method":"unique_profile_configured_grammar","candidates":candidates,"samples":samples,"discovery":catalog.metadata,
         "limits":{"total_sample_bytes":TOTAL_BYTES,"sample_bytes_per_input":per_input,"physical_lines_per_input":INPUT_LINES},
         "probe_records":records,"work_units":budget.work_units.saturating_sub(work_before),
-        "basis":"Bounded captured prefixes, using existing profile parsers and classifiers. Every nonempty input must contain lifecycle evidence for the sole matching profile.",
+        "basis":"Bounded captured prefixes, using existing profile parsers and classifiers. Every nonempty input must contain lifecycle or configured resource evidence for the sole matching profile.",
         "limitations":"Grammar inference is not independent semantic validation or proof of completion. Unsampled records may differ. Ambiguous, unrecognized or insufficient evidence uses generic base analysis.",
         "next_step":"Inspect coverage, goal support and retained evidence. Override with --profile (including base); use profile resolve and profile validate for a remaining semantic gap."
     });
@@ -217,6 +233,7 @@ pub(super) fn summary(selection: &Value) -> Value {
                 "parse_failures",
                 "structural_loss",
                 "lifecycle_records",
+                "resource_records",
                 "matched_inputs",
                 "invalid_or_conflicting_records",
             ][..],

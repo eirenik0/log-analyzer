@@ -281,3 +281,25 @@ name = { from = "field", field = "operation_name" }
 phase = { from = "field", field = "operation_phase" }
 correlation_id = { from = "first_field", fields = ["correlation_id"] }
 direction = { from = "field", field = "operation_direction" }
+
+# Domain observations are profile data, not CLI switches or runtime constants.
+[[resource_observations]]
+id = "snapshot-resources"
+scope_field = "component_id"
+scope_separator = "/"
+namespace_prefix = "manager-"
+owner_prefix = "check-"
+manifest_marker = "blobs urls"
+url_contains = "applitools-canvas-"
+resource_markers = ['Request "startRenders"', "will be sent"]
+resources_path = "resources"
+entries_field = "entries"
+url_field = "url"
+hash_field = "hash"
+viewport_marker = "Extracted viewport size"
+viewport_reset_marker = "Taking dom snapshot for viewport size"
+width_field = "width"
+height_field = "height"
+[[resource_observations.fingerprints]]
+sha256 = "8617e027d9070bad2f37098c59e09dd1818d6af11bcef176ac1ec1cd5e3fc0a2"
+label = "transparent, undrawn 300x150 Chromium PNG"

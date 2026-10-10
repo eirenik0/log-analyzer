@@ -24,6 +24,7 @@ pub(crate) struct Budget {
     pub expanded_records: u64,
     pub work_units: u64,
     pub memory_bytes: u64,
+    peak_memory_bytes: u64,
     pub stop: Option<Value>,
     pub halted: bool,
     pub active_scope: usize,
@@ -39,6 +40,7 @@ impl Budget {
             expanded_records: 0,
             work_units: 0,
             memory_bytes: 0,
+            peak_memory_bytes: 0,
             stop: None,
             halted: false,
             active_scope: 0,
@@ -85,6 +87,7 @@ impl Budget {
             return self.stop(stage, "memory_limit", Some("memory_bytes"));
         }
         self.memory_bytes += bytes;
+        self.peak_memory_bytes = self.peak_memory_bytes.max(self.memory_bytes);
         true
     }
     pub fn physical_size(&mut self, bytes: usize) -> bool {
@@ -191,7 +194,7 @@ impl Budget {
         json!({"input_bytes":self.input_bytes,"records":self.records,
             "expanded_records":self.expanded_records,"work_units":self.work_units,
             "elapsed_ms":self.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-            "memory_bytes":self.memory_bytes,"artifact_bytes":null})
+            "memory_bytes":self.peak_memory_bytes,"artifact_bytes":null})
     }
 }
 

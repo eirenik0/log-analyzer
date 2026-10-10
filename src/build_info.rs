@@ -108,7 +108,7 @@ fn report_schemas_capability() -> Value {
 }
 
 fn investigation_contracts_capability() -> Value {
-    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"guidance_version":1,"brief_version":1,"project_root_option":"project-root","capability_summary":true,"profile_detection":{"default":true,"method":"unique_profile_lifecycle_grammar","overrides":["profile","config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"},"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
+    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"guidance_version":1,"brief_version":1,"default_output":"text","retrieval_command":"evidence","automatic_artifact":true,"profile_analysis":["resource_observations"],"project_root_option":"project-root","capability_summary":true,"profile_detection":{"default":true,"method":"unique_profile_configured_grammar","overrides":["profile","config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"},"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
 }
 
 fn bounded_reports_capability() -> Value {

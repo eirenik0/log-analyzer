@@ -150,8 +150,9 @@ pub enum SearchCountBy {
 #[derive(serde::Serialize, Parser)]
 #[command(author, version = env!("LOG_ANALYZER_BUILD_VERSION"), about, long_about = None)]
 #[command(name = "log-analyzer")]
-#[command(
-    after_help = "Start with: log-analyzer investigate LOG --artifact evidence.json --summary
+#[command(after_help = "Start with: log-analyzer investigate LOG
+Readable findings and a fresh evidence artifact are created automatically.
+Add --json for structured output, or --summary for a concise decision brief.
 Profiles: log-analyzer profile --help
 Specialized commands: log-analyzer --help-advanced
 
@@ -171,8 +172,7 @@ FILTER EXPRESSION SYNTAX:
     --filter \"l:ERROR\"                    Only ERROR level logs
     --filter \"c:core !l:DEBUG\"            Core component, exclude DEBUG
     --filter \"t:timeout d:incoming\"       Contains 'timeout', incoming only
-    --filter \"actor_kind:switch\"          Structured field filter on tracing/json logs"
-)]
+    --filter \"actor_kind:switch\"          Structured field filter on tracing/json logs")]
 pub struct Cli {
     /// Bound the final JSON report by Unicode scalar characters (not model tokens); implies JSON
     #[arg(long, global = true, conflicts_with = "complete_output")]
@@ -207,7 +207,7 @@ pub struct Cli {
     #[serde(skip_serializing)]
     pub summary: bool,
 
-    /// Compatibility output format; JSON is the default
+    /// Output format; investigate defaults to text, other commands to JSON
     #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Json, hide = true, global = true, group = "output_options", env = "LOG_ANALYZER_FORMAT")]
     pub format: OutputFormat,
 
@@ -237,10 +237,9 @@ pub struct Cli {
 
     /// Built-in profile name or TOML profile file
     ///
-    /// Exact built-in names (base, eyes, custom-start, service-api, event-pipeline)
-    /// select built-ins; every other value is a file path. Use ./eyes to load a
-    /// file named eyes. A top-level `extends` names a built-in profile or a parent
-    /// file resolved relative to the child profile. Tables merge with child values
+    /// Names listed by capabilities select built-ins; every other value is a file path.
+    /// Prefix a conflicting file name with ./ to select the file. A top-level `extends`
+    /// names a built-in profile or a parent file resolved relative to the child profile. Tables merge with child values
     /// winning; arrays and scalars replace inherited values. Chains allow at most
     /// eight profiles, counting the child and every parent, including built-ins.
     /// Cycles and unknown parents are errors.
@@ -330,35 +329,40 @@ pub struct InvestigateArgs {
     #[arg(required = true, num_args = 1..)]
     #[serde(serialize_with = "crate::evidence::serialize_paths")]
     pub files: Vec<PathBuf>,
-    /// New reusable evidence artifact; existing files are never replaced
+    /// New evidence artifact; omitted creates a fresh log-analyzer-evidence-* directory
     #[arg(long)]
-    #[serde(serialize_with = "crate::evidence::serialize_path")]
-    pub artifact: PathBuf,
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub artifact: Option<PathBuf>,
     /// Exact JSON selector (input_ordinal, kind, name, correlation_id, scope); repeat for OR
     #[arg(long)]
     pub select: Vec<String>,
     /// Inclusive observed duration threshold; never asserts CPU time or a hang
     #[arg(long, default_value = "1000")]
     pub threshold_ms: u64,
-    #[arg(long, default_value = "16777216")]
-    pub input_max_bytes: u64,
-    #[arg(long, default_value = "100000")]
-    pub processing_max_records: u64,
-    #[arg(long, default_value = "10000")]
-    pub processing_max_expanded_records: u64,
-    #[arg(long, default_value = "10000000")]
-    pub processing_max_work: u64,
-    /// Cooperative deadline, checked at capture, record and correlation boundaries
-    #[arg(long, default_value = "30000")]
-    pub processing_max_ms: u64,
-    /// Conservative buffered/retained-data allowance; not a process RSS limit
-    #[arg(long, default_value = "536870912")]
-    pub processing_max_memory_bytes: u64,
-    #[arg(long, default_value = "67108864")]
-    pub artifact_max_bytes: u64,
-    /// Cap each physical line and accumulated multiline record before growth
-    #[arg(long, default_value = "262144")]
-    pub record_max_bytes: usize,
+    /// Total input cap; default plans file sizes plus EOF probing, capped at 1 GiB
+    #[arg(long)]
+    pub input_max_bytes: Option<u64>,
+    /// Maximum parsed records across inputs (default: 1000000)
+    #[arg(long)]
+    pub processing_max_records: Option<u64>,
+    /// Maximum expanded rows (default: 100000)
+    #[arg(long)]
+    pub processing_max_expanded_records: Option<u64>,
+    /// Cooperative work allowance (default: 500000000)
+    #[arg(long)]
+    pub processing_max_work: Option<u64>,
+    /// Cooperative deadline in milliseconds (default: 180000)
+    #[arg(long)]
+    pub processing_max_ms: Option<u64>,
+    /// Conservative data allowance planned from input sizes, 512 MiB–32 GiB; not RSS
+    #[arg(long)]
+    pub processing_max_memory_bytes: Option<u64>,
+    /// Hard retained artifact cap in bytes (default: 1 GiB)
+    #[arg(long)]
+    pub artifact_max_bytes: Option<u64>,
+    /// Cap physical lines and multiline records before growth (default: 8 MiB)
+    #[arg(long)]
+    pub record_max_bytes: Option<usize>,
     /// Creating this file requests cooperative cancellation and a partial outcome
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
@@ -382,7 +386,7 @@ pub struct InvestigationEvidenceArgs {
     #[arg(long)]
     pub verify_sources: bool,
     /// Hard artifact read limit, independent of presentation limits
-    #[arg(long, default_value = "67108864")]
+    #[arg(long, default_value = "1073741824")]
     pub artifact_max_bytes: u64,
 }
 
@@ -473,7 +477,7 @@ pub enum ProfileCommand {
 
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
-    /// Bounded investigation with automatic profile detection and reusable evidence (JSON)
+    /// Investigate logs, explain findings and retain reusable evidence
     ///
     /// Samples captured input prefixes using built-ins and TOML profiles from PROJECT_ROOT/config,
     /// then parses and correlates each independent input once. --profile bypasses detection. Ambiguous or
@@ -778,7 +782,7 @@ pub enum Commands {
         #[arg(long)]
         profile_name: Option<String>,
 
-        /// Base template path or built-in name (base, eyes, custom-start, service-api, event-pipeline)
+        /// Base template path or built-in name listed by capabilities
         #[arg(long)]
         #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
         template: Option<PathBuf>,
@@ -908,7 +912,14 @@ pub fn cli_parse() -> Cli {
         }
     }
     let matches = command.get_matches_from(args);
-    Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit())
+    let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
+    if matches!(cli.command, Commands::Investigate(_))
+        && !cli.summary
+        && matches.value_source("format") == Some(clap::parser::ValueSource::DefaultValue)
+    {
+        cli.format = OutputFormat::Text;
+    }
+    cli
 }
 
 #[cfg(test)]

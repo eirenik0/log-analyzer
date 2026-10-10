@@ -456,26 +456,69 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
         size(report, cli)?;
         return Ok(());
     }
+    // Serialize the fixed metadata once, and each atomic finding once. Only
+    // the small presentation/cursor fields change as the page grows.
+    let measure = |value: &Value| -> Result<(usize, usize)> {
+        let text = serde_json::to_string(value)?;
+        Ok((text.len(), text.chars().count()))
+    };
+    let header = measure(report)?;
+    let presentation = measure(&report["presentation"])?;
+    let cursor = measure(&report["retrieval"]["next_cursor"])?;
+    let guidance = measure(&report["guidance"])?;
+    let fixed = (
+        header.0 - presentation.0 - cursor.0 - guidance.0 + 1,
+        header.1 - presentation.1 - cursor.1 - guidance.1 + 1,
+    );
+    let exact = |report: &mut Value, payload: (usize, usize)| -> Result<(usize, usize)> {
+        report["guidance"] = super::guidance::build(report, cli);
+        let guidance = measure(&report["guidance"])?;
+        for _ in 0..8 {
+            let presentation = measure(&report["presentation"])?;
+            let cursor = measure(&report["retrieval"]["next_cursor"])?;
+            let sizes = (
+                fixed.0 + presentation.0 + cursor.0 + guidance.0 + payload.0,
+                fixed.1 + presentation.1 + cursor.1 + guidance.1 + payload.1,
+            );
+            if report["presentation"]["serialized_bytes"] == sizes.0
+                && report["presentation"]["serialized_characters"] == sizes.1
+            {
+                return Ok(sizes);
+            }
+            report["presentation"]["serialized_bytes"] = json!(sizes.0);
+            report["presentation"]["serialized_characters"] = json!(sizes.1);
+        }
+        Err("Could not stabilize serialized report size".into())
+    };
+    let mut displayed = Vec::new();
+    let mut payload = (0usize, 0usize);
     for finding in all.into_iter().skip(prior).take(max) {
-        report["findings"].as_array_mut().unwrap().push(finding);
-        let count = report["findings"].as_array().unwrap().len();
+        let item = measure(&finding)?;
+        let comma = usize::from(!displayed.is_empty());
+        let candidate = (payload.0 + item.0 + comma, payload.1 + item.1 + comma);
+        let count = displayed.len() + 1;
         refresh(
             report,
             count,
-            if count == total { "complete" } else { "page" },
+            if prior + count == total {
+                "complete"
+            } else {
+                "page"
+            },
         );
-        if over(cli, size(report, cli)?) {
-            report["findings"].as_array_mut().unwrap().pop();
-            let count = count - 1;
+        if over(cli, exact(report, candidate)?) {
             refresh(
                 report,
-                count,
-                if count == 0 { "oversized_item" } else { "page" },
+                count - 1,
+                if count == 1 { "oversized_item" } else { "page" },
             );
-            size(report, cli)?;
+            exact(report, payload)?;
             break;
         }
+        payload = candidate;
+        displayed.push(finding);
     }
+    report["findings"] = Value::Array(displayed);
     size(report, cli)?;
     Ok(())
 }
@@ -607,15 +650,16 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     if !fits(&output)? {
         refresh(&mut output, 0, "mandatory_metadata_over_budget");
     } else {
+        let mut displayed = Vec::new();
+        let mut payload = (0usize, 0usize);
         for item in selected.iter().skip(prior).take(max) {
-            output["artifact_retrieval"]["items"]
-                .as_array_mut()
-                .unwrap()
-                .push(item.clone());
-            let count = output["artifact_retrieval"]["items"]
-                .as_array()
-                .unwrap()
-                .len();
+            let text = serde_json::to_string(item)?;
+            let comma = usize::from(!displayed.is_empty());
+            let candidate = (
+                payload.0 + text.len() + comma,
+                payload.1 + text.chars().count() + comma,
+            );
+            let count = displayed.len() + 1;
             refresh(
                 &mut output,
                 count,
@@ -625,11 +669,15 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                     "page"
                 },
             );
-            if !fits(&output)? {
-                output["artifact_retrieval"]["items"]
-                    .as_array_mut()
-                    .unwrap()
-                    .pop();
+            // Items stay outside the header until pagination finishes.
+            let header = serde_json::to_string(&output)?;
+            if over(
+                cli,
+                (
+                    header.len() + candidate.0 + 1,
+                    header.chars().count() + candidate.1 + 1,
+                ),
+            ) {
                 refresh(
                     &mut output,
                     count - 1,
@@ -637,7 +685,10 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 );
                 break;
             }
+            payload = candidate;
+            displayed.push(item.clone());
         }
+        output["artifact_retrieval"]["items"] = Value::Array(displayed);
     }
     if cli.redact && retained["report_metadata"]["evidence"]["redaction"]["applied"] != true {
         return Err("Retrieve an artifact created with --redact; original evidence cannot be presented as a redacted retained artifact".into());

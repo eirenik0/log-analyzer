@@ -373,3 +373,68 @@ pub(super) fn scope_aliases(
         findings.push(fact(format!("{scope}-scope-adequacy-{index}"),scope,"unknown","The selected population intersects a shared effective correlation key; all source-identity witnesses are retained as context, including any outside selection. Intended scope adequacy is unknown.",witnesses.iter().map(|entry|excerpt(entry,context,snapshot)).collect(),json!({"reason":"Source-identity witnesses do not prove intended domain scope. Review the explicit scope before relying on paired lifecycle meaning.","supporting_occurrences":witnesses.iter().map(|entry|occurrence(entry,context,snapshot)).collect::<Vec<_>>()})));
     }
 }
+
+/// Source severity is observable even when domain outcome rules are unavailable.
+pub(super) fn observed_levels(
+    entries: &[&LogEntry],
+    scope: &str,
+    context: &evidence::Context,
+    snapshot: &Value,
+    findings: &mut Vec<Value>,
+    populations: &mut Vec<Value>,
+    memberships: &mut Vec<Value>,
+) {
+    for (severity, aliases) in [
+        ("errors", &["ERROR", "FATAL"][..]),
+        ("warnings", &["WARN", "WARNING"][..]),
+    ] {
+        let matching: Vec<_> = entries
+            .iter()
+            .copied()
+            .filter(|entry| {
+                aliases
+                    .iter()
+                    .any(|level| entry.level.eq_ignore_ascii_case(level))
+            })
+            .collect();
+        for (entity, suffix) in [
+            ("physical_records", ""),
+            ("normalized_records", "-normalized"),
+        ] {
+            let members: Vec<_> = matching.iter().filter(|entry| entry.source_row_path.is_some() == (entity == "normalized_records")).map(|entry| json!({"kind":"record","occurrence":occurrence(entry,context,snapshot)})).collect();
+            if entity == "physical_records" || !members.is_empty() {
+                population(
+                    scope,
+                    &format!("observed-{severity}{suffix}"),
+                    entity,
+                    &format!(
+                        "Observed {severity} severity records; source severity does not establish domain failure or cause."
+                    ),
+                    Vec::new(),
+                    Vec::new(),
+                    members,
+                    findings,
+                    populations,
+                    memberships,
+                );
+            }
+        }
+        // One representative per identical message; exact occurrences remain in the population.
+        let mut seen = BTreeSet::new();
+        for (index, entry) in matching.iter().enumerate() {
+            if !seen.insert(&entry.message) {
+                continue;
+            }
+            findings.push(fact(
+                format!("{scope}-observed-{severity}-{index}"),
+                scope,
+                "observation",
+                &format!(
+                    "Observed {severity} source record; domain outcome and cause remain unproven."
+                ),
+                vec![excerpt(entry, context, snapshot)],
+                json!({"supporting_occurrences":[occurrence(entry,context,snapshot)]}),
+            ));
+        }
+    }
+}

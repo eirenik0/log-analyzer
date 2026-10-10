@@ -34,6 +34,7 @@ mod profile_preparation;
 pub mod profile_resolution;
 pub mod profile_validation;
 mod report_budget;
+pub mod resource_observations;
 pub mod search;
 mod summary;
 pub mod timeline;

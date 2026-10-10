@@ -153,7 +153,7 @@ fn full_report_actions_resume_the_exact_omitted_findings_page() {
     assert_eq!(page["artifact_retrieval"]["prior"], 1);
     assert_eq!(
         page["artifact_retrieval"]["items"][0]["id"],
-        "scope-0-interval-0"
+        "scope-0-observed-errors-0"
     );
 }
 

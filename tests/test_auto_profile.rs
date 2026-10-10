@@ -430,6 +430,7 @@ fn redaction_preserves_selection_status_and_coverage_without_profile_identity() 
                         "parse_failures",
                         "structural_loss",
                         "lifecycle_records",
+                        "resource_records",
                         "matched_inputs",
                         "invalid_or_conflicting_records",
                     ] {
@@ -562,7 +563,14 @@ fn redaction_retains_probe_parse_failures_for_non_utf8_capture() {
 
 #[test]
 fn global_detection_cutoffs_mark_every_input_despite_complete_generic_parsing() {
-    for (limit, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {
+    // Keep the cutoff at the same processing stage as profile declarations grow.
+    let mut profile = log_analyzer::config::load_config(None, Some("eyes")).unwrap();
+    let configured_bytes = serde_json::to_vec(&profile).unwrap().len();
+    profile.resource_observations.clear();
+    let resource_allowance =
+        ((configured_bytes - serde_json::to_vec(&profile).unwrap().len()) as u64) * 16;
+    for (baseline, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {
+        let limit = baseline + resource_allowance;
         let dir = TempDir::new().unwrap();
         fs::create_dir(dir.path().join("config")).unwrap();
         for name in ["a.jsonl", "b.jsonl"] {
