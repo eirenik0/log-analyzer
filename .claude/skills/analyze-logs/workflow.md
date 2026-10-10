@@ -24,8 +24,10 @@ Inspect content before sharing. Optional masking cannot guarantee secrecy.
    tool/output/time/token budgets. Freeze active files; never declare a source
    twice or assume arbitrary files share a run. Unified investigation treats
    each input independently and cannot pair across files.
-4. Use `investigate`'s advertised automatic built-in profile detection by default.
-   Honor a supplied `--config`/`--preset` override. Inspect `profile_selection`,
+4. Use `investigate`'s advertised automatic profile detection by default.
+   It includes built-ins and the working directory's `config` folder; use
+   `--profiles-dir` when the project stores profiles elsewhere. Honor a supplied
+   `--config`/`--preset` override. Inspect `profile_selection`,
    sampled coverage and per-goal support: grammar inference does not establish
    independent semantic suitability or completion. For a remaining semantic gap,
    use advertised resolution/preparation and validate against independently known
@@ -43,7 +45,7 @@ to locate inputs or check profile assertions can precede this; it does not repla
 the initial investigation.
 
 An `info` structural disclaimer such as “capture/semantics unknown” does not mean
-investigation is unavailable. Let the analyzer detect a built-in profile, or honor
+investigation is unavailable. Let the analyzer detect a built-in or config-folder profile, or honor
 an explicit override. Ambiguous or unrecognized samples fall back to generic base
 analysis with explicit gaps; inspect those results before refining a profile. Do
 not invent semantics or select the highest match count. Use the stated compatibility

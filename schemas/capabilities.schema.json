@@ -276,11 +276,17 @@
         "profile_detection": {
           "const": {
             "default": true,
-            "method": "unique_builtin_lifecycle_grammar",
+            "method": "unique_profile_lifecycle_grammar",
             "overrides": [
               "config",
               "preset"
-            ]
+            ],
+            "sources": [
+              "builtin",
+              "config_directory"
+            ],
+            "default_directory": "config",
+            "directory_option": "profiles-dir"
           }
         }
       },

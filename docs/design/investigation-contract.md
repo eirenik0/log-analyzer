@@ -39,7 +39,11 @@ resource or request suffixes, paths, filenames or languages do not establish one
 Without an explicit config/preset, `investigate` probes bounded prefixes of the same
 captured bytes later analyzed. The effective query records candidate observations,
 sample extents and selection/fallback status in `execution.profile_selection`.
-This built-in grammar inference does not claim independent semantic validation;
+This grammar inference includes built-ins and bounded TOML discovery in `./config`
+(or `--profiles-dir`), with identical effective-config digests deduplicated. Candidate
+origins and inherited-source digests are retained in the query; the effective selected
+configuration is retained without reloading. Invalid/incomplete discovery is an
+explicit selection gap. This inference does not claim independent semantic validation;
 assertion-based `resolve-profile` remains a separate interface. Explicit overrides
 bypass probing. Detection work/time and scratch memory share processing budgets,
 with scratch released between probes; its record counts are separate from analysis

@@ -75,7 +75,7 @@ fn report_schemas_capability() -> Value {
 }
 
 fn investigation_contracts_capability() -> Value {
-    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"profile_detection":{"default":true,"method":"unique_builtin_lifecycle_grammar","overrides":["config","preset"]},"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
+    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"profile_detection":{"default":true,"method":"unique_profile_lifecycle_grammar","overrides":["config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"},"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
 }
 
 fn bounded_reports_capability() -> Value {

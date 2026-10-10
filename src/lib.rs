@@ -199,7 +199,7 @@ fn write_output_file(
 
 const INFO_NEXT_STEPS: &[&str] = &[
     "Structural checks do not assess lifecycle semantics or upstream capture completeness; this does not make investigate unavailable.",
-    "Run a bounded investigate before custom parsing. It detects built-in profiles from captured samples by default; --config and --preset override detection, including --preset base for generic inspection.",
+    "Run a bounded investigate before custom parsing. It detects built-in and config-folder profiles from captured samples by default; --config and --preset override detection, including --preset base for generic inspection.",
     "Inspect profile_selection, coverage and retained evidence. For unresolved semantics use resolve-profile and validate-profile against independently known facts; document a specific remaining gap before custom parsing.",
 ];
 

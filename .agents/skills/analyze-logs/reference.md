@@ -94,9 +94,12 @@ statuses must agree with budgets and usage; unknowns alone do not establish supp
 
 Structural coverage describes recognized input shapes, not lifecycle support. Its
 unknown-semantics disclaimer is not a reason to skip `investigate`. Start with its
-advertised default built-in profile detection (or an explicit override). Inspect
+advertised default profile detection (or an explicit override). Inspect
 `report_metadata.evidence.query.execution.profile_selection`: inference uses bounded
-captured prefixes, requires one matching lifecycle grammar across nonempty inputs,
+captured prefixes against built-ins and the working directory's `config` folder
+(or `--profiles-dir`). Inspect discovery diagnostics and candidate origin/dependency
+hashes; identical effective configs share a candidate. Detection requires one matching
+lifecycle grammar across nonempty inputs,
 and falls back to base on ambiguity or insufficient evidence. It is not independent
 semantic validation. Preserve unavailable goals; use resolution and independently
 validated overrides only for remaining gaps. `--preset base` disables detection.

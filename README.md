@@ -31,7 +31,7 @@ log-analyzer --version
 
 ## Unified investigation and retained evidence
 
-Capture each independent input once, detect its built-in profile when needed,
+Capture each independent input once, detect its profile when needed,
 then parse/classify and correlate the captured input once. Inspect
 calculated findings, source boundaries, explicit populations and per-goal support:
 
@@ -63,9 +63,10 @@ verification have byte limits.
 Artifacts stay local until deleted, are never overwritten and need caller-managed
 retention. Retrieval saves only new `--output` files.
 
-Bare `investigate` automatically checks built-in lifecycle grammars on captured
-prefixes: at most 128 physical lines and 64 KiB per input, sharing a 256 KiB total
-sample allowance equally across inputs. Exactly one matching profile, with lifecycle
+Bare `investigate` automatically checks built-ins and TOML profiles discovered
+recursively in `./config` (relative to the working directory). `--profiles-dir DIR`
+replaces that directory. Detection uses captured prefixes: at most 128 physical
+lines and 64 KiB per input, sharing a 256 KiB total sample allowance equally across inputs. Exactly one matching profile, with lifecycle
 evidence in every nonempty input and no observed parsing/classification loss, is
 selected. Overlapping grammars (including common `eyes`/`custom-start` wording),
 mixed profiles, unknown formats and insufficient evidence fall back to generic
@@ -75,12 +76,34 @@ differ, so inspect full-analysis coverage and per-goal support.
 
 Use `--config` or `--preset` to override and bypass detection; `--preset base` keeps
 inspection generic. Invalid explicit configurations remain errors. Detection never
-rereads source files or loads persistent mappings/custom profiles. The query's
+rereads log sources or loads persistent mappings. The query's
 `execution.profile_selection` reports the status, candidates, sample extents,
 limitations and next step. `detection_parse_passes` and `analysis_parse_passes` explain
 `parse_passes`; detection work/time and temporary memory share processing limits,
 while `probe_records` are separate from processed analysis record counts. Retrieval
 still performs zero parsing. Other analysis commands retain their existing defaults.
+
+Discovery considers at most 16 candidate TOML files (plus their inherited sources),
+visits 256 directory entries through four
+subdirectory levels, and does not follow subdirectory symlinks. Each config source
+(including inherited files) is capped at 64 KiB, with a 1 MiB aggregate read allowance
+and the existing eight-profile inheritance limit. One extra byte may be read to
+detect an oversized source. Built-in and relative-file `extends` use the same loader
+as explicit configs. The selected effective config is retained; it is not reloaded
+from disk after probing. Candidates with identical effective-config hashes merge
+origins, so copies of built-ins do not introduce ambiguity. Distinct matching configs
+remain ambiguous, even if their labels or observed results coincide.
+
+`profile_selection.discovery` reports the directory, limits and diagnostics;
+candidates include their effective hash, origin paths and inherited-source hashes.
+A missing default `./config` is allowed. An explicitly requested missing directory,
+invalid config or discovery cutoff prevents automatic selection and leaves generic
+analysis available with an explicit gap. An incompatible candidate's parsing failure
+does not disqualify a different candidate that can parse/classify the sample. This
+allows custom normalization profiles to be detected. Explicit config/preset overrides
+skip directory discovery entirely, including `--profiles-dir`. No mappings or config
+files are changed. Report/artifact paths cannot overwrite discovered source profiles
+or inherited files; redacted reports omit discovery paths and queries.
 
 Recognition, timing, failures and incomplete-lifecycle evidence
 have separate support requirements; scope aliases and missing timestamp provenance

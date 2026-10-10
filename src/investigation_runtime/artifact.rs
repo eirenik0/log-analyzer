@@ -13,18 +13,21 @@ use std::{
 
 pub(super) fn protect(artifact: &Path, report: Option<&Path>, sources: &[PathBuf]) -> Result<()> {
     let artifact = destination_identity(artifact)?;
+    let report = report.map(destination_identity).transpose()?;
     if artifact.exists() {
         return Err("Artifact destination already exists; choose a new file".into());
     }
-    if let Some(report) = report
-        && same_destination(&artifact, &destination_identity(report)?, false)
+    if let Some(report) = &report
+        && same_destination(&artifact, report, false)
     {
         return Err("Artifact and report destinations must be separate".into());
     }
     for source in sources {
         let source = destination_identity(source)?;
         if same_destination(&artifact, &source, false)
-            || report.is_some_and(|report| same_destination(report, &source, true))
+            || report
+                .as_ref()
+                .is_some_and(|report| same_destination(report, &source, true))
         {
             return Err(
                 "Artifact/report destination conflicts with an input, profile or cancellation file"

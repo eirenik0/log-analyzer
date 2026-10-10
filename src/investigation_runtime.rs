@@ -224,7 +224,24 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 }
             });
         }
-        let (selected, detection, passes) = auto_profile::detect(&args.files, &cached, &mut budget);
+        let directory = args
+            .profiles_dir
+            .clone()
+            .unwrap_or_else(|| capture_root.join("config"));
+        let directory = if directory.is_absolute() {
+            directory
+        } else {
+            capture_root.join(directory)
+        };
+        let (selected, detection, passes, sources) = auto_profile::detect(
+            &args.files,
+            &cached,
+            &mut budget,
+            &directory,
+            args.profiles_dir.is_none(),
+        );
+        protected.extend(sources);
+        artifact::protect(&args.artifact, cli.output.as_deref(), &protected)?;
         if let Some(selected) = selected {
             budget.reserve(
                 "profile_detection",

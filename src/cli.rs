@@ -296,6 +296,11 @@ pub struct PrepareProfileArgs {
 
 #[derive(serde::Serialize, clap::Args)]
 pub struct InvestigateArgs {
+    /// Discover TOML profiles recursively in this directory (default: ./config).
+    /// Ignored with an explicit --config or --preset.
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub profiles_dir: Option<PathBuf>,
     #[arg(required = true, num_args = 1..)]
     #[serde(serialize_with = "crate::evidence::serialize_paths")]
     pub files: Vec<PathBuf>,
@@ -357,10 +362,10 @@ pub struct InvestigationEvidenceArgs {
 
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
-    /// Bounded investigation with automatic built-in profile detection and reusable evidence (JSON)
+    /// Bounded investigation with automatic profile detection and reusable evidence (JSON)
     ///
-    /// Samples captured input prefixes using built-in grammars, then parses and correlates
-    /// each independent input once. --config or --preset bypass detection. Ambiguous or
+    /// Samples captured input prefixes using built-ins and TOML profiles from ./config,
+    /// then parses and correlates each independent input once. --config or --preset bypass detection. Ambiguous or
     /// unrecognized samples use generic base analysis; inspect profile_selection and
     /// per-goal support. Detection shares processing budgets and never rereads sources.
     Investigate(InvestigateArgs),
@@ -491,7 +496,7 @@ pub enum Commands {
     /// List components, event types, log levels, and statistics in one or more log files
     ///
     /// Structural coverage does not assess lifecycle semantics. Run a bounded
-    /// investigate before custom parsing; it detects built-in profiles automatically.
+    /// investigate before custom parsing; it detects built-in and config-folder profiles automatically.
     /// --config/--preset override detection. Inspect profile_selection and per-goal
     /// support; use resolve-profile/validate-profile for remaining semantic gaps.
     #[command(alias = "i", alias = "inspect")]

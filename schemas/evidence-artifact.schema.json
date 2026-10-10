@@ -860,6 +860,8 @@
                 "stage": {
                   "enum": [
                     "capture",
+                    "profile_discovery",
+                    "profile_detection",
                     "parse",
                     "classification",
                     "correlation",
