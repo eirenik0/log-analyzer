@@ -4,7 +4,7 @@ use crate::parser::LogEntry;
 use chrono::{SecondsFormat, Utc};
 use serde_json::json;
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write;
 use std::path::Path;
 
@@ -221,28 +221,28 @@ fn build_display_rows(
     }
 
     let match_set: HashSet<usize> = match_indices.iter().copied().collect();
-    let mut included = BTreeSet::new();
+    // Public formatters also accept unsorted or duplicate match indices.
+    let mut sorted_matches = match_indices.to_vec();
+    sorted_matches.sort_unstable();
+    sorted_matches.dedup();
+    let mut rows = Vec::new();
+    let mut next_idx = 0;
 
-    for &idx in match_indices {
+    for idx in sorted_matches {
         let start = idx.saturating_sub(context);
         let end = idx
             .saturating_add(context)
             .min(logs.len().saturating_sub(1));
-        for i in start..=end {
-            included.insert(i);
+        // Ordered windows overlap: emit only the suffix not already covered.
+        let new_chunk = !rows.is_empty() && start > next_idx;
+        for i in start.max(next_idx)..=end {
+            rows.push(DisplayRow {
+                idx: i,
+                is_match: match_set.contains(&i),
+                new_chunk: new_chunk && i == start,
+            });
+            next_idx = i + 1;
         }
-    }
-
-    let mut rows = Vec::with_capacity(included.len());
-    let mut prev_idx = None;
-    for idx in included {
-        let new_chunk = prev_idx.is_some_and(|prev| idx > prev + 1);
-        rows.push(DisplayRow {
-            idx,
-            is_match: match_set.contains(&idx),
-            new_chunk,
-        });
-        prev_idx = Some(idx);
     }
 
     rows
@@ -284,5 +284,50 @@ fn count_by_label(count_by: SearchCountBy) -> &'static str {
         SearchCountBy::Level => "level",
         SearchCountBy::Type => "type",
         SearchCountBy::Payload => "payload",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse_log_entry;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn context_windows_preserve_order_matches_and_gaps() {
+        let entry = parse_log_entry("svc | 2026-01-01T00:00:00Z [INFO ] message", 1).unwrap();
+        let logs = vec![entry; 8];
+        for mask in 0..1 << logs.len() {
+            let mut matches: Vec<_> = (0..logs.len())
+                .filter(|idx| mask & (1 << idx) != 0)
+                .collect();
+            // The public formatting functions need not receive sorted unique indices.
+            matches.reverse();
+            matches.extend(matches.clone());
+            for context in [0, 1, 2, 8, usize::MAX] {
+                let included: BTreeSet<_> = matches
+                    .iter()
+                    .flat_map(|&idx| {
+                        idx.saturating_sub(context)
+                            ..=idx.saturating_add(context).min(logs.len() - 1)
+                    })
+                    .collect();
+                let mut previous = None;
+                let expected: Vec<_> = included
+                    .into_iter()
+                    .map(|idx| {
+                        let gap = previous.is_some_and(|prev| idx > prev + 1);
+                        previous = Some(idx);
+                        (idx, matches.contains(&idx), gap)
+                    })
+                    .collect();
+                let actual: Vec<_> = build_display_rows(&logs, &matches, context)
+                    .iter()
+                    .map(|row| (row.idx, row.is_match, row.new_chunk))
+                    .collect();
+                assert_eq!(actual, expected, "mask={mask}, context={context}");
+            }
+        }
+        assert!(build_display_rows(&[], &[0], usize::MAX).is_empty());
     }
 }

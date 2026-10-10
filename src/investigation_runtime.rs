@@ -199,7 +199,6 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         record_bytes: args.record_max_bytes,
         cancel_file: args.cancel_file.clone(),
     });
-    budget.configuration_bytes = configuration_bytes;
     let query_bytes = serde_json::to_vec(cli)?.len() as u64;
     budget.reserve(
         "capture",
@@ -491,9 +490,24 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     ));
     let mut usage = budget.usage_json();
     usage["records"] = json!(parsed_inputs.iter().map(|p| p.entries.len()).sum::<usize>());
+    drop(parsed_inputs);
     let processing = json!({"status":if budget.stop.is_none(){"complete"}else{"partial"},"stop":budget.stop,"limits":budget.limits_json(),"usage":usage,"inputs":progress});
     let retention = json!({"policy":"until_deleted","expires_at":null});
-    let mut retained = json!({"contract_version":1,"investigation_contract_version":1,"report_metadata":metadata,"processing":processing,"scopes":scopes,"assessments":assessments,"populations":populations,"findings":findings,"records":records,"captured_inputs":captures,"memberships":memberships,"sequences":sequences,"content":"original","effective_profile":serde_json::to_value(&config)?,"effective_profile_omitted":false,"retention":retention,"verification":findings::verification(false, "available")});
+    let mut retained = json!({"contract_version":1,"investigation_contract_version":1,"report_metadata":metadata,"processing":processing,"content":"original","effective_profile":serde_json::to_value(&config)?,"effective_profile_omitted":false,"retention":retention,"verification":findings::verification(false, "available")});
+    // Move large collections into the artifact; json! would serialize borrowed
+    // vectors into duplicate trees and retain the originals until this call ends.
+    for (key, values) in [
+        ("scopes", scopes),
+        ("assessments", assessments),
+        ("populations", populations),
+        ("findings", findings),
+        ("records", records),
+        ("captured_inputs", captures),
+        ("memberships", memberships),
+        ("sequences", sequences),
+    ] {
+        retained[key] = serde_json::Value::Array(values);
+    }
     if cli.redact {
         artifact::redact(&mut retained);
     }
@@ -526,6 +540,8 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     }
     let bytes = artifact::bounded_serialization(&retained, budget.limits.artifact_bytes)?;
     let mut report = artifact::report(&retained, &args.artifact, bytes.as_deref());
+    // Validation reparses the exact stored bytes; release the construction tree first.
+    drop(retained);
     if let Some(bytes) = bytes {
         // Validate calculations/cross-references against the exact bytes before publishing.
         crate::investigation::validate_relations(&report, Some(&bytes))?;
