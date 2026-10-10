@@ -10,9 +10,10 @@ chooses queries, tests explanations and communicates findings. The binary does
 not call a model or automatically prove a root cause.
 
 Use the [portable investigation workflow](docs/investigation-workflow.md) as the
-maintained technical reference. The Claude analysis skill follows the same
-workflow. Generic parsing is available through `base`; domain lifecycle semantics
-require a suitable built-in or validated file-based profile.
+maintained technical reference. The analysis skill teaches the current
+investigate-first workflow with `--profile` as its only profile selector. Generic
+parsing is available through `base`; domain lifecycle semantics require a suitable
+built-in or validated file-based profile.
 
 ## Installation
 

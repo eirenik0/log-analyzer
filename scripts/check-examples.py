@@ -252,22 +252,14 @@ def findings_for(example, reports):
 
 def skill_commands(example, document):
     """Bind the published command sequence to the fixture's semantic assertions."""
-    if '## Explicit compatibility path' in document:
-        document = document.split('## Explicit compatibility path', 1)[1]
     blocks = re.findall(r'^```sh\n(.*?)^```$', document, re.MULTILINE | re.DOTALL)
-    commands = [shlex.split(block.replace('\\\n', '')) for block in blocks]
-    expected = [['log-analyzer', 'capabilities']]
-    expected.extend(['log-analyzer', *[arg.replace('{root}/', '') for arg in step['args']]]
-                    for step in example['steps'])
-    require(commands == expected, f'{example["id"]}: skill example commands differ from checked workflow')
-    return [command[1:] for command in commands[1:]]
-
-
-def run_primary_skill(binary, document):
-    if '## Explicit compatibility path' not in document: return None
-    primary = document.split('## Explicit compatibility path', 1)[0]
-    blocks = re.findall(r'^```sh\n(.*?)^```$', primary, re.MULTILINE | re.DOTALL)
     commands = [shlex.split(line) for block in blocks for line in block.replace('\\\n', '').splitlines() if line.strip()]
+    expected = [['log-analyzer', *args] for args in example['skill_steps']]
+    require(commands == expected, f'{example["id"]}: skill example commands differ from checked workflow')
+    return commands
+
+
+def run_primary_skill(binary, commands):
     runner, saved = Runner(binary), {}
     with tempfile.TemporaryDirectory() as directory:
         for command in commands:
@@ -313,8 +305,7 @@ def run_workflow(binary, example):
     primary = None
     if example.get('skill_example'):
         document = (ROOT / example['skill_example']).read_text(encoding='utf-8')
-        primary = run_primary_skill(binary, document)
-        commands = skill_commands(example, document)
+        primary = run_primary_skill(binary, skill_commands(example, document))
     try:
         for step, command in zip(example['steps'], commands):
             args = [a.replace('{root}', str(ROOT)) for a in command]

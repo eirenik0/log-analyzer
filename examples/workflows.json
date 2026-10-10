@@ -79,7 +79,39 @@
           "checks": []
         }
       ],
-      "skill_example": ".agents/skills/analyze-logs/examples/debug-failure.md"
+      "skill_example": ".agents/skills/analyze-logs/examples/debug-failure.md",
+      "skill_steps": [
+        [
+          "--profile",
+          "examples/investigations/profile.toml",
+          "--report-max-items",
+          "5",
+          "investigate",
+          "examples/investigations/failure.jsonl",
+          "--artifact",
+          "/tmp/failure-evidence-UNIQUE.json"
+        ],
+        [
+          "investigation-evidence",
+          "/tmp/failure-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/findings",
+          "--report-max-items",
+          "5"
+        ],
+        [
+          "investigation-evidence",
+          "/tmp/failure-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/records",
+          "--report-max-items",
+          "5"
+        ]
+      ]
     },
     {
       "id": "slow-info-comparison",
@@ -204,7 +236,49 @@
           "checks": []
         }
       ],
-      "skill_example": ".agents/skills/analyze-logs/examples/performance.md"
+      "skill_example": ".agents/skills/analyze-logs/examples/performance.md",
+      "skill_steps": [
+        [
+          "--profile",
+          "examples/investigations/profile.toml",
+          "--report-max-items",
+          "5",
+          "investigate",
+          "examples/investigations/slow.jsonl",
+          "--artifact",
+          "/tmp/slow-evidence-UNIQUE.json"
+        ],
+        [
+          "--profile",
+          "examples/investigations/profile.toml",
+          "--report-max-items",
+          "5",
+          "investigate",
+          "examples/investigations/baseline.jsonl",
+          "--artifact",
+          "/tmp/baseline-evidence-UNIQUE.json"
+        ],
+        [
+          "investigation-evidence",
+          "/tmp/slow-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "SLOW_REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/findings",
+          "--report-max-items",
+          "5"
+        ],
+        [
+          "investigation-evidence",
+          "/tmp/baseline-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "BASELINE_REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/findings",
+          "--report-max-items",
+          "5"
+        ]
+      ]
     },
     {
       "id": "reused-id-lifecycle",

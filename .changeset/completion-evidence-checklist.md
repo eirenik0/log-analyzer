@@ -24,4 +24,8 @@ Unify built-in and file-based profile selection under the global `--profile` opt
 and `LOG_ANALYZER_PROFILE`, preserving hidden legacy selectors and persisted contracts. Show only `--profile`
 in CLI help and current usage guidance.
 Advertise the interface in capabilities, include selected-profile origins and hashes,
-and update portable/Claude skill guidance and current examples with older-binary fallbacks.
+and update portable/Claude skill guidance and current examples.
+
+Keep the skill concise and current: investigate, retrieve, verify completion,
+resolve specific gaps, and report supported conclusions. Remove legacy command
+workflows and keep only `--profile` for explicit selection.
