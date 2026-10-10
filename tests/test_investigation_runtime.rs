@@ -2555,6 +2555,7 @@ fn readable_default_creates_fresh_artifacts_and_reports_observed_errors() {
         assert!(text.contains("renderer failed"), "{text}");
         assert!(text.contains("failures: unsupported"), "{text}");
         assert!(text.contains("2 parsed records (complete)"), "{text}");
+        assert!(!text.contains("--report-cursor"), "{text}");
         let path = text
             .lines()
             .find_map(|line| line.strip_prefix("Evidence: "))
@@ -2564,6 +2565,68 @@ fn readable_default_creates_fresh_artifacts_and_reports_observed_errors() {
         artifacts.push(path.to_owned());
     }
     assert_ne!(artifacts[0], artifacts[1]);
+}
+
+#[test]
+fn readable_next_command_continues_after_displayed_findings() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("ordinary.log");
+    let artifact = temp.path().join("evidence.json");
+    fs::write(
+        &source,
+        (0..60)
+            .map(|index| format!("2025-01-01T00:00:00Z ERROR app: synthetic failure {index}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    let output = run(&[
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    let all = retained["findings"].as_array().unwrap();
+    assert!(all.len() > 40);
+    assert_eq!(
+        text.lines().filter(|line| line.starts_with("- [")).count(),
+        20
+    );
+    let next = text
+        .lines()
+        .find_map(|line| line.strip_prefix("Next: "))
+        .unwrap();
+    assert!(next.contains(" --report-cursor v1:"), "{next}");
+    // The synthetic fixture's paths contain no whitespace, so execute the printed arguments directly.
+    let args: Vec<_> = next
+        .split_whitespace()
+        .skip(1)
+        .map(|arg| arg.trim_matches('\''))
+        .collect();
+    let output = run(&args);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let page: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(page["artifact_retrieval"]["prior"], 20);
+    assert_eq!(page["artifact_retrieval"]["displayed"], 20);
+    assert_eq!(page["artifact_retrieval"]["items"], json!(&all[20..40]));
+    let first_ids: Vec<_> = all[..20].iter().map(|finding| &finding["id"]).collect();
+    assert!(
+        page["artifact_retrieval"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|finding| !first_ids.contains(&&finding["id"]))
+    );
 }
 
 #[test]

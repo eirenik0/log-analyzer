@@ -187,9 +187,12 @@ pub(super) fn text(report: &Value) -> String {
         );
         let _ = writeln!(
             output,
-            "Next: log-analyzer evidence '{}' --expected-sha256 {} --collection /findings",
+            "Next: log-analyzer evidence '{}' --expected-sha256 {} --collection /findings{}",
             label(&report["artifact"]["location"]),
-            label(&report["artifact"]["stored_sha256"])
+            label(&report["artifact"]["stored_sha256"]),
+            report["retrieval"]["next_cursor"]
+                .as_str()
+                .map_or_else(String::new, |cursor| format!(" --report-cursor {cursor}"))
         );
     } else {
         output.push_str(

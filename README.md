@@ -69,7 +69,8 @@ log-analyzer investigate captures/*.log
 The default output explains processing completion, per-file coverage, observed
 ERROR/WARN records, supported measurements and assessment limits. A fresh local
 `log-analyzer-evidence-*` directory stores `evidence.json`; its path and SHA-256
-appear at the end. Use `--artifact PATH` to choose a new destination. Existing
+appear at the end. When findings are omitted, the printed `Next` command includes
+a continuation cursor to retrieve the following page. Use `--artifact PATH` to choose a new destination. Existing
 artifacts are never replaced. For agents, request JSON explicitly:
 
 ```bash
