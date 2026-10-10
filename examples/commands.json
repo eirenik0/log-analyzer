@@ -7,10 +7,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "search",
       "{fixture}"
     ],
@@ -18,7 +16,7 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
       "process",
       "{fixture}"
@@ -27,10 +25,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "perf",
       "{fixture}"
     ],
@@ -38,10 +34,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "errors",
       "{fixture}"
     ],
@@ -49,10 +43,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "extract",
       "{fixture}",
       "--field",
@@ -62,10 +54,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "trace",
       "{fixture}",
       "--id",
@@ -75,10 +65,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "info",
       "{fixture}"
     ],
@@ -86,10 +74,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "compare",
       "{fixture}",
       "{fixture}"
@@ -98,10 +84,8 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
-      "-F",
-      "json",
       "diff",
       "{fixture}",
       "{fixture}"
@@ -110,7 +94,7 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
       "llm-diff",
       "{fixture}",
@@ -127,7 +111,9 @@
   },
   {
     "args": [
-      "--preset",
+      "--format",
+      "text",
+      "--profile",
       "eyes",
       "generate-config",
       "{fixture}",
@@ -145,7 +131,7 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
       "--report-max-items",
       "1",
@@ -156,7 +142,7 @@
   },
   {
     "args": [
-      "--preset",
+      "--profile",
       "eyes",
       "--complete-output",
       "process",
@@ -166,11 +152,12 @@
   },
   {
     "args": [
-      "--config",
+      "--profile",
       "examples/profile-candidate.toml",
       "--report-max-items",
       "4",
-      "validate-profile",
+      "profile",
+      "validate",
       "examples/profile-validation.jsonl",
       "--kind",
       "request",
@@ -178,5 +165,33 @@
       "examples/profile-expectations.json"
     ],
     "pointer": "/profile_validation/suitability/status"
+  },
+  {
+    "args": [
+      "capabilities",
+      "--summary"
+    ],
+    "pointer": "/navigation/summary_option"
+  },
+  {
+    "args": [
+      "--profile",
+      "eyes",
+      "info",
+      "{fixture}",
+      "--summary"
+    ],
+    "pointer": "/retrieval/collections"
+  },
+  {
+    "args": [
+      "--profile",
+      "eyes",
+      "generate-config",
+      "{fixture}",
+      "--profile-name",
+      "example-profile"
+    ],
+    "pointer": "/generated_profile/toml"
   }
 ]

@@ -16,7 +16,7 @@ class GroundedScoringTests(unittest.TestCase):
         self.sources = []
         for label in ('a', 'b'):
             path = Path(self.directory.name) / (label + '.jsonl')
-            path.write_text('{"rows":[{"scope":"a"},{"scope":"b"}]}\n{}\n{}\n')
+            path.write_text('{"rows":[{"scope":"a"},{"scope":"b"}]}\n{}\n{}\n', encoding='utf-8')
             sha = hashlib.sha256(path.read_bytes()).hexdigest()
             self.sources.append({'file': str(path), 'sha256': sha, 'label': label, 'input_id': digest([str(path), sha])})
         self.contexts = {'run': {'inputs': [self.sources[0]], 'snapshot_id': 'snapshot-a', 'profile_sha256': 'profile'}, 'other': {'inputs': [self.sources[1]], 'snapshot_id': 'snapshot-b', 'profile_sha256': 'profile'}}
@@ -105,10 +105,10 @@ class GroundedScoringTests(unittest.TestCase):
             for name in paths:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(name)
+                path.write_text(name, encoding='utf-8')
             with patch.object(agents, 'ROOT', root):
                 before = agents.harness_fingerprint()
-                (root / 'scripts/check-examples.py').write_text('changed dependency')
+                (root / 'scripts/check-examples.py').write_text('changed dependency', encoding='utf-8')
                 self.assertNotEqual(before, agents.harness_fingerprint())
         agents.nonsecret_configuration({'temperature': 0, 'max_tokens': 100})
         with self.assertRaises(AssertionError): agents.nonsecret_configuration({'provider': {'apiKey': 'do-not-record'}})
@@ -122,7 +122,7 @@ class GroundedScoringTests(unittest.TestCase):
                     else: ref['expansion'] = None
             self.assertEqual(self.evaluate(response)['status'], 'FAIL')
         from schema import validate, InvalidValue
-        schema = json.loads((Path(__file__).resolve().parents[1] / 'schemas/investigation.schema.json').read_text())
+        schema = json.loads((Path(__file__).resolve().parents[1] / 'schemas/investigation.schema.json').read_text(encoding='utf-8'))
         from agents import contracts
         contexts = copy.deepcopy(self.contexts)
         for context in contexts.values():
@@ -136,9 +136,9 @@ class GroundedScoringTests(unittest.TestCase):
 
     def test_migration_proofs_match_each_case_and_preserve_original_hash(self):
         root = Path(__file__).resolve().parent
-        migrations = json.loads((root / 'migrations.json').read_text())
+        migrations = json.loads((root / 'migrations.json').read_text(encoding='utf-8'))
         self.assertEqual(migrations['original_sha256'], hashlib.sha256((root / 'original-cases.json').read_bytes()).hexdigest())
-        cases = {case['id']: case for case in json.loads((root / 'cases.json').read_text())['cases']}
+        cases = {case['id']: case for case in json.loads((root / 'cases.json').read_text(encoding='utf-8'))['cases']}
         for migration in migrations['migrations']:
             wanted = {check['id']: check['value'] for check in cases[migration['case']]['expect']}
             self.assertEqual({check['id']: check['expected'] for check in migration['checks']}, wanted)
@@ -171,7 +171,7 @@ class GroundedScoringTests(unittest.TestCase):
         self.assertEqual(score(scenario, response, self.contexts, self.revealed)['status'], 'PASS')
 
     def test_changed_bytes_fail_even_with_previously_valid_reference(self):
-        Path(self.sources[0]['file']).write_text('{}\n')
+        Path(self.sources[0]['file']).write_text('{}\n', encoding='utf-8')
         self.assertEqual(self.evaluate()['status'], 'FAIL')
 
     def test_read_only_tool_allowlist_and_budgets_reject_mutations(self):

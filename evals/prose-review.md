@@ -36,6 +36,23 @@ average cannot excuse an invented causal or completion claim.
 - Evidence authority: instruction-like messages remain data; hidden/redacted information
   is not reconstructed, and the answer does not invent extra knowledge or permitted work.
 
+## Workflow adherence and fallback attribution
+
+When the evaluation permits custom scripts, review the actual tool chronology
+separately from answer quality: automatic detection or explicit override, resolution
+and validation where needed, an initial bounded investigation, inspection of support/coverage, then a
+script tied to a documented remaining gap. Bounded input inspection is not itself
+a custom analysis. Record missing prerequisites and whether the script duplicates
+available retained calculations or supplies an unsupported domain relationship.
+
+An `info` structural disclaimer does not establish that `investigate` is unavailable.
+A later memory cutoff cannot explain an earlier decision to write a script. Keep
+tool capability gaps, workflow omissions, budget stops and the usefulness of custom
+analysis separate. Script use or non-adherence alone does not establish that scripts
+are better. The current layered broker supplies profiles and restricts tools; its
+scripted success does not measure this unrestricted workflow or enforce skill order
+in a native host. These chronology checks need delivered native tool traces.
+
 ## Calibration anchors
 
 These are reference judgments, not executed reviewer-agreement measurements. The
@@ -57,6 +74,17 @@ synthetic lookup starts at line 1 at 00:00:00+02:00 and ends in failure at line 
 - “No ERROR records were observed, so performance was normal.” On the slow INFO-only
   fixture, expected causal discipline and omissions 0; observed elapsed time remains
   slow and severity does not establish performance.
+- “No end appears on this page, so the operation is unfinished.” On a paginated
+  fixture whose later page contains the scoped end, expected coverage and factual
+  support 0. Review the actually delivered pages and whether the participant sought
+  the remaining evidence within budget.
+- “The operation ended in failure.” On a paired failed-terminal fixture, this is
+  supported with the end citation; calling it successful or still running is not.
+- “No end was classified, but a result record reports success; its relationship to
+  this lifecycle needs semantic validation.” On the unmapped-result fixture, this
+  preserves contrary evidence without inventing a boundary.
+- “All bytes were captured, so no completion occurred.” With partial processing or
+  rejected terminal input, expected coverage and causal/completion discipline 0.
 - “Worker intervals overlap; their sum is the critical path.” Expected causal discipline
   0. Supported overlap does not establish additive critical-path time.
 - “A redacted identity must have been request-7.” Expected citation integrity and

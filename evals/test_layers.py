@@ -11,8 +11,8 @@ from unified import UnifiedTools
 class LayeredHarnessTests(unittest.TestCase):
     def test_frozen_cases_include_visible_exclusions_and_heldout_variants(self):
         manifest, packets = frozen_cases()
-        self.assertEqual(len(manifest['cases']), 17)
-        self.assertEqual(sum(c['eligible'] for c in manifest['cases']), 14)
+        self.assertEqual(len(manifest['cases']), 19)
+        self.assertEqual(sum(c['eligible'] for c in manifest['cases']), 16)
         self.assertEqual(sum(c['split'] == 'heldout' for c in manifest['cases']), 4)
         self.assertTrue(all(c['exclusion_reason'] for c in manifest['cases'] if not c['eligible']))
         for packet in packets.values():

@@ -8,7 +8,7 @@
         {
           "id": "scope",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -21,11 +21,12 @@
         {
           "id": "validation",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
-            "validate-profile",
+            "profile",
+            "validate",
             "{root}/examples/investigations/failure.jsonl",
             "--kind",
             "request",
@@ -38,7 +39,7 @@
         {
           "id": "errors",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -51,7 +52,7 @@
         {
           "id": "discovery",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -66,7 +67,7 @@
         {
           "id": "timing",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -79,7 +80,39 @@
           "checks": []
         }
       ],
-      "skill_example": ".agents/skills/analyze-logs/examples/debug-failure.md"
+      "skill_example": ".agents/skills/analyze-logs/examples/debug-failure.md",
+      "skill_steps": [
+        [
+          "--profile",
+          "examples/investigations/profile.toml",
+          "--report-max-items",
+          "5",
+          "investigate",
+          "examples/investigations/failure.jsonl",
+          "--artifact",
+          "/tmp/failure-evidence-UNIQUE.json"
+        ],
+        [
+          "evidence",
+          "/tmp/failure-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/findings",
+          "--report-max-items",
+          "5"
+        ],
+        [
+          "evidence",
+          "/tmp/failure-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/records",
+          "--report-max-items",
+          "5"
+        ]
+      ]
     },
     {
       "id": "slow-info-comparison",
@@ -88,7 +121,7 @@
         {
           "id": "slow-scope",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -101,7 +134,7 @@
         {
           "id": "baseline-scope",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -114,11 +147,12 @@
         {
           "id": "slow-validation",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
-            "validate-profile",
+            "profile",
+            "validate",
             "{root}/examples/investigations/slow.jsonl",
             "--kind",
             "request",
@@ -131,11 +165,12 @@
         {
           "id": "baseline-validation",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
-            "validate-profile",
+            "profile",
+            "validate",
             "{root}/examples/investigations/baseline.jsonl",
             "--kind",
             "request",
@@ -148,7 +183,7 @@
         {
           "id": "errors",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -161,7 +196,7 @@
         {
           "id": "slow-timing",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -176,7 +211,7 @@
         {
           "id": "baseline-timing",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -191,7 +226,7 @@
         {
           "id": "slow-discovery",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -204,7 +239,49 @@
           "checks": []
         }
       ],
-      "skill_example": ".agents/skills/analyze-logs/examples/performance.md"
+      "skill_example": ".agents/skills/analyze-logs/examples/performance.md",
+      "skill_steps": [
+        [
+          "--profile",
+          "examples/investigations/profile.toml",
+          "--report-max-items",
+          "5",
+          "investigate",
+          "examples/investigations/slow.jsonl",
+          "--artifact",
+          "/tmp/slow-evidence-UNIQUE.json"
+        ],
+        [
+          "--profile",
+          "examples/investigations/profile.toml",
+          "--report-max-items",
+          "5",
+          "investigate",
+          "examples/investigations/baseline.jsonl",
+          "--artifact",
+          "/tmp/baseline-evidence-UNIQUE.json"
+        ],
+        [
+          "evidence",
+          "/tmp/slow-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "SLOW_REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/findings",
+          "--report-max-items",
+          "5"
+        ],
+        [
+          "evidence",
+          "/tmp/baseline-evidence-UNIQUE.json",
+          "--expected-sha256",
+          "BASELINE_REPORT_ARTIFACT_SHA256",
+          "--collection",
+          "/findings",
+          "--report-max-items",
+          "5"
+        ]
+      ]
     },
     {
       "id": "reused-id-lifecycle",
@@ -213,11 +290,12 @@
         {
           "id": "validation",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
-            "validate-profile",
+            "profile",
+            "validate",
             "{root}/examples/investigations/reused.jsonl",
             "--kind",
             "request",
@@ -230,7 +308,7 @@
         {
           "id": "discovery",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -245,7 +323,7 @@
         {
           "id": "timing",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -266,7 +344,7 @@
         {
           "id": "scope",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -279,11 +357,12 @@
         {
           "id": "validation",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
-            "validate-profile",
+            "profile",
+            "validate",
             "{root}/examples/investigations/truncated.jsonl",
             "--kind",
             "request"
@@ -300,7 +379,7 @@
         {
           "id": "errors",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
@@ -313,11 +392,12 @@
         {
           "id": "validation",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
-            "validate-profile",
+            "profile",
+            "validate",
             "{root}/examples/investigations/unsuitable.jsonl",
             "--kind",
             "request"
@@ -334,11 +414,12 @@
         {
           "id": "validation",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",
-            "validate-profile",
+            "profile",
+            "validate",
             "{root}/examples/investigations/unsupported.log",
             "--kind",
             "request"
@@ -356,7 +437,7 @@
         {
           "id": "scope",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "0",
@@ -378,7 +459,7 @@
         {
           "id": "scope",
           "args": [
-            "--config",
+            "--profile",
             "{root}/examples/investigations/profile.toml",
             "--report-max-items",
             "3",

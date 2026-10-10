@@ -91,7 +91,17 @@ def interpret(public, observations):
         elif predicate == 'location_resolvable':
             require(any(r['ref']['location_redacted'] for r in rows), 'location loss not observed')
             fact.update(kind='unknown', value=False, refs=[])
-        elif predicate in {'cause', 'completion', 'timing_supported'}:
+        elif predicate == 'completion':
+            # Only a unique fixture lifecycle supports this predicate. A later
+            # unmatched boundary must not inherit an earlier pair's completion.
+            boundaries = [r['ref'] for r in rows if (r['fields'] or {}).get('operation') == name
+                          and (r['fields'] or {}).get('phase') in {'start', 'end'}
+                          and (not scope or (r['fields'] or {}).get('session') == scope)]
+            if op is not None and len(boundaries) == 2 and all(ref in boundaries for ref in (op['start'], op['end'])):
+                fact.update(value=True, refs=[op['start'], op['end']])
+            else:
+                fact.update(kind='unknown', value='unknown', refs=refs or [r['ref'] for r in rows])
+        elif predicate in {'cause', 'timing_supported'}:
             fact.update(kind='unknown', value=False if predicate == 'timing_supported' else 'unknown', refs=refs or [r['ref'] for r in rows])
         else: raise AssertionError('unsupported scripted predicate')
         facts.append(fact)

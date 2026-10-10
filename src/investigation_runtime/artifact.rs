@@ -13,23 +13,54 @@ use std::{
 
 pub(super) fn protect(artifact: &Path, report: Option<&Path>, sources: &[PathBuf]) -> Result<()> {
     let artifact = destination_identity(artifact)?;
+    let report = report.map(destination_identity).transpose()?;
     if artifact.exists() {
         return Err("Artifact destination already exists; choose a new file".into());
     }
-    if let Some(report) = report
-        && same_destination(&artifact, &destination_identity(report)?, false)
+    if let Some(report) = &report
+        && same_destination(&artifact, report, false)
     {
         return Err("Artifact and report destinations must be separate".into());
     }
     for source in sources {
         let source = destination_identity(source)?;
         if same_destination(&artifact, &source, false)
-            || report.is_some_and(|report| same_destination(report, &source, true))
+            || report
+                .as_ref()
+                .is_some_and(|report| same_destination(report, &source, true))
         {
             return Err(
                 "Artifact/report destination conflicts with an input, profile or cancellation file"
                     .into(),
             );
+        }
+    }
+    Ok(())
+}
+// A bounded walk cannot enumerate every profile. Reserve TOML destinations
+// under its root as well, even if discovery never reaches them.
+pub(super) fn protect_profile_directory(
+    artifact: &Path,
+    report: Option<&Path>,
+    directory: &Path,
+) -> Result<()> {
+    let directory = destination_identity(directory)?;
+    for path in std::iter::once(artifact).chain(report) {
+        let absolute = std::env::current_dir()?.join(path);
+        let resolved = destination_identity(path)?;
+        for path in [&absolute, &resolved] {
+            if !path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+            {
+                continue;
+            }
+            let parent = destination_identity(path.parent().unwrap_or(Path::new(".")))?;
+            for ancestor in parent.ancestors() {
+                if same_destination(ancestor, &directory, false) {
+                    return Err("Artifact/report destination conflicts with the profile discovery directory".into());
+                }
+            }
         }
     }
     Ok(())
@@ -339,7 +370,7 @@ pub(super) fn reconcile_unavailable(report: &mut Value, cli: &Cli) -> Result<()>
     if count == 0 && total > 0 && report["presentation"]["status"] == "page" {
         report["presentation"]["status"] = json!("oversized_item");
     }
-    let sizes = size(report)?;
+    let sizes = size(report, cli)?;
     if over(cli, sizes) {
         report["findings"] = json!([]);
         for assessment in report["assessments"].as_array_mut().unwrap() {
@@ -353,11 +384,12 @@ pub(super) fn reconcile_unavailable(report: &mut Value, cli: &Cli) -> Result<()>
         report["presentation"]["collections"][0]["displayed"] = json!(0);
         report["presentation"]["collections"][0]["remaining"] = json!(total);
         report["presentation"]["status"] = json!("mandatory_metadata_over_budget");
-        size(report)?;
+        size(report, cli)?;
     }
     Ok(())
 }
-fn size(report: &mut Value) -> Result<(usize, usize)> {
+fn size(report: &mut Value, cli: &Cli) -> Result<(usize, usize)> {
+    report["guidance"] = super::guidance::build(report, cli);
     // Size fields themselves count; converge on their exact serialized lengths.
     for _ in 0..8 {
         let text = serde_json::to_string(report)?;
@@ -419,9 +451,9 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
             "oversized_item"
         },
     );
-    if over(cli, size(report)?) {
+    if over(cli, size(report, cli)?) {
         refresh(report, 0, "mandatory_metadata_over_budget");
-        size(report)?;
+        size(report, cli)?;
         return Ok(());
     }
     for finding in all.into_iter().skip(prior).take(max) {
@@ -432,7 +464,7 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
             count,
             if count == total { "complete" } else { "page" },
         );
-        if over(cli, size(report)?) {
+        if over(cli, size(report, cli)?) {
             report["findings"].as_array_mut().unwrap().pop();
             let count = count - 1;
             refresh(
@@ -440,11 +472,11 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
                 count,
                 if count == 0 { "oversized_item" } else { "page" },
             );
-            size(report)?;
+            size(report, cli)?;
             break;
         }
     }
-    size(report)?;
+    size(report, cli)?;
     Ok(())
 }
 

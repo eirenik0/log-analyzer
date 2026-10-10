@@ -23,11 +23,11 @@ class FactTools(Tools):
 
 
 def frozen_cases():
-    manifest = json.loads((ROOT / 'evals/layer-cases.json').read_text())
+    manifest = json.loads((ROOT / 'evals/layer-cases.json').read_text(encoding='utf-8'))
     require(manifest['version'] == 1, 'unsupported frozen corpus')
     for label, sha in manifest['files'].items():
         require(hashlib.sha256((ROOT / label).read_bytes()).hexdigest() == sha, 'frozen corpus changed: ' + label)
-    facts = json.loads((ROOT / 'evals/verified-facts.json').read_text())
+    facts = json.loads((ROOT / 'evals/verified-facts.json').read_text(encoding='utf-8'))
     require(facts['version'] == 1, 'unsupported verified fact packet')
     return manifest, facts['cases']
 
@@ -147,9 +147,25 @@ def metrics(tools):
             'correlation_passes':sum(e['correlation_passes'] for e in executions) if executions and all('correlation_passes' in e for e in executions) else None if reconstruction else 0}
 
 
-def run(binary, repeats=2, adapter=None, model=None, config=None, allocated_budget_usd=None):
+def participant_prompt(skill_file=None):
+    if skill_file is None:
+        return BASE_PROMPT, None
+    with Path(skill_file).open('rb') as source:
+        raw = source.read(65537)
+    require(0 < len(raw) <= 65536, 'skill entrypoint must contain 1–65536 UTF-8 bytes')
+    text = raw.decode('utf-8')
+    require(text.strip(), 'skill entrypoint must not be blank')
+    return BASE_PROMPT + '\n\nApply this supplied skill entrypoint within the declared tool contract:\n' + text, {
+        'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw),
+        'scope': 'entrypoint only; linked references are not supplied',
+    }
+
+
+def run(binary, repeats=2, adapter=None, model=None, config=None, allocated_budget_usd=None, skill_file=None):
     require(repeats >= 2, 'layered comparisons require at least two repetitions')
     require(not adapter or (model and type(allocated_budget_usd) in {float,int} and math.isfinite(allocated_budget_usd) and allocated_budget_usd > 0), 'real-model runs require model identity and an explicitly allocated positive budget')
+    require(skill_file is None or adapter, '--skill-file requires a model adapter; scripted participants do not read skill instructions')
+    prompt, skill_input = participant_prompt(skill_file)
     nonsecret_configuration(config or {})
     binary = Path(binary).resolve(strict=True)
     manifest, packets = frozen_cases()
@@ -180,7 +196,7 @@ def run(binary, repeats=2, adapter=None, model=None, config=None, allocated_budg
             started = time.monotonic()
             preflight_ms = cap_ms + sum(p['elapsed_ms'] for p in preflight)
             tools.started -= preflight_ms/1000
-            tools.output_bytes = len(cap_bytes) + sum(p['output_bytes'] for p in preflight) + len(json.dumps(task,ensure_ascii=False).encode())
+            tools.output_bytes = len(cap_bytes) + sum(p['output_bytes'] for p in preflight) + len(json.dumps(task,ensure_ascii=False).encode()) + (len(prompt.encode('utf-8')) if adapter and layer != 'tool_correctness' else 0)
             reserved_calls = 1 + len(preflight)
             tools.budgets = {**BUDGETS,'tool_calls':BUDGETS['tool_calls']-reserved_calls}
             attempt = Attempt()
@@ -197,7 +213,7 @@ def run(binary, repeats=2, adapter=None, model=None, config=None, allocated_budg
                 if layer == 'tool_correctness':
                     attempt.receive({'final':tool_truth(tools,public,packets[case['id']])})
                 elif adapter:
-                    external(tools,task,adapter,model,config or {},attempt,allocation.remaining())
+                    external(tools,task,adapter,model,config or {},attempt,allocation.remaining(),base_prompt=prompt)
                 else:
                     answer = interpret(public,supplied) if arm == 'verified-facts' else (unified_execute(tools,public) if arm == 'unified' else legacy_execute(tools,public))[0]
                     attempt.receive({'final':answer})
@@ -210,14 +226,14 @@ def run(binary, repeats=2, adapter=None, model=None, config=None, allocated_budg
             outcome = evaluate_attempt(attempt,participate,lambda answer:answer if layer == 'tool_correctness' else score(scenario,answer,contexts,tools.revealed),check_answer,tools.remaining)
             usage = attempt.usage('adapter_reported_unverified' if adapter and layer != 'tool_correctness' else 'unavailable_for_scripted_participant')
             if allocation: allocation.record(attempt)
-            record = {'scenario':case['id'],'family':case['family'],'split':case['split'],'layer':layer,'arm':arm,'repeat':repeat,'order':order,'prompt_sha256':digest({'base':BASE_PROMPT,'task':task}),'budgets':BUDGETS,'elapsed_ms':round((time.monotonic()-started)*1000+preflight_ms,3),'common_preflight_elapsed_ms':round(preflight_ms,3),'usage':usage,'final':attempt.answer,'trace':tools.calls,**metrics(tools),**outcome}
+            record = {'scenario':case['id'],'family':case['family'],'split':case['split'],'layer':layer,'arm':arm,'repeat':repeat,'order':order,'prompt_sha256':digest({'base':prompt if adapter and layer != 'tool_correctness' else BASE_PROMPT,'task':task}),'budgets':BUDGETS,'elapsed_ms':round((time.monotonic()-started)*1000+preflight_ms,3),'common_preflight_elapsed_ms':round(preflight_ms,3),'usage':usage,'final':attempt.answer,'trace':tools.calls,**metrics(tools),**outcome}
             record['tool_calls'] += reserved_calls
             records.append(record)
             if isinstance(tools,UnifiedTools):tools.close()
     current, current_packets = frozen_cases()
     require(digest(current) == initial_manifest and digest(current_packets) == initial_packets,'frozen corpus changed during run')
     require(initial_harness == digest([[p,hashlib.sha256((ROOT/p).read_bytes()).hexdigest()] for p in paths]), 'harness changed during evaluation')
-    return {'version':1,'kind':'optional_model_layered_evaluation' if adapter else 'scripted_layered_smoke','binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'build':capabilities['build'],'corpus_sha256':initial_manifest,'harness_sha256':initial_harness,'model':model if adapter else None,'configuration':config or {},'allocated_budget_usd':allocated_budget_usd,'repeats':repeats,'exclusions':[{k:c[k] for k in ('id','family','split','exclusion_reason')} for c in manifest['cases'] if not c['eligible']], 'counts':dict(Counter(r['score']['status'] for r in records)),'records':records,'limitations':['Scripted repetitions check harness behavior; no real-model quality, variance, accuracy or cost improvement was measured.','Truth/rubrics remain outside participant messages; only interpretation receives verified source/operation facts. Trusted adapters share the filesystem and are not sandboxed.','Explicit profiles were supplied; automatic profile resolution and agent attention were not exercised. Validation evidence delivery is measured, not inferred attention.','Common capability/scope preflight is charged to every arm, including its analyzer call and runtime.','Output volume counts received subprocess stdout, including failed commands, and serialized local tool/fact responses. Tokens are never estimated from bytes.','Usage is incremental per response and adapter-reported unverified. Known partial totals survive failures; unknown spend stops subsequent paid calls.','Artifact/items use advertised schemas; retrieval envelopes use explicit broker hash/count/cursor invariants.','Unrestricted prose and causal reasoning require separate calibrated human review; that review and actual model runs were not performed.']}
+    return {'version':1,'kind':'optional_model_layered_evaluation' if adapter else 'scripted_layered_smoke','binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'build':capabilities['build'],'corpus_sha256':initial_manifest,'harness_sha256':initial_harness,'model':model if adapter else None,'configuration':config or {},'skill_input':skill_input,'allocated_budget_usd':allocated_budget_usd,'repeats':repeats,'exclusions':[{k:c[k] for k in ('id','family','split','exclusion_reason')} for c in manifest['cases'] if not c['eligible']], 'counts':dict(Counter(r['score']['status'] for r in records)),'records':records,'limitations':['Scripted repetitions check harness behavior; no real-model quality, variance, accuracy or cost improvement was measured.','Truth/rubrics remain outside participant messages; only interpretation receives verified source/operation facts. Trusted adapters share the filesystem and are not sandboxed.','Explicit profiles were supplied; automatic profile resolution and agent attention were not exercised. Validation evidence delivery is measured, not inferred attention.','Common capability/scope preflight is charged to every arm, including its analyzer call and runtime.','Output volume counts received subprocess stdout, including failed commands, and serialized local tool/fact responses. Tokens are never estimated from bytes.','Usage is incremental per response and adapter-reported unverified. Known partial totals survive failures; unknown spend stops subsequent paid calls.','Artifact/items use advertised schemas; retrieval envelopes use explicit broker hash/count/cursor invariants.','Unrestricted prose and causal reasoning require separate calibrated human review; that review and actual model runs were not performed.']}
 
 
 def publish(report):
@@ -239,13 +255,14 @@ def main():
     parser.add_argument('--model')
     parser.add_argument('--configuration',type=Path)
     parser.add_argument('--allocated-budget-usd',type=float)
+    parser.add_argument('--skill-file',type=Path,help='UTF-8 skill entrypoint supplied to the model; requires --adapter; references are not loaded')
     args=parser.parse_args()
     try:
-        config=json.loads(args.configuration.read_text()) if args.configuration else {}
+        config=json.loads(args.configuration.read_text(encoding='utf-8')) if args.configuration else {}
         require(isinstance(config,dict),'configuration must be an object')
-        result=run(args.binary,args.repeats,args.adapter,args.model,config,args.allocated_budget_usd)
-        args.report.parent.mkdir(parents=True,exist_ok=True);args.report.write_text(json.dumps(result,indent=2)+'\n')
-        if args.publish:args.publish.parent.mkdir(parents=True,exist_ok=True);args.publish.write_text(json.dumps(publish(result),indent=2)+'\n')
+        result=run(args.binary,args.repeats,args.adapter,args.model,config,args.allocated_budget_usd,args.skill_file)
+        args.report.parent.mkdir(parents=True,exist_ok=True);args.report.write_text(json.dumps(result,indent=2)+'\n', encoding='utf-8')
+        if args.publish:args.publish.parent.mkdir(parents=True,exist_ok=True);args.publish.write_text(json.dumps(publish(result),indent=2)+'\n', encoding='utf-8')
         print(result['counts'])
         for record in result['records']:
             if record['score']['status'] != 'PASS':print(record['scenario'],record['layer'],record['arm'],record['score'])

@@ -19,14 +19,14 @@ fn write_file(path: &Path, content: &str) {
 }
 
 #[test]
-fn config_help_explains_profile_inheritance() {
+fn profile_help_explains_profile_inheritance() {
     for args in [vec!["--help"], vec!["info", "--help"]] {
         let output = command().args(&args).output().expect("command should run");
         assert!(output.status.success());
         let help = String::from_utf8(output.stdout).expect("UTF-8 help");
         let help = help.split_whitespace().collect::<Vec<_>>().join(" ");
         for expected in [
-            "--config",
+            "--profile",
             "`extends`",
             "relative to the child profile",
             "at most eight profiles",
@@ -99,6 +99,7 @@ fn test_full_diff_prints_full_json_payloads() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "diff",
             "--full",
@@ -134,6 +135,7 @@ fn test_info_json_schema_uses_request_occurrence_counts() {
     write_file(&file, content);
 
     let output = command()
+        .args(["--format", "text"])
         .args(["info", "--json-schema", file.to_str().expect("utf8 path")])
         .output()
         .expect("command should run");
@@ -168,6 +170,7 @@ fn test_info_json_schema_aggregates_request_counts_across_multiple_files() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "info",
             "--json-schema",
@@ -238,6 +241,7 @@ fn test_perf_text_honors_output_file_flag() {
     write_file(&file, content);
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "-o",
             out.to_str().expect("utf8 path"),
@@ -283,6 +287,7 @@ fn test_perf_orphans_only_resolves_cross_file_pairs_after_timestamp_sort() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "perf",
             "--orphans-only",
@@ -325,6 +330,7 @@ fn test_compare_shows_unpaired_annotation_in_unique_output() {
     write_file(&file2, b_content);
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "-v",
             "compare",
@@ -426,6 +432,7 @@ fn test_diff_text_includes_unpaired_entries_in_unique_sections() {
     write_file(&file2, b_content);
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "-v",
             "diff",
@@ -471,6 +478,7 @@ fn test_trace_by_id_sorts_matches_across_files_and_shows_step_timing() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "trace",
             file_late.to_str().expect("utf8 path"),
@@ -540,6 +548,7 @@ fn test_trace_by_session_filters_using_component_id_hierarchy() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "trace",
             file.to_str().expect("utf8 path"),
@@ -587,6 +596,7 @@ fn test_generate_config_merges_multiple_logs_for_inference() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "generate-config",
             file1.to_str().expect("utf8 path"),
@@ -638,6 +648,7 @@ fn test_generate_config_detects_rust_tracing_format() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args(["generate-config", file.to_str().expect("utf8 path")])
         .output()
         .expect("command should run");
@@ -681,6 +692,7 @@ fn test_search_prints_matching_entries_and_payloads() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -733,6 +745,7 @@ fn test_search_context_shows_neighbor_entries_only() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -779,6 +792,7 @@ fn test_search_count_by_payload_groups_duplicate_payloads() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -830,6 +844,7 @@ fn test_extract_aggregates_payload_field_values() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "extract",
             file.to_str().expect("utf8 path"),
@@ -876,6 +891,7 @@ fn test_search_and_extract_support_rust_tracing_structured_fields() {
     );
 
     let search_output = command()
+        .args(["--format", "text"])
         .args([
             "search",
             file.to_str().expect("utf8 path"),
@@ -910,6 +926,7 @@ fn test_search_and_extract_support_rust_tracing_structured_fields() {
     );
 
     let extract_output = command()
+        .args(["--format", "text"])
         .args([
             "extract",
             file.to_str().expect("utf8 path"),
@@ -951,6 +968,7 @@ fn test_trace_by_id_matches_rust_tracing_trace_fields() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "trace",
             file.to_str().expect("utf8 path"),
@@ -1000,6 +1018,7 @@ fn test_errors_defaults_to_error_only_and_normalizes_cluster_pattern() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args(["errors", file.to_str().expect("utf8 path")])
         .output()
         .expect("command should run");
@@ -1046,6 +1065,7 @@ fn test_errors_warn_and_sessions_show_completed_and_orphaned_sessions() {
     );
 
     let output = command()
+        .args(["--format", "text"])
         .args([
             "errors",
             file.to_str().expect("utf8 path"),
@@ -1179,6 +1199,7 @@ fn test_nonempty_unparsed_input_text_fails_even_in_a_mixed_file_set() {
     write_file(&good, "worker | 2026-10-07T10:00:00.000Z [INFO ] started\n");
     for subcommand in ["info", "errors", "perf"] {
         let result = command()
+            .args(["--format", "text"])
             .args([subcommand, good.to_str().unwrap(), bad.to_str().unwrap()])
             .output()
             .unwrap();
@@ -1242,6 +1263,7 @@ fn test_bounded_errors_preserves_coverage_and_all_cluster_overviews_before_sampl
     let out = dir.path().join("report.txt");
     write_file(&file, &long_stack_fixture());
     let result = command()
+        .args(["--format", "text"])
         .args([
             "--color",
             "never",
@@ -1297,6 +1319,7 @@ fn test_errors_budget_tiny_and_zero_limits_retain_metadata_and_omissions() {
     write_file(&file, &long_stack_fixture());
     for budget in ["0", "1", "900", "1200", "2000"] {
         let result = command()
+            .args(["--format", "text"])
             .args([
                 "errors",
                 file.to_str().unwrap(),
@@ -1682,6 +1705,7 @@ fn perf_json_and_text_apply_selection_with_full_totals() {
         assert_eq!(report["omitted"]["stats"], 1);
         assert_eq!(report["omitted"]["orphans"], 1);
         let output = command()
+            .args(["--format", "text"])
             .args([
                 "--preset",
                 "service-api",
@@ -1747,6 +1771,7 @@ fn perf_json_and_text_apply_selection_with_full_totals() {
     }
     for option in [["--sort-by", "name"], ["--threshold-ms", "1000"]] {
         let output = command()
+            .args(["--format", "text"])
             .args(["perf", file.to_str().unwrap(), "--orphans-only"])
             .args(option)
             .output()
@@ -1858,6 +1883,7 @@ fn perf_scopes_reused_ids_and_preserves_ambiguous_events_with_sources() {
     assert_eq!(unmatched[0]["reason"], "overlapping_starts");
     assert_eq!(unmatched[4]["reason"], "missing_start");
     let output = command()
+        .args(["--format", "text"])
         .env_remove("LOG_ANALYZER_PRESET")
         .args([
             "--config",
@@ -2051,6 +2077,8 @@ timing = "measured"
                 .args(["--config", config.to_str().unwrap()]);
             if json {
                 cmd.arg("-j");
+            } else {
+                cmd.args(["--format", "text"]);
             }
             cmd.args([subcommand, file.to_str().unwrap()]);
             if subcommand == "trace" {
@@ -2175,6 +2203,8 @@ fn search_preserves_expanded_row_paths_in_both_output_formats() {
             .args(["--config", config.to_str().unwrap()]);
         if json {
             cmd.arg("-j");
+        } else {
+            cmd.args(["--format", "text"]);
         }
         let output = cmd
             .args(["search", file.to_str().unwrap(), "--filter", "text:needle"])
@@ -2389,6 +2419,7 @@ fn classic_slash_components_and_rejected_headers_agree_in_cli_coverage() {
             );
             assert_eq!(report["coverage"]["files"][0]["rejected_candidates"], 1);
             let output = command()
+                .args(["--format", "text"])
                 .args([
                     "--preset",
                     "base",

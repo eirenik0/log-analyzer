@@ -34,7 +34,42 @@ fields, capture completeness and analysis completion. Independent runs remain
 separate unless independently supported rules establish a relationship. Identical
 resource or request suffixes, paths, filenames or languages do not establish one run.
 
+## Automatic profile inference
+
+Without an explicit profile selection (`--profile`, or compatibility `--config`/`--preset`), `investigate` probes bounded prefixes of the same
+captured bytes later analyzed. The effective query records candidate observations,
+sample extents and selection/fallback status in `execution.profile_selection`.
+This grammar inference includes built-ins and bounded TOML discovery in the declared
+project root's `config` directory (current directory by default)
+(or `--profiles-dir`), with configuration deduplicated by `analysis_sha256`, which
+excludes only `profile_name`. Full effective hashes and labels remain on origins. Candidate
+origins and inherited-source digests are retained in the query; the effective selected
+configuration is retained without reloading. Invalid/incomplete discovery is an
+explicit selection gap. This inference does not claim independent semantic validation;
+assertion-based `profile resolve` remains a separate interface. Explicit overrides
+bypass probing. Detection work/time and scratch memory share processing budgets,
+with scratch released between probes; its record counts are separate from analysis
+records. `parse_passes` includes both `detection_parse_passes` and
+`analysis_parse_passes`. Retained retrieval still performs no source parsing.
+A capture stop that prevents shared inference marks every declared scope affected;
+completed earlier captures retain their generic facts but cannot claim completed
+analysis. Discovery's global directory limit permits 256 entries plus one sentinel
+entry to detect exhaustion; reaching that sentinel stops ancestor sibling walks.
+
 ## Assessment, processing and presentation
+
+`capabilities --summary` advertises compatibility without embedded schemas.
+`investigate --summary` projects the final report into `brief_version: 1`, described
+by `investigation-brief.schema.json`. Processing and artifact contracts do not
+change. The summary displays up to five findings and supplies
+retrieval from the first omitted finding. Hidden `--brief` retains the older
+navigation-only projection and starts retrieval at zero. When the artifact is unavailable, it retains the full
+report's displayed partial findings inline so positive evidence is not discarded.
+Full-report guidance resumes from its presentation cursor instead. Guidance version
+1 distinguishes discovery, semantic, processing and retention failures and contains
+only analyzer-owned instructions. Path-bearing literal arguments are withheld
+under redaction. Presentation counts/sizes include guidance; an impossible budget
+remains an explicit metadata-over-budget exception.
 
 Assessments are per goal and scope. `supported` means the referenced finding answers
 the declared goal on that scope with applicable evidence; it does not mean no failure

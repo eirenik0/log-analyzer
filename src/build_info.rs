@@ -13,7 +13,11 @@ pub fn metadata(profile: &str) -> Value {
 }
 
 pub fn capabilities() -> Value {
-    capability_report(command_names())
+    capability_report(command_names(), false)
+}
+
+pub fn capabilities_summary() -> Value {
+    capability_report(command_names(), true)
 }
 
 fn command_names() -> Vec<String> {
@@ -21,11 +25,15 @@ fn command_names() -> Vec<String> {
     command
         .get_subcommands()
         .filter(|c| c.get_name() != "help")
-        .map(|c| c.get_name().to_owned())
+        .flat_map(|c| {
+            std::iter::once(c.get_name())
+                .chain(c.get_all_aliases())
+                .map(str::to_owned)
+        })
         .collect()
 }
 
-fn capability_report(commands: Vec<String>) -> Value {
+fn capability_report(commands: Vec<String>, summary: bool) -> Value {
     let formats: Vec<_> = crate::cli::OutputFormat::value_variants()
         .iter()
         .map(|f| f.to_possible_value().unwrap().get_name().to_string())
@@ -44,7 +52,23 @@ fn capability_report(commands: Vec<String>) -> Value {
     report.insert("schema_version".into(), json!(SCHEMA_VERSION));
     report.insert("build".into(), json!(identity()));
     report.insert("commands".into(), json!(commands));
-    report.insert("report_schemas".into(), report_schemas_capability());
+    let command = crate::cli::Cli::command();
+    let primary: Vec<_> = command
+        .get_subcommands()
+        .filter(|c| !c.is_hide_set())
+        .map(|c| c.get_name())
+        .collect();
+    report.insert("navigation".into(), json!({
+        "version":1, "default_output":"json", "summary_option":"--summary", "summary_items":5, "primary_commands":primary, "advanced_help":["--help-advanced"],
+        "profile_commands":[["profile","prepare"],["profile","validate"],["profile","resolve"],["profile","mappings"]],
+        "compatibility_commands":{"investigation-evidence":["evidence"],"prepare-profile":["profile","prepare"],"validate-profile":["profile","validate"],"resolve-profile":["profile","resolve"],"profile-mappings":["profile","mappings"]}
+    }));
+    if summary {
+        report.insert("summary_version".into(), json!(1));
+        report.insert("schemas_omitted".into(), json!(true));
+    } else {
+        report.insert("report_schemas".into(), report_schemas_capability());
+    }
     report.insert(
         "investigation_contracts".into(),
         investigation_contracts_capability(),
@@ -64,6 +88,15 @@ fn capability_report(commands: Vec<String>) -> Value {
         json!(crate::config::builtin_template_names()),
     );
     report.insert(
+        "profiles".into(),
+        json!({
+            "option":"profile", "environment":"LOG_ANALYZER_PROFILE",
+            "builtins":crate::config::builtin_template_names(),
+            "selection":"builtin_name_or_file_path",
+            "compatibility_aliases":["config","preset"]
+        }),
+    );
+    report.insert(
         "event_classification".into(),
         event_classification_capability(),
     );
@@ -71,11 +104,11 @@ fn capability_report(commands: Vec<String>) -> Value {
 }
 
 fn report_schemas_capability() -> Value {
-    json!({"report":serde_json::from_str::<Value>(include_str!("../schemas/report.schema.json")).expect("embedded report schema is valid JSON"),"capabilities":serde_json::from_str::<Value>(include_str!("../schemas/capabilities.schema.json")).expect("embedded capabilities schema is valid JSON"),"profile_mappings":serde_json::from_str::<Value>(include_str!("../schemas/profile-mappings.schema.json")).expect("embedded mapping schema is valid JSON"),"profile_association":serde_json::from_str::<Value>(include_str!("../schemas/profile-association.schema.json")).expect("embedded association schema is valid JSON"),"profile_expectations":serde_json::from_str::<Value>(include_str!("../schemas/profile-expectations.schema.json")).expect("embedded expected facts schema is valid JSON"),"investigation":serde_json::from_str::<Value>(include_str!("../schemas/investigation.schema.json")).expect("embedded investigation schema is valid JSON"),"evidence_artifact":serde_json::from_str::<Value>(include_str!("../schemas/evidence-artifact.schema.json")).expect("embedded artifact schema is valid JSON"),"investigation_contract_versions":[crate::investigation::CONTRACT_VERSION],"evidence_contract_version":crate::evidence::CONTRACT_VERSION})
+    json!({"command_summary":serde_json::from_str::<Value>(include_str!("../schemas/command-summary.schema.json")).expect("embedded summary schema is valid JSON"),"investigation_brief":serde_json::from_str::<Value>(include_str!("../schemas/investigation-brief.schema.json")).expect("embedded brief schema is valid JSON"),"report":serde_json::from_str::<Value>(include_str!("../schemas/report.schema.json")).expect("embedded report schema is valid JSON"),"capabilities":serde_json::from_str::<Value>(include_str!("../schemas/capabilities.schema.json")).expect("embedded capabilities schema is valid JSON"),"profile_mappings":serde_json::from_str::<Value>(include_str!("../schemas/profile-mappings.schema.json")).expect("embedded mapping schema is valid JSON"),"profile_association":serde_json::from_str::<Value>(include_str!("../schemas/profile-association.schema.json")).expect("embedded association schema is valid JSON"),"profile_expectations":serde_json::from_str::<Value>(include_str!("../schemas/profile-expectations.schema.json")).expect("embedded expected facts schema is valid JSON"),"investigation":serde_json::from_str::<Value>(include_str!("../schemas/investigation.schema.json")).expect("embedded investigation schema is valid JSON"),"evidence_artifact":serde_json::from_str::<Value>(include_str!("../schemas/evidence-artifact.schema.json")).expect("embedded artifact schema is valid JSON"),"investigation_contract_versions":[crate::investigation::CONTRACT_VERSION],"evidence_contract_version":crate::evidence::CONTRACT_VERSION})
 }
 
 fn investigation_contracts_capability() -> Value {
-    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
+    json!({"versions":[crate::investigation::CONTRACT_VERSION],"artifact_version":crate::investigation::ARTIFACT_VERSION,"command_available":true,"artifact_retrieval_available":true,"guidance_version":1,"brief_version":1,"project_root_option":"project-root","capability_summary":true,"profile_detection":{"default":true,"method":"unique_profile_lifecycle_grammar","overrides":["profile","config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"},"schemas":{"1":"investigation","artifact":"evidence_artifact"},"occurrence_identity":["snapshot_id","input_ordinal","reference_id"]})
 }
 
 fn bounded_reports_capability() -> Value {
@@ -138,7 +171,7 @@ mod tests {
         let report = std::thread::Builder::new()
             .name("capability_report".into())
             .stack_size(1024 * 1024)
-            .spawn(|| super::capability_report(Vec::new()))
+            .spawn(|| super::capability_report(Vec::new(), false))
             .unwrap()
             .join()
             .unwrap();

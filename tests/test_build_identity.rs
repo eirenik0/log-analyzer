@@ -142,7 +142,7 @@ fn maintained_examples_match_the_built_binary() {
         if args[0] != "capabilities" {
             assert_eq!(report["report_metadata"]["schema_version"], 1);
             assert!(report["report_metadata"]["active_profile"].is_string());
-            if args.iter().any(|arg| arg == "--preset") {
+            if args.windows(2).any(|pair| pair == ["--profile", "eyes"]) {
                 assert_eq!(report["report_metadata"]["active_profile"], "eyes");
             }
             assert_eq!(
@@ -180,6 +180,8 @@ fn compact_capabilities_and_bounded_metadata_preserve_output_contracts() {
             "--bounded",
             "--max-output-chars",
             "0",
+            "--format",
+            "text",
         ])
         .output()
         .unwrap();
@@ -202,6 +204,7 @@ fn multiline_profile_metadata_keeps_generated_toml_valid() {
     for redact in [false, true] {
         let saved = dir.path().join("generated.toml");
         let mut command = Command::new(env!("CARGO_BIN_EXE_log-analyzer"));
+        command.args(["--format", "text"]);
         command.env_remove("LOG_ANALYZER_PRESET").args([
             "--config",
             config.to_str().unwrap(),

@@ -564,14 +564,23 @@ pub fn load_config_from_path(path: &Path) -> Result<AnalyzerConfig, ConfigError>
 pub(crate) fn load_config_from_path_with_sources(
     path: &Path,
 ) -> Result<(AnalyzerConfig, Vec<std::path::PathBuf>), ConfigError> {
+    load_config_from_path_with_reader(path, &mut |path| fs::read_to_string(path))
+}
+
+/// Share inheritance/validation with bounded discovery without rereading source files.
+pub(crate) fn load_config_from_path_with_reader(
+    path: &Path,
+    reader: &mut dyn FnMut(&Path) -> std::io::Result<String>,
+) -> Result<(AnalyzerConfig, Vec<std::path::PathBuf>), ConfigError> {
     let path_display = path.display().to_string();
-    let raw = fs::read_to_string(path).map_err(|source| ConfigError::Read {
+    let raw = reader(path).map_err(|source| ConfigError::Read {
         path: path_display.clone(),
         source,
     })?;
 
     let mut sources = vec![path.to_path_buf()];
-    let config = parse_config_toml_in_tracked(&raw, &path_display, path.parent(), &mut sources)?;
+    let config =
+        parse_config_toml_in_tracked(&raw, &path_display, path.parent(), &mut sources, reader)?;
     Ok((config, sources))
 }
 
@@ -626,7 +635,9 @@ fn parse_config_toml_in(
     path_display: &str,
     base_dir: Option<&Path>,
 ) -> Result<AnalyzerConfig, ConfigError> {
-    parse_config_toml_in_tracked(raw, path_display, base_dir, &mut Vec::new())
+    parse_config_toml_in_tracked(raw, path_display, base_dir, &mut Vec::new(), &mut |path| {
+        fs::read_to_string(path)
+    })
 }
 
 fn parse_config_toml_in_tracked(
@@ -634,6 +645,7 @@ fn parse_config_toml_in_tracked(
     path_display: &str,
     base_dir: Option<&Path>,
     sources: &mut Vec<std::path::PathBuf>,
+    reader: &mut dyn FnMut(&Path) -> std::io::Result<String>,
 ) -> Result<AnalyzerConfig, ConfigError> {
     // Same id form as parents (canonical path), so a cycle back to the root is found at once.
     let root_id = Path::new(path_display)
@@ -641,7 +653,7 @@ fn parse_config_toml_in_tracked(
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| path_display.to_string());
     let mut chain = vec![root_id];
-    let value = resolve_extends(raw, path_display, base_dir, &mut chain, sources)?;
+    let value = resolve_extends(raw, path_display, base_dir, &mut chain, sources, reader)?;
     let config = value
         .try_into::<AnalyzerConfig>()
         .map_err(|source| ConfigError::Parse {
@@ -668,6 +680,7 @@ fn resolve_extends(
     base_dir: Option<&Path>,
     chain: &mut Vec<String>,
     sources: &mut Vec<std::path::PathBuf>,
+    reader: &mut dyn FnMut(&Path) -> std::io::Result<String>,
 ) -> Result<toml::Value, ConfigError> {
     let mut value = toml::from_str::<toml::Value>(raw).map_err(|source| ConfigError::Parse {
         path: path_display.to_string(),
@@ -704,7 +717,7 @@ fn resolve_extends(
             Some(dir) if candidate.is_relative() => dir.join(candidate),
             _ => candidate.to_path_buf(),
         };
-        let text = fs::read_to_string(&path).map_err(|err| {
+        let text = reader(&path).map_err(|err| {
             extends_error(format!(
                 "'{parent_ref}' is not a built-in ({}) and cannot be read as a file: {err}",
                 BUILTIN_TEMPLATE_NAMES.join(", ")
@@ -732,6 +745,7 @@ fn resolve_extends(
         parent_dir.as_deref(),
         chain,
         sources,
+        reader,
     )?;
     chain.pop();
     merge_toml(&mut merged, value);

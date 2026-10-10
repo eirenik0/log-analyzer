@@ -874,6 +874,8 @@
                 "stage": {
                   "enum": [
                     "capture",
+                    "profile_discovery",
+                    "profile_detection",
                     "parse",
                     "classification",
                     "correlation",
@@ -2582,6 +2584,85 @@
         },
         "retrieval": {
           "$ref": "#/$defs/artifact_retrieval"
+        },
+        "guidance": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "const": 1
+            },
+            "status": {
+              "enum": [
+                "artifact_unavailable",
+                "partial_processing",
+                "needs_profile_resolution",
+                "inspect_evidence"
+              ]
+            },
+            "next_actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "artifact_unavailable",
+                      "processing_stopped",
+                      "repair_discovery",
+                      "resolve_profile",
+                      "inspect_mappings",
+                      "retrieve_findings",
+                      "verify_terminal_evidence",
+                      "inspect_goal_support"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "argv": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "required_inputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "reason",
+                  "argv",
+                  "required_inputs"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "principles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "version",
+            "status",
+            "next_actions",
+            "principles"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

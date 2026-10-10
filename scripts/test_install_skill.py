@@ -1,5 +1,6 @@
 """Exercise standalone installation using an isolated source and destination."""
 import os
+import io
 import importlib.util
 import json
 from pathlib import Path
@@ -35,7 +36,7 @@ class SkillInstallationTests(unittest.TestCase):
         return subprocess.run(['/bin/bash' if Path('/bin/bash').exists() else 'bash',
                                str(self.source / 'scripts/install-skill.sh'), *args],
                               cwd=cwd, capture_output=True, text=True,
-                              env={**os.environ, 'HOME': str(self.home), **({'PATH': str(path)} if path else {})})
+                              env={**os.environ, 'HOME': str(self.home), **({'PATH': str(path)} if path else {})}, encoding='utf-8')
 
     def test_source_checkout_is_successful_noop(self):
         before = {p.relative_to(self.skill): p.read_bytes() for p in self.skill.rglob('*') if p.is_file()}
@@ -105,10 +106,10 @@ class SkillInstallationTests(unittest.TestCase):
                 result = self.install(self.source, '--host', host)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             for iteration in range(2):
-                (self.portable / 'reference.md').write_text(str(iteration))
+                (self.portable / 'reference.md').write_text(str(iteration), encoding='utf-8')
                 result = self.install(self.project, '--host', host)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual((self.project / '.agents/skills/analyze-logs/reference.md').read_text(), str(iteration))
+                self.assertEqual((self.project / '.agents/skills/analyze-logs/reference.md').read_text(encoding='utf-8'), str(iteration))
 
     def test_global_aliases_and_conflicting_scope(self):
         for flag in ('--global', '-g'):
@@ -152,12 +153,12 @@ class SkillInstallationTests(unittest.TestCase):
         target = self.project / '.agents/skills/analyze-logs'
         target.mkdir(parents=True)
         outside = self.root / 'outside.md'
-        outside.write_text('keep me')
+        outside.write_text('keep me', encoding='utf-8')
         (target / 'reference.md').symlink_to(outside)
         result = self.install(self.project, '--host', 'codex')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('destination contains a symlink', result.stderr)
-        self.assertEqual(outside.read_text(), 'keep me')
+        self.assertEqual(outside.read_text(encoding='utf-8'), 'keep me')
 
     def test_missing_executable_warns_and_keeps_installation(self):
         commands = self.root / 'isolated PATH'
@@ -170,7 +171,7 @@ class SkillInstallationTests(unittest.TestCase):
         self.assertIn('cargo install log-analyzer --locked', result.stdout)
         self.assertTrue((self.project / '.agents/skills/analyze-logs/SKILL.md').exists())
         executable = commands / 'log-analyzer'
-        executable.write_text('#!/bin/sh\nexit 0\n')
+        executable.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
         executable.chmod(0o755)
         result = self.install(self.project, '--host', 'codex', path=commands)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -210,7 +211,7 @@ class StandaloneSkillLinksTests(unittest.TestCase):
                         self.assertIn(anchor, anchors)
 
     def test_claude_generated_bundle_has_no_drift(self):
-        result = subprocess.run([os.sys.executable, str(ROOT / 'scripts/sync-skills.py'), '--check'], capture_output=True, text=True)
+        result = subprocess.run([os.sys.executable, str(ROOT / 'scripts/sync-skills.py'), '--check'], capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_generated_crlf_checkout_passes_but_content_drift_still_fails(self):
@@ -234,15 +235,24 @@ class StandaloneSkillLinksTests(unittest.TestCase):
                 generator.sync()
                 generator.sync(check=True)
 
+    def test_metadata_remains_utf8_under_a_windows_ansi_locale(self):
+        original_open = io.open
+        def ansi_open(file, mode='r', buffering=-1, encoding=None, errors=None, newline=None, **kwargs):
+            if 'b' not in mode and encoding in (None, 'locale'):
+                encoding = 'cp1252'
+            return original_open(file, mode, buffering, encoding, errors, newline, **kwargs)
+        with patch('io.open', side_effect=ansi_open):
+            self.test_portable_metadata_and_pi_resource_paths()
+
     def test_portable_metadata_and_pi_resource_paths(self):
         skill = ROOT / '.agents/skills/analyze-logs'
-        front = (skill / 'SKILL.md').read_text().split('---', 2)[1]
+        front = (skill / 'SKILL.md').read_text(encoding='utf-8').split('---', 2)[1]
         metadata = dict(line.split(': ', 1) for line in front.strip().splitlines())
         self.assertEqual(set(metadata), {'name', 'description'})
         self.assertEqual(metadata['name'], skill.name)
         self.assertLessEqual(len(metadata['description']), 1024)
-        manifest = json.loads((ROOT / 'package.json').read_text())
-        plugin = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())
+        manifest = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))
+        plugin = json.loads((ROOT / '.claude-plugin/plugin.json').read_text(encoding='utf-8'))
         self.assertEqual(plugin['skills'], ['./.claude/skills'])
         for resource in plugin['skills']:
             self.assertTrue((ROOT / resource / 'analyze-logs/SKILL.md').is_file())
@@ -255,7 +265,7 @@ class StandaloneSkillLinksTests(unittest.TestCase):
             self.assertTrue((resolved / 'SKILL.md').is_file())
         # The optional metadata uses quoted YAML scalar strings; JSON parses that
         # subset without adding a Python YAML runtime dependency to CI.
-        display = (skill / 'agents/openai.yaml').read_text().splitlines()
+        display = (skill / 'agents/openai.yaml').read_text(encoding='utf-8').splitlines()
         self.assertEqual(display[0], 'interface:')
         values = {key.strip(): json.loads(value) for key, value in (line.split(': ', 1) for line in display[1:])}
         self.assertTrue(values['display_name'])

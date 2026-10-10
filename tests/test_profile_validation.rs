@@ -417,6 +417,8 @@ fn generated_candidate_and_failed_negative_facts_use_the_same_validation_path() 
     let p = profile(dir.path(), "template", rules());
     let file = log(dir.path(), &rows());
     let generated = invoke(&[
+        "--format",
+        "text",
         "--config",
         &p,
         "generate-config",

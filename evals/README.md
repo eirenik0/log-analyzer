@@ -1,5 +1,69 @@
 # Grounded investigation evaluations
 
+## Profile discovery and recovery
+
+`discovery.py` starts with a question, log paths and project context, **without an
+injected profile**. Its separate nine-case suite covers project/nested-directory
+discovery, conflicting outcome rules, current saved-mapping revalidation, terminal
+evidence beyond the first page, grammar beyond the detection prefix, processing
+cutoffs, unparsed input and unsupported semantics. The broker permits discovery,
+profile/fact reads, resolution, validation, bounded investigation reruns, and
+checksum-bound evidence retrieval. Project/user registries are isolated from the
+operator's real home. Profile/mapping mutations are unavailable to participants;
+the saved-mapping fixture is prepared separately from the measured workflow.
+
+```sh
+python3 evals/discovery.py --binary target/release/log-analyzer \
+  --report target/discovery-smoke.json
+python3 evals/discovery.py --binary target/release/log-analyzer --view full
+```
+
+`--view brief` (the default) invokes `investigate --summary`; `--view full` uses
+the full investigation report. `brief` names the evaluator arm and report contract,
+not the legacy CLI flag. `cargo test` runs the summary smoke and validates the
+emitted briefs against JSON Schema.
+Python regressions reject wrong profiles, wrong outcomes, unsupported completion,
+unseen/stale terminal citations, missing limitations and scope/command escapes.
+Saved Windows mapping selectors can use verbatim drive/UNC paths; the broker
+normalizes them only after filesystem resolution and retains project containment.
+Failed Rust smoke tests print each failing case and its errors from the saved report.
+The scorer requires retained evidence retrieval. It does not grade unrestricted
+prose, causes or native host skill activation. Scripted passes prove harness and
+CLI execution only; they do not measure model quality or instruction adherence.
+
+The existing trusted adapter protocol supports model trials:
+
+```sh
+python3 evals/discovery.py --binary target/release/log-analyzer --repeats 3 \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --skill-mode discover --view brief \
+  --report target/discovery-model.json --adapter /absolute/path/to/adapter
+```
+
+Compare `--skill-mode none|entrypoint|discover` and `--view full|brief`, keeping
+model configuration and budgets fixed and alternating run order. `none` withholds
+skill resources, `entrypoint` supplies the actual entrypoint on every turn, and
+`discover` exposes the installed bundle through bounded resource tools. The latter
+measures protocol resource discovery, **not native Codex/Claude/Pi activation**;
+test those hosts separately. Scripted runs reject skill modes other than `none`.
+Artifacts, prompts and traces stay local; adapters share filesystem access and are
+trusted, not OS-sandboxed. Provider usage is adapter-reported, never estimated from
+output bytes. Missing spend stops further paid calls through the shared adapter.
+
+Reports retain failed attempts, typed answers, output bytes, tool calls, repeated
+investigations, skill reads, elapsed time, known/unknown usage, corpus/skill/harness/
+binary hashes and each case's all-trials-pass result. This last result is a small
+sample consistency observation, not a population reliability guarantee. Fixtures
+and scripted strategy are public development cases; use independently authored
+held-out incidents before setting production quality targets. Use the existing
+prose-review protocol to check unsupported causal implications in natural answers.
+
+This separation follows the interface-testing approach of
+[SWE-agent](https://arxiv.org/abs/2405.15793), the procedural-skill comparison in
+[SkillsBench](https://arxiv.org/abs/2602.12670), and repeated-trial reliability in
+[τ-bench](https://arxiv.org/abs/2406.12045). Their results motivate experiments;
+they do not establish reliability for this analyzer.
+
 Use Python 3.10+ and a built executable. All committed inputs are synthetic. Mandatory
 checks use no model credentials, packages or network:
 
@@ -28,8 +92,9 @@ calibration and actual unrestricted-prose review have **not been run**.
 
 `layer-cases.json` freezes source/profile/fact-packet hashes, incident families,
 development/held-out splits, compatibility eligibility and visible exclusion reasons.
-Ten historical cases and four public held-out variants cover failures, INFO-only
-timing, scoped identities, incomplete capture, unsuitable profiles, nested records,
+Ten historical cases, two completion development cases and four public held-out
+variants cover failures, INFO-only timing, scoped identities, incomplete capture,
+unsuitable profiles, nested records,
 redacted locations, mixed grammars and unparsed input. The four variants change
 identities, scopes, UTC offsets, durations and capture boundaries. Historical split-
 file timing remains explicitly ineligible because unified inputs are independent;
@@ -37,9 +102,11 @@ named redacted identities use a different disclosure contract. A duplicate fixtu
 question remains in the historical smoke instead of duplicating paired totals.
 Exclusions are semantic compatibility decisions, not removals of failed attempts.
 
-The default two repetitions produce **98 scripted attempts**: 14 direct tool checks,
-28 interpretation runs and 56 paired workflow runs. Tool checks compare direct Rust
-records, severity, source-backed intervals/boundaries and capture uncertainty with
+The default two repetitions now produce **112 scripted attempts**: 16 direct tool checks,
+32 interpretation runs and 64 paired workflow runs. The published 98-attempt report
+predates the two completion development cases and remains a historical result.
+Tool checks compare direct Rust records, severity, source-backed intervals/boundaries
+and capture uncertainty with
 independently authored fixture facts. They do not grade through the artifact adapter.
 `verified-facts.json` contains source/operation packets, not expected answers, statuses,
 omission labels or scoring hints. Only interpretation participants receive those
@@ -99,6 +166,53 @@ projection. Published smoke results establish reproducible harness checks only;
 public held-out scripted repetitions establish neither model reliability nor broad
 accuracy, time, token or cost improvement. Codex/Pi/Claude packaging is reused from
 the existing portable skill work; interactive host behavior remains untested here.
+
+## Completion checklist evaluation
+
+The skill checks processing coverage, final lifecycle evidence and outcome/contrary
+records before an absence or completion claim. `tests/test_completion_evidence.rs`
+exercises ten synthetic captures: a paginated late success, a failed end, processing
+cutoff, a rejected terminal record, an unrecognized result, an unsuitable profile,
+start-only/end-only captures, a different-scope end, and failure followed by success.
+These are evidence availability and interpretation constraints, not a test of whether
+a model follows the skill.
+
+The layered corpus additionally asks for positive `completion` claims on late-success
+and failed-terminal fixtures. Here `completion=true` means a unique observed
+start/end lifecycle, irrespective of its outcome; it does not mean successful or
+whole-run completion. Existing incomplete fixtures require `unknown`. The scripted
+participant preserves ambiguity when a later unmatched boundary exists. The strict
+scorer requires the correct boundaries and outcome citations: blanket abstention,
+false absence and unsupported completion fail their corresponding cases.
+
+For an opt-in model comparison, `layers.py --skill-file PATH` supplies the exact
+UTF-8 entrypoint (up to 64 KiB) in the adapter's `base_prompt` on every turn. It
+records its SHA-256 and byte length as `skill_input` and includes the delivered
+instructions in each participant prompt hash and initial input-byte accounting.
+It loads no linked references; this tests the entrypoint under the broker's declared
+tool contract, not full installed-host behavior. Scripted runs reject this option.
+No credentials or provider calls are needed for regression checks.
+
+To compare old and new instructions, freeze both entrypoints and run the **same new
+harness, binary, corpus, model and configuration**, changing only `--skill-file`:
+
+```sh
+python3 evals/layers.py --binary target/release/log-analyzer --repeats 3 \
+  --skill-file /absolute/baseline-SKILL.md --report target/evals/skill-baseline.json \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --adapter /absolute/path/to/adapter
+python3 evals/layers.py --binary target/release/log-analyzer --repeats 3 \
+  --skill-file .agents/skills/analyze-logs/SKILL.md --report target/evals/skill-checklist.json \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --adapter /absolute/path/to/adapter
+```
+
+Each command requires its own explicit provider allocation. Alternate baseline and
+candidate run order across batches and compare like-for-like arms and cases, retaining
+failed attempts. Evaluate false unfinished claims, false completion claims, unnecessary
+abstention, outcome correctness and citations separately. Use the prose-review protocol
+for natural-language claims and the broader coverage-gap cases; typed fixture success
+alone cannot establish skill effectiveness. No such model comparison has been run.
 
 ## CLI corpus and historical migrations
 

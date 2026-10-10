@@ -115,7 +115,7 @@ def profile_sources(profile):
         path = path.resolve()
         require(path.is_relative_to(ROOT) and path not in seen and len(seen) < 8, 'profile inheritance outside fixture scope')
         seen.add(path)
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
         sources.append({'file': str(path), 'label': str(path.relative_to(ROOT)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
         parent = re.search(r'^extends\s*=\s*"([^"\n]+)"', text, re.MULTILINE)
         if not parent: return sources
@@ -170,7 +170,7 @@ class Tools:
     def records(self, source):
         require(hashlib.sha256(Path(source['file']).read_bytes()).hexdigest() == source['sha256'], 'input bytes changed')
         records = []
-        for line, raw in enumerate(Path(source['file']).read_text().splitlines(), 1):
+        for line, raw in enumerate(Path(source['file']).read_text(encoding='utf-8').splitlines(), 1):
             try: row = json.loads(raw)
             except ValueError:
                 classic = re.fullmatch(r'[^|]+\| (?P<timestamp>\S+) \[(?P<level>\w+) *\] (?P<message>.*)', raw)
@@ -219,7 +219,7 @@ class Tools:
             require(hashlib.sha256(Path(source['file']).read_bytes()).hexdigest() == source['sha256'], 'profile bytes changed')
         if request.get('tool') == 'profile':
             require(set(request) == {'group', 'tool'}, 'unapproved profile read fields')
-            return self.record(request, {'sources': [{**source, 'text': Path(source['file']).read_text()} for source in self.contexts[group]['profile_sources']]}, started)
+            return self.record(request, {'sources': [{**source, 'text': Path(source['file']).read_text(encoding='utf-8')} for source in self.contexts[group]['profile_sources']]}, started)
         if self.arm == 'analyzer':
             require(set(request) <= {'group', 'tool', 'command', 'options'} and request.get('tool') == 'analyzer', 'analyzer arm tool unavailable')
             command = request.get('command')

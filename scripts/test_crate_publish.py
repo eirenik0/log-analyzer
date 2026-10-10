@@ -28,7 +28,7 @@ class CrateReleaseGateTests(unittest.TestCase):
         self.output = self.root / 'output'
         self.release = self.root / 'crate-release.json'
         self.release_data = self.root / 'release-data.json'
-        self.release_data.write_text(json.dumps({'tagName': 'v0.3.0', 'isDraft': False, 'isPrerelease': False}))
+        self.release_data.write_text(json.dumps({'tagName': 'v0.3.0', 'isDraft': False, 'isPrerelease': False}), encoding='utf-8')
         fake_bin = self.root / 'bin'
         fake_bin.mkdir()
         for name, script in {
@@ -36,18 +36,18 @@ class CrateReleaseGateTests(unittest.TestCase):
             'python': '#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n',
         }.items():
             path = fake_bin / name
-            path.write_text(script)
+            path.write_text(script, encoding='utf-8')
             path.chmod(0o755)
         self.env = dict(os.environ, PATH=str(fake_bin) + os.pathsep + os.environ['PATH'],
                         RELEASE_VERSION='0.3.0', GITHUB_REF='refs/heads/main',
                         GITHUB_OUTPUT=str(self.output), RUNNER_TEMP=str(self.root),
                         TEST_RELEASE_JSON=str(self.release_data))
-        workflow = (ROOT / '.github/workflows/publish.yml').read_text()
+        workflow = (ROOT / '.github/workflows/publish.yml').read_text(encoding='utf-8')
         step = workflow.split('      - name: Select and validate the release\n', 1)[1]
         self.script = textwrap.dedent(step.split('        run: |\n', 1)[1].split('\n      - uses:', 1)[0])
 
     def git(self, *args):
-        return subprocess.run(['git', *args], cwd=self.repo, check=True, capture_output=True, text=True).stdout.strip()
+        return subprocess.run(['git', *args], cwd=self.repo, check=True, capture_output=True, text=True, encoding='utf-8').stdout.strip()
 
     def prepare_tag(self, version='0.3.0', license='MIT', description='Synthetic package', publish=None):
         package = '[package]\nname = "log-analyzer"\nversion = ' + json.dumps(version) + '\n'
@@ -57,7 +57,7 @@ class CrateReleaseGateTests(unittest.TestCase):
             package += 'description = ' + json.dumps(description) + '\n'
         if publish is not None:
             package += 'publish = ' + json.dumps(publish) + '\n'
-        (self.repo / 'Cargo.toml').write_text(package)
+        (self.repo / 'Cargo.toml').write_text(package, encoding='utf-8')
         self.git('add', 'Cargo.toml')
         self.git('-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'test: release fixture')
         self.git('tag', 'v0.3.0')
@@ -65,7 +65,7 @@ class CrateReleaseGateTests(unittest.TestCase):
 
     def invoke(self, **env):
         return subprocess.run(['bash', '-c', self.script], cwd=self.repo,
-                              env=dict(self.env, **env), capture_output=True, text=True)
+                              env=dict(self.env, **env), capture_output=True, text=True, encoding='utf-8')
 
     def assert_rejected(self, result):
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -75,7 +75,7 @@ class CrateReleaseGateTests(unittest.TestCase):
         revision = self.prepare_tag()
         result = self.invoke()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(self.output.read_text(), f'revision={revision}\n')
+        self.assertEqual(self.output.read_text(encoding='utf-8'), f'revision={revision}\n')
 
     def test_invalid_version_and_non_main_dispatch_are_rejected_before_lookup(self):
         for version in ('v0.3.0', '0.3.0-rc.1', '00.3.0', '0.3.0; touch injected'):
@@ -94,7 +94,7 @@ class CrateReleaseGateTests(unittest.TestCase):
         self.prepare_tag()
         for key, value in (('isDraft', True), ('isPrerelease', True), ('tagName', 'v0.4.0')):
             release = {'tagName': 'v0.3.0', 'isDraft': False, 'isPrerelease': False, key: value}
-            self.release_data.write_text(json.dumps(release))
+            self.release_data.write_text(json.dumps(release), encoding='utf-8')
             with self.subTest(field=key):
                 self.assert_rejected(self.invoke())
 

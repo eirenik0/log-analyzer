@@ -6,17 +6,26 @@ unknown fields. Removal, renaming, or a change of meaning requires a new report
 schema version and migration notes. Evidence contract revisions are advertised
 separately in `capabilities.report_schemas.evidence_contract_version`.
 
-Published JSON Schemas are in [`schemas/`](../../schemas):
-`report.schema.json` covers the supported CLI JSON variants, including pretty,
-compact, redacted, count/row modes and coverage-only unparsed-input output;
-`capabilities.schema.json` covers capability discovery;
-`investigation.schema.json` describes findings produced by a consuming agent.
-The binary embeds all three documents in `capabilities.report_schemas` under
-`report`, `capabilities`, and `investigation`. Installed clients can retrieve them
-from any working directory without source files or network access. Capability
-documents contain static binary content and ignore global redaction/masking flags.
+Published JSON Schemas are in [`schemas/`](../../schemas). Full `capabilities`
+embeds them in `report_schemas`: `report`, `capabilities`, `investigation`,
+`investigation_brief`, `command_summary`, `evidence_artifact`, `profile_mappings`,
+`profile_association`, and `profile_expectations`. Installed clients can retrieve
+these contracts from any working directory without source files or network access.
+`capabilities --summary` omits the schema documents and retains compatibility metadata.
+Capability documents contain static binary content and ignore global redaction flags.
+
+Command results default to JSON. `report.schema.json` covers report variants;
+`investigation.schema.json` describes findings and the unified investigation report.
+`investigation-brief.schema.json` covers `investigate --summary`, including at most
+five findings and retrieval guidance. `command-summary.schema.json` covers the
+omission envelope used by schema, mapping and generated-profile summaries. Other
+summaries retain their command's report shape and reduce displayed detail.
+See [output modes](../../README.md#output-for-models-and-people) for migration.
 These schemas describe CLI output, not standalone library formatter calls, which
-do not load an output context. `generate-config` produces TOML, not JSON.
+do not load an output context. `generate-config` returns generated TOML inside
+`generated_profile.toml` by default; `--format text` explicitly exports raw TOML.
+Prefer `profile prepare --candidate-output PATH --kind KIND` for a separate editable
+candidate and JSON validation report.
 The conformance tests execute each CLI variant and reject malformed boundaries
 and findings; successful structural validation alone does not prove a citation
 supports a claim.

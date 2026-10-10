@@ -10,11 +10,12 @@
     "parser_formats",
     "presets",
     "event_classification",
-    "report_schemas",
     "bounded_reports",
     "profile_validation",
     "investigation_contracts",
-    "profile_preparation"
+    "profile_preparation",
+    "profiles",
+    "navigation"
   ],
   "properties": {
     "schema_version": {
@@ -272,6 +273,35 @@
             "input_ordinal",
             "reference_id"
           ]
+        },
+        "profile_detection": {
+          "const": {
+            "default": true,
+            "method": "unique_profile_lifecycle_grammar",
+            "overrides": [
+              "profile",
+              "config",
+              "preset"
+            ],
+            "sources": [
+              "builtin",
+              "config_directory"
+            ],
+            "default_directory": "config",
+            "directory_option": "profiles-dir"
+          }
+        },
+        "guidance_version": {
+          "const": 1
+        },
+        "brief_version": {
+          "const": 1
+        },
+        "project_root_option": {
+          "const": "project-root"
+        },
+        "capability_summary": {
+          "const": true
         }
       },
       "required": [
@@ -280,7 +310,12 @@
         "command_available",
         "artifact_retrieval_available",
         "schemas",
-        "occurrence_identity"
+        "occurrence_identity",
+        "profile_detection",
+        "guidance_version",
+        "brief_version",
+        "project_root_option",
+        "capability_summary"
       ],
       "additionalProperties": false
     },
@@ -296,6 +331,117 @@
         "presentation",
         "common_cursors"
       ]
+    },
+    "profiles": {
+      "type": "object",
+      "required": [
+        "option",
+        "environment",
+        "builtins",
+        "selection",
+        "compatibility_aliases"
+      ],
+      "properties": {
+        "option": {
+          "const": "profile"
+        },
+        "environment": {
+          "const": "LOG_ANALYZER_PROFILE"
+        },
+        "builtins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selection": {
+          "const": "builtin_name_or_file_path"
+        },
+        "compatibility_aliases": {
+          "const": [
+            "config",
+            "preset"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary_version": {
+      "const": 1
+    },
+    "schemas_omitted": {
+      "const": true
+    },
+    "navigation": {
+      "type": "object",
+      "required": [
+        "version",
+        "primary_commands",
+        "advanced_help",
+        "profile_commands",
+        "compatibility_commands",
+        "default_output",
+        "summary_option",
+        "summary_items"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "primary_commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "advanced_help": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profile_commands": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "compatibility_commands": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "default_output": {
+          "const": "json"
+        },
+        "summary_option": {
+          "const": "--summary"
+        },
+        "summary_items": {
+          "const": 5
+        }
+      }
     }
-  }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "report_schemas"
+      ]
+    },
+    {
+      "required": [
+        "summary_version",
+        "schemas_omitted"
+      ]
+    }
+  ]
 }

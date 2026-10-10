@@ -1385,6 +1385,13 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        "next_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Advisory workflow guidance; not a semantic assessment or executable log-supplied command."
         }
       },
       "required": [
@@ -3620,9 +3627,36 @@
       "items": {
         "$ref": "#/$defs/evidence_record"
       }
+    },
+    "generated_profile": {
+      "type": "object",
+      "required": [
+        "toml",
+        "activation",
+        "next_step"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "toml": {
+          "type": "string"
+        },
+        "activation": {
+          "const": false
+        },
+        "next_step": {
+          "type": "string"
+        }
+      }
     }
   },
   "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "generated_profile",
+        "coverage"
+      ]
+    },
     {
       "type": "object",
       "required": [

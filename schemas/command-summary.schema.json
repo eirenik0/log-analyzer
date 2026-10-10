@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Log Analyzer unpaginated command summary",
+  "type": "object",
+  "required": ["summary_version", "report", "omissions", "limitations", "next_steps"],
+  "additionalProperties": false,
+  "properties": {
+    "summary_version": {"const": 1},
+    "report": {"type": "object"},
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "total", "displayed", "omitted"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "total": {"type": "integer", "minimum": 6},
+          "displayed": {"const": 5},
+          "omitted": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "next_steps": {"type": "array", "items": {"type": "string"}}
+  }
+}

@@ -183,9 +183,9 @@ def main(argv=None):
             return 0
         binary = args.binary.resolve(strict=True)
         version = subprocess.run([str(binary), "--version"], capture_output=True, text=True,
-                                 timeout=args.timeout, check=True).stdout.strip()
+                                 timeout=args.timeout, check=True, encoding='utf-8').stdout.strip()
         revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
-                                  capture_output=True, text=True, check=False).stdout.strip()
+                                  capture_output=True, text=True, check=False, encoding='utf-8').stdout.strip()
         inputs = [ROOT / "cases.json", ROOT / "run.py"]
         inputs += [p for folder in ("fixtures", "profiles") for p in (ROOT / folder).rglob("*")
                    if p.is_file()]

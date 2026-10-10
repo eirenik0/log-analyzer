@@ -1,118 +1,114 @@
-# Retrieve and verify evidence
+# Resolve investigation gaps
 
-Read this when a report is incomplete, a candidate identity is ambiguous, or a
-finding needs source verification. Command syntax belongs to the actual
-executable's `--help` and subcommand `--help`; product details belong to the
-[README](https://github.com/eirenik0/log-analyzer#commands). This bundle does not
-maintain a separate command or option catalog.
+Use the executable's `--help` for syntax and embedded schemas for report contracts.
+This reference adds decisions for incomplete evidence; it is not another command catalog.
 
-## Interpret bounded pages
+## Processing versus presentation
 
-Inspect the advertised `bounded_reports` contract and the report's `retrieval`
-metadata before interpreting detail. Full-scope totals are independent of the
-current presentation page. A missing displayed item does not mean the underlying
-count is zero.
+Use `--summary` for concise JSON across commands. For paginated analysis and
+evidence it caps displayed items at five (or a smaller requested limit); profile
+preparation caps representative witnesses. Schema and mapping summaries use a
+`summary_version: 1` wrapper: inspect `report`, `omissions`, `limitations`, and
+`next_steps`. Remove `--summary` for full detail, or follow a supplied cursor.
+After a mapping mutation, inspect the mapping instead of repeating the mutation.
+`--summary` conflicts with `--complete-output` and the compatibility text format.
+Scalars, coverage and diagnostics can be large; use supported report budgets for
+size limits. Saved reports have the same presentation as stdout; artifacts retain
+the evidence independently of the summary.
 
-Follow `retrieval.next_cursor` only with unchanged input snapshots, effective
-profile, query and redaction settings. Inspect `retrieval.collections` pointers:
-`prior + displayed + remaining` must agree with `total`. Append each collection
-once in page order; analytic views may repeat the same source references.
-Preserve snapshot/query identity across pages and stop if it changes. Stop on
-missing pages, invalid cursors, zero progress, oversized atomic items, metadata
-budget exceptions or exhausted overall budgets. Do not automatically request
-complete/unlimited output to finish an investigation.
+Inspect `processing.stop`, per-input coverage and consumed/parsed counts first.
+Pagination exposes retained results; it cannot recover records never processed.
+Repeating the same input and limits repeats a cutoff. Retry with revised limits
+only within the agreed budget, preserving partial facts and the unprocessed scope.
+If capture prevents shared automatic profile detection, earlier fully captured
+inputs still have incomplete analysis. Preserve their generic facts and the shared
+profile-selection gap.
+`memory_limit` measures accounted data, not process RSS; measure peak RSS separately
+when investigating RAM consumption.
 
-Preflight and reference reads consume the same overall budget as report pages.
-The capability document embeds schemas: retaining it locally and showing only
-trusted-parser-selected compatibility fields can avoid exhausting output before
-retrieval starts. Read schema details only when validating a contract requires
-them. Tool characters/bytes are not exact model-token counts.
+Retrieve retained collections using `evidence`, the exact artifact
+checksum and snapshot-bound cursor. Check displayed, prior, remaining and total
+counts; append each collection once. A missing displayed item is not a measured
+zero. Stop on missing pages, changed bindings, no progress or oversized items.
+Preflight, reference reads and retrieval share the overall budget; bytes and
+characters are not exact model-token counts.
 
-## Distinguish processing cutoffs from output pages
+## Profiles
 
-For unified investigations, inspect `processing.stop` and the parsed-record count
-before starting another calculation. A `memory_limit` stop is an accounted-data
-allowance, not measured process RSS; shared profile storage, retained classifications,
-source amplification and fixed metadata contribute differently. Output pagination
-cannot recover records that processing never reached. Repeating the same input and
-limits repeats the cutoff. Preserve partial facts and report the unprocessed scope;
-only retry with revised limits within the established resource budget. Use an
-external peak-RSS measurement when diagnosing actual RAM consumption.
+A profile supplies parsing, normalization, lifecycle and correlation rules.
+`--profile NAME_OR_FILE` selects a built-in or TOML file. Exact built-in names
+select built-ins; use `./eyes` for a file named `eyes`. File profiles can inherit
+built-ins or relative parent files through `extends`.
 
-## Verify a source citation
+Establish one absolute project root and use `investigate --project-root ROOT --summary`.
+Relative `--profiles-dir` paths resolve from that root; log, explicit profile and
+artifact paths still resolve from the working directory. Start with automatic
+detection unless the user supplied a profile. Inspect the
+selected name, origins, effective hash, sample coverage and discovery diagnostics.
+Under redaction, use `report_metadata.profile_selection` for status and coverage;
+hidden profile names and paths remain unverifiable.
+Detection considers built-ins and `ROOT/config` (or `--profiles-dir`); a unique matching
+grammar does not prove intended semantics. Use `--profile base` for generic facts.
+Structural coverage or an `info` disclaimer cannot establish lifecycle support.
 
-Use `report_metadata.evidence` to identify the snapshot, profile and consumed
-inputs. Resolve a cited `input_id` to that snapshot's input and verify its hash
-against the consumed bytes before reopening a changed or live file. A reference
-must occur in the retrieved canonical `evidence_records`; a grouped count is not
-proof of a particular source observation.
+For a semantic gap, inspect `profile resolve` candidates or create an editable
+candidate with `profile prepare`. Validate recognition, identity, scope, phase and
+timing boundaries against independently known assertions with `profile validate`.
+Counts, similar wording, labels and negative-only facts cannot choose a profile.
+Missing structural parsing support cannot be repaired by inventing lifecycle rules.
+Apply only a justified profile and keep unsupported goals explicit. Manage saved
+mappings only when requested, with independent proof and inspected entry digests
+before replacement or deletion.
+Read-only `profile resolve --project-root ROOT` uses saved mappings only after
+current revalidation. A remembered selection is not a permanent semantic proof.
+Renamed copies with otherwise identical effective configuration share a detection
+candidate; all source hashes remain available. Changes to actual rules remain distinct.
 
-Retain `reference_id`, input identity, physical line, normalized `row_path`, and
-expansion address when present. A row/expansion reference is more precise than
-a physical line alone. Do not invent a normalized address or collapse multiple
-expanded records into one claim. Redacted locations need a permitted local
-mapping or an explicit resolution gap.
+## Decision guidance
 
-A duration needs two actual analytic boundary references, units, timing semantics
-and the effective profile identity. Trace/session/field filters use substring
-matching: inspect complete semantic ID, kind, name and scope rather than claiming
-an exact match from discovery alone. Pair on complete related inputs before
-filters can discard boundaries. A missing end, start-only event or observed gap
-cannot establish completion, CPU work, sleep or a cause.
+`capabilities --summary` avoids loading schema catalogs. `investigate --summary`
+returns a versioned navigation document, not a complete evidence report. It includes
+coverage, goal support, binding hashes, an artifact location and state-specific
+`guidance.next_actions`. The full report exposes the same guidance and keeps its
+existing evidence contract. Follow the action relevant to the question; do not loop
+over unchanged diagnostics or mechanically execute every suggestion.
 
-Keep independent runs under separate snapshots and link comparison provenance.
-Masked identities from independently generated reports are not comparable.
-Report observations, measurements, hypotheses, contrary evidence and unknowns
-according to the advertised investigation contract. Inspect rejected header-shaped
-candidates before interpreting coverage; they are distinct from genuine multiline
-payloads and traceback continuations. Compare sampled detection with whole-input
-structural observations and bounded rejection source lines. Tied/mixed/no-match
-selection and attached-line counts are limitations, not validated completeness or
-lifecycle meaning. Unsupported Python-style headers require structural support;
-profile-rule generation alone cannot repair them. Empty input, no filter
-matches, no errors, parsing failure and unavailable analysis are distinct.
+The summary displays up to five findings; its retrieval action resumes `/findings`
+after the displayed items. If retention fails, available partial findings remain
+inline with displayed/total counts.
+Full-report guidance resumes omitted findings. Record retrieval starts independently
+at zero. Continue each collection with its own checksum-bound cursor. Redaction
+preserves safe instructions but withholds executable arguments containing paths.
+An impossible byte budget is reported as `mandatory_metadata_over_budget`; it never
+means all evidence was delivered. An unavailable artifact has no retrieval action.
 
-The authoritative contracts are described in the repository's
-[evidence specification](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/evidence-contract.md)
-and [bounded-report specification](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/bounded-reports.md).
-Schemas are embedded in the actual executable's capabilities. For executable
-setup and templates, read the bundled [host guide](hosts.md); for concrete
-investigations, read the [failure](examples/debug-failure.md) or
-[performance](examples/performance.md) example when it fits the user's question.
+## Source and lifecycle evidence
+
+Bind citations to `report_metadata.evidence`: snapshot, input identity, consumed
+hashes and effective profile. Retain occurrence identity, `reference_id`, physical
+line, normalized `row_path` and expansion address where present. Resolve actual
+retrieved records; a grouped count alone does not support a particular observation.
+Changed current sources do not rewrite retained facts. Redacted locations require
+a permitted mapping or an explicit verification gap; never reconstruct hidden fields.
+
+A measured duration needs two actual boundaries from the same scoped occurrence.
+Discovery filters may use substrings; verify full kind, name, ID and scope.
+Inspect later ends, reused IDs, outcomes and contrary/unclassified records before
+claiming completion or absence. Conflicts, invalid classifications and unavailable
+recognizers prevent complete semantic counts. An unmapped outcome is a gap, not
+proof of absence. A later success does not erase an earlier failure or prove a retry.
+Canonical severity is `records[].fields.level`.
+
+Keep independent comparisons under separate snapshot/profile bindings. Masked IDs
+from different reports are not automatically comparable. Cite each run's real
+boundaries and preserve the distinction between elapsed intervals, observed gaps,
+overlapping work and causal explanations.
+
+For supplementary scripts, name the precise unanswered question and why retained
+analysis cannot answer it. Example: “Request boundaries are recognized, but the
+profile defines no resource-to-request relationship.” A later analyzer cutoff
+cannot explain a script that was already written earlier.
 
 The [investigation contract](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/investigation-contract.md)
-defines retained reports and evidence artifacts. Check advertised command and
-retrieval availability before using them; published schemas alone do not enable
-a unified command. Preserve declared input occurrence identity, distinguish
-partial processing from full-input counts, and inspect verification losses when
-redaction removes source locations, payloads, queries or captured streams.
-Check coverage against retained evidence, retention against the artifact descriptor,
-and pagination against displayed findings and omissions. Exceptional presentation
-statuses must agree with budgets and usage; unknowns alone do not establish support.
-
-## Deterministic profile resolution
-
-Use `resolve-profile --help` and capability `profile_resolution.version` before
-using discovery. Existing defaults remain explicit. Precedence is explicit CLI,
-revalidated supplied read-only association, revalidated project/user mappings
-(version 2), then one independently asserted candidate. Never substitute a candidate for an invalid explicit choice.
-
-Compare candidate structural parsing, recognition, correlation scope and timing
-support separately. Expected facts remain optional for sample validation, but an
-automatic choice requires passing semantic assertions covering every candidate
-record of the requested kind; timing also requires every observed pair/duration.
-Counts, similar wording, profile/rule labels and negative-only facts are insufficient.
-Treat multiple eligible effective profiles as ambiguous and ask for domain facts;
-unclassified records and capture completeness remain unknown. Retrieve nested
-candidate witnesses through common cursors. The outer evidence belongs to generic
-inspection; candidate normalization and source references have their own profile
-and input identities. `--association` reads a strict supplied contract without
-writing it; remembering project/source mappings is separate. Freeze inputs because
-candidates read them separately. Apply the selected preset/config explicitly to
-subsequent commands.
-
-
-Manage persisted mappings only when requested. Require independent domain facts
-before remembering a choice, inspect before replacing or forgetting, and treat
-revalidation failures as evidence requiring investigation. Read the README's
-persistent-mapping section and current CLI help for storage contracts and options.
+is authoritative. Deterministic fixture checks verify commands and evidence;
+they do not establish improved model adherence, accuracy or token savings.
