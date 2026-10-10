@@ -333,6 +333,11 @@ fn finish_candidate(
     }
     match parse_log_entry_in_format(text, line_number, config, format) {
         Ok(mut entry) => {
+            if format != LogFormat::JsonLines
+                && let Some(budget) = controls.as_deref_mut()
+            {
+                budget.settle_text_record(text.len(), &entry);
+            }
             if controls
                 .as_deref_mut()
                 .is_some_and(|budget| !budget.retain_classification(&entry.classification))
