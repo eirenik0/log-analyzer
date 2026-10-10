@@ -342,9 +342,9 @@ def run(binary, report_path=None):
     capabilities = preflight.invoke(['capabilities'])
     compatible(capabilities)
     fixture = str(ROOT / 'examples/synthetic.jsonl')
-    for example in json.loads((ROOT / 'examples/commands.json').read_text()):
+    for example in json.loads((ROOT / 'examples/commands.json').read_text(encoding='utf-8')):
         args = [a.replace('{fixture}', fixture) for a in example['args']]
-        result = subprocess.run([preflight.binary, *args], capture_output=True, text=True, check=True, env=preflight.environment, cwd=ROOT, timeout=30)
+        result = subprocess.run([preflight.binary, *args], capture_output=True, text=True, check=True, env=preflight.environment, cwd=ROOT, timeout=30, encoding='utf-8')
         if example.get('type') == 'toml':
             require('profile_name = "example-profile"' in result.stdout and '# Build: log-analyzer' in result.stdout, 'generated profile example mismatch')
         elif example.get('type') == 'version':
@@ -352,7 +352,7 @@ def run(binary, report_path=None):
         else:
             pointer(json.loads(result.stdout), example['pointer'])
         print('Passed:', ' '.join(example['args']))
-    manifest = json.loads((ROOT / 'examples/workflows.json').read_text())
+    manifest = json.loads((ROOT / 'examples/workflows.json').read_text(encoding='utf-8'))
     require(manifest['version'] == 1, 'unsupported workflow manifest')
     workflows = []
     for example in manifest['workflows']:
@@ -362,7 +362,7 @@ def run(binary, report_path=None):
     if report_path:
         path = Path(report_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(result, indent=2) + '\n')
+        path.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     return result
 
 

@@ -84,7 +84,7 @@ class ReleasePreparationTests(unittest.TestCase):
 
     def run_preparation(self, dry_run='false'):
         return subprocess.run(['/bin/bash' if Path('/bin/bash').exists() else 'bash', '-c', self.script], cwd=self.root,
-                              env=dict(self.env, DRY_RUN=dry_run), capture_output=True, text=True)
+                              env=dict(self.env, DRY_RUN=dry_run), capture_output=True, text=True, encoding='utf-8')
 
     def test_no_release_stops_cleanly_in_normal_and_dry_runs(self):
         self.stderr.write_text(self.no_release, encoding='utf-8')

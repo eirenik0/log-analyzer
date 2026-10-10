@@ -249,13 +249,13 @@ def main():
     try:
         require(args.repeats >= 1, 'positive repeats required')
         require(not args.adapter or bool(args.model), 'optional adapter requires model identity')
-        config = json.loads(args.configuration.read_text()) if args.configuration else {}
+        config = json.loads(args.configuration.read_text(encoding='utf-8')) if args.configuration else {}
         require(isinstance(config, dict), 'configuration must be object')
         nonsecret_configuration(config)
-        scenarios = json.loads((ROOT / 'evals/scenarios.json').read_text())['scenarios']
+        scenarios = json.loads((ROOT / 'evals/scenarios.json').read_text(encoding='utf-8'))['scenarios']
         result = run(args.binary, scenarios, args.adapter, args.model, config, args.repeats, allocated_budget_usd=args.allocated_budget_usd)
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps(result, indent=2) + '\n')
+        args.report.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(result['counts'])
         for record in result['records']:
             if record['score']['status'] != 'PASS': print(record['scenario'], record['arm'], record['score'])

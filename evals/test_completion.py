@@ -78,7 +78,7 @@ class CompletionEvaluationTests(unittest.TestCase):
             self.assertEqual(identity['sha256'], hashlib.sha256(raw).hexdigest())
             self.assertEqual(identity['bytes'], len(raw))
             self.assertEqual(participant_prompt(), (BASE_PROMPT, None))
-            path.write_text('Different instructions')
+            path.write_text('Different instructions', encoding='utf-8')
             updated, changed = participant_prompt(path)
             self.assertNotEqual(updated, prompt)
             self.assertNotEqual(changed['sha256'], identity['sha256'])

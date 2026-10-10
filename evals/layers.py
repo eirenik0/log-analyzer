@@ -23,11 +23,11 @@ class FactTools(Tools):
 
 
 def frozen_cases():
-    manifest = json.loads((ROOT / 'evals/layer-cases.json').read_text())
+    manifest = json.loads((ROOT / 'evals/layer-cases.json').read_text(encoding='utf-8'))
     require(manifest['version'] == 1, 'unsupported frozen corpus')
     for label, sha in manifest['files'].items():
         require(hashlib.sha256((ROOT / label).read_bytes()).hexdigest() == sha, 'frozen corpus changed: ' + label)
-    facts = json.loads((ROOT / 'evals/verified-facts.json').read_text())
+    facts = json.loads((ROOT / 'evals/verified-facts.json').read_text(encoding='utf-8'))
     require(facts['version'] == 1, 'unsupported verified fact packet')
     return manifest, facts['cases']
 
@@ -258,11 +258,11 @@ def main():
     parser.add_argument('--skill-file',type=Path,help='UTF-8 skill entrypoint supplied to the model; requires --adapter; references are not loaded')
     args=parser.parse_args()
     try:
-        config=json.loads(args.configuration.read_text()) if args.configuration else {}
+        config=json.loads(args.configuration.read_text(encoding='utf-8')) if args.configuration else {}
         require(isinstance(config,dict),'configuration must be an object')
         result=run(args.binary,args.repeats,args.adapter,args.model,config,args.allocated_budget_usd,args.skill_file)
-        args.report.parent.mkdir(parents=True,exist_ok=True);args.report.write_text(json.dumps(result,indent=2)+'\n')
-        if args.publish:args.publish.parent.mkdir(parents=True,exist_ok=True);args.publish.write_text(json.dumps(publish(result),indent=2)+'\n')
+        args.report.parent.mkdir(parents=True,exist_ok=True);args.report.write_text(json.dumps(result,indent=2)+'\n', encoding='utf-8')
+        if args.publish:args.publish.parent.mkdir(parents=True,exist_ok=True);args.publish.write_text(json.dumps(publish(result),indent=2)+'\n', encoding='utf-8')
         print(result['counts'])
         for record in result['records']:
             if record['score']['status'] != 'PASS':print(record['scenario'],record['layer'],record['arm'],record['score'])

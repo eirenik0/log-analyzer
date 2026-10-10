@@ -59,7 +59,7 @@ class EvaluationSafetyTests(unittest.TestCase):
         bad["expect"][0]["op"] = "typo"
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "cases.json"
-            path.write_text(json.dumps({"version": 1, "cases": [bad]}))
+            path.write_text(json.dumps({"version": 1, "cases": [bad]}), encoding='utf-8')
             with self.assertRaises(ValueError):
                 run.load_cases(path)
 
