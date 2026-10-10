@@ -14,7 +14,8 @@
     "profile_validation",
     "investigation_contracts",
     "profile_preparation",
-    "profiles"
+    "profiles",
+    "navigation"
   ],
   "properties": {
     "schema_version": {
@@ -378,7 +379,10 @@
         "primary_commands",
         "advanced_help",
         "profile_commands",
-        "compatibility_commands"
+        "compatibility_commands",
+        "default_output",
+        "summary_option",
+        "summary_items"
       ],
       "additionalProperties": false,
       "properties": {

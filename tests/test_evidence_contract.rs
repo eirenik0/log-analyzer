@@ -962,3 +962,22 @@ fn unparsed_normalization_diagnostics_use_all_declared_redaction_sources() {
     assert!(diagnostic.contains("Normalization skipped"));
     assert!(!diagnostic.contains("private-session"), "{diagnostic}");
 }
+
+#[test]
+fn generated_profile_json_and_summary_validate_against_advertised_schemas() {
+    let report = run(&["generate-config", &fixture()]);
+    assert!(report["generated_profile"]["toml"].is_string());
+    assert_eq!(report["generated_profile"]["activation"], false);
+    for field in ["coverage", "generated_profile"] {
+        let mut invalid = report.clone();
+        invalid.as_object_mut().unwrap().remove(field);
+        assert!(!jsonschema::is_valid(&schema(), &invalid), "{field}");
+    }
+    let output = invoke(&["generate-config", &fixture(), "--summary"]);
+    assert!(output.status.success());
+    let summary: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let summary_schema: Value =
+        serde_json::from_str(include_str!("../schemas/command-summary.schema.json")).unwrap();
+    assert!(jsonschema::is_valid(&summary_schema, &summary));
+    validate(&summary["report"]);
+}

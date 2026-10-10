@@ -24,6 +24,9 @@ not the legacy CLI flag. `cargo test` runs the summary smoke and validates the
 emitted briefs against JSON Schema.
 Python regressions reject wrong profiles, wrong outcomes, unsupported completion,
 unseen/stale terminal citations, missing limitations and scope/command escapes.
+Saved Windows mapping selectors can use verbatim drive/UNC paths; the broker
+normalizes them only after filesystem resolution and retains project containment.
+Failed Rust smoke tests print each failing case and its errors from the saved report.
 The scorer requires retained evidence retrieval. It does not grade unrestricted
 prose, causes or native host skill activation. Scripted passes prove harness and
 CLI execution only; they do not measure model quality or instruction adherence.

@@ -3653,6 +3653,13 @@
     {
       "type": "object",
       "required": [
+        "generated_profile",
+        "coverage"
+      ]
+    },
+    {
+      "type": "object",
+      "required": [
         "profile_resolution",
         "coverage"
       ],

@@ -51,6 +51,10 @@ bypass probing. Detection work/time and scratch memory share processing budgets,
 with scratch released between probes; its record counts are separate from analysis
 records. `parse_passes` includes both `detection_parse_passes` and
 `analysis_parse_passes`. Retained retrieval still performs no source parsing.
+A capture stop that prevents shared inference marks every declared scope affected;
+completed earlier captures retain their generic facts but cannot claim completed
+analysis. Discovery's global directory limit permits 256 entries plus one sentinel
+entry to detect exhaustion; reaching that sentinel stops ancestor sibling walks.
 
 ## Assessment, processing and presentation
 

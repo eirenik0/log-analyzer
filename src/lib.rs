@@ -1199,7 +1199,7 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
                 .iter()
                 .filter_map(|file| detect_log_format(file, &base_config).ok())
                 .collect();
-            let (logs, _) = read_analysis_inputs(
+            let (logs, coverage) = read_analysis_inputs(
                 files,
                 &base_config,
                 &filter,
@@ -1256,7 +1256,7 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
                 serde_json::to_string(&serde_json::json!({"generated_profile":{
                     "toml":output_text,"activation":false,
                     "next_step":"Save the TOML as a profile and run profile validate against independent facts before selecting it"
-                }}))?
+                }, "coverage":coverage}))?
             };
             report_print!("{rendered}");
             if let Some(path) = output {

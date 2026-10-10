@@ -47,6 +47,9 @@ impl Discovery {
         self.complete &= !incomplete;
     }
     fn walk(&mut self, dir: &Path, depth: usize, optional: bool, budget: &mut Budget) {
+        if self.entries > MAX_ENTRIES {
+            return;
+        }
         if !budget.checkpoint("profile_discovery", 1) {
             self.complete = false;
             return;
@@ -80,6 +83,9 @@ impl Discovery {
         }
         entries.sort_by_key(|entry| entry.file_name());
         for entry in entries {
+            if self.entries > MAX_ENTRIES {
+                break;
+            }
             if !budget.checkpoint("profile_discovery", 1) {
                 self.complete = false;
                 break;
@@ -258,5 +264,48 @@ pub(super) fn load(directory: &Path, optional: bool, budget: &mut Budget) -> Cat
         sources: discovery.sources,
         metadata,
         complete: discovery.complete,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::processing::Limits;
+
+    #[test]
+    fn recursive_entry_limit_stops_ancestor_siblings() {
+        let temp = tempfile::tempdir().unwrap();
+        for i in 0..MAX_ENTRIES {
+            let child = temp.path().join(format!("child-{i:03}"));
+            fs::create_dir(&child).unwrap();
+            fs::write(child.join("candidate.toml"), "extends = 'base'\n").unwrap();
+        }
+        let mut budget = Budget::new(Limits {
+            input_bytes: u64::MAX,
+            records: u64::MAX,
+            expanded_records: u64::MAX,
+            work_units: u64::MAX,
+            elapsed_ms: u64::MAX,
+            memory_bytes: u64::MAX,
+            artifact_bytes: u64::MAX,
+            record_bytes: usize::MAX,
+            cancel_file: None,
+        });
+        let mut discovery = Discovery {
+            paths: Vec::new(),
+            sources: Vec::new(),
+            diagnostics: Vec::new(),
+            complete: true,
+            entries: 0,
+            bytes: 0,
+        };
+        discovery.walk(temp.path(), 0, false, &mut budget);
+        assert!(!discovery.complete);
+        // One sentinel entry is needed to observe exhaustion of the global cap.
+        assert_eq!(discovery.entries, MAX_ENTRIES + 1);
+        assert_eq!(discovery.diagnostics.len(), 1);
+        assert_eq!(discovery.diagnostics[0]["reason"], "directory_entry_limit");
+        assert_eq!(discovery.sources.len(), 1);
+        assert!(discovery.paths.is_empty());
     }
 }

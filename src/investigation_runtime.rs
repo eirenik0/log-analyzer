@@ -240,7 +240,6 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             project_root.join(directory)
         };
         artifact::protect_profile_directory(&args.artifact, cli.output.as_deref(), &directory)?;
-        let detection_started = budget.stop.is_none();
         let (selected, detection, passes, sources) = auto_profile::detect(
             &args.files,
             &cached,
@@ -257,8 +256,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             );
             config = selected;
         }
-        if detection_started && budget.stop.is_some() {
-            // Discovery and profile choice are shared by every captured input.
+        if budget.stop.is_some() {
+            // Capture failures can prevent shared discovery before it starts.
+            // Profile choice is unavailable for every declared input in either case.
             // Later generic parsing can finish without recovering that analysis.
             budget.affected_scopes.extend(0..args.files.len());
         }

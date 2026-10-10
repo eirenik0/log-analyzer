@@ -20,6 +20,9 @@ Inspect `processing.stop`, per-input coverage and consumed/parsed counts first.
 Pagination exposes retained results; it cannot recover records never processed.
 Repeating the same input and limits repeats a cutoff. Retry with revised limits
 only within the agreed budget, preserving partial facts and the unprocessed scope.
+If capture prevents shared automatic profile detection, earlier fully captured
+inputs still have incomplete analysis. Preserve their generic facts and the shared
+profile-selection gap.
 `memory_limit` measures accounted data, not process RSS; measure peak RSS separately
 when investigating RAM consumption.
 

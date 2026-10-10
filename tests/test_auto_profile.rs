@@ -444,6 +444,82 @@ fn redaction_preserves_selection_status_and_coverage_without_profile_identity() 
 }
 
 #[test]
+fn capture_stops_before_shared_detection_mark_every_scope_partial() {
+    for (case, reason) in [
+        ("missing_input", "io_error"),
+        ("input_limit", "input_limit"),
+    ] {
+        let dir = TempDir::new().unwrap();
+        let data = line("Operation \"sync\" started");
+        fs::write(dir.path().join("a.jsonl"), &data).unwrap();
+        if case == "input_limit" {
+            fs::write(dir.path().join("b.jsonl"), &data).unwrap();
+        }
+        let mut command = Command::new(env!("CARGO_BIN_EXE_log-analyzer"));
+        for (name, _) in std::env::vars().filter(|(name, _)| name.starts_with("LOG_ANALYZER_")) {
+            command.env_remove(name);
+        }
+        command.current_dir(dir.path()).args([
+            "investigate",
+            "a.jsonl",
+            "b.jsonl",
+            "--artifact",
+            "artifact.json",
+            "--complete-output",
+        ]);
+        if case == "input_limit" {
+            command.args(["--input-max-bytes", &(data.len() + 1).to_string()]);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let bytes = fs::read(dir.path().join("artifact.json")).unwrap();
+        log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+        let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+        for value in [&report, &artifact] {
+            assert_eq!(value["processing"]["stop"]["stage"], "capture");
+            assert_eq!(value["processing"]["stop"]["reason"], reason);
+            assert_eq!(value["processing"]["inputs"][0]["capture"], "complete");
+            assert_eq!(value["processing"]["usage"]["records"], 1);
+            assert_eq!(
+                value["processing"]["stop"]["scope_ids"],
+                json!(["scope-0", "scope-1"])
+            );
+            let scopes = value["scopes"].as_array().unwrap();
+            assert_eq!(scopes[0]["completeness"], "partial");
+            assert_eq!(scopes[0]["analysis_completion"], "partial");
+            assert_eq!(
+                scopes[1]["completeness"],
+                if case == "missing_input" {
+                    "unavailable"
+                } else {
+                    "partial"
+                }
+            );
+            assert_eq!(
+                scopes[1]["analysis_completion"],
+                if case == "missing_input" {
+                    "not_performed"
+                } else {
+                    "partial"
+                }
+            );
+            assert!(
+                value["assessments"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|a| a["status"] != "supported")
+            );
+        }
+    }
+}
+
+#[test]
 fn redaction_retains_probe_parse_failures_for_non_utf8_capture() {
     let dir = TempDir::new().unwrap();
     let input = dir.path().join("input.log");

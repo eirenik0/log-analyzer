@@ -85,6 +85,14 @@ def fixture(root, case, binary):
             'terminal_line': count, 'limitation': {'processing-cutoff': 'processing_cutoff', 'unparsed': 'unparsed_input', 'unsupported-semantics': 'unsupported_semantics'}.get(case)}
 
 
+def windows_path_label(label):
+    # Rust canonicalization uses extended Windows paths for saved mappings.
+    # Convert only ordinary drive/UNC paths; leave device namespaces untouched.
+    if label[:8].upper() == '\\\\?\\UNC\\': return '\\\\' + label[8:]
+    if re.match(r'^\\\\\?\\[a-zA-Z]:\\', label): return label[4:]
+    return label
+
+
 def environment(root):
     env = {k: v for k, v in os.environ.items() if not k.startswith('LOG_ANALYZER_')}
     # Isolate registry lookup from the real user's home; no production mappings are read.
@@ -126,7 +134,11 @@ class DiscoveryTools:
     def path(self, label):
         require(isinstance(label, str), 'path must be text')
         path = (self.root / label).resolve()
-        require(path.is_relative_to(self.root), 'path outside declared project')
+        root = self.root
+        if os.name == "nt":
+            path = Path(windows_path_label(str(path)))
+            root = Path(windows_path_label(str(root)))
+        require(path.is_relative_to(root), 'path outside declared project')
         return path
 
     def choice(self, name):

@@ -348,3 +348,26 @@ fn brief_preserves_unread_inputs_as_unknown_coverage() {
         .validate(&report)
         .unwrap();
 }
+
+#[test]
+fn navigation_fields_are_required_in_full_and_summary_capabilities() {
+    let temp = fixture();
+    let schema: Value =
+        serde_json::from_str(include_str!("../schemas/capabilities.schema.json")).unwrap();
+    let validator = jsonschema::validator_for(&schema).unwrap();
+    for args in [vec!["capabilities"], vec!["capabilities", "--summary"]] {
+        let report = run(temp.path(), &args);
+        validator.validate(&report).unwrap();
+        let mut missing = report.clone();
+        missing.as_object_mut().unwrap().remove("navigation");
+        assert!(
+            !validator.is_valid(&missing),
+            "navigation omission accepted"
+        );
+        for field in ["default_output", "summary_option", "summary_items"] {
+            let mut missing = report.clone();
+            missing["navigation"].as_object_mut().unwrap().remove(field);
+            assert!(!validator.is_valid(&missing), "{field} omission accepted");
+        }
+    }
+}

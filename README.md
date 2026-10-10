@@ -180,8 +180,10 @@ invalid profile file or discovery cutoff prevents automatic selection and leaves
 analysis available with an explicit gap. An incompatible candidate's parsing failure
 does not disqualify a different candidate that can parse/classify the sample. This
 allows custom normalization profiles to be detected. Explicit profile overrides
-skip directory discovery entirely, including `--profiles-dir`. No mappings or config
-files are changed. Report/artifact paths cannot overwrite encountered source profiles
+skip directory discovery entirely, including `--profiles-dir`.
+When a capture error or cutoff prevents shared profile inference, every input scope
+reports incomplete analysis, including earlier inputs whose capture was complete.
+No mappings or config files are changed. Report/artifact paths cannot overwrite encountered source profiles
 or inherited files. TOML destinations within the discovery directory are protected
 even when discovery stops before reaching them. Redacted reports omit discovery
 paths, profile names and queries, while `report_metadata.profile_selection` preserves
@@ -1214,6 +1216,8 @@ UTC dates and times with milliseconds and `Z`, independent of the host timezone.
 This compatibility command returns `generated_profile.toml` inside JSON. Use
 `--format text` for raw TOML, or prefer `profile prepare --candidate-output PATH`
 to save a candidate separately from its validation report.
+The JSON report includes source parse/filter `coverage`; generation does not
+validate lifecycle semantics or activate the candidate.
 
 Generate a profile from one or more related log files (for example, split/rotated logs from the same run/session).
 

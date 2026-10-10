@@ -1,12 +1,32 @@
-from pathlib import Path
+import os
+from pathlib import Path, PureWindowsPath
 import tempfile
 import unittest
 from types import SimpleNamespace
 
-from discovery import DiscoveryTools, run, score, validate_answer
+from discovery import DiscoveryTools, run, score, validate_answer, windows_path_label
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_windows_verbatim_selectors_preserve_project_containment(self):
+        root = PureWindowsPath(r'C:\project')
+        selected = PureWindowsPath(windows_path_label(r'\\?\C:\project\config\team.toml'))
+        self.assertTrue(selected.is_relative_to(root))
+        outside = PureWindowsPath(windows_path_label(r'\\?\C:\other\team.toml'))
+        self.assertFalse(outside.is_relative_to(root))
+        self.assertEqual(windows_path_label(r'\\?\UNC\server\share\team.toml'), r'\\server\share\team.toml')
+        self.assertEqual(windows_path_label(r'\\?\GLOBALROOT\Device\disk'), r'\\?\GLOBALROOT\Device\disk')
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            (project / 'config').mkdir()
+            candidate = project / 'config/team.toml'
+            candidate.write_text('extends = "base"', encoding='utf-8')
+            tools = DiscoveryTools(Path('/unused'), project, 'saved-mapping')
+            prefix = '\\\\?\\' if os.name == 'nt' else ''
+            self.assertEqual(tools.path(prefix + str(candidate)), candidate)
+            with self.assertRaisesRegex(AssertionError, 'outside declared project'):
+                tools.path(prefix + str(project.parent / 'outside.toml'))
+
     def tools(self):
         return SimpleNamespace(reports=[{'brief_version': 1, 'profile': {'profile': 'investigation-example'},
                                          'binding': {'profile_sha256': 'profile', 'snapshot_id': 'snapshot'}, 'coverage': []}],

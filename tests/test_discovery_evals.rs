@@ -25,9 +25,23 @@ fn discovery_evaluation_runs_without_injecting_a_profile() {
         .arg(&report)
         .output()
         .unwrap();
+    let diagnostics = fs::read(&report)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .map(|value| {
+            value["records"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|record| record["score"]["status"] != "PASS")
+                .map(|record| format!("{}: {}", record["case"], record["score"]))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_else(|| "No evaluation report was saved".into());
     assert!(
         output.status.success(),
-        "{}\n{}",
+        "{diagnostics}\n{}\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
