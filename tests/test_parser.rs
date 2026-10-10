@@ -372,6 +372,51 @@ fn test_parse_rust_tracing_file_with_multiline_entries() {
 }
 
 #[test]
+fn test_long_tracing_prose_with_and_without_structured_suffix() {
+    let message = "synthetic café 界🙂 message ".repeat(2000);
+    let prefix = "2026-01-01T00:00:00Z INFO app::worker: ";
+    let plain = parse_log_entry(&format!("{prefix}{message}"), 1).unwrap();
+    assert_eq!(plain.message, message.trim_end());
+    assert!(plain.structured_fields.is_empty());
+
+    let with_fields = parse_log_entry(
+        &format!("{prefix}{message}trace_id \t=abc123 nested={{\"ok\":true}}"),
+        2,
+    )
+    .unwrap();
+    assert_eq!(with_fields.message, message.trim_end());
+    assert_eq!(with_fields.structured_field("trace_id"), Some("abc123"));
+    assert_eq!(
+        with_fields.structured_field("nested"),
+        Some(r#"{"ok":true}"#)
+    );
+}
+
+#[test]
+fn test_tracing_field_boundaries_keep_existing_whitespace_and_prose_rules() {
+    for (input, message, field) in [
+        ("hello trace_id=abc", "hello", Some("abc")),
+        ("hello trace_id\u{2003}=abc", "hello", Some("abc")),
+        ("hello trace id=abc", "hello trace", None),
+        ("hello trace_id= abc", "hello trace_id= abc", None),
+        (
+            "hello trace_id=abc trailing prose",
+            "hello trace_id=abc trailing prose",
+            None,
+        ),
+        ("hello trace_id=\"café 界🙂\"", "hello", Some("café 界🙂")),
+    ] {
+        let entry = parse_log_entry(
+            &format!("2026-01-01T00:00:00Z INFO app::worker: {input}"),
+            1,
+        )
+        .unwrap();
+        assert_eq!(entry.message, message, "{input}");
+        assert_eq!(entry.structured_field("trace_id"), field, "{input}");
+    }
+}
+
+#[test]
 fn test_parse_syslog_line() {
     let log_line =
         "2026-03-10T08:15:30Z host-a stream-manager[4221]: ERROR failed to restart pipeline";

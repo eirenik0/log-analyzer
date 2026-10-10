@@ -265,12 +265,13 @@ fn finish_candidate(
     coverage.structural_diagnostics.physical_candidate_blocks += 1;
     if let Some(rules) = &config.normalization {
         let mut first_row = true;
+        let controls = std::cell::RefCell::new(controls.as_deref_mut());
         crate::normalize::visit_normalized(
             text,
             line_number,
             rules,
             |_, _| {
-                controls.as_deref_mut().is_none_or(|budget| {
+                controls.borrow_mut().as_deref_mut().is_none_or(|budget| {
                     if first_row {
                         // Early normalization failures retain the physical record charge.
                         budget.records -= 1;
@@ -292,6 +293,11 @@ fn finish_candidate(
                 });
                 match parsed {
                     Ok(mut entry) => {
+                        if controls.borrow_mut().as_deref_mut().is_some_and(|budget| {
+                            !budget.retain_classification(&entry.classification)
+                        }) {
+                            return false;
+                        }
                         entry.normalized_record = Some(entry.raw_logline.clone());
                         entry.source_file = Some(crate::evidence::path_label(path));
                         entry.source_row_path = Some(row_path);
@@ -327,6 +333,12 @@ fn finish_candidate(
     }
     match parse_log_entry_in_format(text, line_number, config, format) {
         Ok(mut entry) => {
+            if controls
+                .as_deref_mut()
+                .is_some_and(|budget| !budget.retain_classification(&entry.classification))
+            {
+                return;
+            }
             entry.source_file = Some(crate::evidence::path_label(path));
             entries.push(entry);
         }
@@ -1657,12 +1669,11 @@ fn map_module_path_to_component(module_path: &str, parser_rules: &ParserRules) -
 
 fn split_tracing_message_and_fields(rest: &str) -> (String, HashMap<String, String>) {
     let trimmed = rest.trim_end();
-    if trimmed.is_empty() {
-        return (String::new(), HashMap::new());
+    if !trimmed.contains('=') {
+        return (trimmed.to_string(), HashMap::new());
     }
 
-    let mut boundaries = vec![0usize];
-    boundaries.extend(
+    let boundaries = std::iter::once(0).chain(
         trimmed
             .char_indices()
             .filter_map(|(index, ch)| ch.is_whitespace().then_some(index + ch.len_utf8())),
@@ -1689,21 +1700,22 @@ fn parse_structured_fields(input: &str) -> Option<HashMap<String, String>> {
     let mut parsed_any = false;
 
     while !remaining.is_empty() {
-        let separator = remaining.find('=')?;
-        let key = remaining[..separator].trim();
+        // Reject prose at its first token instead of rescanning the entire suffix
+        // for '=' at every word boundary in a long tracing message.
+        let key_end = remaining
+            .find(|ch: char| ch == '=' || ch.is_whitespace())
+            .unwrap_or(remaining.len());
+        let key = &remaining[..key_end];
         if !FIELD_KEY_RE.is_match(key) {
             return None;
         }
 
-        let (value, consumed) = parse_field_value(&remaining[separator + 1..])?;
+        let value_input = remaining[key_end..].trim_start().strip_prefix('=')?;
+        let (value, consumed) = parse_field_value(value_input)?;
         fields.insert(key.to_string(), value);
         parsed_any = true;
 
-        if separator + 1 + consumed >= remaining.len() {
-            remaining = "";
-        } else {
-            remaining = remaining[separator + 1 + consumed..].trim_start();
-        }
+        remaining = value_input[consumed..].trim_start();
     }
 
     parsed_any.then_some(fields)
@@ -2249,6 +2261,52 @@ pub(crate) fn record_correlation_scope(
 #[cfg(test)]
 mod capture_tests {
     use super::*;
+    #[test]
+    fn classification_memory_cutoff_applies_to_native_and_normalized_records() {
+        for normalized in [false, true] {
+            let mut config = crate::config::load_config_from_path(Path::new(
+                "examples/investigations/profile.toml",
+            ))
+            .unwrap();
+            config.profile_name = "p".repeat(4096);
+            if normalized {
+                config.normalization = Some(crate::normalize::NormalizationRules::default());
+            }
+            let text = concat!(
+                "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"start\",",
+                "\"phase\":\"start\",\"operation\":\"run\",\"id\":\"one\",\"session\":\"scope\"}\n"
+            );
+            let mut budget = crate::processing::test_budget();
+            budget.limits.memory_bytes = 100 * 1024;
+            let parsed = parse_capture(
+                Path::new("source"),
+                text.as_bytes(),
+                true,
+                &config,
+                &mut budget,
+            )
+            .unwrap();
+            assert!(parsed.entries.is_empty());
+            assert_eq!(parsed.coverage.nonempty_lines, 1);
+            assert!(budget.memory_bytes <= budget.limits.memory_bytes);
+            let stop = budget.stop.unwrap();
+            assert_eq!(stop["stage"], "classification");
+            assert_eq!(stop["reason"], "memory_limit");
+
+            let mut budget = crate::processing::test_budget();
+            let parsed = parse_capture(
+                Path::new("source"),
+                text.as_bytes(),
+                true,
+                &config,
+                &mut budget,
+            )
+            .unwrap();
+            assert_eq!(parsed.entries.len(), 1);
+            assert!(budget.stop.is_none());
+        }
+    }
+
     #[test]
     fn cutoff_does_not_close_multiline_candidate_or_partial_json_scalar() {
         let config =

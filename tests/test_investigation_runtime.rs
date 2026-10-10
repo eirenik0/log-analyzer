@@ -150,6 +150,53 @@ fn limits_and_cancellation_return_valid_partial_processed_populations() {
     let (report, _) = investigate(temp.path(), &["--cancel-file", cancel.to_str().unwrap()]);
     assert_eq!(report["processing"]["stop"]["reason"], "cancelled");
 }
+
+#[test]
+fn default_memory_accounting_processes_eight_thousand_paired_records() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("synthetic.jsonl");
+    let artifact = temp.path().join("evidence.json");
+    let mut lines = String::new();
+    for index in 0..8018 {
+        let row = json!({
+            "ts": format!("2026-01-01T00:00:0{}Z", index % 2),
+            "level": "INFO", "component": "worker", "component_id": "synthetic",
+            "session": "synthetic", "message": "synthetic boundary",
+            "phase": if index % 2 == 0 { "start" } else { "end" },
+            "operation": "run", "id": format!("op-{}", index / 2),
+            "outcome": "success",
+        });
+        lines.push_str(&row.to_string());
+        lines.push('\n');
+    }
+    fs::write(&source, lines).unwrap();
+    let report = success(&[
+        "--config",
+        "examples/investigations/profile.toml",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    assert_eq!(report["processing"]["limits"]["memory_bytes"], 536870912u64);
+    assert_eq!(report["processing"]["status"], "complete");
+    assert!(report["processing"]["stop"].is_null());
+    assert_eq!(report["processing"]["usage"]["records"], 8018);
+    assert_eq!(count(&report, "physical-records"), 8018);
+    assert_eq!(count(&report, "paired-lifecycles"), 4009);
+    assert_eq!(report["artifact"]["status"], "complete");
+    let retained: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(retained["records"].as_array().unwrap().len(), 8018);
+    assert_eq!(
+        retained["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["kind"] == "measurement")
+            .count(),
+        4009
+    );
+}
 #[test]
 fn bounded_presentation_never_changes_retained_measurements() {
     for extra in [

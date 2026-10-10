@@ -28,6 +28,17 @@ trusted-parser-selected compatibility fields can avoid exhausting output before
 retrieval starts. Read schema details only when validating a contract requires
 them. Tool characters/bytes are not exact model-token counts.
 
+## Distinguish processing cutoffs from output pages
+
+For unified investigations, inspect `processing.stop` and the parsed-record count
+before starting another calculation. A `memory_limit` stop is an accounted-data
+allowance, not measured process RSS; shared profile storage, retained classifications,
+source amplification and fixed metadata contribute differently. Output pagination
+cannot recover records that processing never reached. Repeating the same input and
+limits repeats the cutoff. Preserve partial facts and report the unprocessed scope;
+only retry with revised limits within the established resource budget. Use an
+external peak-RSS measurement when diagnosing actual RAM consumption.
+
 ## Verify a source citation
 
 Use `report_metadata.evidence` to identify the snapshot, profile and consumed

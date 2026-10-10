@@ -120,7 +120,11 @@ reports a prefix if physical EOF was not observed.
 
 The memory setting bounds a conservative reservation model for buffered/retained
 source and calculated data, including normalization field-mapping amplification
-and configuration-derived copies. It can stop earlier than the record cap and does
+and owned classifications. Shared configuration is reserved once; fixed per-record
+metadata is charged separately from source-byte amplification. Artifact collections
+move into their retained document, and construction buffers are released before
+stored-byte validation. A `memory_limit` stop reports exhaustion of this accounting
+allowance, not a measurement of process RAM. It can stop earlier than the record cap and does
 not promise a process RSS ceiling. Profile loading, compiled regexes, fixed report
 metadata and final partial-outcome delivery are outside that accounting; effective
 profile serialization is capped at 4 MiB. Deadlines are checked between bounded
@@ -1483,6 +1487,40 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 ```
+
+### Measuring search and tracing performance
+
+Use optimized builds for timing. The synthetic benchmark covers overlapping search
+context, search without context, and long Rust tracing messages with and without
+structured fields. It reports repeated end-to-end timings and checks identical
+stdout between binaries, excluding the separately recorded build identity footer.
+Save a release binary before editing to compare changes:
+
+```bash
+cargo build --release --locked
+cp target/release/log-analyzer /tmp/log-analyzer-before
+# Make the change, then rebuild.
+cargo build --release --locked
+python3 scripts/measure-search-performance.py target/release/log-analyzer \
+  --baseline /tmp/log-analyzer-before --repeats 3
+```
+
+Use `--records`, `--context`, and `--words` to vary input size. These local synthetic
+wall times include startup, parsing, and rendering; they do not measure peak memory
+or establish production throughput. Search visits each displayed context entry once
+after ordering matches. Tracing rejects prose tokens before searching for field values.
+
+To reproduce investigation memory pressure on 8,018 synthetic records (4,009 paired
+operations), run the Unix memory probe in a fresh process for each release binary:
+
+```bash
+python3 scripts/measure-investigation-memory.py target/release/log-analyzer
+```
+
+It reports the processing stop reason, accounted bytes, completed counts, and actual
+child peak RSS separately. `--memory-bytes` overrides accounting for diagnosis of an
+older build; the default probe uses the executable's unchanged limits. This is a
+synthetic workload, not a guarantee for differently sized records or profiles.
 
 ### Structured export normalization
 

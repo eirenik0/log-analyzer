@@ -24,7 +24,6 @@ pub(crate) struct Budget {
     pub expanded_records: u64,
     pub work_units: u64,
     pub memory_bytes: u64,
-    pub configuration_bytes: u64,
     pub stop: Option<Value>,
     pub halted: bool,
     pub active_scope: usize,
@@ -40,7 +39,6 @@ impl Budget {
             expanded_records: 0,
             work_units: 0,
             memory_bytes: 0,
-            configuration_bytes: 0,
             stop: None,
             halted: false,
             active_scope: 0,
@@ -95,9 +93,10 @@ impl Budget {
         }
         self.checkpoint("parse", 1)
     }
-    /// Reserve before parsing/cloning. The multiplier includes JSON node overhead,
-    /// raw/normalized records, classification, correlation, artifact and report copies.
-    /// Field mapping can duplicate the entire row once per configured mapping.
+    /// Reserve before parsing/cloning. Source amplification covers JSON nodes,
+    /// raw/normalized records and downstream copies. Fixed record/evidence metadata
+    /// is charged separately, not amplified as if it were source text. Field mapping
+    /// can duplicate the entire row once per configured mapping.
     pub fn record(&mut self, bytes: usize, mappings: usize, expanded: bool) -> bool {
         if !self.checkpoint("classification", (bytes as u64).saturating_add(1)) {
             return false;
@@ -109,15 +108,37 @@ impl Budget {
             return self.stop("parse", "record_limit", Some("records"));
         }
         let allowance = (bytes as u64)
-            .saturating_add(4096)
-            .saturating_mul(128u64.saturating_add((mappings as u64).saturating_mul(64)));
-        let allowance = allowance.saturating_add(self.configuration_bytes.saturating_mul(16));
+            .saturating_mul(128u64.saturating_add((mappings as u64).saturating_mul(64)))
+            .saturating_add(16 * 1024);
         if !self.reserve("parse", allowance) {
             return false;
         }
         self.records += 1;
         self.expanded_records += u64::from(expanded);
         true
+    }
+    /// Compiled rules are shared. Charge only the owned classification retained on
+    /// this record (including literal values, rule IDs and invalid/conflict details).
+    /// The one-time configuration reservation covers scratch classification storage.
+    pub fn retain_classification(
+        &mut self,
+        classification: &Option<crate::event_rules::ClassifiedRecord>,
+    ) -> bool {
+        #[derive(Default)]
+        struct Size(u64);
+        impl std::io::Write for Size {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 = self.0.saturating_add(bytes.len() as u64);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut size = Size::default();
+        serde_json::to_writer(&mut size, classification)
+            .expect("classification serializes to a counting writer");
+        self.reserve("classification", size.0.saturating_mul(32))
     }
     pub fn limits_json(&self) -> Value {
         json!({"input_bytes":self.limits.input_bytes,"records":self.limits.records,
@@ -146,4 +167,42 @@ pub(crate) fn test_budget() -> Budget {
         record_bytes: 262144,
         cancel_file: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event_rules::ClassifiedRecord;
+
+    #[test]
+    fn retained_classification_cost_scales_with_owned_provenance() {
+        let mut budget = test_budget();
+        assert!(budget.record(200, 0, false));
+        let source_cost = budget.memory_bytes;
+        assert!(budget.retain_classification(&Some(ClassifiedRecord::Unclassified)));
+        let small_cost = budget.memory_bytes - source_cost;
+        let before = budget.memory_bytes;
+        assert!(
+            budget.retain_classification(&Some(ClassifiedRecord::Conflict {
+                kinds: Vec::new(),
+                profile: "synthetic".into(),
+                rule_ids: vec!["r".repeat(4096); 8],
+            }))
+        );
+        assert!(budget.memory_bytes - before > small_cost * 100);
+    }
+
+    #[test]
+    fn classification_cutoff_does_not_overrun_memory_allowance() {
+        let mut budget = test_budget();
+        assert!(budget.record(200, 0, false));
+        let before = budget.memory_bytes;
+        budget.limits.memory_bytes = before + 1;
+        assert!(!budget.retain_classification(&Some(ClassifiedRecord::Unclassified)));
+        assert_eq!(budget.memory_bytes, before);
+        assert!(budget.halted);
+        let stop = budget.stop.unwrap();
+        assert_eq!(stop["stage"], "classification");
+        assert_eq!(stop["reason"], "memory_limit");
+    }
 }
