@@ -21,6 +21,7 @@ const EFFECTIVE_BYTES: usize = 4 * 1024 * 1024;
 pub(super) struct Candidate {
     pub config: AnalyzerConfig,
     pub digest: String,
+    pub analysis_digest: String,
     pub origins: Vec<Value>,
 }
 
@@ -176,7 +177,7 @@ pub(super) fn load(directory: &Path, optional: bool, budget: &mut Budget) -> Cat
     let mut candidates = Vec::<Candidate>::new();
     let base_digest =
         evidence::profile_digest(config::default_config()).expect("profile serializes");
-    let mut add = |config: AnalyzerConfig, origin: Value, budget: &mut Budget| -> bool {
+    let mut add = |config: AnalyzerConfig, mut origin: Value, budget: &mut Budget| -> bool {
         let bytes = serde_json::to_vec(&config).expect("profile serializes");
         if bytes.len() > EFFECTIVE_BYTES {
             return false;
@@ -185,7 +186,15 @@ pub(super) fn load(directory: &Path, optional: bool, budget: &mut Budget) -> Cat
         if digest == base_digest {
             return true;
         }
-        if let Some(existing) = candidates.iter_mut().find(|c| c.digest == digest) {
+        let mut analysis = serde_json::to_value(&config).expect("profile serializes");
+        analysis.as_object_mut().unwrap().remove("profile_name");
+        let analysis_digest = evidence::digest(analysis.to_string().as_bytes());
+        origin["profile_sha256"] = json!(digest);
+        origin["profile_name"] = json!(config.profile_name);
+        if let Some(existing) = candidates
+            .iter_mut()
+            .find(|c| c.analysis_digest == analysis_digest)
+        {
             existing.origins.push(origin);
         } else {
             if !budget.reserve("profile_discovery", (bytes.len() as u64).saturating_mul(16)) {
@@ -194,6 +203,7 @@ pub(super) fn load(directory: &Path, optional: bool, budget: &mut Budget) -> Cat
             candidates.push(Candidate {
                 config,
                 digest,
+                analysis_digest,
                 origins: vec![origin],
             });
         }

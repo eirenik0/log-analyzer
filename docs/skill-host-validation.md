@@ -30,6 +30,22 @@ inputs/profiles, reused IDs, incomplete captures, budget stops and citations.
 schemas and runs the credential-free evaluation corpus. Scripted checks are not
 real-model evaluations and establish no model accuracy or token savings.
 
+## CLI and skill refresh (2026-10-10)
+
+The PR #84 follow-up uses canonical `profile`/`evidence` commands, JSON defaults,
+and the shared `--summary` option. The canonical skill and generated Claude bundle
+were synchronized and validated. The current deterministic checks cover maintained
+command examples, eight workflow cases, and nine profile-discovery/recovery cases
+without injected profiles, including summary-schema validation and retained evidence.
+Relative links and README anchors were checked locally. Python checks passed
+(47 script tests and 63 evaluation tests).
+
+The native host observations below predate these CLI/skill changes. They have not
+been rerun for this revision, so they do not demonstrate current host activation,
+model adherence, accuracy, reliability gains, or token savings. See the
+[discovery evaluation protocol](../evals/README.md#profile-discovery-and-recovery)
+for the separate model trials needed to measure those outcomes.
+
 ## Native host smoke checks
 
 Each smoke installed the skill in a temporary project outside the source

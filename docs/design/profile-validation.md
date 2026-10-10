@@ -1,21 +1,24 @@
 # Profile suitability on sample evidence
 
-`validate-profile` checks the explicitly selected `--preset` or `--config`
+`profile validate` checks the built-in or TOML profile selected with `--profile`
 against representative logs. It emits JSON, uses the existing deterministic
 parser/classifier/pairing engines, and never edits or activates a configuration.
 External agents can propose TOML in a separate file and invoke the same command.
 
 ```sh
-log-analyzer --config examples/profile-candidate.toml --report-max-items 4 validate-profile examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
-log-analyzer --config examples/profile-candidate.toml --complete-output validate-profile examples/profile-validation.jsonl --kind request --purpose recognition
-log-analyzer --config candidate.toml validate-profile sample.log --kind command
+log-analyzer --profile examples/profile-candidate.toml --report-max-items 4 profile validate examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
+log-analyzer --profile examples/profile-candidate.toml --complete-output profile validate examples/profile-validation.jsonl --kind request --purpose recognition
+log-analyzer --profile candidate.toml profile validate sample.log --kind command
 ```
 
 The maintained example includes positive start classification, negative context,
-and an exact 1000-ms start/end pair assertion. Both preset names and inherited or
+and an exact 1000-ms start/end pair assertion. Both built-in names and inherited or
 generated candidates can be checked. Generate an editable candidate with
-`generate-config --template TEMPLATE --profile-name NAME`; validate its saved
-TOML before explicitly choosing it for subsequent commands. A high match count
+`profile prepare SAMPLE --template TEMPLATE --candidate-output candidate.toml
+--kind request`; it saves a new TOML candidate separately from the JSON validation
+report. Choose the kind matching the investigation, edit missing domain rules,
+then validate against independently known assertions before selecting it.
+Use `--summary` for at most five displayed validation items and exact cursors. A high match count
 never automatically selects a profile. Repeated candidate invocations can all
 return unsuitable results; there is no ranking, model call, or wording-similarity
 inference of lifecycle meaning.

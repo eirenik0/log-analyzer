@@ -1,5 +1,66 @@
 # Grounded investigation evaluations
 
+## Profile discovery and recovery
+
+`discovery.py` starts with a question, log paths and project context, **without an
+injected profile**. Its separate nine-case suite covers project/nested-directory
+discovery, conflicting outcome rules, current saved-mapping revalidation, terminal
+evidence beyond the first page, grammar beyond the detection prefix, processing
+cutoffs, unparsed input and unsupported semantics. The broker permits discovery,
+profile/fact reads, resolution, validation, bounded investigation reruns, and
+checksum-bound evidence retrieval. Project/user registries are isolated from the
+operator's real home. Profile/mapping mutations are unavailable to participants;
+the saved-mapping fixture is prepared separately from the measured workflow.
+
+```sh
+python3 evals/discovery.py --binary target/release/log-analyzer \
+  --report target/discovery-smoke.json
+python3 evals/discovery.py --binary target/release/log-analyzer --view full
+```
+
+`--view brief` (the default) invokes `investigate --summary`; `--view full` uses
+the full investigation report. `brief` names the evaluator arm and report contract,
+not the legacy CLI flag. `cargo test` runs the summary smoke and validates the
+emitted briefs against JSON Schema.
+Python regressions reject wrong profiles, wrong outcomes, unsupported completion,
+unseen/stale terminal citations, missing limitations and scope/command escapes.
+The scorer requires retained evidence retrieval. It does not grade unrestricted
+prose, causes or native host skill activation. Scripted passes prove harness and
+CLI execution only; they do not measure model quality or instruction adherence.
+
+The existing trusted adapter protocol supports model trials:
+
+```sh
+python3 evals/discovery.py --binary target/release/log-analyzer --repeats 3 \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --skill-mode discover --view brief \
+  --report target/discovery-model.json --adapter /absolute/path/to/adapter
+```
+
+Compare `--skill-mode none|entrypoint|discover` and `--view full|brief`, keeping
+model configuration and budgets fixed and alternating run order. `none` withholds
+skill resources, `entrypoint` supplies the actual entrypoint on every turn, and
+`discover` exposes the installed bundle through bounded resource tools. The latter
+measures protocol resource discovery, **not native Codex/Claude/Pi activation**;
+test those hosts separately. Scripted runs reject skill modes other than `none`.
+Artifacts, prompts and traces stay local; adapters share filesystem access and are
+trusted, not OS-sandboxed. Provider usage is adapter-reported, never estimated from
+output bytes. Missing spend stops further paid calls through the shared adapter.
+
+Reports retain failed attempts, typed answers, output bytes, tool calls, repeated
+investigations, skill reads, elapsed time, known/unknown usage, corpus/skill/harness/
+binary hashes and each case's all-trials-pass result. This last result is a small
+sample consistency observation, not a population reliability guarantee. Fixtures
+and scripted strategy are public development cases; use independently authored
+held-out incidents before setting production quality targets. Use the existing
+prose-review protocol to check unsupported causal implications in natural answers.
+
+This separation follows the interface-testing approach of
+[SWE-agent](https://arxiv.org/abs/2405.15793), the procedural-skill comparison in
+[SkillsBench](https://arxiv.org/abs/2602.12670), and repeated-trial reliability in
+[τ-bench](https://arxiv.org/abs/2406.12045). Their results motivate experiments;
+they do not establish reliability for this analyzer.
+
 Use Python 3.10+ and a built executable. All committed inputs are synthetic. Mandatory
 checks use no model credentials, packages or network:
 

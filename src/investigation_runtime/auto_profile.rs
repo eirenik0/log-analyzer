@@ -124,7 +124,7 @@ pub(super) fn detect(
             budget.expanded_records = expanded_before;
         }
         let performed = passes > passes_before;
-        candidates.push(json!({"profile":candidate.config.profile_name,"profile_sha256":candidate.digest,"origins":candidate.origins,
+        candidates.push(json!({"profile":candidate.config.profile_name,"profile_sha256":candidate.digest,"analysis_sha256":candidate.analysis_digest,"origins":candidate.origins,
             "status":if !performed {"not_performed"} else if budget.stop.is_some() || parse_failures > 0 {"partial"} else {"complete"},
             "parse_passes":passes - passes_before,"parse_failures":parse_failures,"structural_loss":structural_loss,
             "lifecycle_records":performed.then_some(matched),
@@ -175,7 +175,7 @@ pub(super) fn detect(
         "probe_records":records,"work_units":budget.work_units.saturating_sub(work_before),
         "basis":"Bounded captured prefixes, using existing profile parsers and classifiers. Every nonempty input must contain lifecycle evidence for the sole matching profile.",
         "limitations":"Grammar inference is not independent semantic validation or proof of completion. Unsampled records may differ. Ambiguous, unrecognized or insufficient evidence uses generic base analysis.",
-        "next_step":"Inspect coverage, goal support and retained evidence. Override with --profile (including base); use resolve-profile and validate-profile for a remaining semantic gap."
+        "next_step":"Inspect coverage, goal support and retained evidence. Override with --profile (including base); use profile resolve and profile validate for a remaining semantic gap."
     });
     let sources = std::mem::take(&mut catalog.sources);
     drop(catalog);

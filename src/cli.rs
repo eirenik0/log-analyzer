@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 #[derive(serde::Serialize, Debug, Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
-    /// Human-readable text output (default)
+    /// Human-readable text for compatibility
     Text,
-    /// JSON output for LLM consumption
+    /// Structured JSON output (default)
     Json,
 }
 
@@ -150,7 +150,12 @@ pub enum SearchCountBy {
 #[derive(serde::Serialize, Parser)]
 #[command(author, version = env!("LOG_ANALYZER_BUILD_VERSION"), about, long_about = None)]
 #[command(name = "log-analyzer")]
-#[command(after_help = "FILTER EXPRESSION SYNTAX:
+#[command(
+    after_help = "Start with: log-analyzer investigate LOG --artifact evidence.json --summary
+Profiles: log-analyzer profile --help
+Specialized commands: log-analyzer --help-advanced
+
+FILTER EXPRESSION SYNTAX:
   --filter \"type:value [!type:value] ...\"
 
   Filter types (with aliases):
@@ -166,7 +171,8 @@ pub enum SearchCountBy {
     --filter \"l:ERROR\"                    Only ERROR level logs
     --filter \"c:core !l:DEBUG\"            Core component, exclude DEBUG
     --filter \"t:timeout d:incoming\"       Contains 'timeout', incoming only
-    --filter \"actor_kind:switch\"          Structured field filter on tracing/json logs")]
+    --filter \"actor_kind:switch\"          Structured field filter on tracing/json logs"
+)]
 pub struct Cli {
     /// Bound the final JSON report by Unicode scalar characters (not model tokens); implies JSON
     #[arg(long, global = true, conflicts_with = "complete_output")]
@@ -196,8 +202,13 @@ pub struct Cli {
     #[arg(long, global = true, requires = "redact")]
     pub mask_id: Vec<String>,
 
-    /// Output format (text or json)
-    #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Text, global = true, group = "output_options", env = "LOG_ANALYZER_FORMAT")]
+    /// Concise JSON with explicit omissions, limitations, and next steps
+    #[arg(long, global = true, conflicts_with = "complete_output")]
+    #[serde(skip_serializing)]
+    pub summary: bool,
+
+    /// Compatibility output format; JSON is the default
+    #[arg(short = 'F', long, value_enum, default_value_t = OutputFormat::Json, hide = true, global = true, group = "output_options", env = "LOG_ANALYZER_FORMAT")]
     pub format: OutputFormat,
 
     /// JSON output (LLM-friendly, implies --compact). Shorthand for -F json -c
@@ -304,7 +315,14 @@ pub struct PrepareProfileArgs {
 
 #[derive(serde::Serialize, clap::Args)]
 pub struct InvestigateArgs {
-    /// Discover TOML profiles recursively in this directory (default: ./config).
+    /// Stable project context for profile discovery; defaults to the current directory
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub project_root: Option<PathBuf>,
+    /// Compact decision brief with coverage, artifact binding and next actions (JSON)
+    #[arg(long, hide = true)]
+    pub brief: bool,
+    /// Discover TOML profiles here (default: PROJECT_ROOT/config); relative paths use --project-root.
     /// Ignored with an explicit --profile.
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
@@ -368,20 +386,109 @@ pub struct InvestigationEvidenceArgs {
     pub artifact_max_bytes: u64,
 }
 
+#[derive(serde::Serialize, clap::Args)]
+pub struct ValidateProfileArgs {
+    #[arg(required = true, num_args = 1..)]
+    #[serde(serialize_with = "crate::evidence::serialize_paths")]
+    pub files: Vec<PathBuf>,
+    /// Requested operation kind; other kinds remain in the global inventory
+    #[arg(long, value_enum)]
+    pub kind: OperationType,
+    /// Timing requires reliable paired boundaries; recognition only checks classification
+    #[arg(long, value_enum, default_value = "timing")]
+    pub purpose: crate::profile_validation::Purpose,
+    /// Strict source-addressed positive/negative classification and pair assertions
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub expected: Option<PathBuf>,
+}
+
+#[derive(serde::Serialize, clap::Args)]
+pub struct ResolveProfileArgs {
+    #[arg(required = true, num_args = 1..)]
+    #[serde(serialize_with = "crate::evidence::serialize_paths")]
+    pub files: Vec<PathBuf>,
+    #[arg(long, value_enum)]
+    pub kind: OperationType,
+    #[arg(long, value_enum, default_value = "timing")]
+    pub purpose: crate::profile_validation::Purpose,
+    /// Source-addressed expected facts; counts or profile labels do not authorize automatic selection
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub expected: Option<PathBuf>,
+    /// Additional editable TOML alternatives (repeatable, at most 16); never activated or modified
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_paths")]
+    pub candidate_config: Vec<PathBuf>,
+    /// Read-only version-1 source/profile association; persistence management is separate
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub association: Option<PathBuf>,
+    /// Project root for mapping lookup; defaults to the current directory
+    #[arg(long)]
+    pub project_root: Option<PathBuf>,
+    /// Override project mapping registry; lookup never creates it
+    #[arg(long)]
+    pub project_mappings: Option<PathBuf>,
+    /// Override user mapping registry; lookup never creates it
+    #[arg(long)]
+    pub user_mappings: Option<PathBuf>,
+    /// Skip persistent mapping lookup
+    #[arg(long)]
+    pub no_mappings: bool,
+}
+
+#[derive(serde::Serialize, clap::Args)]
+pub struct ProfileMappingsArgs {
+    /// Project paths are root-relative; user mappings also bind absolute project context
+    #[arg(long, value_enum, default_value = "project")]
+    pub scope: MappingScope,
+    /// Explicit project root; defaults to the current directory, with no ancestor search
+    #[arg(long)]
+    pub project_root: Option<PathBuf>,
+    /// Override the selected scope's registry file
+    #[arg(long)]
+    pub registry: Option<PathBuf>,
+    #[command(subcommand)]
+    pub action: MappingAction,
+}
+
+#[derive(serde::Serialize, clap::Args)]
+pub struct ProfileArgs {
+    #[command(subcommand)]
+    pub command: ProfileCommand,
+}
+
+#[derive(serde::Serialize, Subcommand)]
+pub enum ProfileCommand {
+    /// Save an editable profile candidate and report validation gaps
+    Prepare(PrepareProfileArgs),
+    /// Check a selected profile against sample evidence
+    Validate(ValidateProfileArgs),
+    /// Resolve ambiguous profiles using independent expected facts
+    Resolve(ResolveProfileArgs),
+    /// Inspect or explicitly manage validated profile associations
+    Mappings(ProfileMappingsArgs),
+}
+
 #[derive(serde::Serialize, Subcommand)]
 pub enum Commands {
     /// Bounded investigation with automatic profile detection and reusable evidence (JSON)
     ///
-    /// Samples captured input prefixes using built-ins and TOML profiles from ./config,
+    /// Samples captured input prefixes using built-ins and TOML profiles from PROJECT_ROOT/config,
     /// then parses and correlates each independent input once. --profile bypasses detection. Ambiguous or
     /// unrecognized samples use generic base analysis; inspect profile_selection and
     /// per-goal support. Detection shares processing budgets and never rereads sources.
     Investigate(InvestigateArgs),
     /// Retrieve retained evidence without reparsing or correlating source logs (JSON)
+    #[command(name = "evidence", alias = "investigation-evidence")]
     InvestigationEvidence(InvestigationEvidenceArgs),
+    /// Prepare, validate, resolve, and manage profiles
+    Profile(ProfileArgs),
     /// Print build identity, commands, formats, profiles, report schemas and contract availability as JSON
     Capabilities,
     /// Preview JSON row types and JSON Pointer paths without processing or decoding strings
+    #[command(hide = true)]
     Schema {
         #[serde(serialize_with = "crate::evidence::serialize_path")]
         file: PathBuf,
@@ -389,71 +496,17 @@ pub enum Commands {
         samples: u32,
     },
     /// Validate the selected built-in or file-based profile against sample evidence (JSON)
-    ValidateProfile {
-        #[arg(required = true, num_args = 1..)]
-        #[serde(serialize_with = "crate::evidence::serialize_paths")]
-        files: Vec<PathBuf>,
-        /// Requested operation kind; other kinds remain in the global inventory
-        #[arg(long, value_enum)]
-        kind: OperationType,
-        /// Timing requires reliable paired boundaries; recognition only checks classification
-        #[arg(long, value_enum, default_value = "timing")]
-        purpose: crate::profile_validation::Purpose,
-        /// Strict source-addressed positive/negative classification and pair assertions
-        #[arg(long)]
-        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
-        expected: Option<PathBuf>,
-    },
+    #[command(hide = true)]
+    ValidateProfile(ValidateProfileArgs),
     /// Save a separate editable candidate and report sample validation plus missing domain knowledge (JSON)
+    #[command(hide = true)]
     PrepareProfile(PrepareProfileArgs),
     /// Resolve profiles deterministically; automatic choices require supplied semantic assertions (JSON)
-    ResolveProfile {
-        #[arg(required = true, num_args = 1..)]
-        #[serde(serialize_with = "crate::evidence::serialize_paths")]
-        files: Vec<PathBuf>,
-        #[arg(long, value_enum)]
-        kind: OperationType,
-        #[arg(long, value_enum, default_value = "timing")]
-        purpose: crate::profile_validation::Purpose,
-        /// Source-addressed expected facts; counts or profile labels do not authorize automatic selection
-        #[arg(long)]
-        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
-        expected: Option<PathBuf>,
-        /// Additional editable TOML alternatives (repeatable, at most 16); never activated or modified
-        #[arg(long)]
-        #[serde(serialize_with = "crate::evidence::serialize_paths")]
-        candidate_config: Vec<PathBuf>,
-        /// Read-only version-1 source/profile association; persistence management is separate
-        #[arg(long)]
-        #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
-        association: Option<PathBuf>,
-        /// Project root for mapping lookup; defaults to the current directory
-        #[arg(long)]
-        project_root: Option<PathBuf>,
-        /// Override project mapping registry; lookup never creates it
-        #[arg(long)]
-        project_mappings: Option<PathBuf>,
-        /// Override user mapping registry; lookup never creates it
-        #[arg(long)]
-        user_mappings: Option<PathBuf>,
-        /// Skip persistent mapping lookup
-        #[arg(long)]
-        no_mappings: bool,
-    },
+    #[command(hide = true)]
+    ResolveProfile(ResolveProfileArgs),
     /// Inspect or explicitly manage assertion-validated source/profile mappings (JSON)
-    ProfileMappings {
-        /// Project paths are root-relative; user mappings also bind absolute project context
-        #[arg(long, value_enum, default_value = "project")]
-        scope: MappingScope,
-        /// Explicit project root; defaults to the current directory, with no ancestor search
-        #[arg(long)]
-        project_root: Option<PathBuf>,
-        /// Override the selected scope's registry file
-        #[arg(long)]
-        registry: Option<PathBuf>,
-        #[command(subcommand)]
-        action: MappingAction,
-    },
+    #[command(hide = true)]
+    ProfileMappings(ProfileMappingsArgs),
     /// Compare two log files and show differences between JSON objects
     #[command(alias = "cmp")]
     Compare {
@@ -481,6 +534,7 @@ pub enum Commands {
     },
 
     /// Compare two log files showing only differences (shortcut for compare --diff-only)
+    #[command(hide = true)]
     Diff {
         /// First log file
         #[arg(required = true)]
@@ -506,8 +560,9 @@ pub enum Commands {
     /// Structural coverage does not assess lifecycle semantics. Run a bounded
     /// investigate before custom parsing; it detects built-in and config-folder profiles automatically.
     /// --profile overrides detection. Inspect profile_selection and per-goal
-    /// support; use resolve-profile/validate-profile for remaining semantic gaps.
+    /// support; use profile resolve / profile validate for remaining semantic gaps.
     #[command(alias = "i", alias = "inspect")]
+    #[command(hide = true)]
     Info {
         /// One or more log files to analyze
         #[arg(required = true, num_args = 1..)]
@@ -552,6 +607,7 @@ pub enum Commands {
     },
 
     /// Diagnose clustered errors/warnings and affected sessions across one or more logs
+    #[command(hide = true)]
     Errors {
         /// One or more log files to analyze (supports shell-expanded globs)
         #[arg(required = true, num_args = 1..)]
@@ -596,6 +652,7 @@ pub enum Commands {
     },
 
     /// Extract payload/settings fields as aggregate values or correlated rows
+    #[command(hide = true)]
     Extract {
         /// Log file to analyze
         #[arg(required = true)]
@@ -616,6 +673,7 @@ pub enum Commands {
     },
 
     /// Generate LLM-friendly compact JSON output of differences (shortcut for compare --diff-only -F json -c)
+    #[command(hide = true)]
     LlmDiff {
         /// First log file
         #[arg(required = true)]
@@ -638,6 +696,7 @@ pub enum Commands {
 
     /// Generate LLM-friendly compact JSON output of a single log file with sanitized content
     #[command(visible_alias = "llm")]
+    #[command(hide = true)]
     Process {
         /// Log file to process
         #[arg(required = true)]
@@ -661,6 +720,7 @@ pub enum Commands {
     #[command(
         long_about = "Analyze operation timing and report incomplete lifecycle evidence. Shipped profiles use versioned event_rules for commands, requests and events, classified once before payload cleanup. Phases, identities and scopes are cached; transport direction does not imply a phase. Classification coverage counts selected parsed records before operation-type selection and display limits. Start-only, end-only, identity-only, conflicting and invalid evidence remains diagnostic; no completion elsewhere is required to report a start. Version-2 start rules may set end_expected = false when no end record is emitted; perf counts them as start_only_events rather than orphans, without measuring a duration. Operation-type filters retain these events in suppression totals. Legacy custom marker profiles retain their semantics. Record-field scopes over 4096 bytes use bounded prefix/length/digest keys; short values containing the reserved digest marker are encoded too. Digest collisions remain possible. Explicit event-rule scope mappings use the same encoding after validation and retain their input limit. See README for the supported lifecycle grammar and migration."
     )]
+    #[command(hide = true)]
     Perf {
         /// One or more log files to analyze
         #[arg(required = true, num_args = 1..)]
@@ -689,6 +749,7 @@ pub enum Commands {
     },
 
     /// Trace matching events by ID substring or session path (may include multiple lifecycles)
+    #[command(hide = true)]
     Trace {
         /// One or more log files to search (supports shell-expanded globs)
         #[arg(required = true, num_args = 1..)]
@@ -704,8 +765,9 @@ pub enum Commands {
         session: Option<String>,
     },
 
-    /// Generate editable TOML from samples; check it with validate-profile before selecting it
+    /// Generate editable TOML from samples; check it with profile validate before selecting it
     #[command(alias = "gen-config")]
+    #[command(hide = true)]
     GenerateConfig {
         /// One or more log files to analyze (supports shell-expanded globs)
         #[arg(required = true, num_args = 1..)]
@@ -734,6 +796,37 @@ impl Cli {
     }
 
     pub fn prepare_common_reports(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.summary && matches!(self.format, OutputFormat::Text) {
+            return Err("--summary returns JSON and conflicts with --format text".into());
+        }
+        if matches!(self.command, Commands::Profile(_)) {
+            let Commands::Profile(profile) =
+                std::mem::replace(&mut self.command, Commands::Capabilities)
+            else {
+                unreachable!()
+            };
+            self.command = match profile.command {
+                ProfileCommand::Prepare(args) => Commands::PrepareProfile(args),
+                ProfileCommand::Validate(args) => Commands::ValidateProfile(args),
+                ProfileCommand::Resolve(args) => Commands::ResolveProfile(args),
+                ProfileCommand::Mappings(args) => Commands::ProfileMappings(args),
+            };
+        }
+        if let Commands::Investigate(args) = &mut self.command {
+            args.brief |= self.summary;
+        }
+        if self.summary {
+            match &mut self.command {
+                Commands::Capabilities
+                | Commands::Schema { .. }
+                | Commands::ProfileMappings(_)
+                | Commands::GenerateConfig { .. } => (),
+                Commands::PrepareProfile(args) => args.witness_limit = args.witness_limit.min(5),
+                _ => {
+                    self.report_max_items = Some(self.report_max_items.unwrap_or(5).min(5));
+                }
+            }
+        }
         // Normalize once so every command, provenance check and source protection
         // follows the same existing file/built-in loading paths.
         if let Some(profile) = self.profile.take() {
@@ -764,7 +857,7 @@ impl Cli {
             return Ok(());
         }
         match &mut self.command {
-            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } | Commands::ProfileMappings { .. } | Commands::PrepareProfile(_) =>
+            Commands::Capabilities | Commands::GenerateConfig { .. } | Commands::Schema { .. } | Commands::ProfileMappings(_) | Commands::PrepareProfile(_) =>
                 return Err("Common report budgets support info/search/extract/perf/trace/process/comparisons/errors; this command is unsupported".into()),
             Commands::Process { limit, .. } => *limit = 0,
             Commands::Perf { top_n, .. } => *top_n = 0,
@@ -780,7 +873,7 @@ impl Cli {
     }
 
     pub fn effective_format(&self) -> OutputFormat {
-        if self.json || self.common_reports() {
+        if self.json || self.common_reports() || self.summary {
             OutputFormat::Json
         } else {
             self.format
@@ -794,7 +887,28 @@ impl Cli {
 }
 
 pub fn cli_parse() -> Cli {
-    Cli::parse()
+    use clap::{CommandFactory, FromArgMatches};
+    let args: Vec<_> = std::env::args_os().collect();
+    let advanced = args
+        .iter()
+        .skip(1)
+        .take_while(|arg| *arg != "--")
+        .any(|arg| arg == "--help-advanced");
+    let mut command = Cli::command().arg(
+        clap::Arg::new("help-advanced")
+            .long("help-advanced")
+            .help("Show specialized commands and detailed options")
+            .action(clap::ArgAction::HelpLong),
+    );
+    if advanced {
+        for name in [
+            "info", "errors", "perf", "trace", "schema", "extract", "process",
+        ] {
+            command = command.mut_subcommand(name, |sub| sub.hide(false));
+        }
+    }
+    let matches = command.get_matches_from(args);
+    Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit())
 }
 
 #[cfg(test)]

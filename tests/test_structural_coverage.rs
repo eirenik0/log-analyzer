@@ -255,6 +255,8 @@ fn shared_cli_reports_disclose_identical_structural_coverage_and_schema() {
             .args([
                 "--preset",
                 "base",
+                "--format",
+                "text",
                 "--color",
                 "never",
                 operation,
@@ -416,6 +418,8 @@ fn clean_and_blank_text_reports_expose_full_structural_observations() {
                 .args([
                     "--preset",
                     "base",
+                    "--format",
+                    "text",
                     "--color",
                     "never",
                     operation,
@@ -454,6 +458,8 @@ fn bounded_clean_errors_label_the_structural_summary() {
         .args([
             "--preset",
             "base",
+            "--format",
+            "text",
             "--color",
             "never",
             "errors",

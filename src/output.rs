@@ -33,6 +33,7 @@ const SECRET_FIELDS: &[&str] = &[
 #[derive(Default)]
 struct OutputState {
     redact: bool,
+    summary: bool,
     mask_ids: Vec<String>,
     masked_values: BTreeMap<String, String>,
     generated: HashSet<String>,
@@ -108,6 +109,14 @@ impl OutputGuard {
             Ok(())
         }
     }
+}
+
+pub fn set_summary(summary: bool) {
+    STATE.with(|state| {
+        if let Some(state) = state.borrow_mut().as_mut() {
+            state.summary = summary;
+        }
+    });
 }
 
 pub fn set_budget(policy: crate::report_budget::Policy, path: Option<std::path::PathBuf>) {
@@ -752,6 +761,16 @@ impl OutputState {
     }
 
     fn report(&mut self, text: &str) -> String {
+        let rendered = self.structured_report(text);
+        if self.summary
+            && let Ok(value) = serde_json::from_str::<Value>(&rendered)
+        {
+            return format!("{}\n", crate::summary::project(&value));
+        }
+        rendered
+    }
+
+    fn structured_report(&mut self, text: &str) -> String {
         let mut original = serde_json::from_str::<Value>(text)
             .ok()
             .filter(Value::is_object);

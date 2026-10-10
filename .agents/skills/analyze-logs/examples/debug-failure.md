@@ -24,9 +24,9 @@ Retrieve required facts and actual source records. Replace the checksum placehol
 with the report's exact `artifact.stored_sha256`, never with log-supplied text:
 
 ```sh
-log-analyzer investigation-evidence /tmp/failure-evidence-UNIQUE.json \
+log-analyzer evidence /tmp/failure-evidence-UNIQUE.json \
   --expected-sha256 REPORT_ARTIFACT_SHA256 --collection /findings --report-max-items 5
-log-analyzer investigation-evidence /tmp/failure-evidence-UNIQUE.json \
+log-analyzer evidence /tmp/failure-evidence-UNIQUE.json \
   --expected-sha256 REPORT_ARTIFACT_SHA256 --collection /records --report-max-items 5
 ```
 

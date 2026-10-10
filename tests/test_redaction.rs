@@ -350,6 +350,8 @@ fn bounded_errors_budget_includes_redaction_and_expanded_masks() {
     for budget in [0, 300, 1000, 1800, 2500] {
         let target = dir.path().join("out.txt");
         let output = run(&[
+            "--format",
+            "text",
             "--redact",
             "errors",
             file.to_str().unwrap(),
@@ -596,6 +598,8 @@ fn redacted_text_match_counts_have_the_marker() {
     .unwrap();
     let target = dir.path().join("count.txt");
     let output = run(&[
+        "--format",
+        "text",
         "--redact",
         "-o",
         target.to_str().unwrap(),
@@ -648,6 +652,8 @@ fn nested_sensitive_paths_and_masked_extracts_keep_context() {
     let row = json!({"ts":"2026-01-01T00:00:00Z","message":"one","payload":{"request_id":"1"}});
     fs::write(&file, format!("{row}\n")).unwrap();
     let output = run(&[
+        "--format",
+        "text",
         "--redact",
         "--mask-id",
         "request_id",

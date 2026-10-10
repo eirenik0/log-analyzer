@@ -2,6 +2,7 @@
 mod artifact;
 mod auto_profile;
 mod findings;
+mod guidance;
 mod policy;
 mod selection;
 use crate::{
@@ -177,6 +178,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         return Err("Effective profile exceeds the 4 MiB investigation configuration limit".into());
     }
     let capture_root = std::env::current_dir()?;
+    let project_root =
+        std::fs::canonicalize(args.project_root.as_deref().unwrap_or(&capture_root))?;
+    if !project_root.is_dir() {
+        return Err("Project root must be a directory".into());
+    }
     let source_locations: Vec<_> = args
         .files
         .iter()
@@ -227,11 +233,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         let directory = args
             .profiles_dir
             .clone()
-            .unwrap_or_else(|| capture_root.join("config"));
+            .unwrap_or_else(|| project_root.join("config"));
         let directory = if directory.is_absolute() {
             directory
         } else {
-            capture_root.join(directory)
+            project_root.join(directory)
         };
         artifact::protect_profile_directory(&args.artifact, cli.output.as_deref(), &directory)?;
         let detection_started = budget.stop.is_none();
@@ -265,6 +271,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     };
     let profile_digest = evidence::profile_digest(&config)?;
     detection["profile_sha256"] = json!(profile_digest);
+    detection["project_root"] = evidence::path_value(&project_root);
     detection["origins"] = if let Some(path) = &cli.config {
         json!([{"config":evidence::path_value(path)}])
     } else if let Some(name) = &cli.preset {
@@ -648,6 +655,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         artifact::reconcile_unavailable(&mut report, cli)?;
     }
     crate::investigation::validate_relations(&report, None)?;
+    let report = if args.brief {
+        guidance::brief(&report, cli)
+    } else {
+        report
+    };
     if let Some(staged) = staged_report
         && let Err(error) = staged.save_compact(&report)
     {

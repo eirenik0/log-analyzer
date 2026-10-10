@@ -10,7 +10,6 @@
     "parser_formats",
     "presets",
     "event_classification",
-    "report_schemas",
     "bounded_reports",
     "profile_validation",
     "investigation_contracts",
@@ -290,6 +289,18 @@
             "default_directory": "config",
             "directory_option": "profiles-dir"
           }
+        },
+        "guidance_version": {
+          "const": 1
+        },
+        "brief_version": {
+          "const": 1
+        },
+        "project_root_option": {
+          "const": "project-root"
+        },
+        "capability_summary": {
+          "const": true
         }
       },
       "required": [
@@ -299,7 +310,11 @@
         "artifact_retrieval_available",
         "schemas",
         "occurrence_identity",
-        "profile_detection"
+        "profile_detection",
+        "guidance_version",
+        "brief_version",
+        "project_root_option",
+        "capability_summary"
       ],
       "additionalProperties": false
     },
@@ -349,6 +364,80 @@
         }
       },
       "additionalProperties": false
+    },
+    "summary_version": {
+      "const": 1
+    },
+    "schemas_omitted": {
+      "const": true
+    },
+    "navigation": {
+      "type": "object",
+      "required": [
+        "version",
+        "primary_commands",
+        "advanced_help",
+        "profile_commands",
+        "compatibility_commands"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "primary_commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "advanced_help": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profile_commands": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "compatibility_commands": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "default_output": {
+          "const": "json"
+        },
+        "summary_option": {
+          "const": "--summary"
+        },
+        "summary_items": {
+          "const": 5
+        }
+      }
     }
-  }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "report_schemas"
+      ]
+    },
+    {
+      "required": [
+        "summary_version",
+        "schemas_omitted"
+      ]
+    }
+  ]
 }

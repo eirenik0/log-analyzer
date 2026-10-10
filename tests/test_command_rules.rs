@@ -45,6 +45,8 @@ fn issue_19_reproduction_is_one_1500_ms_operation_in_text_and_json() {
         command.args(["--preset", "service-api"]);
         if json {
             command.arg("-j");
+        } else {
+            command.args(["--format", "text"]);
         }
         command.arg("perf").arg(&file);
         let output = command.output().unwrap();
@@ -583,6 +585,8 @@ fn cli_command_selection_preserves_full_coverage_and_diagnostic_omissions() {
         command.args(["--preset", "service-api"]);
         if json {
             command.arg("-j");
+        } else {
+            command.args(["--format", "text"]);
         }
         let output = command
             .arg("perf")

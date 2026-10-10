@@ -26,9 +26,13 @@ fn info_guidance_agrees_in_text_json_and_bounded_pages_without_asserting_semanti
     let input = directory.path().join("capture.jsonl");
     fs::write(&input, "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"level\":\"INFO\",\"message\":\"generic record\"}\n").unwrap();
     let path = input.to_str().unwrap();
-    let text =
-        String::from_utf8(invoke(&["--preset", "base", "--color", "never", "info", path]).stdout)
-            .unwrap();
+    let text = String::from_utf8(
+        invoke(&[
+            "--format", "text", "--preset", "base", "--color", "never", "info", path,
+        ])
+        .stdout,
+    )
+    .unwrap();
     let value: Value =
         serde_json::from_slice(&invoke(&["--preset", "base", "--json", "info", path]).stdout)
             .unwrap();
@@ -49,8 +53,8 @@ fn info_guidance_agrees_in_text_json_and_bounded_pages_without_asserting_semanti
         .map(|s| s.as_str().unwrap())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(guide.contains("resolve-profile"));
-    assert!(guide.contains("validate-profile"));
+    assert!(guide.contains("profile resolve"));
+    assert!(guide.contains("profile validate"));
     assert!(guide.contains("investigate"));
     assert!(guide.contains("specific remaining gap before custom parsing"));
     assert!(!text.contains("capture/semantics unknown"));

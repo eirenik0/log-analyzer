@@ -119,6 +119,8 @@ fn cli_coverage_survives_selection_and_redaction() {
         command.args(["--preset", "service-api"]);
         if json {
             command.arg("-j");
+        } else {
+            command.args(["--format", "text"]);
         }
         let output = command.arg("perf").arg(&file).output().unwrap();
         assert!(output.status.success());
@@ -228,6 +230,8 @@ fn opaque_event_ids_cannot_replace_analytic_labels_or_typed_timestamps() {
                 "--redact",
                 "--mask-id",
                 "correlation_id",
+                "--format",
+                "text",
                 "perf",
             ])
             .arg(&file)

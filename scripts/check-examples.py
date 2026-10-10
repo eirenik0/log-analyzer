@@ -276,7 +276,7 @@ def run_primary_skill(binary, commands):
                 require(sha == report['artifact']['stored_sha256'], 'primary skill artifact checksum mismatch')
                 saved[destination] = path, sha, json.loads(raw)
             else:
-                require(args[0] == 'investigation-evidence' and args[1] in saved, 'primary skill retrieval precedes calculation')
+                require(args[0] == 'evidence' and args[1] in saved, 'primary skill retrieval precedes calculation')
                 path, sha, artifact = saved[args[1]]
                 args[1] = path
                 args[args.index('--expected-sha256') + 1] = sha

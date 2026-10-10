@@ -6,17 +6,21 @@ these controls through `capabilities.bounded_reports`. Existing output and
 bounded-error options keep their behavior when common controls are absent.
 
 ```sh
-log-analyzer --preset eyes --report-max-chars 12000 --report-max-items 10 search examples/synthetic.jsonl --payloads
-log-analyzer --preset eyes --report-max-items 10 --report-cursor CURSOR search examples/synthetic.jsonl --payloads
-log-analyzer --preset eyes --complete-output search examples/synthetic.jsonl --payloads
+log-analyzer --profile eyes --report-max-chars 12000 --report-max-items 10 search examples/synthetic.jsonl --payloads
+log-analyzer --profile eyes --report-max-items 10 --report-cursor CURSOR search examples/synthetic.jsonl --payloads
+log-analyzer --profile eyes --complete-output search examples/synthetic.jsonl --payloads
 ```
 
 Replace `CURSOR` with the preceding report's `retrieval.next_cursor`. Keep input
 paths, profile contents, filters, command selections, sorting and redaction
 settings unchanged. Budgets may change between pages. `--output` receives the
 same bytes as stdout, including cursor errors. Common controls imply compact
-JSON even if the original command defaults to text; `schema`, `capabilities`
-and `generate-config` do not accept them.
+JSON (also the default result format); `schema`, `capabilities`
+and `generate-config` do not accept them. All commands accept `--summary`, but
+its presentation is command-specific: paginated commands cap items at five,
+capabilities omit schemas, and schema/generated-profile summaries use explicit
+omission envelopes. A summary is not a byte budget. See
+[output modes](../../README.md#output-for-models-and-people).
 
 ## Units and exceptions
 

@@ -618,12 +618,12 @@ pub(crate) fn lookup(
 }
 
 pub(crate) fn run(cli: &Cli) -> Result<()> {
-    let Commands::ProfileMappings {
+    let Commands::ProfileMappings(crate::cli::ProfileMappingsArgs {
         scope,
         project_root,
         registry,
         action,
-    } = &cli.command
+    }) = &cli.command
     else {
         unreachable!()
     };

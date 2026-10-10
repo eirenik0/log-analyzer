@@ -19,9 +19,9 @@ Inspect each report's coverage, goal support, omissions and processing stop reas
 Retrieve needed findings, records and explicit paired memberships from each artifact:
 
 ```sh
-log-analyzer investigation-evidence /tmp/slow-evidence-UNIQUE.json \
+log-analyzer evidence /tmp/slow-evidence-UNIQUE.json \
   --expected-sha256 SLOW_REPORT_ARTIFACT_SHA256 --collection /findings --report-max-items 5
-log-analyzer investigation-evidence /tmp/baseline-evidence-UNIQUE.json \
+log-analyzer evidence /tmp/baseline-evidence-UNIQUE.json \
   --expected-sha256 BASELINE_REPORT_ARTIFACT_SHA256 --collection /findings --report-max-items 5
 ```
 

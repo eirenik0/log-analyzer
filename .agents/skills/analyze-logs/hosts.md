@@ -11,9 +11,11 @@ PATH. Remote machines, desktop apps and terminals may have different paths.
 If missing, explain how to install it with `cargo install log-analyzer --locked`,
 build this checkout with `cargo build --release`, or supply an absolute path.
 
-Check `--version` and `capabilities`; retain build identity. This skill requires
-`investigate`, `investigation-evidence`, automatic profile detection and
-`profiles.option: "profile"`. If missing, obtain a current executable; do not
+Check `--version` and `capabilities --summary`; retain build identity. This skill requires
+`investigate`, `evidence`, automatic profile detection and
+`profiles.option: "profile"`, `brief_version: 1`, `guidance_version: 1`, and
+`navigation.summary_option: "--summary"`. Results default to JSON; summaries remain JSON.
+If missing, obtain a current executable; do not
 substitute another investigation workflow. Use its own help for supported flags.
 Input and profile paths must be accessible to that executable. Access failures
 are not empty captures.

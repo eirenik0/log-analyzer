@@ -155,7 +155,7 @@ fn normalized_config_can_win_when_builtins_cannot_parse_the_input() {
 }
 
 #[test]
-fn duplicates_merge_origins_but_distinct_effective_configs_remain_ambiguous() {
+fn labels_merge_origins_but_distinct_analysis_rules_remain_ambiguous() {
     let temp = setup();
     let root = temp.path();
     fs::write(root.join("config/a.toml"), profile()).unwrap();
@@ -179,6 +179,23 @@ fn duplicates_merge_origins_but_distinct_effective_configs_remain_ambiguous() {
     )
     .unwrap();
     let (report, _) = run(root, &input(), "second.json", &[]);
+    assert_eq!(selection(&report)["status"], "selected");
+    assert_eq!(
+        local_candidate(&report)["origins"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    fs::write(
+        root.join("config/b.toml"),
+        profile().replace(
+            "outcome = {from = \"field\", field = \"outcome\"}",
+            "outcome = {from = \"literal\", value = \"failure\"}",
+        ),
+    )
+    .unwrap();
+    let (report, _) = run(root, &input(), "third.json", &[]);
     assert_eq!(selection(&report)["status"], "ambiguous");
     assert_eq!(selection(&report)["profile"], "base");
 }
@@ -215,7 +232,8 @@ fn builtin_copies_are_deduplicated_and_config_changes_are_rediscovered() {
     )
     .unwrap();
     let (changed, _) = run(root, &data, "second.json", &[]);
-    assert_eq!(selection(&changed)["status"], "ambiguous");
+    assert_eq!(selection(&changed)["status"], "selected");
+    assert_eq!(selection(&changed)["origins"].as_array().unwrap().len(), 2);
 }
 
 #[test]

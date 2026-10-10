@@ -35,6 +35,7 @@ pub mod profile_resolution;
 pub mod profile_validation;
 mod report_budget;
 pub mod search;
+mod summary;
 pub mod timeline;
 pub mod trace;
 
@@ -200,7 +201,7 @@ fn write_output_file(
 const INFO_NEXT_STEPS: &[&str] = &[
     "Structural checks do not assess lifecycle semantics or upstream capture completeness; this does not make investigate unavailable.",
     "Run a bounded investigate before custom parsing. It detects built-in and config-folder profiles from captured samples by default; --profile overrides detection, including --profile base for generic inspection.",
-    "Inspect profile_selection, coverage and retained evidence. For unresolved semantics use resolve-profile and validate-profile against independently known facts; document a specific remaining gap before custom parsing.",
+    "Inspect profile_selection, coverage and retained evidence. For unresolved semantics use profile resolve and profile validate against independently known facts; document a specific remaining gap before custom parsing.",
 ];
 
 #[derive(serde::Serialize)]
@@ -442,18 +443,26 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         cli.redact && !matches!(&cli.command, Commands::Capabilities),
         &cli.mask_id,
         cli.effective_compact() || matches!(&cli.command, Commands::LlmDiff { .. }),
-        (matches!(cli.effective_format(), OutputFormat::Json)
-            && !matches!(&cli.command, Commands::GenerateConfig { .. }))
+        matches!(cli.effective_format(), OutputFormat::Json)
             || matches!(
                 &cli.command,
                 Commands::Process { .. }
                     | Commands::LlmDiff { .. }
                     | Commands::Schema { .. }
                     | Commands::Capabilities
-                    | Commands::ValidateProfile { .. }
-                    | Commands::ResolveProfile { .. }
-                    | Commands::ProfileMappings { .. }
+                    | Commands::ValidateProfile(_)
+                    | Commands::ResolveProfile(_)
+                    | Commands::ProfileMappings(_)
                     | Commands::PrepareProfile(_)
+            ),
+    );
+    output::set_summary(
+        cli.summary
+            && matches!(
+                cli.command,
+                Commands::Schema { .. }
+                    | Commands::ProfileMappings(_)
+                    | Commands::GenerateConfig { .. }
             ),
     );
     if cli.common_reports() {
@@ -470,7 +479,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     if matches!(&cli.command, Commands::Capabilities) {
-        let capabilities = build_info::capabilities();
+        let capabilities = if cli.summary {
+            build_info::capabilities_summary()
+        } else {
+            build_info::capabilities()
+        };
         let rendered = if cli.effective_compact() {
             serde_json::to_string(&capabilities)?
         } else {
@@ -485,11 +498,11 @@ fn run_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
     if matches!(&cli.command, Commands::PrepareProfile(_)) {
         return profile_preparation::run(cli);
     }
-    if matches!(&cli.command, Commands::ProfileMappings { .. }) {
+    if matches!(&cli.command, Commands::ProfileMappings(_)) {
         return profile_mappings::run(cli);
     }
     // Resolution reports invalid explicit choices itself and keeps generic inspection available.
-    if matches!(&cli.command, Commands::ResolveProfile { .. }) {
+    if matches!(&cli.command, Commands::ResolveProfile(_)) {
         return profile_resolution::run(cli);
     }
     run_analysis_with_cli(cli)
@@ -508,8 +521,8 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
         Commands::Process { .. }
             | Commands::LlmDiff { .. }
             | Commands::Schema { .. }
-            | Commands::ValidateProfile { .. }
-            | Commands::ResolveProfile { .. }
+            | Commands::ValidateProfile(_)
+            | Commands::ResolveProfile(_)
     ) {
         OutputFormat::Json
     } else {
@@ -563,10 +576,10 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
     let filter = build_filter(&cli.filter)?;
 
     match &cli.command {
-        Commands::ProfileMappings { .. } => {
+        Commands::ProfileMappings(_) => {
             unreachable!("mapping management returned before config loading")
         }
-        Commands::ResolveProfile { .. } => {
+        Commands::ResolveProfile(_) => {
             unreachable!("resolution returned before config loading")
         }
         Commands::Investigate(_) | Commands::InvestigationEvidence(_) => {
@@ -575,13 +588,16 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
         Commands::PrepareProfile(_) => {
             unreachable!("preparation returned before legacy analysis")
         }
-        Commands::Capabilities => unreachable!("capabilities returned before config loading"),
-        Commands::ValidateProfile {
+        Commands::Profile(_) => unreachable!("profile commands normalized before dispatch"),
+        Commands::Capabilities => {
+            unreachable!("capabilities returned before config loading")
+        }
+        Commands::ValidateProfile(crate::cli::ValidateProfileArgs {
             files,
             kind,
             purpose,
             expected,
-        } => {
+        }) => {
             let (expectations, expected_digest) =
                 profile_validation::load_expectations(expected.as_deref())?;
             let AnalysisFiles {
@@ -1187,7 +1203,7 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
                 files,
                 &base_config,
                 &filter,
-                OutputFormat::Text,
+                cli.effective_format(),
                 output.as_deref(),
             )?;
 
@@ -1234,9 +1250,17 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
             ));
             let output_text = format!("{header}{body}");
 
-            report_print!("{output_text}");
+            let rendered = if matches!(cli.effective_format(), OutputFormat::Text) {
+                output_text
+            } else {
+                serde_json::to_string(&serde_json::json!({"generated_profile":{
+                    "toml":output_text,"activation":false,
+                    "next_step":"Save the TOML as a profile and run profile validate against independent facts before selecting it"
+                }}))?
+            };
+            report_print!("{rendered}");
             if let Some(path) = output {
-                write_output_file(path, &output_text)?;
+                write_output_file(path, &rendered)?;
             }
         }
     }

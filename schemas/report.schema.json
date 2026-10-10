@@ -3627,6 +3627,26 @@
       "items": {
         "$ref": "#/$defs/evidence_record"
       }
+    },
+    "generated_profile": {
+      "type": "object",
+      "required": [
+        "toml",
+        "activation",
+        "next_step"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "toml": {
+          "type": "string"
+        },
+        "activation": {
+          "const": false
+        },
+        "next_step": {
+          "type": "string"
+        }
+      }
     }
   },
   "oneOf": [

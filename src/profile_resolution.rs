@@ -82,7 +82,7 @@ pub(crate) struct ValidatedSelection {
 }
 
 pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
-    let Commands::ResolveProfile {
+    let Commands::ResolveProfile(crate::cli::ResolveProfileArgs {
         files,
         kind,
         purpose,
@@ -93,7 +93,7 @@ pub fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         project_mappings,
         user_mappings,
         no_mappings,
-    } = &cli.command
+    }) = &cli.command
     else {
         unreachable!()
     };

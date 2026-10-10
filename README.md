@@ -30,7 +30,64 @@ cargo install --path .
 log-analyzer --version
 ```
 
+## Choose a command
+
+Start with `investigate` for failures, timing, or an unfamiliar capture. It detects
+profiles and reports coverage, supported goals, and the next evidence to retrieve.
+A profile is either built in or loaded from TOML; select either with `--profile`.
+No agent skill is required to navigate the CLI.
+
+```text
+investigate   Investigate logs with automatic profile detection
+evidence     Retrieve evidence from a saved investigation
+profile      Prepare, validate, resolve, and manage profiles
+compare      Compare two captures
+search       Find matching records
+capabilities Describe the machine-readable interface
+```
+
+Use `log-analyzer profile --help` for `prepare`, `validate`, `resolve`, and
+`mappings`. Create new profiles through `profile prepare`; it saves an editable
+candidate and reports validation gaps without activating it.
+
+`log-analyzer --help-advanced` reveals `info`, `errors`, `perf`, `trace`, `schema`,
+`extract`, and `process`. All existing spellings continue to work, including
+`investigation-evidence`, `prepare-profile`, `validate-profile`, `resolve-profile`,
+`profile-mappings`, `generate-config`, `diff`, and `llm-diff`; compatibility commands
+are omitted from primary help. `generate-config` returns a JSON object containing TOML by default;
+`--format text generate-config` retains the raw TOML export. New guidance uses `evidence` and grouped `profile` commands.
+
 ## Unified investigation and retained evidence
+
+For an agent's first call, use the concise capability and investigation summaries:
+
+```bash
+log-analyzer capabilities --summary
+log-analyzer investigate /absolute/capture.jsonl --project-root /absolute/project \
+  --summary --artifact /absolute/new-evidence.json --report-max-items 5
+```
+
+The summary contains profile provenance, processing/parse coverage, per-goal support,
+up to five findings, artifact bindings and `guidance.next_actions`. Its retrieval
+arguments resume after the displayed findings. If artifact retention fails,
+available partial findings remain inline. Retrieve cited records before drawing conclusions. Full reports retain their existing
+contract and provide guidance that resumes after displayed findings. Full
+`capabilities` still supplies all schemas, including `investigation_brief` and `command_summary`.
+
+Guidance distinguishes profile ambiguity, discovery failures, processing cutoffs,
+unavailable artifacts and terminal-evidence checks. Actions with `argv: null`
+describe required inputs; they are not executable commands. Redaction preserves
+safe guidance and withholds path-bearing arguments. Impossible presentation budgets
+remain explicit as `mandatory_metadata_over_budget`; processing budgets are separate.
+
+Establish the project root once and pass it across investigation/resolution calls.
+`--project-root` defaults to the current directory. Default discovery uses
+`ROOT/config`; a relative `--profiles-dir` is relative to that root. Input paths,
+explicit `--profile` paths and artifact destinations still use the working directory.
+No ancestor search or directory guessing occurs. Inspect saved choices using
+`profile mappings --project-root ROOT inspect`, then revalidate through
+`profile resolve --project-root ROOT` with current independent assertions before
+selecting the profile explicitly. Bare investigation does not activate mappings.
 
 Capture each independent input once, detect its profile when needed,
 then parse/classify and correlate the captured input once. Inspect
@@ -39,7 +96,7 @@ calculated findings, source boundaries, explicit populations and per-goal suppor
 ```bash
 log-analyzer --profile examples/investigations/profile.toml investigate \
   examples/investigations/slow.jsonl --artifact evidence.json --report-max-items 5
-log-analyzer investigation-evidence evidence.json \
+log-analyzer evidence evidence.json \
   --expected-sha256 <artifact.stored_sha256> --collection /findings --report-max-items 5
 ```
 
@@ -50,7 +107,7 @@ records. Policy `payload.*` selectors share extraction semantics: decoded payloa
 have precedence, with per-field envelope fallback and nested paths.
 
 The main report's `retrieval.next_cursor` resumes `/findings` through
-`investigation-evidence --report-cursor ...`. Retrieve `/records`, `/populations`,
+`evidence --report-cursor ...`. Retrieve `/records`, `/populations`,
 `/memberships`, `/memberships/N/members`, `/sequences` or `/sequences/N/events` for
 specific evidence; `--id` selects an exact retained ID/reference ID. Retrieval
 binds the artifact checksum, input snapshot, effective profile/query, redaction
@@ -65,7 +122,7 @@ Artifacts stay local until deleted, are never overwritten and need caller-manage
 retention. Retrieval saves only new `--output` files.
 
 Bare `investigate` automatically checks built-ins and TOML profiles discovered
-recursively in `./config` (relative to the working directory). `--profiles-dir DIR`
+recursively in `ROOT/config` (the working directory unless `--project-root` is supplied). `--profiles-dir DIR`
 replaces that directory. Detection uses captured prefixes: at most 128 physical
 lines and 64 KiB per input, sharing a 256 KiB total sample allowance equally across inputs. Exactly one matching profile, with lifecycle
 evidence in every nonempty input and no observed parsing/classification loss, is
@@ -110,9 +167,11 @@ subdirectory levels, and does not follow subdirectory symlinks. Each profile sou
 and the existing eight-profile inheritance limit. One extra byte may be read to
 detect an oversized source. Built-in and relative-file `extends` use the same loader
 as explicit profile files. The selected effective profile is retained; it is not reloaded
-from disk after probing. Candidates with identical effective-profile hashes merge
-origins, so copies of built-ins do not introduce ambiguity. Distinct matching profiles
-remain ambiguous, even if their labels or observed results coincide.
+from disk after probing. Candidates differing only in `profile_name` merge origins;
+their `analysis_sha256` excludes that label, while each origin retains its full
+effective-profile hash and name. All other configuration fields remain part of
+analysis identity. Distinct matching rules remain ambiguous even when their
+observed results coincide.
 
 `profile_selection.discovery` reports the directory, limits and diagnostics;
 candidates include their effective hash, origin paths and inherited-source hashes.
@@ -246,7 +305,7 @@ log-analyzer capabilities
 log-analyzer --profile examples/investigations/profile.toml --report-max-items 3 \
   info examples/investigations/failure.jsonl
 log-analyzer --profile examples/investigations/profile.toml --report-max-items 3 \
-  validate-profile examples/investigations/failure.jsonl --kind request \
+  profile validate examples/investigations/failure.jsonl --kind request \
   --expected examples/investigations/failure.expected.json
 
 # Inspect the failure, discover candidate records, and measure the scoped lifecycle.
@@ -300,8 +359,8 @@ python3 scripts/check-examples.py target/release/log-analyzer --report target/wo
   a missing end stays incomplete evidence rather than a measured hang.
 
 For your own logs, select a profile only when its vocabulary and lifecycle semantics
-match. Generate/edit a separate candidate with `generate-config`, inspect `info`
-coverage, then use `validate-profile --kind request|event|command` with known
+match. Save/edit a separate candidate with `profile prepare --candidate-output PATH
+--kind KIND`, inspect its validation gaps, then use `profile validate --kind request|event|command` with known
 positive, negative and pair facts where available. Recognition support does not
 establish timing support; successful parsing alone does not validate a profile.
 See [profile suitability](#validate-profile-suitability).
@@ -484,7 +543,7 @@ with [synthetic examples](examples/investigation-contract/). `capabilities` embe
 these under `report_schemas.investigation` and `evidence_artifact`, and separately
 advertises implementation availability. Schema 1 accepts both the existing agent-result shape and the retained report
 shape. These contracts separate assessment, processing completion, presentation
-omissions, occurrence/population identity and verification after redaction. `investigate` and `investigation-evidence` implement the retained contract;
+omissions, occurrence/population identity and verification after redaction. `investigate` and `evidence` implement the retained contract;
 [the unified workflow](#unified-investigation-and-retained-evidence) explains their limits.
 Applied redaction in the retained contract omits record payloads and exposes only
 source omission markers in excerpts; arithmetic can remain independently checkable.
@@ -545,11 +604,13 @@ log-analyzer trace logs/*.log --id f227f11e
 # Generate LLM-friendly output
 log-analyzer llm file.log
 
-# Generate a starter profile from one or more related logs
-log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
+# Prepare a separate request-profile candidate; inspect its validation gaps
+log-analyzer profile prepare logs/*.log --template custom-start --profile-name my-team \
+  --candidate-output my-team.toml --kind request --summary
 
-# Generate a profile starting from the Eyes profile
-log-analyzer generate-config logs/*.log --template eyes --profile-name my-eyes-team
+# Alternatively, start from Eyes rules (choose a fresh candidate path)
+log-analyzer profile prepare logs/*.log --template eyes --profile-name my-eyes-team \
+  --candidate-output my-eyes-team.toml --kind request --summary
 ```
 
 ## Choose and validate a profile
@@ -686,19 +747,24 @@ change a parsed record's cached phase, identity or explicit scope.
 **How to get started:**
 
 ```bash
-# 1. Start from the right built-in profile/template for your log family
-#    Eyes / Applitools-style logs:
-log-analyzer generate-config logs/*.log --template eyes --profile-name my-team
+# 1. Prepare a new candidate from a suitable template (Eyes shown here)
+#    Use custom-start for another log family; choose request, event, or command
+log-analyzer profile prepare logs/*.log --template eyes --profile-name my-team \
+  --candidate-output my-team.toml --kind request --summary
 
-#    Other structured logs:
-log-analyzer generate-config logs/*.log --template custom-start --profile-name my-team
+# 2. Edit missing domain rules in my-team.toml, then check independent known facts
+log-analyzer --profile my-team.toml profile validate logs/*.log --kind request \
+  --expected known-facts.json --summary
 
-# 2. Review and refine the generated TOML - add session levels, fix markers
-#    The generator infers what it can, but domain knowledge is yours to add
-
-# 3. Pin your profile when running analysis
-log-analyzer --profile my-team.toml errors logs/*.log --sessions
+# 3. Investigate with the justified profile and retain its evidence
+log-analyzer --profile my-team.toml investigate logs/*.log --summary \
+  --artifact new-evidence.json
 ```
+
+Preparation can save a candidate while reporting unsupported or insufficient evidence
+and exiting 1. Inspect that report, supply missing rules and independent assertions,
+and validate before selection. `known-facts.json` must describe facts established
+from the source or domain knowledge, never assertions copied from candidate output.
 
 If your log directory path contains spaces, quote the directory part but not the wildcard (for example `"/path with spaces"/logs/*.log`).
 
@@ -739,7 +805,10 @@ Good signs they are related:
 
 Avoid mixing unrelated runs, retries from different executions, or logs from different environments in the same command. That can distort counts, traces, session impact, and latency/orphan analysis.
 
-## Commands
+## Specialized and compatibility commands
+
+The six primary commands are listed above. `--help-advanced` reveals specialized
+commands; compatibility shortcuts remain callable but hidden from primary help.
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
@@ -754,13 +823,43 @@ Avoid mixing unrelated runs, retries from different executions, or logs from dif
 | `process` | `llm` | Generate LLM-friendly JSON output |
 | `schema` | | Preview structured-export JSON paths and types |
 | `llm-diff` | | Generate LLM-friendly diff output |
-| `generate-config` | `gen-config` | Generate a profile TOML from logs |
+| `generate-config` | `gen-config` | Return generated TOML inside JSON; raw export with `--format text` |
+
+## Output for models and people
+
+Command results default to JSON. Use `--summary` for concise JSON without losing
+coverage, uncertainty, provenance, or recovery instructions:
+
+```bash
+log-analyzer investigate capture.jsonl --artifact evidence.json --summary
+log-analyzer evidence evidence.json --summary
+log-analyzer profile resolve capture.jsonl --kind request --summary
+log-analyzer info capture.jsonl --summary
+```
+
+`investigate --summary` uses the versioned investigation brief contract and includes
+up to five findings. The older hidden `--brief` spelling remains a navigation-only
+brief. `capabilities --summary` omits embedded schemas. Paginated analysis and evidence
+commands return at most five presentation items and preserve exact continuation cursors.
+Profile preparation limits representative witnesses to five. Schema previews, mapping
+reports, and generated-profile output use a `summary_version: 1` envelope with a
+`report`, explicit JSON-pointer `omissions`, `limitations`, and `next_steps`. Coverage,
+diagnostics and provenance remain exact. Scalars are not truncated; summary mode is
+not a byte limit. Mapping mutations must not be rerun to expand a report; use inspect.
+
+`--summary` conflicts with `--complete-output` and `--format text`. Use JSON page
+budgets where supported for precise size limits. Existing text renderers remain
+available explicitly through `--format text`. Saved
+reports use the same presentation as stdout; retained artifacts always remain JSON.
+This changes the previous default text output: scripts expecting text must select
+`--format text`, and scripts consuming generated TOML must select the raw export.
 
 ## Global Options
 
 | Option | Env Variable | Description |
 |--------|--------------|-------------|
-| `-F, --format <text\|json>` | `LOG_ANALYZER_FORMAT` | Output format |
+| `--summary` | | Concise JSON with explicit omissions and next steps |
+| `-F, --format <text\|json>` | `LOG_ANALYZER_FORMAT` | Compatibility output selector; defaults to JSON |
 | `-j, --json` | `LOG_ANALYZER_JSON` | JSON output (shorthand for `-F json -c`) |
 | `-c, --compact` | `LOG_ANALYZER_COMPACT` | Compact output mode |
 | `-f, --filter <expr>` | `LOG_ANALYZER_FILTER` | Filter expression (see below) |
@@ -1112,6 +1211,10 @@ UTC dates and times with milliseconds and `Z`, independent of the host timezone.
 
 ### generate-config
 
+This compatibility command returns `generated_profile.toml` inside JSON. Use
+`--format text` for raw TOML, or prefer `profile prepare --candidate-output PATH`
+to save a candidate separately from its validation report.
+
 Generate a profile from one or more related log files (for example, split/rotated logs from the same run/session).
 
 | Option | Description |
@@ -1167,8 +1270,9 @@ log-analyzer llm file.log --limit 50
 # LLM-friendly diff sorted by highest-severity levels first
 log-analyzer llm-diff file1.log file2.log --sort-by level
 
-# Generate a profile from related split logs (merged before inference)
-log-analyzer generate-config logs/run-*.log --template custom-start --profile-name my-team
+# Prepare a candidate from related split logs and report request-timing gaps
+log-analyzer profile prepare logs/run-*.log --template custom-start --profile-name my-team \
+  --candidate-output my-team.toml --kind request --summary
 ```
 
 ## Environment Configuration
@@ -1189,7 +1293,7 @@ lifecycle. Validate an explicitly selected profile or editable TOML candidate
 against representative evidence and optional known facts:
 
 ```bash
-log-analyzer --profile examples/profile-candidate.toml --report-max-items 4 validate-profile examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
+log-analyzer --profile examples/profile-candidate.toml --report-max-items 4 profile validate examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
 ```
 
 The JSON report separates parsing, global classification, requested-kind pairing,
@@ -1200,24 +1304,25 @@ events. Unsupported, conflicting, and insufficient evidence remain distinct.
 Exit 0 means supported on the observed sample, without asserting general semantic
 correctness from match counts. Candidates are never activated automatically.
 
-Use `generate-config` to save a separate candidate, validate it, and explicitly
-select it for subsequent analysis. All candidates may be unsuitable. See the
+Use `profile prepare --candidate-output PATH --kind KIND` to save a separate
+candidate and report initial validation gaps. Edit and validate it against known
+facts, then explicitly select it for subsequent analysis. All candidates may be unsuitable. See the
 [profile validation workflow and expected-fact contract](docs/design/profile-validation.md)
 for source-addressed positive/negative facts, exact pair assertions, inheritance,
 redaction, bounds, and scope/capture limitations.
 
 ## Resolve a profile explicitly
 
-`resolve-profile` is an opt-in, read-only JSON interface, separate from the bounded
+`profile resolve` is an opt-in, read-only JSON interface, separate from the bounded
 grammar inference in `investigate`. Discovery reports selected identity/digest and provenance,
 stably ordered alternatives, per-candidate structural coverage, independent
 recognition/timing assessments, scope diagnostics, assertions and unresolved
 assumptions. It does not activate a profile or write configuration:
 
 ```bash
-log-analyzer resolve-profile examples/profile-validation.jsonl --kind request --candidate-config examples/profile-candidate.toml
-log-analyzer resolve-profile examples/profile-validation.jsonl --kind request --candidate-config examples/profile-candidate.toml --expected examples/profile-expectations.json
-log-analyzer --profile examples/profile-candidate.toml resolve-profile examples/profile-validation.jsonl --kind request
+log-analyzer profile resolve examples/profile-validation.jsonl --kind request --candidate-config examples/profile-candidate.toml
+log-analyzer profile resolve examples/profile-validation.jsonl --kind request --candidate-config examples/profile-candidate.toml --expected examples/profile-expectations.json
+log-analyzer --profile examples/profile-candidate.toml profile resolve examples/profile-validation.jsonl --kind request
 ```
 
 Precedence is explicit `--profile`, then a revalidated supplied association,
@@ -1247,7 +1352,7 @@ selection. Unclassified records remain semantically unknown: even complete
 assertion coverage does not establish that every relevant lifecycle was recognized,
 capture was complete, clocks were synchronized, or elapsed time establishes cause.
 Explicit choices bypass automatic proof requirements; sample suitability and
-semantic sufficiency remain separately visible. `validate-profile` continues to
+semantic sufficiency remain separately visible. `profile validate` continues to
 work without an expected-facts file.
 
 Use common report budgets/cursors to retrieve nested candidate witnesses, rules,
@@ -1278,12 +1383,12 @@ version-1 resolution and the supplied association contract remains version 1.
 
 ### Prepare a separate profile candidate
 
-When resolution abstains, `prepare-profile` combines sample inventory generation,
+When resolution abstains, `profile prepare` combines sample inventory generation,
 rule witnesses, validation and scope/boundary diagnostics in one JSON report:
 
 ```bash
-log-analyzer prepare-profile examples/profile-validation.jsonl --template examples/profile-candidate.toml --candidate-output prepared-profile.toml --kind request --purpose timing --expected examples/profile-expectations.json
-log-analyzer --profile prepared-profile.toml validate-profile examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
+log-analyzer profile prepare examples/profile-validation.jsonl --template examples/profile-candidate.toml --candidate-output prepared-profile.toml --kind request --purpose timing --expected examples/profile-expectations.json
+log-analyzer --profile prepared-profile.toml profile validate examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
 ```
 
 `--template` accepts a built-in template name or TOML path; otherwise the command
@@ -1316,7 +1421,7 @@ Presentation omissions count size and count limits; outcome metadata, coverage t
 and opaque retrieval identities remain exact. Per-source coverage, including its
 parser diagnostic counters and existing diagnostic limits, is exempt from preparation
 limits. Use the saved candidate with
-`validate-profile` and common report cursors for omitted evidence, or `info` for
+`profile validate` and common report cursors for omitted evidence, or `info` for
 unparsed input. Preparation itself rejects common budgets/cursors because replay
 must not create files. Limits bound presentation, not processing memory/work.
 
@@ -1325,9 +1430,9 @@ candidate remains unredacted so its rules retain their meaning; inspect it befor
 
 ### Persistent source/profile mappings
 
-`resolve-profile` reads the project registry at
-`<project-root>/.log-analyzer/profile-mappings.json`, then the user registry at
-`~/.config/log-analyzer/profile-mappings.json` (Windows uses `USERPROFILE` when
+`profile resolve` reads the project registry at
+`<project-root>/.log-analyzer/profile mappings.json`, then the user registry at
+`~/.config/log-analyzer/profile mappings.json` (Windows uses `USERPROFILE` when
 `HOME` is unavailable). The project root defaults to the current directory;
 there is no ancestor search. Use `--project-root`, `--project-mappings`,
 `--user-mappings`, or `--no-mappings` to control lookup. Missing registries remain
@@ -1358,11 +1463,11 @@ credentials, reports or disposable analysis cache. Inspect the metadata before
 tracking or sharing it; project configuration and private evidence remain separate.
 
 ```bash
-log-analyzer --profile examples/profile-candidate.toml profile-mappings --project-root . remember examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
-log-analyzer profile-mappings --project-root . inspect
+log-analyzer --profile examples/profile-candidate.toml profile mappings --project-root . remember examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json
+log-analyzer profile mappings --project-root . inspect
 # Copy entry.id and digest from inspect; replacement requires fresh validation.
-log-analyzer --profile examples/profile-candidate.toml profile-mappings --project-root . replace examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json --entry-id ID --if-digest DIGEST
-log-analyzer profile-mappings --project-root . forget --entry-id ID --if-digest DIGEST
+log-analyzer --profile examples/profile-candidate.toml profile mappings --project-root . replace examples/profile-validation.jsonl --kind request --expected examples/profile-expectations.json --entry-id ID --if-digest DIGEST
+log-analyzer profile mappings --project-root . forget --entry-id ID --if-digest DIGEST
 ```
 
 `--scope user` chooses user storage; `--registry PATH` overrides the selected
@@ -1384,7 +1489,7 @@ Mapping management reports `mutation.status` separately from `report_save.status
 An invalid `--output` destination fails before registry mutation. If report delivery
 fails after the registry commits, the command succeeds with a warning and
 `report_save.status: "failed"`; do not retry the mutation. Recover the report with
-`profile-mappings inspect --output <separate-report-path>`. Inspection save failures
+`profile mappings inspect --output <separate-report-path>`. Inspection save failures
 remain errors. Report destinations are staged without truncating existing reports.
 
 ## Profile Configuration
@@ -1400,7 +1505,7 @@ Included built-ins:
 - `config/templates/event-pipeline.toml` - event-driven wording template
 
 These profiles/templates are also embedded in the binary and can be referenced by name in
-`generate-config --template`:
+`profile prepare --template` (also accepted by compatibility `generate-config`):
 
 - `base`
 - `eyes`
@@ -1436,20 +1541,24 @@ cp ~/.claude/skills/analyze-logs/templates/custom-start.toml ./config/profiles/m
 # Then run with your custom profile
 log-analyzer --profile config/profiles/my-team.toml info logs/app.log
 
-# Or generate a profile using an embedded built-in template
-log-analyzer generate-config logs/app.log --template service-api --profile-name my-team
+# Alternatively, prepare a new candidate using an embedded template
+log-analyzer profile prepare logs/app.log --template service-api --profile-name my-team \
+  --candidate-output service-candidate.toml --kind request --summary
 
-# Generate a profile from multiple related log chunks (merged before inference)
-log-analyzer generate-config logs/run-1.log logs/run-2.log --template custom-start --profile-name my-team
+# Prepare a candidate from multiple related chunks; a fresh path is required
+log-analyzer profile prepare logs/run-1.log logs/run-2.log --template custom-start \
+  --candidate-output split-candidate.toml --kind request --summary
 ```
 
-Only combine related logs from the same run/session when using `generate-config`; mixing unrelated runs can pollute inferred commands/requests/session levels.
+Only combine related logs from the same run/session when preparing a profile; mixing unrelated runs can pollute inferred commands/requests/session levels.
 
 For consumer repositories, prefer a tiny wrapper script or Make target that pins `--profile <name-or-file>`. That keeps the binary generic while making repo workflows explicit and repeatable.
 
 ### Validate Your Profile (Quick Checklist)
 
-Before relying on analysis results, verify the generated/custom profile with a few quick checks:
+Before relying on lifecycle results, run `profile validate --kind KIND --expected
+FACTS.json` with the selected `--profile` and independent known facts. Inspect
+coverage and suitability; these supplementary checks help diagnose specific gaps:
 
 - `info --payloads --samples` shows expected command/request names and parsed payloads (not mostly missing payloads)
 - `search --payloads` for a known message displays JSON payload/settings content you expect
