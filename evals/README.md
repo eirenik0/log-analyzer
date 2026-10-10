@@ -28,8 +28,9 @@ calibration and actual unrestricted-prose review have **not been run**.
 
 `layer-cases.json` freezes source/profile/fact-packet hashes, incident families,
 development/held-out splits, compatibility eligibility and visible exclusion reasons.
-Ten historical cases and four public held-out variants cover failures, INFO-only
-timing, scoped identities, incomplete capture, unsuitable profiles, nested records,
+Ten historical cases, two completion development cases and four public held-out
+variants cover failures, INFO-only timing, scoped identities, incomplete capture,
+unsuitable profiles, nested records,
 redacted locations, mixed grammars and unparsed input. The four variants change
 identities, scopes, UTC offsets, durations and capture boundaries. Historical split-
 file timing remains explicitly ineligible because unified inputs are independent;
@@ -37,9 +38,11 @@ named redacted identities use a different disclosure contract. A duplicate fixtu
 question remains in the historical smoke instead of duplicating paired totals.
 Exclusions are semantic compatibility decisions, not removals of failed attempts.
 
-The default two repetitions produce **98 scripted attempts**: 14 direct tool checks,
-28 interpretation runs and 56 paired workflow runs. Tool checks compare direct Rust
-records, severity, source-backed intervals/boundaries and capture uncertainty with
+The default two repetitions now produce **112 scripted attempts**: 16 direct tool checks,
+32 interpretation runs and 64 paired workflow runs. The published 98-attempt report
+predates the two completion development cases and remains a historical result.
+Tool checks compare direct Rust records, severity, source-backed intervals/boundaries
+and capture uncertainty with
 independently authored fixture facts. They do not grade through the artifact adapter.
 `verified-facts.json` contains source/operation packets, not expected answers, statuses,
 omission labels or scoring hints. Only interpretation participants receive those
@@ -99,6 +102,53 @@ projection. Published smoke results establish reproducible harness checks only;
 public held-out scripted repetitions establish neither model reliability nor broad
 accuracy, time, token or cost improvement. Codex/Pi/Claude packaging is reused from
 the existing portable skill work; interactive host behavior remains untested here.
+
+## Completion checklist evaluation
+
+The skill checks processing coverage, final lifecycle evidence and outcome/contrary
+records before an absence or completion claim. `tests/test_completion_evidence.rs`
+exercises ten synthetic captures: a paginated late success, a failed end, processing
+cutoff, a rejected terminal record, an unrecognized result, an unsuitable profile,
+start-only/end-only captures, a different-scope end, and failure followed by success.
+These are evidence availability and interpretation constraints, not a test of whether
+a model follows the skill.
+
+The layered corpus additionally asks for positive `completion` claims on late-success
+and failed-terminal fixtures. Here `completion=true` means a unique observed
+start/end lifecycle, irrespective of its outcome; it does not mean successful or
+whole-run completion. Existing incomplete fixtures require `unknown`. The scripted
+participant preserves ambiguity when a later unmatched boundary exists. The strict
+scorer requires the correct boundaries and outcome citations: blanket abstention,
+false absence and unsupported completion fail their corresponding cases.
+
+For an opt-in model comparison, `layers.py --skill-file PATH` supplies the exact
+UTF-8 entrypoint (up to 64 KiB) in the adapter's `base_prompt` on every turn. It
+records its SHA-256 and byte length as `skill_input` and includes the delivered
+instructions in each participant prompt hash and initial input-byte accounting.
+It loads no linked references; this tests the entrypoint under the broker's declared
+tool contract, not full installed-host behavior. Scripted runs reject this option.
+No credentials or provider calls are needed for regression checks.
+
+To compare old and new instructions, freeze both entrypoints and run the **same new
+harness, binary, corpus, model and configuration**, changing only `--skill-file`:
+
+```sh
+python3 evals/layers.py --binary target/release/log-analyzer --repeats 3 \
+  --skill-file /absolute/baseline-SKILL.md --report target/evals/skill-baseline.json \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --adapter /absolute/path/to/adapter
+python3 evals/layers.py --binary target/release/log-analyzer --repeats 3 \
+  --skill-file .agents/skills/analyze-logs/SKILL.md --report target/evals/skill-checklist.json \
+  --model YOUR_MODEL_ID --allocated-budget-usd YOUR_POSITIVE_ALLOCATION \
+  --configuration non-secret-config.json --adapter /absolute/path/to/adapter
+```
+
+Each command requires its own explicit provider allocation. Alternate baseline and
+candidate run order across batches and compare like-for-like arms and cases, retaining
+failed attempts. Evaluate false unfinished claims, false completion claims, unnecessary
+abstention, outcome correctness and citations separately. Use the prose-review protocol
+for natural-language claims and the broader coverage-gap cases; typed fixture success
+alone cannot establish skill effectiveness. No such model comparison has been run.
 
 ## CLI corpus and historical migrations
 

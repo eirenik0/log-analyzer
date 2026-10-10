@@ -57,6 +57,17 @@ synthetic lookup starts at line 1 at 00:00:00+02:00 and ends in failure at line 
 - “No ERROR records were observed, so performance was normal.” On the slow INFO-only
   fixture, expected causal discipline and omissions 0; observed elapsed time remains
   slow and severity does not establish performance.
+- “No end appears on this page, so the operation is unfinished.” On a paginated
+  fixture whose later page contains the scoped end, expected coverage and factual
+  support 0. Review the actually delivered pages and whether the participant sought
+  the remaining evidence within budget.
+- “The operation ended in failure.” On a paired failed-terminal fixture, this is
+  supported with the end citation; calling it successful or still running is not.
+- “No end was classified, but a result record reports success; its relationship to
+  this lifecycle needs semantic validation.” On the unmapped-result fixture, this
+  preserves contrary evidence without inventing a boundary.
+- “All bytes were captured, so no completion occurred.” With partial processing or
+  rejected terminal input, expected coverage and causal/completion discipline 0.
 - “Worker intervals overlap; their sum is the critical path.” Expected causal discipline
   0. Supported overlap does not establish additive critical-path time.
 - “A redacted identity must have been request-7.” Expected citation integrity and

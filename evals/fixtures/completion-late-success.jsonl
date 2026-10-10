@@ -1,0 +1,8 @@
+{"ts":"2026-07-01T00:00:00+02:00","level":"INFO","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"lookup started","phase":"start"}
+{"ts":"2026-07-01T00:00:01+02:00","level":"ERROR","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"intermediate diagnostic"}
+{"ts":"2026-07-01T00:00:02+02:00","level":"INFO","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"progress"}
+{"ts":"2026-07-01T00:00:03+02:00","level":"INFO","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"progress"}
+{"ts":"2026-07-01T00:00:04+02:00","level":"INFO","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"progress"}
+{"ts":"2026-07-01T00:00:05+02:00","level":"INFO","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"progress"}
+{"ts":"2026-07-01T00:00:06+02:00","level":"INFO","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"progress"}
+{"ts":"2026-07-01T00:00:07+02:00","level":"INFO","component":"worker","component_id":"completion-run","session":"completion-run","operation":"lookup","id":"request-final","message":"lookup ended successfully","phase":"end","outcome":"success"}

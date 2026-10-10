@@ -73,6 +73,31 @@ additive critical-path time. Independent comparisons retain separate snapshot an
 profile bindings. Redacted identities/locations need a permitted local mapping or
 an explicit resolution gap; do not reconstruct hidden fields.
 
+## Before claiming completion or absence
+
+For a question about something missing or unfinished, check:
+
+- **Processing coverage:** inspect per-input processing status, stop reasons,
+  parsed/rejected counts, semantic support and relevant page omissions. Capturing
+  all bytes is not the same as processing them; processing the whole file does
+  not prove the upstream capture includes every event.
+- **Final lifecycle evidence:** retrieve the relevant retained records and explicit
+  memberships through the last needed page, within budget. Match the exact run,
+  kind, name, ID, scope and lifecycle occurrence. Check later ends and reused IDs;
+  the last displayed record or a substring match is not a final boundary.
+- **Outcome and contrary evidence:** inspect terminal outcomes and result/summary
+  records, including unclassified records. An unmapped outcome is a semantic gap
+  to resolve, not evidence of absence. A failed terminal event is still an observed
+  ending; a later success does not erase an earlier failure or establish retry or
+  whole-run success without explicit semantics.
+
+Cite the supporting occurrences and state separately what ended, its outcome and
+what remains unknown. An end without a start can support an observed end/outcome,
+not a measured duration or a reconstructed complete lifecycle. When coverage,
+recognition or retrieval is incomplete, qualify absence as “no recognized end in
+this processed evidence”; do not upgrade it to “unfinished” or “hung.” Retain
+positive facts supported by available evidence even when other coverage is partial.
+
 ## Communicate supported findings
 
 Cite snapshot-scoped source references and both real boundaries for measurements,

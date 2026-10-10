@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "method": "Eligibility is based on input relationship and disclosure semantics; no failed attempt is removed. Four public held-out variants are frozen; scripted repetitions support no model or broad improvement claim.",
+  "method": "Eligibility is based on input relationship and disclosure semantics; no failed attempt is removed. Four public held-out variants are frozen; scripted repetitions support no model or broad improvement claim. Two development cases add positive lifecycle completion with success and failure outcomes; the historical published corpus remains unchanged.",
   "files": {
     "config/profiles/base.toml": "8b1757dce1a64bf24214652bfa728fc647c96a479ddf70ebe8aa2c16d9542fb2",
     "config/templates/service-api.toml": "ced3836814c48e38af984f57f7d99a58aabf7baa5b73ad7c0f1814a17a050af6",
@@ -29,7 +29,8 @@
     "examples/investigations/slow.jsonl": "82c1e2cf9ef3d33f366d361b66525302336ef61c04713a4110ea36a8fb6bb378",
     "examples/investigations/truncated.jsonl": "bdab714e60c13de30a37e681e1137f7931db66d78c3126d327e1a1e34151ded8",
     "examples/investigations/unsuitable.jsonl": "e68159736a0c21c131e29452043f89549676873fa7edfcd82616dedd69957477",
-    "evals/verified-facts.json": "a055fca76e4a9d626dda96f8f83e4ba40e8e287a4dda1fb2f222a0154b3335d2"
+    "evals/verified-facts.json": "9af6ef055e9ecc34cfeb8d54d2cb1bb3d874f6603809c1c7c71fadbbfcf31451",
+    "evals/fixtures/completion-late-success.jsonl": "278a096993132b4039f147a46ad3907549cc3e65e22378d4b96f048f0a5d95dd"
   },
   "cases": [
     {
@@ -1890,6 +1891,140 @@
         ],
         "status": {
           "run": "unsupported_input"
+        }
+      }
+    },
+    {
+      "id": "completion-late-success",
+      "family": "completion",
+      "split": "development",
+      "eligible": true,
+      "exclusion_reason": null,
+      "scenario": {
+        "id": "completion-late-success",
+        "question": "Did the observed lookup lifecycle end, and what was its outcome? Completion means an observed start/end lifecycle, not successful or whole-run completion. Cite its boundaries and outcome record.",
+        "profile": "examples/investigations/profile.toml",
+        "groups": {
+          "run": [
+            "evals/fixtures/completion-late-success.jsonl"
+          ]
+        },
+        "tasks": [
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "completion"
+          },
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "outcome"
+          }
+        ],
+        "expected": [
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "completion",
+            "kind": "observation",
+            "value": true,
+            "support": [
+              [
+                "evals/fixtures/completion-late-success.jsonl",
+                1,
+                null
+              ],
+              [
+                "evals/fixtures/completion-late-success.jsonl",
+                8,
+                null
+              ]
+            ]
+          },
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "outcome",
+            "kind": "observation",
+            "value": "success",
+            "support": [
+              [
+                "evals/fixtures/completion-late-success.jsonl",
+                8,
+                null
+              ]
+            ]
+          }
+        ],
+        "status": {
+          "run": "supported"
+        }
+      }
+    },
+    {
+      "id": "completion-failed-terminal",
+      "family": "completion",
+      "split": "development",
+      "eligible": true,
+      "exclusion_reason": null,
+      "scenario": {
+        "id": "completion-failed-terminal",
+        "question": "Did the observed lookup lifecycle end, and what was its outcome? Completion means an observed start/end lifecycle, not successful or whole-run completion. Cite its boundaries and outcome record.",
+        "profile": "examples/investigations/profile.toml",
+        "groups": {
+          "run": [
+            "examples/investigations/failure.jsonl"
+          ]
+        },
+        "tasks": [
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "completion"
+          },
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "outcome"
+          }
+        ],
+        "expected": [
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "completion",
+            "kind": "observation",
+            "value": true,
+            "support": [
+              [
+                "examples/investigations/failure.jsonl",
+                1,
+                null
+              ],
+              [
+                "examples/investigations/failure.jsonl",
+                3,
+                null
+              ]
+            ]
+          },
+          {
+            "group": "run",
+            "subject": "lookup",
+            "predicate": "outcome",
+            "kind": "observation",
+            "value": "failure",
+            "support": [
+              [
+                "examples/investigations/failure.jsonl",
+                3,
+                null
+              ]
+            ]
+          }
+        ],
+        "status": {
+          "run": "supported"
         }
       }
     }

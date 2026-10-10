@@ -97,7 +97,7 @@ fn layered_smoke_separates_tool_truth_interpretation_and_workflow() {
         String::from_utf8_lossy(&output.stderr)
     );
     let report: Value = serde_json::from_slice(&fs::read(report_path).unwrap()).unwrap();
-    assert_eq!(report["counts"]["PASS"], 98);
+    assert_eq!(report["counts"]["PASS"], 112);
     assert_eq!(report["kind"], "scripted_layered_smoke");
     assert!(report["model"].is_null());
     assert_eq!(report["exclusions"].as_array().unwrap().len(), 3);
@@ -180,9 +180,9 @@ fn layered_smoke_separates_tool_truth_interpretation_and_workflow() {
             assert!(run["trace"].as_array().unwrap().is_empty());
         }
     }
-    assert_eq!(layers["tool_correctness"], 14);
-    assert_eq!(layers["verified_facts_interpretation"], 28);
-    assert_eq!(layers["end_to_end"], 56);
+    assert_eq!(layers["tool_correctness"], 16);
+    assert_eq!(layers["verified_facts_interpretation"], 32);
+    assert_eq!(layers["end_to_end"], 64);
 }
 
 #[test]

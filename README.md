@@ -274,6 +274,15 @@ claims. No real-model comparison, investigation-time improvement or token saving
 been measured. Tokens and provider cost remain unavailable. See the
 [evaluation methods and limits](evals/README.md).
 
+The analysis skill includes a completion checklist: verify processing coverage,
+inspect the final scoped lifecycle events, and check outcome records and contrary
+evidence before claiming something is missing or unfinished. Complete file capture,
+complete processing, an observed end and a successful outcome remain distinct.
+Focused synthetic regressions exercise those distinctions. The expanded layered
+suite includes positive completion claims and can supply a fingerprinted skill
+entrypoint to an optional model adapter via `--skill-file`; no improvement in model
+answers has been measured. See [completion evaluation](evals/README.md#completion-checklist-evaluation).
+
 The eight executable workflows cover failures, INFO-only delays, reused IDs,
 incomplete captures, unsuitable profiles, unparsed input and instruction-like
 text. Passing them does not establish production coverage, arbitrary model quality

@@ -110,14 +110,14 @@ def adapter_call(argv, payload, timeout, limit=262144, on_frame=None, on_started
                 on_frame(frame)
 
 
-def external(tools, public, adapter, model, config, attempt=None, allocated_budget_usd=None):
+def external(tools, public, adapter, model, config, attempt=None, allocated_budget_usd=None, base_prompt=BASE_PROMPT):
     attempt = attempt or Attempt()
     history = []
     for turn in range(tools.budgets['tool_calls'] + 1):
         provider_remaining = None if allocated_budget_usd is None else allocated_budget_usd - (attempt.usage()['provider_cost_usd_known_total'] or 0)
         if provider_remaining is not None and provider_remaining <= 0:
             raise BudgetExceeded('allocated provider budget exhausted before next response')
-        response = adapter_call(adapter, {'protocol_version': 1, 'base_prompt': BASE_PROMPT, 'model': model, 'configuration': config, 'task': public, 'tool_arm': tools.arm, 'tool_contract': getattr(tools, 'contract', TOOL_CONTRACT), 'history': history, 'remaining': {'tool_calls': tools.budgets['tool_calls'] - len(tools.calls), 'output_bytes': tools.budgets['output_bytes'] - tools.output_bytes, 'wall_seconds': tools.remaining(), 'provider_cost_usd': provider_remaining}}, tools.remaining(), on_frame=attempt.receive, on_started=attempt.start_response)
+        response = adapter_call(adapter, {'protocol_version': 1, 'base_prompt': base_prompt, 'model': model, 'configuration': config, 'task': public, 'tool_arm': tools.arm, 'tool_contract': getattr(tools, 'contract', TOOL_CONTRACT), 'history': history, 'remaining': {'tool_calls': tools.budgets['tool_calls'] - len(tools.calls), 'output_bytes': tools.budgets['output_bytes'] - tools.output_bytes, 'wall_seconds': tools.remaining(), 'provider_cost_usd': provider_remaining}}, tools.remaining(), on_frame=attempt.receive, on_started=attempt.start_response)
         require(isinstance(response, dict) and set(response) <= {'tool_call', 'final', 'usage'} and ('tool_call' in response) != ('final' in response), 'invalid adapter response')
         usage = response.get('usage', {})
         require(isinstance(usage, dict), 'usage must be an object')
