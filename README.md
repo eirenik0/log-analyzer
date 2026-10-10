@@ -123,7 +123,12 @@ source and calculated data, including normalization field-mapping amplification
 and owned classifications. Shared configuration is reserved once; fixed per-record
 metadata is charged separately from source-byte amplification. Artifact collections
 move into their retained document, and construction buffers are released before
-stored-byte validation. A `memory_limit` stop reports exhaustion of this accounting
+stored-byte validation. Native classic, tracing and syslog records reserve worst-case
+source amplification before parsing, then release unused amplification based on
+retained text and structured payload storage. Dense payloads retain the original
+reservation when needed; JSON envelopes and normalization keep their existing
+allowances. Classification and fixed metadata remain separately charged. Default
+limits are unchanged. A `memory_limit` stop reports exhaustion of this accounting
 allowance, not a measurement of process RAM. It can stop earlier than the record cap and does
 not promise a process RSS ceiling. Profile loading, compiled regexes, fixed report
 metadata and final partial-outcome delivery are outside that accounting; effective

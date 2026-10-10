@@ -140,6 +140,47 @@ impl Budget {
             .expect("classification serializes to a counting writer");
         self.reserve("classification", size.0.saturating_mul(32))
     }
+    /// Parsing reserves worst-case JSON amplification before allocating. Once a
+    /// native text record is parsed, retain text copies and its actual structured
+    /// storage instead. JSON envelopes and normalization keep their original charge.
+    pub fn settle_text_record(&mut self, bytes: usize, entry: &crate::parser::LogEntry) {
+        fn json_storage(value: &Value) -> u64 {
+            let heap = match value {
+                Value::String(text) => text.capacity() as u64,
+                Value::Array(items) => items.iter().fold(
+                    (items.capacity() as u64).saturating_mul(std::mem::size_of::<Value>() as u64),
+                    |total, item| total.saturating_add(json_storage(item)),
+                ),
+                Value::Object(fields) => fields.iter().fold(0u64, |total, (key, value)| {
+                    total
+                        .saturating_add(128)
+                        .saturating_add(key.capacity() as u64)
+                        .saturating_add(json_storage(value))
+                }),
+                _ => 0,
+            };
+            heap.saturating_add(std::mem::size_of::<Value>() as u64)
+        }
+        let fields = entry.structured_fields.iter().fold(
+            (entry.structured_fields.capacity() as u64).saturating_mul(128),
+            |total, (key, value)| {
+                total
+                    .saturating_add(key.capacity() as u64)
+                    .saturating_add(value.capacity() as u64)
+            },
+        );
+        let structured = fields
+            .saturating_add(entry.payload().map_or(0, json_storage))
+            .saturating_add(entry.envelope_payload.as_ref().map_or(0, json_storage));
+        // Parsed entries, correlation clones and artifact trees coexist. Eight
+        // structured copies leave headroom over those trees; escaped text has a
+        // separate allowance. Fixed metadata and classification stay reserved.
+        let retained = (bytes as u64)
+            .saturating_mul(32)
+            .saturating_add(structured.saturating_mul(8));
+        let excess = (bytes as u64).saturating_mul(128).saturating_sub(retained);
+        self.memory_bytes = self.memory_bytes.saturating_sub(excess);
+    }
     pub fn limits_json(&self) -> Value {
         json!({"input_bytes":self.limits.input_bytes,"records":self.limits.records,
             "expanded_records":self.limits.expanded_records,"work_units":self.limits.work_units,
@@ -168,6 +209,10 @@ pub(crate) fn test_budget() -> Budget {
         cancel_file: None,
     })
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/text_memory.rs"]
+mod text_memory_tests;
 
 #[cfg(test)]
 mod tests {
