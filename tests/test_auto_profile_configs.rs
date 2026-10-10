@@ -129,6 +129,22 @@ fn normalized_config_can_win_when_builtins_cannot_parse_the_input() {
     assert_eq!(selection(&report)["profile"], "investigation-example");
     assert_eq!(report["processing"]["usage"]["records"], 2);
     assert_eq!(artifact["records"].as_array().unwrap().len(), 2);
+    let (redacted, _) = run(
+        root,
+        &format!("{}\n", json!({"rows":rows()})),
+        "redacted.json",
+        &["--redact"],
+    );
+    let summary = &redacted["report_metadata"]["profile_selection"];
+    assert_eq!(summary["status"], "selected");
+    assert!(
+        summary["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|candidate| candidate["structural_loss"] == true)
+    );
+    assert_eq!(summary, &report["report_metadata"]["profile_selection"]);
     assert!(
         artifact["findings"]
             .as_array()
@@ -365,6 +381,15 @@ fn config_paths_and_inherited_sources_are_removed_by_redaction() {
     for value in [&report, &artifact] {
         let text = value.to_string();
         assert!(!text.contains("private-profile.toml"));
+        assert!(!text.contains("investigation-example"));
+        assert_eq!(
+            value["report_metadata"]["profile_selection"]["status"],
+            "selected"
+        );
+        assert_eq!(
+            value["report_metadata"]["profile_selection"]["discovery"]["complete"],
+            true
+        );
         assert!(!text.contains(root.to_str().unwrap()));
     }
 }
@@ -382,5 +407,147 @@ fn symlink_directory_cycles_are_skipped_and_reported() {
         selection(&report)["discovery"]["diagnostics"]
             .to_string()
             .contains("symlink_directory_not_followed")
+    );
+}
+
+#[test]
+fn unread_profiles_remain_protected_at_discovery_limits() {
+    for case in ["files", "entries", "depth", "work", "memory", "cancel"] {
+        let temp = setup();
+        let root = temp.path();
+        let victim = if case == "depth" {
+            fs::create_dir_all(root.join("config/a/b/c/d/e")).unwrap();
+            "config/a/b/c/d/e/victim.toml"
+        } else {
+            "config/z-victim.TOML"
+        };
+        fs::write(root.join(victim), profile()).unwrap();
+        let mut flags = vec!["--output", victim];
+        match case {
+            "files" => {
+                for index in 0..20 {
+                    fs::write(
+                        root.join(format!("config/a-{index}.toml")),
+                        "extends='base'\n",
+                    )
+                    .unwrap();
+                }
+            }
+            "entries" => {
+                for index in 0..300 {
+                    fs::write(root.join(format!("config/a-{index}.txt")), "").unwrap();
+                }
+            }
+            "work" => flags.extend(["--processing-max-work", "1"]),
+            "memory" => flags.extend(["--processing-max-memory-bytes", "1"]),
+            "cancel" => {
+                fs::write(root.join("cancel"), "").unwrap();
+                flags.extend(["--cancel-file", "cancel"]);
+            }
+            "depth" => (),
+            _ => unreachable!(),
+        }
+        let output = invoke(root, &input(), "artifact.json", &flags);
+        assert!(!output.status.success(), "{case}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("conflicts"),
+            "{case}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(root.join(victim)).unwrap(),
+            profile(),
+            "{case}"
+        );
+        assert!(!root.join("artifact.json").exists(), "{case}");
+    }
+}
+
+#[test]
+fn redaction_retains_discovery_failure_reasons_without_paths() {
+    let temp = setup();
+    let root = temp.path();
+    fs::write(
+        root.join("config/private-broken.toml"),
+        "extends='../private-missing.toml'\n",
+    )
+    .unwrap();
+    let (report, artifact) = run(root, &input(), "artifact.json", &["--redact"]);
+    for value in [&report, &artifact] {
+        let summary = &value["report_metadata"]["profile_selection"];
+        assert_eq!(summary["status"], "insufficient_evidence");
+        assert_eq!(summary["discovery"]["complete"], false);
+        assert_eq!(
+            summary["discovery"]["diagnostics"],
+            json!([{"reason":"invalid_or_unreadable_configuration"}])
+        );
+        assert!(!value.to_string().contains("private-"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn encountered_and_unvisited_profile_symlinks_remain_protected() {
+    let temp = setup();
+    let root = temp.path();
+    fs::write(root.join("private-profile.toml"), profile()).unwrap();
+    std::os::unix::fs::symlink(
+        root.join("private-profile.toml"),
+        root.join("config/local.toml"),
+    )
+    .unwrap();
+    let output = invoke(
+        root,
+        &input(),
+        "first.json",
+        &[
+            "--processing-max-work",
+            "500",
+            "--output",
+            "private-profile.toml",
+        ],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        fs::read_to_string(root.join("private-profile.toml")).unwrap(),
+        profile()
+    );
+    assert!(!root.join("first.json").exists());
+    fs::write(root.join("config/hidden.toml"), profile()).unwrap();
+    std::os::unix::fs::symlink(root.join("config/hidden.toml"), root.join("alias.json")).unwrap();
+    let output = invoke(
+        root,
+        &input(),
+        "second.json",
+        &["--processing-max-work", "1", "--output", "alias.json"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        fs::read_to_string(root.join("config/hidden.toml")).unwrap(),
+        profile()
+    );
+    assert!(!root.join("second.json").exists());
+}
+
+#[test]
+fn profile_destination_guard_allows_normalized_paths_outside_discovery() {
+    let temp = setup();
+    let root = temp.path();
+    fs::write(root.join("config/local.toml"), profile()).unwrap();
+    let output = invoke(
+        root,
+        &input(),
+        "artifact.json",
+        &["--output", "config/../report.toml"],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(root.join("report.toml").exists());
+    assert_eq!(
+        fs::read_to_string(root.join("config/local.toml")).unwrap(),
+        profile()
     );
 }

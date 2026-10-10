@@ -128,4 +128,13 @@ fn capabilities_advertise_default_detection_and_explicit_overrides() {
     let mut malformed = caps.clone();
     malformed["investigation_contracts"]["profile_detection"] = json!({"default":"yes"});
     assert!(!validator.is_valid(&malformed));
+    let mut missing = caps.clone();
+    missing["investigation_contracts"]
+        .as_object_mut()
+        .unwrap()
+        .remove("profile_detection");
+    assert!(!validator.is_valid(&missing));
+    let mut missing = caps.clone();
+    missing.as_object_mut().unwrap().remove("profiles");
+    assert!(!validator.is_valid(&missing));
 }

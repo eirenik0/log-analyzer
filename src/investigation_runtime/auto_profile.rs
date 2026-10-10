@@ -141,7 +141,17 @@ pub(super) fn detect(
     }
     let nonempty_inputs = captures
         .iter()
-        .filter(|c| c.as_ref().is_some_and(|c| !c.data.is_empty()))
+        .zip(&lengths)
+        .filter(|(capture, length)| {
+            capture.as_ref().is_some_and(|capture| {
+                // Only a fully sampled input can be proven blank. A blank prefix
+                // must not hide later records outside the detection allowance.
+                !(capture.complete
+                    && **length == capture.data.len()
+                    && std::str::from_utf8(&capture.data[..**length])
+                        .is_ok_and(|text| text.trim().is_empty()))
+            })
+        })
         .count();
     let status = if budget.stop.is_some() {
         "budget_stopped"
@@ -171,4 +181,62 @@ pub(super) fn detect(
     drop(catalog);
     budget.memory_bytes = memory_before_catalog;
     (selected, metadata, passes, sources)
+}
+
+// Keep only analyzer-owned diagnostics; profile labels, paths and rules never
+// enter this summary, so it can survive omission of the original query.
+pub(super) fn summary(selection: &Value) -> Value {
+    fn pick(value: &Value, keys: &[&str]) -> Value {
+        let mut result = json!({});
+        for key in keys {
+            if let Some(value) = value.get(key) {
+                result[*key] = value.clone();
+            }
+        }
+        result
+    }
+    let mut result = pick(
+        selection,
+        &["status", "method", "limits", "probe_records", "work_units"],
+    );
+    for (collection, keys) in [
+        (
+            "samples",
+            &[
+                "input_ordinal",
+                "sample_bytes",
+                "captured_bytes",
+                "entire_input",
+            ][..],
+        ),
+        (
+            "candidates",
+            &[
+                "status",
+                "parse_passes",
+                "parse_failures",
+                "structural_loss",
+                "lifecycle_records",
+                "matched_inputs",
+                "invalid_or_conflicting_records",
+            ][..],
+        ),
+    ] {
+        if let Some(values) = selection[collection].as_array() {
+            result[collection] = values.iter().map(|value| pick(value, keys)).collect();
+        }
+    }
+    if selection["discovery"].is_object() {
+        result["discovery"] = pick(
+            &selection["discovery"],
+            &["complete", "limits", "read_bytes"],
+        );
+        result["discovery"]["diagnostics"] = selection["discovery"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| pick(value, &["reason"]))
+            .collect();
+    }
+    result
 }

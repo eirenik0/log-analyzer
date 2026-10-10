@@ -37,6 +37,34 @@ pub(super) fn protect(artifact: &Path, report: Option<&Path>, sources: &[PathBuf
     }
     Ok(())
 }
+// A bounded walk cannot enumerate every profile. Reserve TOML destinations
+// under its root as well, even if discovery never reaches them.
+pub(super) fn protect_profile_directory(
+    artifact: &Path,
+    report: Option<&Path>,
+    directory: &Path,
+) -> Result<()> {
+    let directory = destination_identity(directory)?;
+    for path in std::iter::once(artifact).chain(report) {
+        let absolute = std::env::current_dir()?.join(path);
+        let resolved = destination_identity(path)?;
+        for path in [&absolute, &resolved] {
+            if !path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+            {
+                continue;
+            }
+            let parent = destination_identity(path.parent().unwrap_or(Path::new(".")))?;
+            for ancestor in parent.ancestors() {
+                if same_destination(ancestor, &directory, false) {
+                    return Err("Artifact/report destination conflicts with the profile discovery directory".into());
+                }
+            }
+        }
+    }
+    Ok(())
+}
 pub(super) fn stage(path: &Path) -> Result<tempfile::NamedTempFile> {
     Ok(tempfile::NamedTempFile::new_in(
         path.parent()

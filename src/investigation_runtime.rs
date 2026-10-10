@@ -233,6 +233,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         } else {
             capture_root.join(directory)
         };
+        artifact::protect_profile_directory(&args.artifact, cli.output.as_deref(), &directory)?;
         let (selected, detection, passes, sources) = auto_profile::detect(
             &args.files,
             &cached,
@@ -558,6 +559,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             }
         }
     }
+    metadata["profile_selection"] = auto_profile::summary(&detection);
     // Instrumentation belongs to the effective query and its digest, never to evidence text.
     metadata["evidence"]["query"]["execution"] = json!({"parse_passes":parse_calls + detection_parse_calls,"analysis_parse_passes":parse_calls,"detection_parse_passes":detection_parse_calls,"correlation_passes":correlation_calls,"input_relationship":"independent_runs","record_max_bytes":args.record_max_bytes,"profile_selection":detection,"source_locations":source_locations});
     metadata["evidence"]["query_sha256"] = json!(evidence::digest(

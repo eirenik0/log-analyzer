@@ -122,8 +122,12 @@ analysis available with an explicit gap. An incompatible candidate's parsing fai
 does not disqualify a different candidate that can parse/classify the sample. This
 allows custom normalization profiles to be detected. Explicit profile overrides
 skip directory discovery entirely, including `--profiles-dir`. No mappings or config
-files are changed. Report/artifact paths cannot overwrite discovered source profiles
-or inherited files; redacted reports omit discovery paths and queries.
+files are changed. Report/artifact paths cannot overwrite encountered source profiles
+or inherited files. TOML destinations within the discovery directory are protected
+even when discovery stops before reaching them. Redacted reports omit discovery
+paths, profile names and queries, while `report_metadata.profile_selection` preserves
+a sanitized selection status, sample coverage, candidate diagnostics and discovery
+limits. This summary is also present in unredacted reports.
 
 Recognition, timing, failures and incomplete-lifecycle evidence
 have separate support requirements; scope aliases and missing timestamp provenance

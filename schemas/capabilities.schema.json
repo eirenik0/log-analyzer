@@ -14,7 +14,8 @@
     "bounded_reports",
     "profile_validation",
     "investigation_contracts",
-    "profile_preparation"
+    "profile_preparation",
+    "profiles"
   ],
   "properties": {
     "schema_version": {
@@ -297,7 +298,8 @@
         "command_available",
         "artifact_retrieval_available",
         "schemas",
-        "occurrence_identity"
+        "occurrence_identity",
+        "profile_detection"
       ],
       "additionalProperties": false
     },

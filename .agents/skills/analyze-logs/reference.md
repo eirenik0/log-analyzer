@@ -28,6 +28,8 @@ built-ins or relative parent files through `extends`.
 
 Start with automatic detection unless the user supplied a profile. Inspect the
 selected name, origins, effective hash, sample coverage and discovery diagnostics.
+Under redaction, use `report_metadata.profile_selection` for status and coverage;
+hidden profile names and paths remain unverifiable.
 Detection considers built-ins and `./config` (or `--profiles-dir`); a unique matching
 grammar does not prove intended semantics. Use `--profile base` for generic facts.
 Structural coverage or an `info` disclaimer cannot establish lifecycle support.

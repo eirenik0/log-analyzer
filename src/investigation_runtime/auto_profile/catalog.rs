@@ -65,6 +65,13 @@ impl Discovery {
             self.diagnostic(dir, "directory_unavailable", true);
             return;
         };
+        // Protect every encountered path before any limit/checkpoint can stop
+        // discovery, including candidates that are never parsed.
+        self.sources
+            .extend(entries.iter().map(|entry| entry.path()).filter(|path| {
+                path.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+            }));
         self.entries += entries.len();
         if self.entries > MAX_ENTRIES {
             self.diagnostic(dir, "directory_entry_limit", true);

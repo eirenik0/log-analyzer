@@ -343,3 +343,143 @@ fn retained_retrieval_preserves_inference_after_source_changes() {
     assert!(page.to_string().contains("service-api"));
     assert!(!page.to_string().contains("other"));
 }
+
+#[test]
+fn blank_inputs_do_not_prevent_detection_but_unsampled_records_still_do() {
+    for blank in ["", " \t\r\n\n", "\u{2003}\u{00a0}\n"] {
+        let dir = TempDir::new().unwrap();
+        let (report, _) = run(
+            dir.path(),
+            &[
+                line("Operation \"sync\" started") + &line("Operation \"sync\" completed"),
+                blank.to_owned(),
+            ],
+            &[],
+        );
+        assert_eq!(selection(&report)["status"], "selected");
+        assert_eq!(selection(&report)["profile"], "service-api");
+        assert_eq!(report["processing"]["usage"]["records"], 2);
+        assert_eq!(
+            report["report_metadata"]["evidence"]["inputs"][1]["coverage"]["nonempty_lines"],
+            0
+        );
+    }
+    let dir = TempDir::new().unwrap();
+    let (report, _) = run(
+        dir.path(),
+        &[
+            line("Operation \"sync\" started"),
+            "\n".repeat(128) + &line("ordinary record beyond the sample"),
+        ],
+        &[],
+    );
+    assert_eq!(selection(&report)["status"], "insufficient_evidence");
+    assert_eq!(selection(&report)["samples"][1]["entire_input"], false);
+}
+
+#[test]
+fn redaction_preserves_selection_status_and_coverage_without_profile_identity() {
+    for (input, flags, expected) in [
+        (line("Operation \"sync\" started"), vec![], "selected"),
+        (line("Command \"sync\" is called"), vec![], "ambiguous"),
+        (line("ordinary record"), vec![], "no_match"),
+        (
+            line("Operation \"sync\" started")
+                + "{\"timestamp\":\"invalid\",\"message\":\"broken\"}\n",
+            vec![],
+            "insufficient_evidence",
+        ),
+        (
+            line("Operation \"sync\" started"),
+            vec!["--processing-max-work", "3"],
+            "budget_stopped",
+        ),
+        (
+            line("Operation \"sync\" started"),
+            vec!["--profile", "service-api"],
+            "explicit",
+        ),
+    ] {
+        let original_dir = TempDir::new().unwrap();
+        let (original, _) = run(original_dir.path(), std::slice::from_ref(&input), &flags);
+        let dir = TempDir::new().unwrap();
+        let mut flags = flags;
+        flags.push("--redact");
+        let (report, artifact) = run(dir.path(), &[input], &flags);
+        for value in [&report, &artifact] {
+            let summary = &value["report_metadata"]["profile_selection"];
+            assert_eq!(summary["status"], expected);
+            assert_eq!(summary, &original["report_metadata"]["profile_selection"]);
+            assert!(summary.get("profile").is_none());
+            assert!(summary.get("origins").is_none());
+            assert_eq!(
+                value["report_metadata"]["evidence"]["query"],
+                json!({"command":"[REDACTED QUERY]","filter":"[REDACTED FILTER]"})
+            );
+            if expected != "explicit" {
+                assert_eq!(summary["samples"], selection(&original)["samples"]);
+                for (summary, candidate) in summary["candidates"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .zip(selection(&original)["candidates"].as_array().unwrap())
+                {
+                    for key in [
+                        "status",
+                        "parse_passes",
+                        "parse_failures",
+                        "structural_loss",
+                        "lifecycle_records",
+                        "matched_inputs",
+                        "invalid_or_conflicting_records",
+                    ] {
+                        assert_eq!(summary[key], candidate[key]);
+                    }
+                    assert!(summary.get("profile").is_none());
+                    assert!(summary.get("origins").is_none());
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn redaction_retains_probe_parse_failures_for_non_utf8_capture() {
+    let dir = TempDir::new().unwrap();
+    let input = dir.path().join("input.log");
+    fs::write(&input, b"\xff\n").unwrap();
+    let artifact = dir.path().join("artifact.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_log-analyzer"));
+    for (name, _) in std::env::vars().filter(|(name, _)| name.starts_with("LOG_ANALYZER_")) {
+        command.env_remove(name);
+    }
+    let output = command
+        .current_dir(dir.path())
+        .arg("investigate")
+        .arg(input)
+        .arg("--artifact")
+        .arg(&artifact)
+        .args(["--redact", "--complete-output"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let bytes = fs::read(artifact).unwrap();
+    log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+    let retained: Value = serde_json::from_slice(&bytes).unwrap();
+    for value in [&report, &retained] {
+        let summary = &value["report_metadata"]["profile_selection"];
+        let candidates = summary["candidates"].as_array().unwrap();
+        assert_eq!(candidates.len(), 4);
+        for candidate in candidates {
+            assert_eq!(candidate["status"], "partial");
+            assert_eq!(candidate["parse_failures"], 1);
+            assert_eq!(candidate["structural_loss"], true);
+        }
+        assert!(!value.to_string().contains("input.log"));
+    }
+}
