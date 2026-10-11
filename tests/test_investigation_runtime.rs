@@ -2594,10 +2594,43 @@ fn readable_next_command_continues_after_displayed_findings() {
     let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
     let all = retained["findings"].as_array().unwrap();
     assert!(all.len() > 40);
+    let individual = text
+        .split("Observed findings (individual findings page):")
+        .nth(1)
+        .unwrap();
     assert_eq!(
-        text.lines().filter(|line| line.starts_with("- [")).count(),
-        20
+        individual
+            .lines()
+            .filter(|line| line.starts_with("- ["))
+            .count(),
+        16
     );
+    assert!(
+        text.contains(
+            "4 individual findings on this page are represented in the source error overview above."
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("60 physical records; 60 distinct source messages"),
+        "{text}"
+    );
+    for finding in &all[..20] {
+        for excerpt in finding["evidence"].as_array().unwrap() {
+            assert!(
+                text.contains(excerpt["text"].as_str().unwrap()),
+                "first-page evidence missing: {text}"
+            );
+            assert!(
+                text.contains(
+                    excerpt["occurrence"]["evidence_ref"]["reference_id"]
+                        .as_str()
+                        .unwrap()
+                ),
+                "first-page citation missing: {text}"
+            );
+        }
+    }
     let next = text
         .lines()
         .find_map(|line| line.strip_prefix("Next: "))
@@ -3257,6 +3290,135 @@ fn invalid_view_configuration_is_rejected_and_grouping_can_be_disabled() {
             .unwrap()
             .contains("processed findings):")
     );
+}
+
+#[test]
+fn readable_source_errors_cover_every_input_before_individual_pagination() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, RESOURCE_PROFILE).unwrap();
+    let manifest = resource_line(
+        "run-one:operation-one",
+        "manifest listing",
+        json!(["asset:reference"]),
+    );
+    let batch = resource_line(
+        "run-one",
+        "asset batch",
+        json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":"a".repeat(64)}]}}}]),
+    );
+    let inputs: Vec<_> = (0..4).map(|index| {
+        let path = temp.path().join(format!("capture-{index}.jsonl"));
+        let mut data = format!("{batch}{}", manifest.repeat(if index == 0 { 140 } else { 1 }));
+        for pattern in 0..if index == 0 { 5 } else { 1 } {
+            data.push_str(&format!("{}\n", json!({"timestamp":"2025-07-20T00:00:00+02:00", "level":if index == 3 {"FATAL"} else {"ERROR"}, "message":format!("render operation failed capture-{index} pattern-{pattern}")})));
+        }
+        fs::write(&path, data).unwrap();
+        path
+    }).collect();
+    let artifact = temp.path().join("evidence.json");
+    let mut args = vec!["--profile", profile.to_str().unwrap(), "investigate"];
+    args.extend(inputs.iter().map(|path| path.to_str().unwrap()));
+    args.extend(["--artifact", artifact.to_str().unwrap()]);
+    let output = run(&args);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.contains("Observed ERROR/FATAL records (selected parsed population)"),
+        "{text}"
+    );
+    for index in 0..4 {
+        assert!(
+            text.contains(&format!(
+                "render operation failed capture-{index} pattern-0"
+            )),
+            "{text}"
+        );
+    }
+    assert!(
+        text.contains("[scope-0] 5 physical records; 5 distinct source messages"),
+        "{text}"
+    );
+    assert!(
+        text.contains("2 additional distinct source messages not displayed here"),
+        "{text}"
+    );
+    assert!(!text.contains("capture-0 pattern-3"), "{text}");
+    assert!(!text.contains("capture-0 pattern-4"), "{text}");
+    assert!(
+        text.find("Observed ERROR/FATAL").unwrap()
+            < text
+                .find("Resource observations (processed findings)")
+                .unwrap()
+    );
+    let stored: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    let findings = stored["findings"].as_array().unwrap();
+    let late = findings
+        .iter()
+        .position(|finding| {
+            finding["evidence"][0]["text"] == "render operation failed capture-3 pattern-0"
+        })
+        .unwrap();
+    assert!(late >= 140, "errors must still be retained beyond page 7");
+    for index in 0..4 {
+        let finding = findings
+            .iter()
+            .find(|finding| {
+                finding["evidence"][0]["text"]
+                    == format!("render operation failed capture-{index} pattern-0")
+            })
+            .unwrap();
+        let reference = &finding["evidence"][0]["occurrence"]["evidence_ref"];
+        assert!(
+            text.contains(reference["reference_id"].as_str().unwrap()),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("Input {}, line {}", index + 1, reference["line"])),
+            "{text}"
+        );
+    }
+    let next = text
+        .lines()
+        .find_map(|line| line.strip_prefix("Next: "))
+        .unwrap();
+    let next_args: Vec<_> = next
+        .split_whitespace()
+        .skip(1)
+        .map(|arg| arg.trim_matches('\''))
+        .collect();
+    let page = success(&next_args);
+    assert_eq!(page["artifact_retrieval"]["prior"], 20);
+    assert_eq!(
+        page["artifact_retrieval"]["items"],
+        json!(&findings[20..40])
+    );
+    let mut json_args = vec!["--json"];
+    json_args.extend(args.iter().copied());
+    let json_artifact = temp.path().join("json.json");
+    let last = json_args.len() - 1;
+    json_args[last] = json_artifact.to_str().unwrap();
+    let output = run(&json_args);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    check(&report, &json_artifact);
+    assert_eq!(report["findings"], json!(&findings[..20]));
+    let json_stored: Value = serde_json::from_slice(&fs::read(json_artifact).unwrap()).unwrap();
+    assert_eq!(json_stored["findings"], stored["findings"]);
+    let redacted_artifact = temp.path().join("redacted.json");
+    let last = args.len() - 1;
+    args[last] = redacted_artifact.to_str().unwrap();
+    args.push("--redact");
+    let output = run(&args);
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("Observed ERROR/FATAL records"), "{text}");
+    assert!(text.contains("[REDACTED SOURCE]"), "{text}");
+    assert!(!text.contains("render operation failed"), "{text}");
 }
 
 #[test]

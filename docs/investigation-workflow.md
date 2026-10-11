@@ -222,7 +222,12 @@ override planning. Parsed and correlation working sets are released between
 independent inputs; retained captures and evidence remain available.
 
 Source ERROR/FATAL and WARN/WARNING counts/excerpts do not require domain outcome
-rules and do not prove operation failure or root cause. Domain resource observations
+rules. The initial text report includes per-input ERROR/FATAL counts and up to
+three distinct cited messages from all processed findings, before pagination and
+configured groups. It declares additional distinct messages omitted from this
+overview; individual JSON findings and cursors keep their original order. Counts
+describe the selected parsed population, not unparsed or uncaptured records. They
+do not establish failure or cause. Domain resource observations
 are declared in the profile's `[[resource_observations]]` configuration and run as
 part of investigation. The CLI exposes no product-specific analysis flag. Rules
 declare identity fields/separators/prefixes, message markers, resource payload paths,

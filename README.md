@@ -79,6 +79,13 @@ grouping rules. Each independent capture remains separate. Missing dimensions an
 measurements stay unknown. At most 20 groups appear across sections, with explicit
 omissions and representative citations. Individual JSON findings, measured values,
 evidence references and pagination remain available without grouping.
+Before the configured groups, the initial text report shows ERROR/FATAL counts
+and up to three distinct, cited source-message samples for each input containing
+errors in its selected parsed population. This overview reads all processed
+findings before pagination, so repeated observations cannot push every error
+sample onto a later page. Additional distinct messages are explicitly omitted;
+source severity does not prove operation failure or cause. Individual JSON order
+and continuation cursors are unchanged.
 When findings are omitted, the printed `Next` command includes
 a continuation cursor to retrieve the following page. Use `--artifact PATH` to choose a new destination. Existing
 artifacts are never replaced. For agents, request JSON explicitly:

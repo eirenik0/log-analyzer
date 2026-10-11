@@ -13,7 +13,12 @@ Investigation defaults to readable text and creates a fresh evidence artifact.
 When findings are paginated, its printed `Next` command includes the continuation
 cursor; run those arguments to resume after the displayed findings. Fingerprint
 matches are presented before source warnings and empty manifests; ordering does
-not establish failure severity or cause. The resolved profile's optional
+not establish failure severity or cause. The initial text report separately shows
+per-input ERROR/FATAL counts and up to three distinct cited source messages from
+all processed findings, before individual pagination. Additional distinct messages
+are explicitly omitted. Counts describe the selected parsed population; source
+severity is not proof of operation failure or cause. JSON ordering and cursors stay
+unchanged. The resolved profile's optional
 `investigation_view` defines ordered readable sections with exact scalar selectors,
 JSON-pointer grouping dimensions and min/max/mean/sum of measured values with
 matching units. Groups may use components, operations, viewports or other declared

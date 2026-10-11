@@ -1,5 +1,8 @@
 use serde_json::Value;
-use std::{collections::BTreeSet, fmt::Write};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Write,
+};
 
 /// Bind occurrences only after all independent input identities are available.
 pub(super) fn bind_snapshot(value: &mut Value, snapshot: &Value) {
@@ -35,8 +38,90 @@ const MAX_OVERVIEW_GROUPS: usize = 20;
 use crate::investigation_view::{Aggregate, FindingGroup, InvestigationView, Measurement};
 
 pub(super) struct FindingOverview {
+    source_errors: String,
+    highlighted: BTreeSet<String>,
     rendered: String,
     groups: Vec<(FindingGroup, BTreeSet<String>)>,
+}
+/// Native source errors must remain visible when other findings fill the page.
+fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
+    let mut output = String::new();
+    let mut highlighted = BTreeSet::new();
+    let findings = report["findings"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    #[derive(Default)]
+    struct Errors<'a> {
+        counts: [Option<&'a Value>; 2],
+        distinct: usize,
+        samples: Vec<&'a Value>,
+    }
+    let mut inputs: BTreeMap<&str, Errors<'_>> = BTreeMap::new();
+    for finding in findings {
+        let Some(scope_id) = finding["scope_id"].as_str() else {
+            continue;
+        };
+        let Some(suffix) = finding["id"]
+            .as_str()
+            .and_then(|id| id.strip_prefix(scope_id))
+            .and_then(|id| id.strip_prefix("-observed-errors-"))
+        else {
+            continue;
+        };
+        let errors = inputs.entry(scope_id).or_default();
+        if finding["kind"] == "observation" {
+            errors.distinct += 1;
+            if errors.samples.len() < 3 {
+                errors.samples.push(finding);
+            }
+        } else if suffix == "count" {
+            errors.counts[0] = Some(finding);
+        } else if suffix == "normalized-count" {
+            errors.counts[1] = Some(finding);
+        }
+    }
+    for scope in report["scopes"].as_array().into_iter().flatten() {
+        let scope_id = label(&scope["id"]);
+        let Some(errors) = inputs.get(scope_id).filter(|errors| errors.distinct > 0) else {
+            continue;
+        };
+        let count = errors.distinct;
+        if output.is_empty() {
+            output.push_str("\nObserved ERROR/FATAL records (selected parsed population):\n");
+        }
+        let _ = write!(output, "- [{scope_id}]");
+        for (finding, unit) in errors
+            .counts
+            .iter()
+            .zip(["physical records", "normalized records"])
+        {
+            if let Some(finding) = finding {
+                let _ = write!(output, " {} {unit};", finding["details"]["value"]);
+                if let Some(id) = finding["id"].as_str() {
+                    highlighted.insert(id.into());
+                }
+            }
+        }
+        let _ = writeln!(output, " {count} distinct source messages");
+        for finding in &errors.samples {
+            write_evidence(&mut output, finding, 1);
+            if let Some(id) = finding["id"].as_str() {
+                highlighted.insert(id.into());
+            }
+        }
+        if count > 3 {
+            let _ = writeln!(
+                output,
+                "  {} additional distinct source messages not displayed here.",
+                count - 3
+            );
+        }
+    }
+    if !output.is_empty() {
+        output.push_str("At most 3 distinct message samples per input are shown, independently of the findings page. Source severity does not establish operation failure or cause.\n");
+    }
+    (output, highlighted)
 }
 fn group_key(finding: &Value, definition: &FindingGroup) -> Option<(String, Vec<Value>)> {
     if !definition.select.iter().all(|condition| {
@@ -139,7 +224,10 @@ pub(super) fn finding_overview(
     view: Option<&InvestigationView>,
     redacted: bool,
 ) -> FindingOverview {
+    let (source_errors, highlighted) = source_errors(report);
     let mut overview = FindingOverview {
+        source_errors,
+        highlighted,
         rendered: String::new(),
         groups: Vec::new(),
     };
@@ -373,11 +461,20 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
             }
         }
     }
+    output.push_str(&overview.source_errors);
     output.push_str(&overview.rendered);
     output.push_str("\nObserved findings (individual findings page):\n");
     if let Some(findings) = report["findings"].as_array() {
         let mut grouped = 0usize;
+        let mut highlighted = 0usize;
         for finding in findings {
+            if finding["id"]
+                .as_str()
+                .is_some_and(|id| overview.highlighted.contains(id))
+            {
+                highlighted += 1;
+                continue;
+            }
             if overview.groups.iter().any(|(definition, keys)| {
                 group_key(finding, definition).is_some_and(|(key, _)| keys.contains(&key))
             }) {
@@ -405,6 +502,12 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
             let _ = writeln!(
                 output,
                 "{grouped} individual findings on this page are represented in the grouped overview above."
+            );
+        }
+        if highlighted > 0 {
+            let _ = writeln!(
+                output,
+                "{highlighted} individual findings on this page are represented in the source error overview above."
             );
         }
         if findings.is_empty() {
