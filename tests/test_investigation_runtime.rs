@@ -4184,3 +4184,136 @@ fn evidence_rejects_large_artifacts_before_reading_with_a_safe_default_limit() {
     assert!(help.status.success());
     assert!(String::from_utf8_lossy(&help.stdout).contains("67108864"));
 }
+
+#[test]
+fn resource_hashes_and_citations_never_cross_manifest_owners() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, RESOURCE_PROFILE).unwrap();
+    for keyed in [false, true] {
+        for (name, batches, expected) in [
+            (
+                "foreign-only",
+                vec![("run-one:operation-two", "a")],
+                "unavailable",
+            ),
+            (
+                "matching-owner",
+                vec![("run-one:operation-one", "a")],
+                "fingerprint_match",
+            ),
+            (
+                "foreign-conflict",
+                vec![
+                    ("run-one:operation-one", "a"),
+                    ("run-one:operation-two", "b"),
+                ],
+                "fingerprint_match",
+            ),
+            (
+                "foreign-fingerprint",
+                vec![
+                    ("run-one:operation-one", "b"),
+                    ("run-one:operation-two", "a"),
+                ],
+                "different_fingerprint",
+            ),
+            (
+                "namespace-only",
+                vec![("run-one", "a")],
+                "fingerprint_match",
+            ),
+            (
+                "namespace-and-foreign",
+                vec![("run-one", "a"), ("run-one:operation-two", "b")],
+                "fingerprint_match",
+            ),
+            (
+                "different-namespace",
+                vec![("run-two:operation-one", "a")],
+                "unavailable",
+            ),
+        ] {
+            let mut rows = vec![
+                resource_line(
+                    "run-one:operation-one",
+                    "dimensions",
+                    json!({"w":640,"h":480}),
+                ),
+                resource_line(
+                    "run-one:operation-one",
+                    "manifest listing",
+                    json!(["asset:reference"]),
+                ),
+            ];
+            let mut eligible_lines = vec![1, 2];
+            for (scope, hash) in batches {
+                let resources = if keyed {
+                    json!({"asset:reference":{"digest":hash.repeat(64)}})
+                } else {
+                    json!({"items":[{"address":"asset:reference","digest":hash.repeat(64)}]})
+                };
+                rows.push(resource_line(
+                    scope,
+                    "asset batch",
+                    json!([{"bundle":{"resources":resources}}]),
+                ));
+                if scope == "run-one" || scope == "run-one:operation-one" {
+                    eligible_lines.push(rows.len() as u64);
+                }
+            }
+            let source = temp.path().join(format!("{name}-{keyed}.log"));
+            let artifact = temp.path().join(format!("{name}-{keyed}.json"));
+            fs::write(&source, rows.concat()).unwrap();
+            let report = success(&[
+                "--profile",
+                profile.to_str().unwrap(),
+                "investigate",
+                source.to_str().unwrap(),
+                "--artifact",
+                artifact.to_str().unwrap(),
+                "--complete-output",
+            ]);
+            check(&report, &artifact);
+            let finding = report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|finding| finding["details"].get("resource_status").is_some())
+                .unwrap();
+            assert_eq!(
+                finding["details"]["resource_status"], expected,
+                "{name}-{keyed}: {finding}"
+            );
+            assert_eq!(
+                finding["details"]["viewport"],
+                json!({"width":640,"height":480})
+            );
+            let evidence_lines: Vec<_> = finding["evidence"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|excerpt| {
+                    excerpt["occurrence"]["evidence_ref"]["line"]
+                        .as_u64()
+                        .unwrap()
+                })
+                .collect();
+            assert_eq!(evidence_lines.len(), eligible_lines.len());
+            assert!(
+                evidence_lines
+                    .iter()
+                    .all(|line| eligible_lines.contains(line))
+            );
+            let supporting_lines: Vec<_> = finding["details"]["supporting_occurrences"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|occurrence| occurrence["evidence_ref"]["line"].as_u64().unwrap())
+                .collect();
+            assert_eq!(supporting_lines, evidence_lines);
+            let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+            assert!(retained["findings"].as_array().unwrap().contains(finding));
+        }
+    }
+}

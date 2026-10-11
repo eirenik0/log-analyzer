@@ -5,7 +5,10 @@ use crate::{
     resource_observations::ResourceObservationRules,
 };
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    rc::Rc,
+};
 
 fn identity(entry: &LogEntry, rule: &ResourceObservationRules, prefix: &str) -> Option<String> {
     let source = match rule.scope_field.as_str() {
@@ -81,7 +84,15 @@ pub(super) fn matches_sample(
 }
 struct Resource<'a> {
     hash: &'a str,
+    owner: Option<Rc<str>>,
     source: &'a LogEntry,
+}
+impl Resource<'_> {
+    fn matches_owner(&self, owner: &str) -> bool {
+        self.owner
+            .as_deref()
+            .is_none_or(|resource_owner| resource_owner == owner)
+    }
 }
 #[allow(clippy::too_many_arguments)]
 pub(super) fn analyze(
@@ -128,6 +139,8 @@ pub(super) fn analyze(
             .iter()
             .all(|marker| entry.message.contains(marker))
         {
+            let resource_owner: Option<Rc<str>> =
+                identity(entry, rule, &rule.owner_prefix).map(Rc::from);
             for render in entry
                 .payload()
                 .and_then(Value::as_array)
@@ -151,6 +164,7 @@ pub(super) fn analyze(
                                 .or_default()
                                 .push(Resource {
                                     hash,
+                                    owner: resource_owner.clone(),
                                     source: entry,
                                 });
                         }
@@ -166,6 +180,7 @@ pub(super) fn analyze(
                                 .or_default()
                                 .push(Resource {
                                     hash,
+                                    owner: resource_owner.clone(),
                                     source: entry,
                                 });
                         }
@@ -225,6 +240,9 @@ pub(super) fn analyze(
                 if !budget.checkpoint("calculation", 1) {
                     return;
                 }
+                if !resource.matches_owner(&owner) {
+                    continue;
+                }
                 if resource.hash.len() != 64
                     || !resource.hash.bytes().all(|byte| byte.is_ascii_hexdigit())
                 {
@@ -280,6 +298,9 @@ pub(super) fn analyze(
                 for resource in matches {
                     if !budget.checkpoint("calculation", 1) {
                         return;
+                    }
+                    if !resource.matches_owner(&owner) {
+                        continue;
                     }
                     if seen.insert(resource.source.source_line_number) {
                         if !budget.reserve("calculation", 8192 * 16) {

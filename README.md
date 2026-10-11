@@ -174,6 +174,9 @@ geometry and known fingerprints. Investigation applies the selected profile's
 rules automatically; no domain-specific CLI switch is needed. Message markers,
 identity fields/prefixes, payload paths and fingerprint labels live in TOML.
 Unique ownership is required; missing or conflicting hashes remain unknown.
+Resource batches with an explicit owner contribute hashes and citations only to
+that owner's manifest. Namespace-only batches remain eligible when the manifest
+has a unique owner.
 A fingerprint match is a profile-declared observation and does not establish
 rendered content or root cause. Empty manifests do not prove absent content.
 

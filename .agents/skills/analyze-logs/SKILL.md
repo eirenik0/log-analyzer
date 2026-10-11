@@ -31,8 +31,11 @@ unchanged. The resolved profile's optional
 `investigation_view` defines ordered readable sections with exact scalar selectors,
 JSON-pointer grouping dimensions and min/max/mean/sum of measured values with
 matching units. Groups may use components, operations, viewports or other declared
-source fields. Capture scopes remain separate; missing data stays unknown. Counts
-cover all processed findings, not unique resources or failures; sections may overlap
+source fields. Capture scopes remain separate; missing data stays unknown.
+Resource hashes and citations must belong to the manifest owner when the batch
+has an explicit owner; namespace-only evidence requires unambiguous ownership.
+Counts cover all processed findings, not unique resources or failures; sections
+may overlap
 and sums of elapsed intervals are not a critical path. At most 20 groups are shown
 across sections, with omissions and representative citations. Source fields are
 cleared in redacted output. Grouping does not advance the individual findings
