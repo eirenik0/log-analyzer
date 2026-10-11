@@ -146,14 +146,6 @@ chains.json --expected-sha256 HASH --collection /findings --id FINDING_ID`; reus
 the exact checksum and finding ID from the report. Normal report limits and
 continuation cursors apply to chains as whole findings.
 
-For a compact retrieval view, use `--collection /chain-bundles --id FINDING_ID`.
-The checksum-bound response places relationships directly in
-`artifact_retrieval.items[].chain` and excerpts in `items[].evidence`; it performs
-no new analysis. The `verify_chain_evidence` guidance action supplies literal
-arguments including the artifact checksum. Pagination, omission counts and
-redaction still apply; explicitly configured cached-failure and contrary steps
-remain in the bundle.
-
 Each chain's bundle retains first/last linked occurrences per role, up to two
 additional distinct outcome values, up to two ambiguous candidates, and the last
 three selected same-context records after its last linked event in parser order,
@@ -548,6 +540,55 @@ Declare screenshot attempts, poll sends, observed responses, cached failures and
 downstream links separately when the domain supports them. Repeated starts remain
 start occurrences; domain attempt/resource grouping needs explicit declarations.
 A supported join establishes an observed relationship and does not establish causality.
+
+### Targeted evidence and final claim checks
+
+Use a finding's `verify_chain_evidence` action to retrieve one checksum-bound
+chain with `evidence ARTIFACT --expected-sha256 SHA --collection /chain-bundles
+--id FINDING_ID --compact`. The compact view removes repeated excerpts and payload
+fields, preserving linked endpoints, outcomes, later activity and sample omissions.
+Retrieve full `/records --id REFERENCE_ID` when omitted fields matter. Follow the
+finding inventory cursor to find additional relevant chains; one bundle is not
+whole-incident coverage. Compact output requires an exact finding ID.
+
+Before drafting, list the question's required relationship and factual claims.
+Pass their assertions to `evidence` using `--claims claims.json`:
+
+```json
+{
+  "version": 1,
+  "required_claim_ids": ["capture-to-check", "check-outcome"],
+  "claims": [
+    {"id": "capture-to-check", "kind": "link", "finding_id": "FINDING_ID", "step_id": "STEP_ID"},
+    {"id": "check-outcome", "kind": "fact", "pointer": "/records/0/fields/payload/asExpected", "equals": false}
+  ]
+}
+```
+
+Replace example IDs and pointers with addresses from the retained artifact.
+The strict version-1 format is defined in `schemas/claim-assertions.schema.json`.
+`fact` compares exact JSON values; `interval` takes a pointer to a retained
+`endpoint_interval` and `expected_ms`, recalculating explicit timestamps with their
+offsets; `distinct_records` counts unique occurrences in an addressed array;
+`link` checks a configured, unambiguous, completely counted scoped step. These
+checks do not infer cause, attempt identity, or meaning from outcome values.
+`absence` assertions are contradicted by observed unambiguous links and otherwise
+remain unavailable: missing links cannot establish that an operation never
+completed. Inspect later records and recognition gaps.
+
+Results appear under `artifact_retrieval.claim_verification`. Contradicted,
+unavailable, or missing required assertions produce a nonzero exit after the JSON
+result is emitted. Assertions use full retained-artifact pointers, independently
+of presentation paging and compact views. A verified result covers only submitted
+assertions and the retained snapshot, not every sentence of an answer or upstream
+capture completeness. The claims input is capped at 1 MiB and 100 assertions.
+
+Profile recovery now separates source-expectation authoring, candidate preparation,
+validation and an explicit rerun. Preparation does not require supplied expectations.
+Derive expectations by reading original source records independently of candidate
+output; an external truth file is unnecessary. Unsupported nested containers need
+parser normalization before relationship adaptation. No candidate is automatically
+activated, and validation never invents domain meaning or widens scope.
 
 ## First investigation: what failed, and why?
 
@@ -2143,51 +2184,3 @@ The **Publish crate** workflow supports GitHub Trusted Publishing with short-liv
 OIDC credentials. It validates an existing stable GitHub release and defaults to a
 package dry run. See [setup and publishing instructions](docs/trusted-publishing.md)
 for crate ownership, licensing, and the one-time crates.io configuration.
-
-### Targeted evidence and final claim checks
-
-Use a finding's `verify_chain_evidence` action to retrieve one checksum-bound
-chain with `evidence ARTIFACT --expected-sha256 SHA --collection /chain-bundles
---id FINDING_ID --compact`. The compact view removes repeated excerpts and payload
-fields, preserving linked endpoints, outcomes, later activity and sample omissions.
-Retrieve full `/records --id REFERENCE_ID` when omitted fields matter. Follow the
-finding inventory cursor to find additional relevant chains; one bundle is not
-whole-incident coverage. Compact output requires an exact finding ID.
-
-Before drafting, list the question's required relationship and factual claims.
-Pass their assertions to `evidence` using `--claims claims.json`:
-
-```json
-{
-  "version": 1,
-  "required_claim_ids": ["capture-to-check", "check-outcome"],
-  "claims": [
-    {"id": "capture-to-check", "kind": "link", "finding_id": "FINDING_ID", "step_id": "STEP_ID"},
-    {"id": "check-outcome", "kind": "fact", "pointer": "/records/0/fields/payload/asExpected", "equals": false}
-  ]
-}
-```
-
-Replace example IDs and pointers with addresses from the retained artifact.
-The strict version-1 format is defined in `schemas/claim-assertions.schema.json`.
-`fact` compares exact JSON values; `interval` takes a pointer to a retained
-`endpoint_interval` and `expected_ms`, recalculating explicit timestamps with their
-offsets; `distinct_records` counts unique occurrences in an addressed array;
-`link` checks a configured, unambiguous, completely counted scoped step. These
-checks do not infer cause, attempt identity, or meaning from outcome values.
-`absence` assertions are contradicted by observed unambiguous links and otherwise
-remain unavailable: missing links cannot establish that an operation never completed. Inspect later records and recognition gaps.
-
-Results appear under `artifact_retrieval.claim_verification`. Contradicted,
-unavailable, or missing required assertions produce a nonzero exit after the JSON
-result is emitted. Assertions use full retained-artifact pointers, independently
-of presentation paging and compact views. A verified result covers only submitted
-assertions and the retained snapshot, not every sentence of an answer or upstream
-capture completeness. The claims input is capped at 1 MiB and 100 assertions.
-
-Profile recovery now separates source-expectation authoring, candidate preparation,
-validation and an explicit rerun. Preparation does not require supplied expectations.
-Derive expectations by reading original source records independently of candidate
-output; an external truth file is unnecessary. Unsupported nested containers need
-parser normalization before relationship adaptation. No candidate is automatically
-activated, and validation never invents domain meaning or widens scope.
