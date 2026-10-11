@@ -122,6 +122,55 @@ flowchart LR
   F --> G[evidence: retrieve retained records and findings]
 ```
 
+Profiles can also declare connected event chains in `[[investigation.chains]]`.
+These appear first in readable and JSON findings, in source order within each
+input. Each step names its event type, preceding step, exact join fields and scope,
+cardinality, observed candidate count, supported linked count and ambiguity. Poll
+sends and responses are separate roles; acceptance, capture completion and check
+completion are distinct steps. A check's `asExpected: false` and a session's
+`Passed` remain independent outcomes with their own citations and level labels.
+A missing recognized completion is an observation about processed evidence, never
+proof of a hang or of upstream absence.
+
+Run the small synthetic capture example:
+
+```bash
+log-analyzer --profile examples/investigations/chains/profile.toml investigate \
+  examples/investigations/chains/events.jsonl --artifact chains.json
+```
+
+It shows submission, broker acceptance, poll sends, an unobserved capture end,
+check/session outcomes and contrary evidence. The regression fixture also checks
+321 sends with zero responses. Retrieve a complete chain bundle through `evidence
+chains.json --expected-sha256 HASH --collection /findings --id FINDING_ID`; reuse
+the exact checksum and finding ID from the report. Normal report limits and
+continuation cursors apply to chains as whole findings.
+
+Each chain's bundle retains first/last linked occurrences per role, up to two
+additional distinct outcome values, up to two ambiguous candidates, and the last
+three selected same-context records after its last linked physical source line.
+Omission counts disclose additional linked/outcome/later records; retrieve retained
+records when the bundle is insufficient. Terminal and contrary roles must be
+configured explicitly. Later activity has a separately declared, potentially
+broader context identity and does not complete an earlier capture. Filters and
+processing limits also bound the bundle. Redaction masks nested excerpts,
+identities, profile labels and outcome values.
+
+Roles require existing event rule IDs, optional exact scalar `select` conditions
+(`field`/`equals`) and an optional bounded `message_pattern`. Fields support
+`event.*`, `payload.*`, structured fields, `component`, `component_id` and `level`.
+The profile example documents a graph whose `from` is `$root` or a preceding step
+ID. Join fields are compared exactly with every declared `scope_fields` value;
+missing identities, self joins and unsupported cardinality never become guessed
+links. Up to eight chain declarations with sixteen steps each are supported.
+`context_fields` must include every scope field. The optional
+`component_id.prefix:PREFIX` selector retains the path through the first matching
+segment; batched ` & ` paths qualify only if all branches yield the same path.
+The shipped profile uses this to connect checkpoint activity across components
+while excluding batches spanning different checkpoints. All domain meaning stays
+in profile configuration; no new CLI flags are required. These structural tests
+make no claim about model rankings or explanation quality.
+
 To organize a profile's measurements like the `perf` component view, add:
 
 ```toml
@@ -918,7 +967,7 @@ profile_name = "my-team"
 known_components = ["api", "worker"]
 ```
 
-Tables merge key by key and the child wins. Arrays and scalars are replaced whole, so a child `[[event_rules.rules]]` list replaces the parent's list. An omitted `profile_name` is inherited. Chains are allowed up to 8 profiles, counting the child and every parent (including built-ins); cycles and unknown parents are errors. A built-in name wins over a file with the same name; use `./base.toml` for the file. Explicit `event_rules` cannot coexist with legacy marker keys, so a profile that extends one with `event_rules` (all built-ins do, even when empty) must not set the legacy keys.
+Tables merge key by key and the child wins. Arrays and scalars are replaced whole, so a child `[[event_rules.rules]]` list replaces the parent's list. Replacing `event_rules.rules` also clears the inherited `investigation` policy unless the child explicitly declares one, so parent rule IDs cannot invalidate a custom grammar. Explicit policies are still validated against the resulting rules. An omitted `profile_name` is inherited. Chains are allowed up to 8 profiles, counting the child and every parent (including built-ins); cycles and unknown parents are errors. A built-in name wins over a file with the same name; use `./base.toml` for the file. Explicit `event_rules` cannot coexist with legacy marker keys, so a profile that extends one with `event_rules` (all built-ins do, even when empty) must not set the legacy keys.
 
 See [Profile Configuration](#profile-configuration) for the full reference and examples.
 

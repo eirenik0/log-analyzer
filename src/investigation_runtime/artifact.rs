@@ -145,6 +145,69 @@ pub(super) fn redact(artifact: &mut Value) {
         if finding["details"]["fingerprint"].is_object() {
             finding["details"]["fingerprint"]["label"] = json!("[REDACTED FINGERPRINT]");
         }
+        if let Some(chain) = finding["details"].get_mut("event_chain") {
+            for key in ["id", "title"] {
+                opaque(&mut chain[key]);
+            }
+            for key in ["scope_fields"] {
+                for value in chain[key].as_array_mut().unwrap() {
+                    opaque(value);
+                }
+            }
+            for step in chain["steps"].as_array_mut().unwrap() {
+                for key in ["id", "label", "event_type"] {
+                    opaque(&mut step[key]);
+                }
+                if step["from"] != "$root" {
+                    opaque(&mut step["from"]);
+                }
+                for value in step["join_fields"].as_array_mut().unwrap() {
+                    opaque(value);
+                }
+                for outcome in step["outcomes"].as_array_mut().unwrap() {
+                    opaque(&mut outcome["level"]);
+                    if !outcome["value"].is_null() {
+                        outcome["value"] = json!(format!(
+                            "opaque-{}",
+                            digest(outcome["value"].to_string().as_bytes())
+                        ));
+                    }
+                }
+            }
+            fn redact_excerpts(value: &mut Value) {
+                if let Some(map) = value.as_object_mut() {
+                    if map.contains_key("field")
+                        && map
+                            .get("value")
+                            .is_some_and(|v| !v.is_string() && !v.is_null())
+                    {
+                        let value = &map["value"];
+                        let masked =
+                            json!(format!("opaque-{}", digest(value.to_string().as_bytes())));
+                        map.insert("value".into(), masked);
+                    }
+                    if map.contains_key("occurrence") && map.contains_key("text") {
+                        map.insert("text".into(), json!("[REDACTED SOURCE]"));
+                        map.insert("omitted_characters".into(), json!(0));
+                        if map.contains_key("fields") {
+                            map.insert("fields".into(), json!({}));
+                        }
+                        map.insert(
+                            "verification".into(),
+                            super::findings::verification(true, "not_applicable"),
+                        );
+                    }
+                    for child in map.values_mut() {
+                        redact_excerpts(child);
+                    }
+                } else if let Some(values) = value.as_array_mut() {
+                    for child in values {
+                        redact_excerpts(child);
+                    }
+                }
+            }
+            redact_excerpts(chain);
+        }
         let arithmetic = finding["verification"]["arithmetic"]
             .as_str()
             .unwrap()

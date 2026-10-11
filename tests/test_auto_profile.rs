@@ -607,10 +607,11 @@ fn global_detection_cutoffs_mark_every_input_despite_complete_generic_parsing() 
     let configured_bytes = serde_json::to_vec(&profile).unwrap().len();
     profile.resource_observations.clear();
     profile.investigation_view = None;
-    let resource_allowance =
+    profile.investigation = None;
+    let configured_allowance =
         ((configured_bytes - serde_json::to_vec(&profile).unwrap().len()) as u64) * 16;
     for (baseline, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {
-        let limit = baseline + resource_allowance;
+        let limit = baseline + configured_allowance;
         let dir = TempDir::new().unwrap();
         fs::create_dir(dir.path().join("config")).unwrap();
         for name in ["a.jsonl", "b.jsonl"] {

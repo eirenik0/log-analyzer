@@ -1,6 +1,7 @@
 //! Runtime orchestration; the public contract validator remains independent.
 mod artifact;
 mod auto_profile;
+mod chains;
 mod findings;
 mod guidance;
 mod policy;
@@ -512,6 +513,18 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         );
         budget.begin_stage();
         if let Some(policy) = &config.investigation {
+            chains::calculate(
+                policy,
+                &config,
+                &entries,
+                &selectors,
+                &scope_id,
+                &context,
+                &snapshot,
+                !structural_loss && budget.stop.is_none(),
+                &mut budget,
+                &mut findings,
+            );
             policy::calculate(
                 policy,
                 &config,
@@ -679,14 +692,17 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let processing = json!({"status":if budget.stop.is_none(){"complete"}else{"partial"},"stop":budget.stop,"limits":budget.limits_json(),"usage":usage,"inputs":progress});
     findings.sort_by_key(|finding| {
         let id = finding["id"].as_str().unwrap_or("");
+        if finding["details"]["event_chain"].is_object() {
+            return 0;
+        }
         match finding["details"]["resource_status"].as_str() {
-            Some("fingerprint_match") => 0,
-            _ if id.contains("observed-errors") => 1,
-            Some("different_fingerprint" | "unconfigured_fingerprint") => 2,
-            _ if id.contains("observed-warnings") => 3,
-            Some("unavailable") => 4,
-            Some("empty_manifest") => 6,
-            _ => 5,
+            Some("fingerprint_match") => 1,
+            _ if id.contains("observed-errors") => 2,
+            Some("different_fingerprint" | "unconfigured_fingerprint") => 3,
+            _ if id.contains("observed-warnings") => 4,
+            Some("unavailable") => 5,
+            Some("empty_manifest") => 7,
+            _ => 6,
         }
     });
     let retention = json!({"policy":"until_deleted","expires_at":null});

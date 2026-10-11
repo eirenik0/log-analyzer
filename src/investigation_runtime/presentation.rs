@@ -385,11 +385,17 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
             let reference = &excerpt["occurrence"]["evidence_ref"];
             let _ = writeln!(
                 output,
-                "  Input {}, line {} [{}]: {}",
+                "  Input {}, line {}{} [{}]: {}",
                 excerpt["occurrence"]["input_ordinal"]
                     .as_u64()
                     .map_or_else(|| "unknown".into(), |ordinal| (ordinal + 1).to_string()),
                 reference["line"],
+                reference["row_path"]
+                    .as_str()
+                    .map_or_else(String::new, |path| format!(
+                        ", row {}",
+                        escape_controls(path)
+                    )),
                 reference["reference_id"].as_str().unwrap_or("source"),
                 escape_controls(label(&excerpt["text"]))
             );
@@ -510,7 +516,68 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                     escape_controls(label(&finding["details"]["unit"]))
                 );
             }
-            write_evidence(&mut output, finding, 2);
+            if let Some(chain) = finding["details"].get("event_chain") {
+                let _ = writeln!(
+                    output,
+                    "  {} [{}]: root occurrences {}; ambiguity {}",
+                    escape_controls(label(&chain["title"])),
+                    finding["id"],
+                    chain["root_occurrences"],
+                    label(&chain["ambiguity"])
+                );
+                let _ = writeln!(
+                    output,
+                    "  Identity / scope: {}",
+                    escape_controls(&chain["identity"].to_string())
+                );
+                for step in chain["steps"].as_array().into_iter().flatten() {
+                    let _ = writeln!(
+                        output,
+                        "    -> {}: {} observed, {} linked; {} (count {}); from {}",
+                        escape_controls(label(&step["label"])),
+                        step["observed_count"],
+                        step["linked_count"],
+                        label(&step["status"]).replace('_', " "),
+                        label(&step["count_completeness"]),
+                        escape_controls(label(&step["from"]))
+                    );
+                    let _ = writeln!(
+                        output,
+                        "       Join: {}; ambiguity: {}",
+                        escape_controls(&step["join_samples"].to_string()),
+                        step["ambiguity"]
+                    );
+                    for outcome in step["outcomes"].as_array().into_iter().flatten() {
+                        let _ = writeln!(
+                            output,
+                            "       Outcome [{}]: {} = {}",
+                            escape_controls(label(&outcome["level"])),
+                            escape_controls(label(&outcome["field"])),
+                            escape_controls(&outcome["value"].to_string())
+                        );
+                    }
+                    write_evidence(&mut output, step, 4);
+                    if step["omitted_occurrences"].as_u64().unwrap_or(0) > 0 {
+                        let _ = writeln!(
+                            output,
+                            "       {} occurrences omitted from the bundle; retained records are available.",
+                            step["omitted_occurrences"]
+                        );
+                    }
+                }
+                let _ = writeln!(
+                    output,
+                    "  Evidence bundle: {} excerpts; {} later same-context samples ({} observed, {} omitted). {}",
+                    finding["evidence"].as_array().map_or(0, Vec::len),
+                    chain["later_activity"].as_array().map_or(0, Vec::len),
+                    chain["later_activity_observed_count"],
+                    chain["omitted_later_activity"],
+                    label(&chain["evidence_policy"])
+                );
+                write_evidence(&mut output, finding, usize::MAX);
+            } else {
+                write_evidence(&mut output, finding, 2);
+            }
         }
         if grouped > 0 {
             let _ = writeln!(

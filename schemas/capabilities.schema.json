@@ -314,7 +314,8 @@
         },
         "profile_analysis": {
           "const": [
-            "resource_observations"
+            "resource_observations",
+            "event_chains"
           ]
         }
       },

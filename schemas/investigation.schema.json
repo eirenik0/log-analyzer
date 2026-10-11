@@ -1418,6 +1418,9 @@
                 "rule_id": {
                   "type": "string",
                   "minLength": 1
+                },
+                "event_chain": {
+                  "$ref": "#/$defs/event_chain"
                 }
               },
               "required": [
@@ -2732,6 +2735,354 @@
         "artifact",
         "presentation",
         "retrieval"
+      ],
+      "additionalProperties": false
+    },
+    "event_chain": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root": {
+          "$ref": "#/$defs/occurrence"
+        },
+        "identity": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "field",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "scope_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "context_identity": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "field",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "root_occurrences": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ambiguity": {
+          "enum": [
+            "none",
+            "reused_root_identity"
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "event_type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "observed_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "enum": [
+                  "observed",
+                  "not_observed",
+                  "ambiguous",
+                  "unavailable"
+                ]
+              },
+              "count_completeness": {
+                "enum": [
+                  "complete",
+                  "partial"
+                ]
+              },
+              "join_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "cardinality": {
+                "enum": [
+                  "one_to_one",
+                  "one_to_many",
+                  "many_to_one"
+                ]
+              },
+              "join_samples": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "$ref": "#/$defs/occurrence"
+                    },
+                    "target": {
+                      "$ref": "#/$defs/occurrence"
+                    },
+                    "identity": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "value": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "source_count": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "target_count": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "target",
+                    "identity",
+                    "source_count",
+                    "target_count"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              },
+              "ambiguity": {
+                "type": "object",
+                "properties": {
+                  "excluded_target_occurrences": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "role_occurrences_missing_identity": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "source_occurrences_missing_identity": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "excluded_target_occurrences",
+                  "role_occurrences_missing_identity",
+                  "source_occurrences_missing_identity"
+                ],
+                "additionalProperties": false
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/excerpt"
+                },
+                "maxItems": 4
+              },
+              "omitted_occurrences": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "outcomes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "field": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "occurrence": {
+                      "$ref": "#/$defs/occurrence"
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "field",
+                    "value",
+                    "occurrence"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 4
+              },
+              "omitted_outcomes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ambiguous_evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/excerpt"
+                },
+                "maxItems": 2
+              },
+              "linked_count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "event_type",
+              "from",
+              "observed_count",
+              "status",
+              "count_completeness",
+              "join_fields",
+              "cardinality",
+              "join_samples",
+              "ambiguity",
+              "evidence",
+              "omitted_occurrences",
+              "outcomes",
+              "omitted_outcomes",
+              "ambiguous_evidence",
+              "linked_count"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 16
+        },
+        "later_activity": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/excerpt"
+          },
+          "maxItems": 3
+        },
+        "completeness": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "evidence_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "later_activity_observed_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "omitted_later_activity": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "root",
+        "identity",
+        "scope_fields",
+        "context_identity",
+        "root_occurrences",
+        "ambiguity",
+        "steps",
+        "later_activity",
+        "completeness",
+        "evidence_policy",
+        "later_activity_observed_count",
+        "omitted_later_activity"
       ],
       "additionalProperties": false
     }

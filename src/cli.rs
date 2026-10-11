@@ -483,6 +483,8 @@ pub enum Commands {
     /// then parses and correlates each independent input once. --profile bypasses detection. Ambiguous or
     /// unrecognized samples use generic base analysis; inspect profile_selection and
     /// per-goal support. Detection shares processing budgets and never rereads sources.
+    /// Profiles can declare connected event chains with exact scoped joins, separate event counts,
+    /// outcome levels and bounded terminal/contrary/later evidence bundles.
     Investigate(InvestigateArgs),
     /// Retrieve retained evidence without reparsing or correlating source logs (JSON)
     #[command(name = "evidence", alias = "investigation-evidence")]

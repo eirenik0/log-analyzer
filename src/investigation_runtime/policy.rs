@@ -1,19 +1,16 @@
 use super::{
     Selector,
-    findings::{excerpt, fact, occurrence, population, rules},
+    findings::{excerpt, fact, occurrence, population},
     selected,
 };
 use crate::{
     evidence,
-    investigation_policy::{Cardinality, Grouping, InvestigationPolicy, Role},
+    investigation_policy::{Cardinality, Grouping, InvestigationPolicy},
     parser::LogEntry,
     processing::Budget,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-fn has_role(entry: &LogEntry, role: &Role) -> bool {
-    rules(entry).iter().any(|rule| role.rule_ids.contains(rule))
-}
 fn field(entry: &LogEntry, selector: &str) -> Option<String> {
     if let Some(field) = selector.strip_prefix("payload.") {
         match crate::extract::extract_payload_field(entry, field)? {
@@ -49,7 +46,7 @@ pub(super) fn calculate(
     let roles: BTreeMap<_, _> = policy
         .roles
         .iter()
-        .map(|role| (role.id.as_str(), role))
+        .map(|role| (role.id.as_str(), super::chains::Matcher::new(role)))
         .collect();
     for (index, declaration) in policy.populations.iter().enumerate() {
         let mut groups: BTreeMap<Vec<String>, Vec<&LogEntry>> = BTreeMap::new();
@@ -68,7 +65,7 @@ pub(super) fn calculate(
             if !declaration
                 .roles
                 .iter()
-                .any(|id| has_role(entry, roles[id.as_str()]))
+                .any(|id| roles[id.as_str()].matches(entry))
             {
                 continue;
             }
@@ -113,7 +110,15 @@ pub(super) fn calculate(
         let rule_ids = declaration
             .roles
             .iter()
-            .flat_map(|id| roles[id.as_str()].rule_ids.clone())
+            .flat_map(|id| {
+                policy
+                    .roles
+                    .iter()
+                    .find(|role| role.id == *id)
+                    .unwrap()
+                    .rule_ids
+                    .clone()
+            })
             .collect();
         population(
             scope,
@@ -160,8 +165,8 @@ pub(super) fn calculate(
             if !budget.checkpoint("calculation", fields.len() as u64 + 2) {
                 return;
             }
-            let source = has_role(entry, roles[declaration.source_role.as_str()]);
-            let target = has_role(entry, roles[declaration.target_role.as_str()]);
+            let source = roles[declaration.source_role.as_str()].matches(entry);
+            let target = roles[declaration.target_role.as_str()].matches(entry);
             if !source && !target {
                 continue;
             }

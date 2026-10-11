@@ -760,6 +760,16 @@ fn resolve_extends(
         reader,
     )?;
     chain.pop();
+    // A replacement grammar cannot inherit roles/joins tied to its parent's rules.
+    if value
+        .get("event_rules")
+        .and_then(|rules| rules.get("rules"))
+        .is_some()
+        && value.get("investigation").is_none()
+        && let Some(parent) = merged.as_table_mut()
+    {
+        parent.remove("investigation");
+    }
     merge_toml(&mut merged, value);
     Ok(merged)
 }

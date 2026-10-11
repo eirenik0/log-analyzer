@@ -105,6 +105,30 @@ needed `/findings`, `/records`, and declared membership collections. Follow
 Stop on exhausted budgets, invalid cursors, missing pages, or no progress; do not
 request unlimited output automatically. Retrieval does not repeat analysis.
 
+When findings contain `details.event_chain`, inspect the whole chain's evidence
+bundle before explaining it. Retrieve that finding by its `id` from `/findings`
+with the exact artifact checksum; follow pagination if it is not on the current
+page. Chains precede individual observations and follow source order per input.
+Read the root identity, scope fields, each step's `from`, event type, join samples,
+source lines/row paths and cardinality. Distinguish `observed_count` (matching
+candidates, including ambiguous ones) from `linked_count` (supported scoped joins).
+Poll sends and responses are independent roles: neither wrappers nor retries
+establish another response. Acceptance does not establish capture completion;
+capture completion does not establish check completion. An unavailable predecessor
+prevents downstream joins; its zero linked count is not evidence of absent activity.
+
+Read every configured terminal/contrary step, sampled outcome and `later_activity`.
+Keep outcome levels separate: a check's `asExpected:false` can coexist with a
+session's `Passed`; do not label them inconsistent without explicit semantics
+supporting that conclusion. Context activity uses `context_identity` and may be
+broader than the capture's identity; it cannot complete that capture. Inspect
+`ambiguity`, `count_completeness`, root reuse, missing fields, processing/filter
+coverage, and linked/outcome/later omission counts. First/last witnesses and up to
+two additional distinct outcomes are a bounded sample, not exhaustive contrary
+evidence. Retrieve omitted records when the question requires them; report missing
+terminal/contrary declarations as a recognition limitation. A chain's ordering is
+profile-declared structure, not a causal or elapsed-time calculation.
+
 Before claiming something is missing or unfinished, verify:
 
 - **Coverage:** all relevant input was processed; rejected/unparsed records,
@@ -143,6 +167,13 @@ end in this processed evidence” when coverage or recognition is incomplete.
 Missing ends do not prove hangs; elapsed time does not prove CPU work or cause;
 overlapping intervals are not additive critical-path time. Empty input, no matches,
 measured zero, and unavailable analysis are different results.
+
+Before finalizing an explanation, check it against each relevant chain: cover the
+supported submission/acceptance/capture/check relationships, separate send and
+response counts, preserve outcomes at each level, and acknowledge contrary or
+later evidence and join ambiguity. Cite the supported links and leave unsupported
+ones explicitly unknown. Do not generalize model rankings or attribute improved
+answers to this structure without a controlled evaluation.
 
 Use the [failure](examples/debug-failure.md) or
 [performance](examples/performance.md) example when relevant; use

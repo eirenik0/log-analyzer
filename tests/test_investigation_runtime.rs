@@ -4486,3 +4486,419 @@ fn resource_evidence_retains_all_normalized_row_paths_and_deduplicates_exact_row
         assert!(retained["findings"].as_array().unwrap().contains(finding));
     }
 }
+
+fn chain_fixture(events: &[Value], profile: Option<&str>) -> (tempfile::TempDir, Value, PathBuf) {
+    let temp = tempfile::tempdir().unwrap();
+    let config = temp.path().join("profile.toml");
+    fs::write(
+        &config,
+        profile.unwrap_or(include_str!(
+            "../examples/investigations/chains/profile.toml"
+        )),
+    )
+    .unwrap();
+    let input = temp.path().join("events.jsonl");
+    fs::write(
+        &input,
+        events.iter().map(|e| format!("{e}\n")).collect::<String>(),
+    )
+    .unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--config",
+        config.to_str().unwrap(),
+        "investigate",
+        input.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    (temp, report, artifact)
+}
+fn chain_event(event: &str, session: &str, capture: &str, poll: usize) -> Value {
+    json!({"timestamp":"2026-01-01T00:00:00Z","level":"INFO","message":event,"record_type":"capture","event_type":event,"session_id":session,"capture_id":capture,"request_id":"request-1","broker_id":"broker-1","poll_id":poll.to_string(),"payload":{"asExpected":false,"status":"Passed"}})
+}
+fn event_chains(report: &Value) -> Vec<&Value> {
+    report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|f| f["details"].get("event_chain"))
+        .collect()
+}
+fn chain_step<'a>(chain: &'a Value, id: &str) -> &'a Value {
+    chain["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == id)
+        .unwrap()
+}
+#[test]
+fn connected_chains_separate_poll_sends_acceptance_completion_and_outcome_levels() {
+    let mut events = vec![
+        chain_event("checkpoint", "run-1", "capture-8", 0),
+        chain_event("submitted", "run-1", "capture-8", 0),
+        chain_event("accepted", "run-1", "capture-8", 0),
+    ];
+    events.extend((0..321).map(|i| chain_event("poll_send", "run-1", "capture-8", i)));
+    events.push(chain_event("check_end", "run-1", "capture-8", 0));
+    events.push(chain_event("session_end", "run-1", "different-capture", 0));
+    events.push(chain_event("contrary", "run-1", "capture-8", 0));
+    events.push(chain_event("later_activity", "run-1", "capture-9", 0));
+    let (temp, report, artifact) = chain_fixture(&events, None);
+    let chains = event_chains(&report);
+    assert_eq!(chains.len(), 1);
+    let chain = chains[0];
+    assert_eq!(chain_step(chain, "polls")["observed_count"], 321);
+    assert_eq!(chain_step(chain, "polls")["omitted_occurrences"], 319);
+    assert_eq!(chain_step(chain, "responses")["observed_count"], 0);
+    assert_eq!(chain_step(chain, "accepted")["observed_count"], 1);
+    assert_eq!(chain_step(chain, "capture-end")["status"], "not_observed");
+    assert_eq!(
+        chain_step(chain, "check-end")["outcomes"][0]["value"],
+        false
+    );
+    assert_eq!(
+        chain_step(chain, "check-end")["outcomes"][0]["level"],
+        "check"
+    );
+    assert_eq!(
+        chain_step(chain, "session-end")["outcomes"][0]["value"],
+        "Passed"
+    );
+    assert_eq!(
+        chain_step(chain, "session-end")["outcomes"][0]["level"],
+        "session"
+    );
+    assert_eq!(chain_step(chain, "contrary")["observed_count"], 1);
+    assert_eq!(
+        chain["later_activity"][0]["occurrence"]["evidence_ref"]["line"],
+        328
+    );
+    assert_eq!(
+        chain_step(chain, "accepted")["join_samples"][0]["identity"][1]["value"],
+        "request-1"
+    );
+    assert!(report["findings"][0]["details"]["event_chain"].is_object());
+    let readable = run(&[
+        "--config",
+        temp.path().join("profile.toml").to_str().unwrap(),
+        "investigate",
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        "--artifact",
+        temp.path().join("text.json").to_str().unwrap(),
+    ]);
+    assert!(
+        readable.status.success(),
+        "{}",
+        String::from_utf8_lossy(&readable.stderr)
+    );
+    let text = String::from_utf8(readable.stdout).unwrap();
+    assert!(text.contains("polls sent: 321 observed"), "{text}");
+    assert!(text.contains("responses observed: 0 observed"));
+    assert!(text.contains("capture completion: 0 observed, 0 linked; not observed"));
+    let retrieved = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/findings",
+        "--id",
+        report["findings"][0]["id"].as_str().unwrap(),
+    ]);
+    assert!(retrieved.to_string().contains("event_chain"));
+}
+#[test]
+fn connected_chains_abstain_on_reused_roots_and_keep_input_and_session_scope() {
+    let events = vec![
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-2", "capture-1", 0),
+    ];
+    let (_temp, report, _artifact) = chain_fixture(&events, None);
+    let chain = event_chains(&report)[0];
+    assert_eq!(chain["ambiguity"], "reused_root_identity");
+    assert_eq!(chain_step(chain, "submitted")["status"], "ambiguous");
+    assert_eq!(chain_step(chain, "submitted")["observed_count"], 1);
+    assert_eq!(chain_step(chain, "submitted")["linked_count"], 0);
+    assert_eq!(
+        chain_step(chain, "submitted")["ambiguity"]["excluded_target_occurrences"],
+        1
+    );
+    let events = vec![
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-2", "capture-1", 0),
+    ];
+    let (temp, report, _artifact) = chain_fixture(&events, None);
+    assert_eq!(
+        chain_step(event_chains(&report)[0], "submitted")["observed_count"],
+        0
+    );
+    let output = success(&[
+        "--config",
+        temp.path().join("profile.toml").to_str().unwrap(),
+        "investigate",
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        "--artifact",
+        temp.path().join("two.json").to_str().unwrap(),
+        "--complete-output",
+    ]);
+    assert_eq!(event_chains(&output).len(), 2);
+    assert_eq!(
+        chain_step(event_chains(&output)[1], "submitted")["observed_count"],
+        0
+    );
+}
+#[test]
+fn connected_chains_redact_nested_bundles_labels_join_values_and_outcomes() {
+    let events: Vec<_> = [
+        "checkpoint",
+        "submitted",
+        "accepted",
+        "check_end",
+        "session_end",
+        "later_activity",
+    ]
+    .iter()
+    .map(|e| chain_event(e, "secret-session", "secret-capture", 0))
+    .collect();
+    let (temp, _report, _artifact) = chain_fixture(&events, None);
+    let artifact = temp.path().join("redacted.json");
+    let report = success(&[
+        "--redact",
+        "--config",
+        temp.path().join("profile.toml").to_str().unwrap(),
+        "investigate",
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    let retained = fs::read_to_string(&artifact).unwrap();
+    for secret in [
+        "secret-session",
+        "secret-capture",
+        "Checkpoint",
+        "broker accepted",
+        "Passed",
+    ] {
+        assert!(!retained.contains(secret), "leaked {secret}");
+    }
+    let chain = event_chains(&report)[0];
+    assert_eq!(
+        chain["steps"][0]["evidence"][0]["text"],
+        "[REDACTED SOURCE]"
+    );
+}
+
+#[test]
+fn connected_chains_keep_intermediate_contrary_outcomes_in_small_bundles() {
+    let mut events = vec![chain_event("checkpoint", "run-1", "capture-1", 0)];
+    for expected in [true, false, true] {
+        let mut event = chain_event("check_end", "run-1", "capture-1", 0);
+        event["payload"]["asExpected"] = json!(expected);
+        events.push(event);
+    }
+    let (_temp, report, _artifact) = chain_fixture(&events, None);
+    let step = chain_step(event_chains(&report)[0], "check-end");
+    assert_eq!(step["evidence"].as_array().unwrap().len(), 3);
+    assert!(
+        step["outcomes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|o| o["value"] == false)
+    );
+    assert_eq!(step["join_samples"].as_array().unwrap().len(), 3);
+    assert_eq!(step["omitted_outcomes"], 0);
+    let mut corrupt = report.clone();
+    corrupt["findings"][0]["details"]["event_chain"]["steps"][0]["observed_count"] = json!(99);
+    assert!(log_analyzer::investigation::validate_relations(&corrupt, None).is_err());
+    let mut overflowing = report.clone();
+    let step = &mut overflowing["findings"][0]["details"]["event_chain"]["steps"][0];
+    step["observed_count"] = json!(u64::MAX);
+    step["linked_count"] = json!(u64::MAX);
+    step["ambiguity"]["excluded_target_occurrences"] = json!(1);
+    assert!(log_analyzer::investigation::validate_relations(&overflowing, None).is_err());
+    let mut corrupt = report.clone();
+    corrupt["findings"][0]["details"]["event_chain"]["root"]["input_ordinal"] = json!(99);
+    assert!(log_analyzer::investigation::validate_relations(&corrupt, None).is_err());
+}
+#[test]
+fn connected_chains_missing_join_identity_is_partial_and_never_guessed() {
+    let mut submission = chain_event("submitted", "run-1", "capture-1", 0);
+    submission.as_object_mut().unwrap().remove("request_id");
+    let events = vec![
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        submission,
+        chain_event("accepted", "run-1", "capture-1", 0),
+    ];
+    let (_temp, report, _artifact) = chain_fixture(&events, None);
+    let step = chain_step(event_chains(&report)[0], "accepted");
+    assert_eq!(step["observed_count"], 0);
+    assert_eq!(step["count_completeness"], "partial");
+    assert_eq!(step["ambiguity"]["source_occurrences_missing_identity"], 1);
+    let mut events = vec![
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-1", "capture-1", 0),
+        chain_event("accepted", "run-1", "capture-1", 0),
+        chain_event("poll_send", "run-1", "capture-1", 1),
+        chain_event("poll_response", "run-1", "capture-1", 1),
+    ];
+    let mut missing = chain_event("poll_send", "run-1", "capture-1", 2);
+    missing.as_object_mut().unwrap().remove("broker_id");
+    events.push(missing);
+    let (_temp, report, _artifact) = chain_fixture(&events, None);
+    let chain = event_chains(&report)[0];
+    assert_eq!(chain_step(chain, "polls")["count_completeness"], "partial");
+    assert_eq!(chain_step(chain, "responses")["observed_count"], 1);
+    assert_eq!(
+        chain_step(chain, "responses")["count_completeness"],
+        "partial"
+    );
+    assert_eq!(chain["completeness"], "partial");
+}
+#[test]
+fn shipped_profile_chains_count_http_sends_and_responses_without_wrappers_or_retries() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("generic.log");
+    fs::write(&input,concat!(
+        "core-ufg (manager-a/eyes-a/check-a) | 2026-01-01T00:00:00Z [INFO ] Command \"check\" is called\n",
+        "core-ufg (manager-a/eyes-a/check-a) | 2026-01-01T00:00:01Z [INFO ] Command \"takeSnapshots\" is called\n",
+        "ufg-requests (manager-a/eyes-a/check-a/environment-a & manager-a/eyes-a/check-a/environment-b) | 2026-01-01T00:00:02Z [INFO ] Request \"startRenders\" finished successfully with body [{\"status\":\"rendering\"}]\n",
+        "ufg-requests (manager-a/eyes-a/check-a/environment-a & manager-a/eyes-a/check-a/environment-b) | 2026-01-01T00:00:03Z [INFO ] Request \"getRenderResults\" [poll-1] will be sent\n",
+        "ufg-requests (manager-a/eyes-a/check-a/environment-a & manager-a/eyes-a/check-a/environment-b) | 2026-01-01T00:00:04Z [INFO ] Request \"getRenderResults\" [poll-1] that was sent to the address \"[POST]https://example.invalid/status\" respond with OK(200) \t\r\n",
+        "ufg-requests (manager-a/eyes-a/check-a/environment-a) | 2026-01-01T00:00:05Z [INFO ] Request \"getRenderResults\" finished successfully with body []\n",
+        "ufg-requests (manager-a/eyes-a/check-a/environment-a) | 2026-01-01T00:00:06Z [INFO ] Request \"getRenderResults\" [poll-1] is going to retried due to timeout\n",
+        "core-requests (manager-a/eyes-a/check-a/environment-a) | 2026-01-01T00:00:07Z [INFO ] Request \"check\" finished successfully with body {\"asExpected\":false}\n",
+        "core-requests (manager-a/eyes-a/check-a/environment-a) | 2026-01-01T00:00:08Z [INFO ] Request \"close\" finished successfully with body {\"status\":\"Passed\"}\n",
+        "ufg-requests (manager-a/eyes-a/check-a/environment-a & manager-a/eyes-a/check-b/environment-b) | 2026-01-01T00:00:09Z [INFO ] Request \"getRenderResults\" [poll-2] will be sent\n",
+    )).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--profile",
+        "eyes",
+        "investigate",
+        input.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    let chain = event_chains(&report)[0];
+    assert_eq!(chain_step(chain, "render-accepted")["observed_count"], 1);
+    assert_eq!(chain_step(chain, "polls")["observed_count"], 1);
+    assert_eq!(chain_step(chain, "responses")["observed_count"], 1);
+    assert_eq!(
+        chain_step(chain, "polls")["ambiguity"]["role_occurrences_missing_identity"],
+        1
+    );
+    assert_eq!(chain_step(chain, "capture-end")["status"], "not_observed");
+    assert_eq!(chain_step(chain, "check-end")["status"], "not_observed");
+    assert_eq!(
+        chain_step(chain, "check-result")["outcomes"][0]["value"],
+        false
+    );
+    assert_eq!(
+        chain_step(chain, "session-result")["outcomes"][0]["value"],
+        "Passed"
+    );
+}
+#[test]
+fn connected_chain_configuration_rejects_forward_links_and_unscoped_context() {
+    let temp = tempfile::tempdir().unwrap();
+    for config in [
+        include_str!("../examples/investigations/chains/profile.toml")
+            .replace("from = \"submitted\"", "from = \"responses\""),
+        include_str!("../examples/investigations/chains/profile.toml").replace(
+            "context_fields = [\"session_id\"]",
+            "context_fields = [\"capture_id\"]",
+        ),
+    ] {
+        let path = temp.path().join("bad.toml");
+        fs::write(&path, config).unwrap();
+        let output = run(&[
+            "--config",
+            path.to_str().unwrap(),
+            "investigate",
+            "examples/investigations/chains/events.jsonl",
+            "--artifact",
+            temp.path().join("evidence.json").to_str().unwrap(),
+        ]);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("investigation policy"));
+    }
+}
+
+#[test]
+fn connected_chains_preserve_unfinished_eighth_check_and_paginate_whole_chains() {
+    let mut events = Vec::new();
+    for index in 1..=8 {
+        events.push(chain_event(
+            "checkpoint",
+            "run-1",
+            &format!("capture-{index}"),
+            0,
+        ));
+        if index < 8 {
+            events.push(chain_event(
+                "check_end",
+                "run-1",
+                &format!("capture-{index}"),
+                0,
+            ));
+        }
+    }
+    events.push(chain_event("session_end", "run-1", "different-capture", 0));
+    events.extend((0..12).map(|i| chain_event("later_activity", "run-1", "other-capture", i)));
+    let (temp, report, _artifact) = chain_fixture(&events, None);
+    let chains = event_chains(&report);
+    assert_eq!(chains.len(), 8);
+    for chain in &chains[..7] {
+        assert_eq!(chain_step(chain, "check-end")["status"], "observed");
+    }
+    assert_eq!(chain_step(chains[7], "check-end")["status"], "not_observed");
+    assert_eq!(
+        chain_step(chains[7], "session-end")["outcomes"][0]["value"],
+        "Passed"
+    );
+    assert_eq!(chains[7]["later_activity_observed_count"], 12);
+    assert_eq!(chains[7]["omitted_later_activity"], 9);
+    let artifact = temp.path().join("paged.json");
+    let brief = success(&[
+        "--config",
+        temp.path().join("profile.toml").to_str().unwrap(),
+        "investigate",
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--summary",
+        "--report-max-items",
+        "1",
+    ]);
+    assert_eq!(
+        brief["findings"]["items"][0]["details"]["event_chain"]["identity"][0]["value"],
+        "capture-1"
+    );
+    let action = brief["guidance"]["next_actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["kind"] == "retrieve_findings")
+        .unwrap();
+    let argv = action["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(1)
+        .map(|v| v.as_str().unwrap())
+        .collect::<Vec<_>>();
+    let next = success(&argv);
+    assert_ne!(next["items"][0]["id"], brief["findings"]["items"][0]["id"]);
+}
