@@ -11,6 +11,7 @@ json_indicators = ["with settings {", "with body [", "with body {", "with body",
 event_correlation_keys = ["key"]
 
 [profile]
+detection_requires_session_scope = true
 known_components = [
   "core",
   "core-base",
@@ -168,7 +169,7 @@ id = "request-end-id"
 [event_rules.rules.adapter]
 type = "text"
 complete_payload_capture = "body"
-pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?'
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") \[(?P<id>[^\]\s]+)\] (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?[ \t]*'
 [event_rules.rules.mapping]
 kind = "request"
 name = { from = "capture", capture = "name", decode = "json_string" }
@@ -182,7 +183,7 @@ id = "request-end-missing-id"
 [event_rules.rules.adapter]
 type = "text"
 complete_payload_capture = "body"
-pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?'
+pattern = 'Request (?P<name>"(?:[^"\\]|\\.)*") (?:finished successfully|respond with(?: [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?)?|that was sent|is going to retried)(?: to the address (?P<endpoint>"(?:[^"\\]|\\.)*"))?(?: (?:respond with [^\r\n(),]+\([0-9]{3}\)(?:, dont retry returned (?:true|false))?(?:, httpVersion: [^\s,]+)?|(?:with body (?s:.+?) )?is going to retried due to (?s:.+)|with body (?P<body>(?s:\{.*|\[.*))))?[ \t]*'
 [event_rules.rules.mapping]
 kind = "request"
 name = { from = "capture", capture = "name", decode = "json_string" }
@@ -281,3 +282,169 @@ name = { from = "field", field = "operation_name" }
 phase = { from = "field", field = "operation_phase" }
 correlation_id = { from = "first_field", fields = ["correlation_id"] }
 direction = { from = "field", field = "operation_direction" }
+
+# Domain observations are profile data, not CLI switches or runtime constants.
+[[resource_observations]]
+id = "snapshot-resources"
+scope_field = "component_id"
+scope_separator = "/"
+namespace_prefix = "manager-"
+owner_prefix = "check-"
+manifest_marker = "blobs urls"
+url_contains = "applitools-canvas-"
+resource_markers = ['Request "startRenders"', "will be sent"]
+resources_path = "resources"
+entries_field = "entries"
+url_field = "url"
+hash_field = "hash"
+viewport_marker = "Extracted viewport size"
+viewport_reset_marker = "Taking dom snapshot for viewport size"
+width_field = "width"
+height_field = "height"
+[[resource_observations.fingerprints]]
+sha256 = "8617e027d9070bad2f37098c59e09dd1818d6af11bcef176ac1ec1cd5e3fc0a2"
+label = "transparent, undrawn 300x150 Chromium PNG"
+
+[investigation_view]
+source_fields = ["component", "component_id", "event.name", "event.kind", "event.phase"]
+
+[[investigation_view.groups]]
+id = "resource-fingerprints"
+title = "Resource observations by component and viewport"
+max_groups = 12
+select = [{path = "/details/resource_status", equals = "fingerprint_match"}]
+by = [
+  {label = "Component", path = "/evidence/0/fields/component"},
+  {label = "Viewport", path = "/details/viewport", template = "{/width}x{/height}"},
+  {label = "Fingerprint", path = "/details/fingerprint", template = "{/label}"}
+]
+
+[[investigation_view.groups]]
+id = "component-performance"
+title = "Performance by component"
+max_groups = 8
+select = [{path = "/kind", equals = "measurement"}, {path = "/details/unit", equals = "ms"}]
+by = [{label = "Component", path = "/evidence/0/fields/component"}]
+measurements = [
+  {label = "Mean elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "mean"},
+  {label = "Max elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "max"}
+]
+
+# Connected checkpoints use explicit role selectors and hierarchical scope keys.
+# A prefix selector retains the entire path through the first matching segment;
+# batched paths qualify only when every branch has the same retained path.
+[investigation]
+version = 1
+[[investigation.roles]]
+id = "checkpoint-start"
+rule_ids = ["command-start"]
+select = [{field = "event.name", equals = "check"}, {field = "component", equals = "core-ufg"}]
+[[investigation.roles]]
+id = "capture-start"
+rule_ids = ["command-start"]
+select = [{field = "event.name", equals = "takeSnapshots"}]
+[[investigation.roles]]
+id = "capture-end"
+rule_ids = ["command-end"]
+select = [{field = "event.name", equals = "takeSnapshots"}]
+[[investigation.roles]]
+id = "render-accepted"
+rule_ids = ["request-end-missing-id"]
+select = [{field = "event.name", equals = "startRenders"}, {field = "payload.0.status", equals = "rendering"}]
+[[investigation.roles]]
+id = "render-poll-send"
+rule_ids = ["request-start-id"]
+select = [{field = "event.name", equals = "getRenderResults"}]
+[[investigation.roles]]
+id = "render-poll-response"
+rule_ids = ["request-end-id"]
+select = [{field = "event.name", equals = "getRenderResults"}]
+message_pattern = 'respond with [^\r\n(),]+\([0-9]{3}\)'
+[[investigation.roles]]
+id = "check-end"
+rule_ids = ["command-end"]
+select = [{field = "event.name", equals = "check"}, {field = "component", equals = "core-ufg"}]
+[[investigation.roles]]
+id = "check-result"
+rule_ids = ["request-end-missing-id"]
+select = [{field = "event.name", equals = "check"}]
+[[investigation.roles]]
+id = "session-result"
+rule_ids = ["request-end-missing-id"]
+select = [{field = "event.name", equals = "close"}]
+
+[[investigation.chains]]
+id = "checkpoint"
+title = "Checkpoint event chain"
+root_role = "checkpoint-start"
+identity_fields = ["component_id.prefix:check-"]
+scope_fields = ["component_id.prefix:eyes-"]
+context_fields = ["component_id.prefix:eyes-"]
+[[investigation.chains.steps]]
+id = "capture-start"
+label = "capture requested"
+role = "capture-start"
+from = "$root"
+join_fields = ["component_id.prefix:check-"]
+cardinality = "one_to_one"
+event_type = "capture_submission"
+[[investigation.chains.steps]]
+id = "capture-end"
+label = "capture completion"
+role = "capture-end"
+from = "capture-start"
+join_fields = ["component_id.prefix:check-"]
+cardinality = "one_to_one"
+event_type = "capture_completion"
+[[investigation.chains.steps]]
+id = "render-accepted"
+label = "render submission accepted (rendering status)"
+role = "render-accepted"
+from = "$root"
+join_fields = ["component_id.prefix:check-"]
+cardinality = "one_to_many"
+event_type = "acceptance"
+[[investigation.chains.steps]]
+id = "polls"
+label = "render polls sent"
+role = "render-poll-send"
+from = "$root"
+join_fields = ["component_id.prefix:check-"]
+cardinality = "one_to_many"
+event_type = "poll_send"
+[[investigation.chains.steps]]
+id = "responses"
+label = "render responses observed"
+role = "render-poll-response"
+from = "polls"
+join_fields = ["event.correlation_id", "component_id.prefix:check-"]
+cardinality = "one_to_one"
+event_type = "poll_response"
+[[investigation.chains.steps]]
+id = "check-end"
+label = "checkpoint command completion"
+role = "check-end"
+from = "$root"
+join_fields = ["component_id.prefix:check-"]
+cardinality = "one_to_one"
+event_type = "check_completion"
+[[investigation.chains.steps]]
+id = "check-result"
+label = "check result (per observed environment)"
+role = "check-result"
+from = "$root"
+join_fields = ["component_id.prefix:check-"]
+cardinality = "one_to_many"
+event_type = "check_result"
+outcome_level = "check"
+outcome_field = "payload.asExpected"
+[[investigation.chains.steps]]
+id = "session-result"
+label = "session result (per observed environment)"
+role = "session-result"
+from = "$root"
+join_fields = ["component_id.prefix:eyes-"]
+cardinality = "one_to_many"
+event_type = "session_result"
+outcome_level = "session"
+outcome_field = "payload.status"

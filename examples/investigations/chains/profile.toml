@@ -1,0 +1,131 @@
+extends = "base"
+profile_name = "connected-events-example"
+[parser]
+format = "json-lines"
+[event_rules]
+version = 2
+[[event_rules.rules]]
+id = "typed-event"
+[event_rules.rules.adapter]
+type = "structured"
+conditions = [{field = "record_type", equals = "capture"}]
+[event_rules.rules.mapping]
+kind = "event"
+name = {from = "field", field = "event_type"}
+correlation_id = {from = "field", field = "capture_id"}
+scope = [{from = "field", field = "session_id"}]
+
+[investigation]
+version = 1
+[[investigation.roles]]
+id = "checkpoint"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "checkpoint"}]
+[[investigation.roles]]
+id = "submitted"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "submitted"}]
+[[investigation.roles]]
+id = "accepted"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "accepted"}]
+[[investigation.roles]]
+id = "poll-send"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "poll_send"}]
+[[investigation.roles]]
+id = "poll-response"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "poll_response"}]
+[[investigation.roles]]
+id = "capture-end"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "capture_end"}]
+[[investigation.roles]]
+id = "check-end"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "check_end"}]
+[[investigation.roles]]
+id = "session-end"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "session_end"}]
+[[investigation.roles]]
+id = "contrary"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "contrary"}]
+
+[[investigation.chains]]
+id = "capture"
+title = "Checkpoint"
+root_role = "checkpoint"
+identity_fields = ["capture_id"]
+scope_fields = ["session_id"]
+context_fields = ["session_id"]
+[[investigation.chains.steps]]
+id = "submitted"
+label = "request submitted"
+role = "submitted"
+from = "$root"
+join_fields = ["capture_id"]
+cardinality = "one_to_one"
+event_type = "submission"
+[[investigation.chains.steps]]
+id = "accepted"
+label = "broker accepted"
+role = "accepted"
+from = "submitted"
+join_fields = ["capture_id", "request_id"]
+cardinality = "one_to_one"
+event_type = "acceptance"
+[[investigation.chains.steps]]
+id = "polls"
+label = "polls sent"
+role = "poll-send"
+from = "accepted"
+join_fields = ["capture_id", "broker_id"]
+cardinality = "one_to_many"
+event_type = "poll_send"
+[[investigation.chains.steps]]
+id = "responses"
+label = "responses observed"
+role = "poll-response"
+from = "polls"
+join_fields = ["capture_id", "poll_id"]
+cardinality = "one_to_one"
+event_type = "poll_response"
+[[investigation.chains.steps]]
+id = "capture-end"
+label = "capture completion"
+role = "capture-end"
+from = "$root"
+join_fields = ["capture_id"]
+cardinality = "one_to_one"
+event_type = "capture_completion"
+[[investigation.chains.steps]]
+id = "check-end"
+label = "check completion"
+role = "check-end"
+from = "$root"
+join_fields = ["capture_id"]
+cardinality = "one_to_many"
+event_type = "check_completion"
+outcome_level = "check"
+outcome_field = "payload.asExpected"
+[[investigation.chains.steps]]
+id = "session-end"
+label = "session completion"
+role = "session-end"
+from = "$root"
+join_fields = ["session_id"]
+cardinality = "many_to_one"
+event_type = "session_completion"
+outcome_level = "session"
+outcome_field = "payload.status"
+[[investigation.chains.steps]]
+id = "contrary"
+label = "contrary evidence"
+role = "contrary"
+from = "$root"
+join_fields = ["capture_id"]
+cardinality = "one_to_many"
+event_type = "contrary_evidence"

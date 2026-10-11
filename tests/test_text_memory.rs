@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::{fs, process::Command};
 
 #[test]
-fn default_budget_processes_large_multiline_text_without_losing_evidence() {
+fn bounded_budget_processes_large_multiline_text_without_losing_evidence() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("synthetic.log");
     let artifact = temp.path().join("evidence.json");
@@ -12,7 +12,14 @@ fn default_budget_processes_large_multiline_text_without_losing_evidence() {
     );
     fs::write(&source, block.repeat(6000)).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
-        .args(["--preset", "eyes", "investigate"])
+        .args([
+            "--json",
+            "--preset",
+            "eyes",
+            "investigate",
+            "--processing-max-memory-bytes",
+            "536870912",
+        ])
         .arg(&source)
         .arg("--artifact")
         .arg(&artifact)

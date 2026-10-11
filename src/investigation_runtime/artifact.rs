@@ -137,6 +137,91 @@ pub(super) fn redact(artifact: &mut Value) {
         record["verification"] = super::findings::verification(true, "not_applicable");
     }
     for finding in artifact["findings"].as_array_mut().unwrap() {
+        if let Some(status) = finding["details"]["resource_status"].as_str() {
+            finding["claim"] = json!(match status {
+                "fingerprint_match" =>
+                    "Resource matches a profile-declared fingerprint; private labels, digests and dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "different_fingerprint" =>
+                    "Resource has different bytes from the profile-declared fingerprints; private dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "unconfigured_fingerprint" =>
+                    "Resource has a digest but no profile-declared fingerprints; private dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "unavailable" =>
+                    "Resource digest is unavailable or ambiguous; private dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "empty_manifest" =>
+                    "Manifest lists no resources; absent displayed content cannot be established from this list.",
+                _ =>
+                    "Resource observation; private details are omitted by redaction. This observation does not establish displayed content or cause.",
+            });
+            if finding["details"].get("viewport").is_some() {
+                finding["details"]["viewport"] = Value::Null;
+            }
+        }
+        if finding["details"]["fingerprint"].is_object() {
+            finding["details"]["fingerprint"] = Value::Null;
+        }
+        if let Some(chain) = finding["details"].get_mut("event_chain") {
+            for key in ["id", "title"] {
+                opaque(&mut chain[key]);
+            }
+            for key in ["scope_fields"] {
+                for value in chain[key].as_array_mut().unwrap() {
+                    opaque(value);
+                }
+            }
+            for step in chain["steps"].as_array_mut().unwrap() {
+                for key in ["id", "label", "event_type"] {
+                    opaque(&mut step[key]);
+                }
+                if step["from"] != "$root" {
+                    opaque(&mut step["from"]);
+                }
+                for value in step["join_fields"].as_array_mut().unwrap() {
+                    opaque(value);
+                }
+                for outcome in step["outcomes"].as_array_mut().unwrap() {
+                    opaque(&mut outcome["level"]);
+                    if !outcome["value"].is_null() {
+                        outcome["value"] = json!(format!(
+                            "opaque-{}",
+                            digest(outcome["value"].to_string().as_bytes())
+                        ));
+                    }
+                }
+            }
+            fn redact_excerpts(value: &mut Value) {
+                if let Some(map) = value.as_object_mut() {
+                    if map.contains_key("field")
+                        && map
+                            .get("value")
+                            .is_some_and(|v| !v.is_string() && !v.is_null())
+                    {
+                        let value = &map["value"];
+                        let masked =
+                            json!(format!("opaque-{}", digest(value.to_string().as_bytes())));
+                        map.insert("value".into(), masked);
+                    }
+                    if map.contains_key("occurrence") && map.contains_key("text") {
+                        map.insert("text".into(), json!("[REDACTED SOURCE]"));
+                        map.insert("omitted_characters".into(), json!(0));
+                        if map.contains_key("fields") {
+                            map.insert("fields".into(), json!({}));
+                        }
+                        map.insert(
+                            "verification".into(),
+                            super::findings::verification(true, "not_applicable"),
+                        );
+                    }
+                    for child in map.values_mut() {
+                        redact_excerpts(child);
+                    }
+                } else if let Some(values) = value.as_array_mut() {
+                    for child in values {
+                        redact_excerpts(child);
+                    }
+                }
+            }
+            redact_excerpts(chain);
+        }
         let arithmetic = finding["verification"]["arithmetic"]
             .as_str()
             .unwrap()
@@ -144,6 +229,9 @@ pub(super) fn redact(artifact: &mut Value) {
         finding["verification"] = super::findings::verification(true, &arithmetic);
         for excerpt in finding["evidence"].as_array_mut().unwrap() {
             excerpt["text"] = json!("[REDACTED SOURCE]");
+            if excerpt.get("fields").is_some() {
+                excerpt["fields"] = json!({});
+            }
             excerpt["omitted_characters"] = json!(0);
             excerpt["verification"] = super::findings::verification(true, "not_applicable");
         }
@@ -456,26 +544,69 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
         size(report, cli)?;
         return Ok(());
     }
+    // Serialize the fixed metadata once, and each atomic finding once. Only
+    // the small presentation/cursor fields change as the page grows.
+    let measure = |value: &Value| -> Result<(usize, usize)> {
+        let text = serde_json::to_string(value)?;
+        Ok((text.len(), text.chars().count()))
+    };
+    let header = measure(report)?;
+    let presentation = measure(&report["presentation"])?;
+    let cursor = measure(&report["retrieval"]["next_cursor"])?;
+    let guidance = measure(&report["guidance"])?;
+    let fixed = (
+        header.0 - presentation.0 - cursor.0 - guidance.0 + 1,
+        header.1 - presentation.1 - cursor.1 - guidance.1 + 1,
+    );
+    let exact = |report: &mut Value, payload: (usize, usize)| -> Result<(usize, usize)> {
+        report["guidance"] = super::guidance::build(report, cli);
+        let guidance = measure(&report["guidance"])?;
+        for _ in 0..8 {
+            let presentation = measure(&report["presentation"])?;
+            let cursor = measure(&report["retrieval"]["next_cursor"])?;
+            let sizes = (
+                fixed.0 + presentation.0 + cursor.0 + guidance.0 + payload.0,
+                fixed.1 + presentation.1 + cursor.1 + guidance.1 + payload.1,
+            );
+            if report["presentation"]["serialized_bytes"] == sizes.0
+                && report["presentation"]["serialized_characters"] == sizes.1
+            {
+                return Ok(sizes);
+            }
+            report["presentation"]["serialized_bytes"] = json!(sizes.0);
+            report["presentation"]["serialized_characters"] = json!(sizes.1);
+        }
+        Err("Could not stabilize serialized report size".into())
+    };
+    let mut displayed = Vec::new();
+    let mut payload = (0usize, 0usize);
     for finding in all.into_iter().skip(prior).take(max) {
-        report["findings"].as_array_mut().unwrap().push(finding);
-        let count = report["findings"].as_array().unwrap().len();
+        let item = measure(&finding)?;
+        let comma = usize::from(!displayed.is_empty());
+        let candidate = (payload.0 + item.0 + comma, payload.1 + item.1 + comma);
+        let count = displayed.len() + 1;
         refresh(
             report,
             count,
-            if count == total { "complete" } else { "page" },
+            if prior + count == total {
+                "complete"
+            } else {
+                "page"
+            },
         );
-        if over(cli, size(report, cli)?) {
-            report["findings"].as_array_mut().unwrap().pop();
-            let count = count - 1;
+        if over(cli, exact(report, candidate)?) {
             refresh(
                 report,
-                count,
-                if count == 0 { "oversized_item" } else { "page" },
+                count - 1,
+                if count == 1 { "oversized_item" } else { "page" },
             );
-            size(report, cli)?;
+            exact(report, payload)?;
             break;
         }
+        payload = candidate;
+        displayed.push(finding);
     }
+    report["findings"] = Value::Array(displayed);
     size(report, cli)?;
     Ok(())
 }
@@ -515,6 +646,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     }
     let full_report = report(&retained, &args.artifact, Some(&bytes));
     crate::investigation::validate_relations(&full_report, Some(&bytes))?;
+    drop(full_report);
     let allowed = [
         "/findings",
         "/records",
@@ -545,7 +677,6 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                         == Some(id)
             })
         })
-        .cloned()
         .collect();
     let base = binding(&retained, &hash);
     let query_binding = digest(
@@ -607,15 +738,16 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     if !fits(&output)? {
         refresh(&mut output, 0, "mandatory_metadata_over_budget");
     } else {
+        let mut displayed = Vec::new();
+        let mut payload = (0usize, 0usize);
         for item in selected.iter().skip(prior).take(max) {
-            output["artifact_retrieval"]["items"]
-                .as_array_mut()
-                .unwrap()
-                .push(item.clone());
-            let count = output["artifact_retrieval"]["items"]
-                .as_array()
-                .unwrap()
-                .len();
+            let text = serde_json::to_string(item)?;
+            let comma = usize::from(!displayed.is_empty());
+            let candidate = (
+                payload.0 + text.len() + comma,
+                payload.1 + text.chars().count() + comma,
+            );
+            let count = displayed.len() + 1;
             refresh(
                 &mut output,
                 count,
@@ -625,11 +757,15 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                     "page"
                 },
             );
-            if !fits(&output)? {
-                output["artifact_retrieval"]["items"]
-                    .as_array_mut()
-                    .unwrap()
-                    .pop();
+            // Items stay outside the header until pagination finishes.
+            let header = serde_json::to_string(&output)?;
+            if over(
+                cli,
+                (
+                    header.len() + candidate.0 + 1,
+                    header.chars().count() + candidate.1 + 1,
+                ),
+            ) {
                 refresh(
                     &mut output,
                     count - 1,
@@ -637,7 +773,10 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 );
                 break;
             }
+            payload = candidate;
+            displayed.push((*item).clone());
         }
+        output["artifact_retrieval"]["items"] = Value::Array(displayed);
     }
     if cli.redact && retained["report_metadata"]["evidence"]["redaction"]["applied"] != true {
         return Err("Retrieve an artifact created with --redact; original evidence cannot be presented as a redacted retained artifact".into());

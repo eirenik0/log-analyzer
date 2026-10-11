@@ -219,3 +219,43 @@ fn extends_chain_counts_the_builtin_parent_toward_the_limit() {
         "{err}"
     );
 }
+
+#[test]
+fn replacing_grammar_clears_inherited_policy_and_explicit_policies_still_validate() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("child.toml");
+    fs::write(&path, "extends = \"eyes\"\n").unwrap();
+    assert!(
+        config::load_config_from_path(&path)
+            .unwrap()
+            .investigation
+            .is_some()
+    );
+    let grammar = r#"
+extends = "eyes"
+[event_rules]
+version = 2
+[[event_rules.rules]]
+id = "custom"
+[event_rules.rules.adapter]
+type = "text"
+pattern = "work"
+[event_rules.rules.mapping]
+kind = "event"
+name = {from = "literal", value = "work"}
+"#;
+    fs::write(&path, grammar).unwrap();
+    assert!(
+        config::load_config_from_path(&path)
+            .unwrap()
+            .investigation
+            .is_none()
+    );
+    fs::write(&path,format!("{grammar}\n[investigation]\nversion = 1\n[[investigation.roles]]\nid = \"invalid\"\nrule_ids = [\"missing-rule\"]\n")).unwrap();
+    assert!(
+        config::load_config_from_path(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("investigation policy")
+    );
+}

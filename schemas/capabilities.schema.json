@@ -277,7 +277,7 @@
         "profile_detection": {
           "const": {
             "default": true,
-            "method": "unique_profile_lifecycle_grammar",
+            "method": "unique_profile_configured_grammar",
             "overrides": [
               "profile",
               "config",
@@ -302,6 +302,21 @@
         },
         "capability_summary": {
           "const": true
+        },
+        "default_output": {
+          "const": "text"
+        },
+        "retrieval_command": {
+          "const": "evidence"
+        },
+        "automatic_artifact": {
+          "const": true
+        },
+        "profile_analysis": {
+          "const": [
+            "resource_observations",
+            "event_chains"
+          ]
         }
       },
       "required": [
@@ -315,7 +330,11 @@
         "guidance_version",
         "brief_version",
         "project_root_option",
-        "capability_summary"
+        "capability_summary",
+        "default_output",
+        "retrieval_command",
+        "automatic_artifact",
+        "profile_analysis"
       ],
       "additionalProperties": false
     },

@@ -1341,6 +1341,97 @@ pub fn validate_relations(
                         )?;
                     }
                 }
+                if let Some(chain) = details.get("event_chain") {
+                    let supporting: BTreeSet<_> = list(details, "/supporting_occurrences")?
+                        .iter()
+                        .map(&occurrence)
+                        .collect::<Result<_, _>>()?;
+                    let check_source = |source: &Value| -> Result<(), ContractError> {
+                        let id = occurrence(source)?;
+                        require(
+                            supporting.contains(&id),
+                            "/findings/details/event_chain",
+                            "chain citation is not declared supporting evidence",
+                        )?;
+                        require(
+                            source["input_ordinal"] == chain["root"]["input_ordinal"],
+                            "/findings/details/event_chain",
+                            "chain joins across independent inputs",
+                        )
+                    };
+                    check_source(get(chain, "/root")?)?;
+                    let mut preceding = BTreeSet::from(["$root"]);
+                    for step in list(chain, "/steps")? {
+                        require(
+                            preceding.contains(text(step, "/from")?)
+                                && preceding.insert(text(step, "/id")?),
+                            "/findings/details/event_chain/steps",
+                            "chain must reference a preceding unique step",
+                        )?;
+                        let count = number(step, "/linked_count")?;
+                        require(
+                            Some(number(step, "/observed_count")?)
+                                == count.checked_add(number(
+                                    step,
+                                    "/ambiguity/excluded_target_occurrences",
+                                )?),
+                            "/findings/details/event_chain/steps/observed_count",
+                            "observed candidates differ from linked and ambiguous counts",
+                        )?;
+                        let samples = list(step, "/evidence")?;
+                        require(
+                            Some(count)
+                                == (samples.len() as u64)
+                                    .checked_add(number(step, "/omitted_occurrences")?),
+                            "/findings/details/event_chain/steps/observed_count",
+                            "sample and omission counts differ",
+                        )?;
+                        require(
+                            (count == 0 || step["status"] != "not_observed")
+                                && (count > 0 || step["status"] != "observed"),
+                            "/findings/details/event_chain/steps/status",
+                            "observed status differs from count",
+                        )?;
+                        for sample in samples.iter().chain(list(step, "/ambiguous_evidence")?) {
+                            check_source(get(sample, "/occurrence")?)?;
+                        }
+                        for join in list(step, "/join_samples")? {
+                            check_source(get(join, "/source")?)?;
+                            check_source(get(join, "/target")?)?;
+                            require(
+                                join["source"] != join["target"],
+                                "/findings/details/event_chain/steps/join_samples",
+                                "self join",
+                            )?;
+                        }
+                        for outcome in list(step, "/outcomes")? {
+                            check_source(get(outcome, "/occurrence")?)?;
+                        }
+                        require(
+                            (list(step, "/outcomes")?.len() as u64)
+                                .checked_add(number(step, "/omitted_outcomes")?)
+                                == Some(if list(step, "/outcomes")?.is_empty() {
+                                    0
+                                } else {
+                                    count
+                                }),
+                            "/findings/details/event_chain/steps/outcomes",
+                            "outcome samples and omissions differ",
+                        )?;
+                    }
+                    if !get(chain, "/later_activity_observed_count")?.is_null() {
+                        require(
+                            Some(number(chain, "/later_activity_observed_count")?)
+                                == (list(chain, "/later_activity")?.len() as u64)
+                                    .checked_add(number(chain, "/omitted_later_activity")?),
+                            "/findings/details/event_chain/later_activity",
+                            "later samples and omissions differ",
+                        )?;
+                    }
+                    for later in list(chain, "/later_activity")? {
+                        check_source(get(later, "/occurrence")?)?;
+                    }
+                }
                 if finding["kind"] == "contrary_evidence" {
                     let against = text(details, "/against_finding_id")?;
                     require(

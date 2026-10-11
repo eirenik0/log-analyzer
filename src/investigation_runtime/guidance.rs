@@ -85,7 +85,9 @@ pub(super) fn build(report: &Value, cli: &Cli) -> Value {
                 None
             } else {
                 executable().and_then(|exe| {
-                    let path = std::env::current_dir().ok()?.join(&args.artifact);
+                    let path = std::env::current_dir()
+                        .ok()?
+                        .join(report["artifact"]["location"].as_str()?);
                     let mut argv = vec![
                         exe,
                         "evidence".into(),
@@ -159,7 +161,10 @@ pub(super) fn brief(report: &Value, cli: &Cli) -> Value {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["lifecycle_records"].as_u64().unwrap_or(0) > 0)
+        .filter(|c| {
+            c["lifecycle_records"].as_u64().unwrap_or(0) > 0
+                || c["resource_records"].as_u64().unwrap_or(0) > 0
+        })
         .map(|c| pick(c, &["profile", "profile_sha256", "analysis_sha256"]))
         .collect();
     profile["matching_candidates"] = json!(candidates);

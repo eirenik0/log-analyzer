@@ -124,7 +124,7 @@ fn capabilities_advertise_default_detection_and_explicit_overrides() {
     assert_eq!(
         caps["investigation_contracts"]["profile_detection"],
         json!({
-            "default":true, "method":"unique_profile_lifecycle_grammar", "overrides":["profile","config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"
+            "default":true, "method":"unique_profile_configured_grammar", "overrides":["profile","config","preset"],"sources":["builtin","config_directory"],"default_directory":"config","directory_option":"profiles-dir"
         })
     );
     let validator = jsonschema::validator_for(&caps["report_schemas"]["capabilities"]).unwrap();
