@@ -297,7 +297,7 @@ pub struct PrepareProfileArgs {
     pub kind: OperationType,
     #[arg(long, value_enum, default_value = "timing")]
     pub purpose: crate::profile_validation::Purpose,
-    /// Independently established source-addressed assertions, never generated from the candidate
+    /// Independent source-addressed record, pair and positive/negative link assertions
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
     pub expected: Option<PathBuf>,
@@ -376,12 +376,19 @@ pub struct InvestigationEvidenceArgs {
     /// Exact digest from the original report; rejects altered artifacts
     #[arg(long)]
     pub expected_sha256: String,
-    /// Retained collection JSON Pointer, for example /findings or /memberships/0/members
+    /// Retained collection JSON Pointer, or /chain-bundles for compact linked evidence
     #[arg(long, default_value = "/findings")]
     pub collection: String,
     /// Exact item ID or evidence reference ID within the chosen collection
     #[arg(long)]
     pub id: Option<String>,
+    /// Compact chain view with source references; requires /chain-bundles and --id
+    #[arg(long)]
+    pub compact: bool,
+    /// Version-1 claim assertions checked against this checksum-bound snapshot
+    #[arg(long)]
+    #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
+    pub claims: Option<PathBuf>,
     /// Hash current sources separately and report unchanged, changed, missing or prefix
     #[arg(long)]
     pub verify_sources: bool,
@@ -398,10 +405,10 @@ pub struct ValidateProfileArgs {
     /// Requested operation kind; other kinds remain in the global inventory
     #[arg(long, value_enum)]
     pub kind: OperationType,
-    /// Timing requires reliable paired boundaries; recognition only checks classification
+    /// Timing requires reliable paired boundaries; recognition checks classification and supplied links
     #[arg(long, value_enum, default_value = "timing")]
     pub purpose: crate::profile_validation::Purpose,
-    /// Strict source-addressed positive/negative classification and pair assertions
+    /// Strict source-addressed classification, pair and positive/negative link assertions
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
     pub expected: Option<PathBuf>,
@@ -465,7 +472,7 @@ pub struct ProfileArgs {
 
 #[derive(serde::Serialize, Subcommand)]
 pub enum ProfileCommand {
-    /// Save an editable profile candidate and report validation gaps
+    /// Save a separate candidate with starting-profile adaptation diagnostics and validation gaps
     Prepare(PrepareProfileArgs),
     /// Check a selected profile against sample evidence
     Validate(ValidateProfileArgs),

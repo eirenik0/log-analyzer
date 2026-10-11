@@ -137,6 +137,15 @@ pub(super) fn redact(artifact: &mut Value) {
         record["verification"] = super::findings::verification(true, "not_applicable");
     }
     for finding in artifact["findings"].as_array_mut().unwrap() {
+        if finding["id"]
+            .as_str()
+            .is_some_and(|id| id.contains("-chain-"))
+            && finding["kind"] == "unknown"
+        {
+            finding["details"]["reason"] = json!(
+                "Relationship recognition is unavailable for some or all roots; private selectors and rule labels omitted by redaction."
+            );
+        }
         if let Some(status) = finding["details"]["resource_status"].as_str() {
             finding["claim"] = json!(match status {
                 "fingerprint_match" =>
@@ -177,6 +186,25 @@ pub(super) fn redact(artifact: &mut Value) {
                 }
                 for value in step["join_fields"].as_array_mut().unwrap() {
                     opaque(value);
+                }
+                if let Some(recognition) = step.get_mut("recognition") {
+                    opaque(&mut recognition["role"]);
+                    for rule in recognition["rule_ids"].as_array_mut().unwrap() {
+                        opaque(rule);
+                    }
+                    for selector in recognition["failed_selectors"].as_array_mut().unwrap() {
+                        opaque(&mut selector["field"]);
+                        selector["equals"] = json!(format!(
+                            "opaque-{}",
+                            digest(selector["equals"].to_string().as_bytes())
+                        ));
+                    }
+                }
+                for join in step["join_samples"].as_array_mut().unwrap() {
+                    if let Some(interval) = join.get_mut("endpoint_interval") {
+                        opaque(&mut interval["start_operation"]);
+                        opaque(&mut interval["end_operation"]);
+                    }
                 }
                 for outcome in step["outcomes"].as_array_mut().unwrap() {
                     opaque(&mut outcome["level"]);
@@ -612,6 +640,9 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
 }
 
 pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()> {
+    if args.compact && (args.collection != "/chain-bundles" || args.id.is_none()) {
+        return Err("--compact requires --collection /chain-bundles and --id".into());
+    }
     let mut file = File::open(&args.artifact)?;
     if file.metadata()?.len() > args.artifact_max_bytes {
         return Err("Artifact exceeds read limit".into());
@@ -654,6 +685,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         "/memberships",
         "/sequences",
         "/captured_inputs",
+        "/chain-bundles",
     ];
     if !allowed.contains(&args.collection.as_str())
         && !args.collection.starts_with("/memberships/")
@@ -661,10 +693,32 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     {
         return Err("Unsupported retained evidence collection".into());
     }
-    let collection = retained
-        .pointer(&args.collection)
-        .and_then(Value::as_array)
-        .ok_or("Collection is not a retained array")?;
+    // A navigation view of retained facts only: no parsing or new relationship inference.
+    let mut bundles: Vec<Value> = retained["findings"].as_array().unwrap().iter()
+        .filter(|finding| args.collection == "/chain-bundles" && finding["details"].get("event_chain").is_some() && args.id.as_ref().is_none_or(|id| finding["id"].as_str() == Some(id)))
+        .map(|finding| json!({"id":finding["id"],"scope_id":finding["scope_id"],"chain":finding["details"]["event_chain"],"evidence":finding["evidence"],"limitations":finding["limitations"],"verification":finding["verification"]}))
+        .collect();
+    if args.compact {
+        for bundle in &mut bundles {
+            compact_bundle(bundle);
+        }
+    }
+    let claim_verification = args
+        .claims
+        .as_ref()
+        .map(|path| super::claims::verify(&retained, path))
+        .transpose()?;
+    let claims_failed = claim_verification
+        .as_ref()
+        .is_some_and(|v| v["status"] != "verified");
+    let collection = if args.collection == "/chain-bundles" {
+        &bundles
+    } else {
+        retained
+            .pointer(&args.collection)
+            .and_then(Value::as_array)
+            .ok_or("Collection is not a retained array")?
+    };
     let selected: Vec<_> = collection
         .iter()
         .filter(|item| {
@@ -679,11 +733,18 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         })
         .collect();
     let base = binding(&retained, &hash);
-    let query_binding = digest(
+    let query = if !args.compact && claim_verification.is_none() {
         json!([base, args.collection, args.id])
-            .to_string()
-            .as_bytes(),
-    );
+    } else {
+        json!([
+            base,
+            args.collection,
+            args.id,
+            args.compact,
+            claim_verification
+        ])
+    };
+    let query_binding = digest(query.to_string().as_bytes());
     let prior = if let Some(cursor) = &cli.report_cursor {
         let parts: Vec<_> = cursor.split(':').collect();
         if parts.len() != 3 || parts[0] != "v1" || parts[1] != query_binding {
@@ -709,6 +770,12 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         cli.report_max_items.unwrap_or(20)
     };
     let mut output = json!({"artifact_retrieval":{"contract_version":1,"artifact_sha256":hash,"binding_sha256":query_binding,"collection":args.collection,"id":args.id,"source_verification":source_state,"parse_passes":0,"correlation_passes":0,"total":selected.len(),"prior":prior,"displayed":0,"remaining":selected.len()-prior,"next_cursor":null,"status":"complete","items":[]}});
+    if args.compact {
+        output["artifact_retrieval"]["view"] = json!("compact");
+    }
+    if let Some(verification) = claim_verification {
+        output["artifact_retrieval"]["claim_verification"] = verification;
+    }
     let refresh = |output: &mut Value, count: usize, status: &str| {
         let section = &mut output["artifact_retrieval"];
         section["displayed"] = json!(count);
@@ -806,7 +873,54 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     std::io::stdout()
         .lock()
         .write_all(format!("{}\n", serde_json::to_string(&output)?).as_bytes())?;
+    if claims_failed {
+        return Err(
+            "Claim verification failed or unavailable; inspect claim_verification before answering"
+                .into(),
+        );
+    }
     Ok(())
+}
+
+fn compact_bundle(bundle: &mut Value) {
+    fn compact(value: &mut Value) {
+        match value {
+            Value::Object(object) => {
+                if let Some(fields) = object.remove("fields") {
+                    object.insert(
+                        "omitted_fields_bytes".into(),
+                        json!(fields.to_string().len()),
+                    );
+                    object.insert("record_retrieval".into(), json!({"collection":"/records","id":object.get("occurrence").and_then(|o|o.pointer("/evidence_ref/reference_id"))}));
+                }
+                for child in object.values_mut() {
+                    compact(child);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    compact(item);
+                }
+            }
+            _ => {}
+        }
+    }
+    compact(bundle);
+    // Excerpts are already retained once in the top-level evidence inventory.
+    if let Some(steps) = bundle["chain"]["steps"].as_array_mut() {
+        for step in steps {
+            for key in ["evidence", "ambiguous_evidence"] {
+                if let Some(items) = step[key].as_array_mut() {
+                    for item in items {
+                        *item = json!({"occurrence":item["occurrence"]});
+                    }
+                }
+            }
+        }
+    }
+    bundle["view_limitations"] = json!([
+        "Payload fields omitted; retrieve /records by reference ID before asserting field semantics. Existing sample omissions still apply. This view makes no new joins."
+    ]);
 }
 fn verify_source(retained: &Value, ordinal: usize, input: &Value, remaining: &mut u64) -> Value {
     use sha2::{Digest, Sha256};

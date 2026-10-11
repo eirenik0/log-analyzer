@@ -2221,7 +2221,8 @@
               "type": {
                 "enum": [
                   "record",
-                  "pair"
+                  "pair",
+                  "link"
                 ]
               },
               "status": {
@@ -2307,6 +2308,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "relationships": {
+          "$ref": "#/$defs/profile_relationships"
         }
       }
     },
@@ -3241,7 +3245,8 @@
               "type": {
                 "enum": [
                   "record",
-                  "pair"
+                  "pair",
+                  "link"
                 ]
               },
               "status": {
@@ -3595,6 +3600,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "adaptation": {
+          "$ref": "#/$defs/profile_adaptation"
         }
       },
       "required": [
@@ -3612,6 +3620,289 @@
         "limitations"
       ],
       "additionalProperties": false
+    },
+    "profile_relationships": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "processing",
+        "asserted_links",
+        "positive_checks",
+        "negative_checks",
+        "failed_checks",
+        "supported_links",
+        "unasserted_supported_links",
+        "roots",
+        "chains",
+        "limitations"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "not_configured",
+            "not_asserted",
+            "passed_on_asserted_links",
+            "failed",
+            "unavailable"
+          ]
+        },
+        "processing": {
+          "type": "object",
+          "required": [
+            "status",
+            "stop",
+            "limits"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "stop": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "limits": {
+              "type": "object",
+              "required": [
+                "work_units",
+                "elapsed_ms",
+                "memory_bytes"
+              ],
+              "properties": {
+                "work_units": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "elapsed_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "memory_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "asserted_links": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "positive_checks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "negative_checks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_checks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supported_links": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "unasserted_supported_links": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "input",
+              "chain",
+              "root_source",
+              "root_occurrences"
+            ],
+            "properties": {
+              "input": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "chain": {
+                "type": "string"
+              },
+              "root_source": {
+                "$ref": "#/$defs/source"
+              },
+              "root_occurrences": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "later_activity_observed_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "omitted_later_activity": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "later_activity": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "chains": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "profile_adaptation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "basis",
+        "profile_sha256",
+        "activation",
+        "inputs",
+        "roles",
+        "relationships",
+        "questions",
+        "limitations"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "basis": {
+          "const": "starting_profile_observations"
+        },
+        "profile_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "activation": {
+          "const": false
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "input",
+              "selected_records",
+              "field_shapes",
+              "shape_policy",
+              "records",
+              "omitted_records"
+            ],
+            "properties": {
+              "input": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "selected_records": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "field_shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "types"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "null",
+                          "boolean",
+                          "number",
+                          "string",
+                          "array",
+                          "object"
+                        ]
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "shape_policy": {
+                "type": "string"
+              },
+              "records": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "omitted_records": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "relationships": {
+          "$ref": "#/$defs/profile_relationships"
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "type": "object",

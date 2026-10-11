@@ -51,6 +51,12 @@ fn bound(value: &mut Value, limit: usize, path: &str, omissions: &mut Vec<Value>
                     | "witnesses"
                     | "heuristic_changes"
                     | "missing_information"
+                    | "roles"
+                    | "field_shapes"
+                    | "failed_selectors"
+                    | "missing_join_keys"
+                    | "roots"
+                    | "chains"
                     | "components"
                     | "commands"
                     | "requests"
@@ -331,6 +337,11 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
     if snapshots(&initial_coverage) != snapshots(&coverage) {
         return Err("Input changed during preparation; no candidate was committed".into());
     }
+    let mut adaptation =
+        crate::profile_adaptation::report(&observed, &base, &filter, *witness_limit as usize);
+    if initial_coverage.iter().any(structural_failure) {
+        profile_validation::invalidate_relationship_summary(&mut adaptation["relationships"]);
+    }
     let operation_kind = match kind {
         crate::cli::OperationType::Request => OperationKind::Request,
         crate::cli::OperationType::Command => OperationKind::Command,
@@ -346,6 +357,7 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
         facts_digest,
     );
     if coverage.iter().any(structural_failure) {
+        profile_validation::invalidate_relationships(&mut validation["profile_validation"]);
         validation["profile_validation"]["suitability"] = json!({"status":"insufficient_evidence","reason":"input_structure_unavailable","basis":"observed_sample_only","semantic_correctness":"not_established_by_match_count"});
     }
     let proof = profile_validation::selection_evidence(
@@ -372,7 +384,7 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
     } else {
         "Retrieve omitted sample evidence with profile validate and common report cursors using the saved candidate; for unparsed input use info diagnostics"
     };
-    let mut report = json!({"profile_preparation":{"version":1,"requested":{"kind":operation_kind,"purpose":purpose},"candidate":if wholly_unsupported {Value::Null} else {json!({"path":evidence::path_label(candidate_output),"sha256":evidence::profile_digest(&candidate_config)?,"status":"saved","activation":false})},"creation":{"status":if empty {"not_created_empty_input"} else if wholly_unsupported {"not_created_unsupported_structure"} else {"saved"}},"structure":{"status":if coverage.iter().any(structural_failure){"unsupported"}else if logs.is_empty(){"unverified_empty"}else{"observed_compatible"},"files":coverage},"provenance":{"inherited":{"profile":base.profile_name,"sha256":evidence::profile_digest(&base)?,"lifecycle_rules":"preserved_from_supplied_starting_point_not_verified_by_matching"},"observed":{"components":candidate_config.profile.known_components,"commands":candidate_config.profile.known_commands,"requests":candidate_config.profile.known_requests,"witnesses":observed_witnesses,"basis":"parsed_sample_inventory_not_semantic_truth"},"heuristic_changes":heuristics},"sample_validation":validation["profile_validation"],"semantic_proof":proof,"missing_information":missing_information,"presentation":{"witness_limit":witness_limit,"atomic_string_unicode_scalars":ATOMIC_STRING_CHARS,"representative_unicode_scalars":REPRESENTATIVE_CHARS,"metadata_budget_exception":"Outcome metadata, coverage totals and opaque retrieval identities remain exact","follow_up":follow_up,"omissions":[]},"report_save":{"status":if staged_report.is_some(){"succeeded"}else{"not_requested"}},"limitations":["Candidate creation is distinct from validation support and never activates a profile","Observed sample support does not establish capture completeness or intended event meaning","No automatic semantic repair or retry loop is performed","Representative count and atomic size limits bound presentation, not processing memory or total metadata"]}});
+    let mut report = json!({"profile_preparation":{"version":1,"requested":{"kind":operation_kind,"purpose":purpose},"candidate":if wholly_unsupported {Value::Null} else {json!({"path":evidence::path_label(candidate_output),"sha256":evidence::profile_digest(&candidate_config)?,"status":"saved","activation":false})},"creation":{"status":if empty {"not_created_empty_input"} else if wholly_unsupported {"not_created_unsupported_structure"} else {"saved"}},"structure":{"status":if coverage.iter().any(structural_failure){"unsupported"}else if logs.is_empty(){"unverified_empty"}else{"observed_compatible"},"files":coverage},"provenance":{"inherited":{"profile":base.profile_name,"sha256":evidence::profile_digest(&base)?,"lifecycle_rules":"preserved_from_supplied_starting_point_not_verified_by_matching"},"observed":{"components":candidate_config.profile.known_components,"commands":candidate_config.profile.known_commands,"requests":candidate_config.profile.known_requests,"witnesses":observed_witnesses,"basis":"parsed_sample_inventory_not_semantic_truth"},"heuristic_changes":heuristics},"sample_validation":validation["profile_validation"],"semantic_proof":proof,"adaptation":adaptation,"missing_information":missing_information,"presentation":{"witness_limit":witness_limit,"atomic_string_unicode_scalars":ATOMIC_STRING_CHARS,"representative_unicode_scalars":REPRESENTATIVE_CHARS,"metadata_budget_exception":"Outcome metadata, coverage totals and opaque retrieval identities remain exact","follow_up":follow_up,"omissions":[]},"report_save":{"status":if staged_report.is_some(){"succeeded"}else{"not_requested"}},"limitations":["Candidate creation is distinct from validation support and never activates a profile","Observed sample support does not establish capture completeness or intended event meaning","No automatic semantic repair or retry loop is performed","Representative count and atomic size limits bound presentation, not processing memory or total metadata"]}});
     context.annotate(&mut report);
     let mut omissions = Vec::new();
     for field in [
@@ -381,6 +393,7 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
         "sample_validation",
         "semantic_proof",
         "missing_information",
+        "adaptation",
     ] {
         bound(
             &mut report["profile_preparation"][field],

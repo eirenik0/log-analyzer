@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Snapshot claim assertions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "required_claim_ids",
+    "claims"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "required_claim_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "pointer",
+              "equals"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "const": "fact"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^/"
+              },
+              "equals": {}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "pointer",
+              "expected_ms"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "const": "interval"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^/"
+              },
+              "expected_ms": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "finding_id",
+              "step_id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "const": "link"
+              },
+              "finding_id": {
+                "type": "string"
+              },
+              "step_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "finding_id",
+              "step_id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "const": "absence"
+              },
+              "finding_id": {
+                "type": "string"
+              },
+              "step_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "pointer",
+              "expected"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "const": "distinct_records"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^/"
+              },
+              "expected": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

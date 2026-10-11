@@ -894,6 +894,9 @@ impl OutputState {
                     &mut target["sample_validation"],
                     "",
                 );
+                if let Some(adaptation) = preparation.get("adaptation") {
+                    self.restore_adaptation_metadata(adaptation, &mut target["adaptation"], "");
+                }
                 for key in ["status", "reason", "covered_records", "unknown"] {
                     if let Some(item) = preparation["semantic_proof"].get(key) {
                         target["semantic_proof"][key] = item.clone();
@@ -1612,6 +1615,29 @@ fn restore_performance_metadata(
 // do not match source records. These are data disclosures, not generated labels.
 fn validation_contexts(report: &Value) -> Vec<(String, String, Value)> {
     let mut contexts = Vec::new();
+    if let Some(roles) = report
+        .pointer("/profile_preparation/adaptation/roles")
+        .and_then(Value::as_array)
+    {
+        for (i, role) in roles.iter().enumerate() {
+            for (j, selector) in role["failed_selectors"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                if let Some(field) = selector["field"].as_str() {
+                    contexts.push((
+                        field.to_owned(),
+                        format!(
+                            "/profile_preparation/adaptation/roles/{i}/failed_selectors/{j}/equals"
+                        ),
+                        selector["equals"].clone(),
+                    ));
+                }
+            }
+        }
+    }
     if let Some(validation) = report.pointer("/profile_preparation/sample_validation") {
         let wrapper = json!({"profile_validation":validation});
         for (field, path, value) in validation_contexts(&wrapper) {
@@ -1815,8 +1841,17 @@ impl OutputState {
             .and_then(Value::as_array)
         {
             for (i, check) in checks.iter().enumerate() {
-                for key in ["address", "start_address", "end_address"] {
-                    if let Some(path) = check[key]["row_path"].as_str()
+                for key in [
+                    "address",
+                    "start_address",
+                    "end_address",
+                    "assertion/source",
+                    "assertion/target",
+                    "assertion/root",
+                ] {
+                    if let Some(path) = check
+                        .pointer(&format!("/{key}/row_path"))
+                        .and_then(Value::as_str)
                         && self.path_text(path) != path
                         && let Some(address) = report
                             .pointer_mut(&format!("/profile_validation/expected_results/{i}/{key}"))
@@ -1881,6 +1916,8 @@ impl OutputState {
                 if matches!(
                     leaf,
                     "status"
+                        | "type"
+                        | "link_reason"
                         | "reason"
                         | "purpose"
                         | "kind"
@@ -1898,6 +1935,58 @@ impl OutputState {
                         | "timing_semantics"
                         | "upstream_export_completeness"
                         | "sha256"
+                ) =>
+            {
+                *redacted = original.clone()
+            }
+            _ => (),
+        }
+    }
+
+    fn restore_adaptation_metadata(&mut self, original: &Value, redacted: &mut Value, path: &str) {
+        let leaf = path.rsplit('.').next().unwrap_or(path);
+        if matches!(leaf, "text" | "equals" | "classification") {
+            if leaf == "classification" {
+                *redacted = self.canonical_classification(original);
+            }
+            return;
+        }
+        match original {
+            Value::Object(map) => {
+                if !redacted.is_object() {
+                    *redacted = self.value(original);
+                }
+                for (key, value) in map {
+                    self.restore_adaptation_metadata(
+                        value,
+                        &mut redacted[key],
+                        &format!("{path}.{key}"),
+                    );
+                }
+            }
+            Value::Array(items) => {
+                if !redacted.is_array() {
+                    *redacted = self.value(original);
+                }
+                for (original, redacted) in items.iter().zip(redacted.as_array_mut().unwrap()) {
+                    self.restore_adaptation_metadata(original, redacted, path);
+                }
+            }
+            Value::Number(_) | Value::Bool(_) | Value::Null => *redacted = original.clone(),
+            Value::String(_)
+                if matches!(
+                    leaf,
+                    "status"
+                        | "reason"
+                        | "basis"
+                        | "profile_sha256"
+                        | "types"
+                        | "shape_policy"
+                        | "questions"
+                        | "limitations"
+                        | "count_completeness"
+                        | "completeness"
+                        | "ambiguity"
                 ) =>
             {
                 *redacted = original.clone()

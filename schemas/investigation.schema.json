@@ -2672,7 +2672,14 @@
                       "inspect_mappings",
                       "retrieve_findings",
                       "verify_terminal_evidence",
-                      "inspect_goal_support"
+                      "verify_chain_evidence",
+                      "inspect_goal_support",
+                      "inspect_relationship_coverage",
+                      "author_source_expectations",
+                      "prepare_profile_candidate",
+                      "validate_profile_candidate",
+                      "rerun_validated_profile",
+                      "verify_answer_claims"
                     ]
                   },
                   "reason": {
@@ -2697,6 +2704,9 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "finding_id": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -2915,6 +2925,72 @@
                     "target_count": {
                       "type": "integer",
                       "minimum": 1
+                    },
+                    "endpoint_interval": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "measured",
+                            "unavailable"
+                          ]
+                        },
+                        "value": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "minimum": 0
+                        },
+                        "unit": {
+                          "const": "ms"
+                        },
+                        "start_timestamp": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "end_timestamp": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "start_operation": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "end_operation": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "semantics": {
+                          "const": "selected_endpoint_interval_not_causality_or_operation_duration"
+                        },
+                        "reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "value",
+                        "unit",
+                        "start_timestamp",
+                        "end_timestamp",
+                        "start_operation",
+                        "end_operation",
+                        "semantics",
+                        "reason"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -3011,6 +3087,73 @@
               "linked_count": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "recognition": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "rule_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "rule_matched_records": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "role_matched_records": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "population": {
+                    "const": "selected_classified_records_in_this_input"
+                  },
+                  "failed_selectors": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "equals": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ]
+                        },
+                        "failed_records": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "equals",
+                        "failed_records"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "message_pattern_failed_records": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "role",
+                  "rule_ids",
+                  "rule_matched_records",
+                  "role_matched_records",
+                  "population",
+                  "failed_selectors",
+                  "message_pattern_failed_records"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [

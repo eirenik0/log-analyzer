@@ -168,6 +168,9 @@
           "const": [
             1
           ]
+        },
+        "claim_assertions": {
+          "type": "object"
         }
       },
       "required": [

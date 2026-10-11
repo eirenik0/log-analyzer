@@ -5440,3 +5440,545 @@ fn connected_chains_preserve_unfinished_eighth_check_and_paginate_whole_chains()
     let next = success(&argv);
     assert_ne!(next["items"][0]["id"], brief["findings"]["items"][0]["id"]);
 }
+
+#[test]
+fn checkpoint_component_labels_do_not_change_scoped_recognition() {
+    for component in ["core-ufg", "core-002", "core-classic"] {
+        let temp = tempfile::tempdir().unwrap();
+        let input = temp.path().join("alias.log");
+        fs::write(&input, format!(concat!(
+            "{} (manager-a/eyes-a/check-a) | 2026-01-01T00:00:00Z [INFO ] Command \"check\" is called\n",
+            "nml-client (manager-a/eyes-a/check-a) | 2026-01-01T00:00:01Z [INFO ] Command \"takeScreenshots\" is called\n",
+            "nml-client (manager-b/eyes-a/check-a) | 2026-01-01T00:00:02Z [INFO ] Command \"takeScreenshots\" finished\n",
+            "nml-client (manager-a/eyes-a/check-a) | 2026-01-01T00:00:09Z [INFO ] Command \"takeScreenshots\" finished\n",
+            "{} (manager-a/eyes-a/check-a) | 2026-01-01T00:00:10Z [INFO ] Command \"check\" finished\n",
+            "core-requests (manager-a/eyes-a/check-a) | 2026-01-01T00:00:11Z [INFO ] Request \"check\" finished successfully with body {{\"asExpected\":false}}\n",
+            "core-requests (manager-a/eyes-a) | 2026-01-01T00:00:12Z [INFO ] Request \"close\" finished successfully with body {{\"status\":\"Passed\"}}\n",
+        ), component, component)).unwrap();
+        let artifact = temp.path().join("evidence.json");
+        let report = success(&[
+            "--profile",
+            "eyes",
+            "investigate",
+            input.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        let chains = event_chains(&report);
+        assert_eq!(chains.len(), 1);
+        assert_eq!(chain_step(chains[0], "screenshot-end")["linked_count"], 1);
+        assert_eq!(
+            chain_step(chains[0], "screenshot-end")["evidence"][0]["occurrence"]["evidence_ref"]["line"],
+            4
+        );
+        assert_eq!(
+            chain_step(chains[0], "check-result")["outcomes"][0]["value"],
+            false
+        );
+        assert_eq!(
+            chain_step(chains[0], "session-result")["outcomes"][0]["value"],
+            "Passed"
+        );
+    }
+}
+
+#[test]
+fn chain_recognition_gap_names_failed_root_selectors() {
+    let profile = include_str!("../examples/investigations/chains/profile.toml")
+        .replace("equals = \"checkpoint\"", "equals = \"missing-root\"");
+    let (_temp, report, _artifact) = chain_fixture(
+        &[chain_event("checkpoint", "run-1", "capture-1", 0)],
+        Some(&profile),
+    );
+    assert!(event_chains(&report).is_empty());
+    let gap = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["id"].as_str().unwrap().ends_with("unrecognized"))
+        .unwrap();
+    assert_eq!(gap["kind"], "unknown");
+    assert_eq!(report["findings"][0]["id"], gap["id"]);
+    let reason = gap["details"]["reason"].as_str().unwrap();
+    assert!(reason.contains("event.name equals \"missing-root\": 1"));
+    assert!(reason.contains("1 matched rule IDs"));
+}
+
+#[test]
+fn compact_chain_retrieval_preserves_cached_failures_and_late_completion() {
+    let events = [
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-1", "capture-1", 0),
+        chain_event("accepted", "run-1", "capture-1", 0),
+        chain_event("cached_failure", "run-1", "capture-1", 0),
+        chain_event("contrary", "run-1", "capture-1", 0),
+        chain_event("capture_end", "run-1", "capture-1", 0),
+        chain_event("later_activity", "run-1", "other-capture", 0),
+    ];
+    let profile = include_str!("../examples/investigations/chains/profile.toml").replace(
+        "[[investigation.chains]]",
+        r#"[[investigation.roles]]
+id = "cached-failure"
+rule_ids = ["typed-event"]
+select = [{field = "event.name", equals = "cached_failure"}]
+[[investigation.chains]]"#,
+    ) + r#"
+[[investigation.chains.steps]]
+id = "cached-failure"
+label = "cached failure observed (not a new attempt)"
+role = "cached-failure"
+from = "$root"
+join_fields = ["capture_id"]
+cardinality = "one_to_many"
+event_type = "cached_failure"
+"#;
+    let (_temp, report, artifact) = chain_fixture(&events, Some(&profile));
+    let finding = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"].get("event_chain").is_some())
+        .unwrap();
+    let action = report["guidance"]["next_actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|action| action["kind"] == "verify_chain_evidence")
+        .unwrap();
+    let argv = action["argv"].as_array().unwrap();
+    assert!(argv.contains(&json!("/chain-bundles")));
+    assert!(argv.contains(&report["artifact"]["stored_sha256"]));
+    let page = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/chain-bundles",
+        "--id",
+        finding["id"].as_str().unwrap(),
+    ]);
+    assert_eq!(page["artifact_retrieval"]["parse_passes"], 0);
+    assert_eq!(page["artifact_retrieval"]["total"], 1);
+    let bundle = &page["artifact_retrieval"]["items"][0];
+    assert_eq!(bundle["chain"], finding["details"]["event_chain"]);
+    assert_eq!(bundle["evidence"], finding["evidence"]);
+    assert_eq!(
+        chain_step(&bundle["chain"], "cached-failure")["linked_count"],
+        1
+    );
+    assert_eq!(
+        chain_step(&bundle["chain"], "capture-end")["evidence"][0]["occurrence"]["evidence_ref"]["line"],
+        6
+    );
+    assert_eq!(bundle["chain"]["later_activity_observed_count"], 1);
+}
+
+#[test]
+fn checkpoint_recognition_uses_normalized_command_semantics_across_formats() {
+    let events: Vec<_> = [
+        ("check", "start"),
+        ("takeScreenshots", "start"),
+        ("takeScreenshots", "end"),
+        ("check", "end"),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (name, phase))| {
+        json!({
+            "timestamp":format!("2026-01-01T00:00:0{i}+02:00"),"level":"INFO",
+            "component":"core-002", "component_id":"manager-a/eyes-a/check-a",
+            "message":"normalized SDK operation", "operation_kind":"command",
+            "operation_name":name, "operation_phase":phase
+        })
+    })
+    .collect();
+    let (_temp, report, _artifact) =
+        chain_fixture(&events, Some(include_str!("../config/profiles/eyes.toml")));
+    let chains = event_chains(&report);
+    assert_eq!(chains.len(), 1);
+    assert_eq!(chain_step(chains[0], "screenshot-start")["linked_count"], 1);
+    assert_eq!(chain_step(chains[0], "screenshot-end")["linked_count"], 1);
+    assert_eq!(chain_step(chains[0], "check-end")["linked_count"], 1);
+}
+
+#[test]
+fn nml_requests_link_broker_attempts_late_capture_and_independent_close() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("nml.log");
+    let root_id = "manager-a/eyes-a/check-a";
+    let request_id = format!("{root_id}/nml-request-a");
+    let messages = [
+        (root_id, "Command \"check\" is called"),
+        (
+            "manager-a/eyes-a/check-a/environment-a",
+            "Command \"check\" is called",
+        ),
+        (
+            "manager-a/eyes-a/check-a/environment-a/eyes-base-a/check-base-a",
+            "Command \"check\" is called",
+        ),
+        (
+            &request_id,
+            "Request \"takeScreenshots\" called with settings {}",
+        ),
+        (
+            &request_id,
+            "Broker request \"TAKE_SCREENSHOT\" will be sent to the address \"[POST]https://example.invalid/capture\" with body {}",
+        ),
+        (
+            &request_id,
+            "Broker request \"TAKE_SCREENSHOT\" that was sent to the address \"[POST]https://example.invalid/capture\" respond with OK(200)",
+        ),
+        (
+            &request_id,
+            "Broker polling request \"TAKE_SCREENSHOT\" attempt #1/100 will be sent to the address \"[GET]https://example.invalid/result\" with body undefined",
+        ),
+        (
+            &request_id,
+            "Broker polling request \"TAKE_SCREENSHOT\" attempt #2/100 will be sent to the address \"[GET]https://example.invalid/result\" with body undefined",
+        ),
+        (
+            &request_id,
+            "Broker polling request \"TAKE_SCREENSHOT\" attempt #2/100 that was sent to the address \"[GET]https://example.invalid/result\" respond with OK(200) with body {}",
+        ),
+        (
+            "manager-b/eyes-a/check-a/nml-request-a",
+            "Request \"takeScreenshots\" finished successfully with body []",
+        ),
+        (
+            &request_id,
+            "Request \"takeScreenshots\" finished successfully with body []",
+        ),
+        (
+            "manager-a/eyes-a/check-a/environment-a",
+            "Request \"check\" finished successfully with body {\"asExpected\":false}",
+        ),
+        (
+            "manager-a/eyes-a/close-a/core-request-a",
+            "Request \"close\" finished successfully with body {\"status\":\"Passed\"}",
+        ),
+        (
+            "manager-a/eyes-a/results-a/core-request-a",
+            "Request \"getResults\" finished successfully with body [{\"status\":\"Passed\"}]",
+        ),
+    ];
+    fs::write(
+        &source,
+        messages
+            .iter()
+            .enumerate()
+            .map(|(i, (id, message))| {
+                format!("core-002 ({id}) | 2026-01-01T00:00:{i:02}+02:00 [INFO ] {message}\n")
+            })
+            .collect::<String>(),
+    )
+    .unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--profile",
+        "eyes",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    let chains = event_chains(&report);
+    assert_eq!(chains.len(), 1);
+    let chain = chains[0];
+    assert_eq!(chain["root_occurrences"], 1);
+    for (step, count) in [
+        ("screenshot-start", 1),
+        ("screenshot-end", 1),
+        ("broker-submission", 1),
+        ("broker-acceptance", 1),
+        ("broker-polls", 2),
+        ("broker-responses", 1),
+        ("check-result", 1),
+        ("close-end", 1),
+        ("session-result", 1),
+    ] {
+        assert_eq!(chain_step(chain, step)["linked_count"], count, "{step}");
+    }
+    assert_eq!(
+        chain_step(chain, "broker-responses")["join_samples"][0]["source"]["evidence_ref"]["line"],
+        8
+    );
+    assert_eq!(
+        chain_step(chain, "screenshot-end")["evidence"][0]["occurrence"]["evidence_ref"]["line"],
+        11
+    );
+    assert_eq!(
+        chain_step(chain, "check-result")["outcomes"][0]["value"],
+        false
+    );
+    assert_eq!(
+        chain_step(chain, "session-result")["outcomes"][0]["value"],
+        "Passed"
+    );
+    assert_eq!(chain_step(chain, "session-summary")["linked_count"], 1);
+    assert_eq!(
+        chain_step(chain, "session-summary")["outcomes"][0]["value"],
+        "Passed"
+    );
+    let interval = &chain_step(chain, "screenshot-end")["join_samples"][0]["endpoint_interval"];
+    assert_eq!(interval["value"], 7000.0);
+    assert_eq!(interval["start_operation"], "takeScreenshots");
+    assert_eq!(interval["end_timestamp"], "2026-01-01T00:00:10+02:00");
+    let recognition = &chain_step(chain, "capture-start")["recognition"];
+    assert_eq!(recognition["role_matched_records"], 0);
+    assert!(
+        recognition["failed_selectors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["failed_records"].as_u64().unwrap() > 0)
+    );
+    assert!(
+        report["guidance"]["next_actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["kind"] == "inspect_relationship_coverage")
+    );
+}
+
+#[test]
+fn failed_resource_cache_bundle_excludes_other_sessions_without_inventing_requests() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("cache.log");
+    fs::write(&source,concat!(
+        "ufg-client (manager-a/eyes-a/check-a/environment-a/fetch-resource-a) | 2026-01-01T00:00:00Z [INFO ] Resource with url https://example.invalid/asset respond with Forbidden(Forbidden)\n",
+        "ufg-client (manager-b/eyes-a/check-b/environment-b) | 2026-01-01T00:00:01Z [INFO ] resource retrieved from cache, with dependencies (0): https://example.invalid/asset with dependencies --> \n",
+        "ufg-client (manager-a/eyes-a/check-b/environment-b) | 2026-01-01T00:00:02Z [INFO ] resource retrieved from cache, with dependencies (0): https://example.invalid/asset with dependencies --> \n",
+        "ufg-client (manager-a/eyes-a/check-b/environment-b) | 2026-01-01T00:00:03Z [INFO ] resource retrieved from cache, with dependencies (0): https://example.invalid/other with dependencies --> \n",
+    )).unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--profile",
+        "eyes",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    let chain = event_chains(&report)[0];
+    assert_eq!(chain["id"], "resource-cache-evidence");
+    let step = chain_step(chain, "cache-observations");
+    assert_eq!(step["linked_count"], 1);
+    assert_eq!(step["event_type"], "cache_observation");
+    assert_eq!(step["evidence"][0]["occurrence"]["evidence_ref"]["line"], 3);
+    assert!(step["outcomes"].as_array().unwrap().is_empty());
+    assert!(
+        !chain["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["event_type"] == "poll_send")
+    );
+}
+
+#[test]
+fn chain_intervals_preserve_offsets_fractional_precision_and_unknown_boundaries() {
+    for (start, end, expected) in [
+        (
+            "2026-01-01T02:00:00.000+02:00",
+            "2026-01-01T00:00:22.928Z",
+            Some(22928.0),
+        ),
+        (
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00.000125Z",
+            Some(0.125),
+        ),
+        ("2026-01-01T00:00:01Z", "2026-01-01T00:00:00Z", None),
+    ] {
+        let mut root = chain_event("checkpoint", "run-a", "capture-a", 0);
+        let mut submitted = chain_event("submitted", "run-a", "capture-a", 0);
+        root["timestamp"] = json!(start);
+        submitted["timestamp"] = json!(end);
+        let (_temp, report, _artifact) = chain_fixture(&[root, submitted], None);
+        let interval = &chain_step(event_chains(&report)[0], "submitted")["join_samples"][0]["endpoint_interval"];
+        assert_eq!(interval["value"], json!(expected));
+        assert_eq!(
+            interval["status"],
+            if expected.is_some() {
+                "measured"
+            } else {
+                "unavailable"
+            }
+        );
+    }
+    let events = [
+        chain_event("checkpoint", "run-a", "capture-a", 0),
+        chain_event("submitted", "run-a", "capture-a", 0),
+        chain_event("submitted", "run-a", "capture-a", 0),
+    ];
+    let profile = include_str!("../examples/investigations/chains/profile.toml").replacen(
+        "cardinality = \"one_to_one\"",
+        "cardinality = \"one_to_many\"",
+        1,
+    );
+    let (_temp, report, _artifact) = chain_fixture(&events, Some(&profile));
+    let step = chain_step(event_chains(&report)[0], "submitted");
+    assert_eq!(step["linked_count"], 2);
+    for join in step["join_samples"].as_array().unwrap() {
+        assert_eq!(
+            join["endpoint_interval"]["reason"],
+            "ambiguous_endpoint_population"
+        );
+        assert!(join["endpoint_interval"]["value"].is_null());
+    }
+}
+
+#[test]
+fn targeted_compact_evidence_checks_required_claims_and_rejects_wrong_values() {
+    let mut first = chain_event("checkpoint", "run-1", "capture-1", 0);
+    first["payload"]["large"] = json!("x".repeat(8000));
+    let events = [
+        first,
+        chain_event("submitted", "run-1", "capture-1", 0),
+        chain_event("accepted", "run-1", "capture-1", 0),
+        chain_event("capture_end", "run-1", "capture-1", 0),
+        chain_event("later_activity", "run-1", "other", 0),
+    ];
+    let (temp, report, artifact) = chain_fixture(
+        &events,
+        Some(
+            &(include_str!("../examples/investigations/chains/profile.toml").to_string()
+                + "\n[investigation_view]\nsource_fields = [\"event.name\"]\n"),
+        ),
+    );
+    let finding = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"].get("event_chain").is_some())
+        .unwrap();
+    let claims = temp.path().join("claims.json");
+    fs::write(&claims, json!({"version":1,"required_claim_ids":["end","literal"],"claims":[{"id":"end","kind":"link","finding_id":finding["id"],"step_id":"capture-end"},{"id":"literal","kind":"fact","pointer":"/records/0/fields/payload/asExpected","equals":false}]}).to_string()).unwrap();
+    let args = [
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/chain-bundles",
+        "--id",
+        finding["id"].as_str().unwrap(),
+        "--compact",
+        "--claims",
+        claims.to_str().unwrap(),
+    ];
+    let output = success(&args);
+    assert_eq!(
+        output["artifact_retrieval"]["claim_verification"]["status"],
+        "verified"
+    );
+    let compact = &output["artifact_retrieval"]["items"][0];
+    assert_eq!(compact["chain"]["later_activity_observed_count"], 1);
+    assert!(compact.to_string().len() < finding.to_string().len());
+    assert!(compact["evidence"][0].get("fields").is_none());
+    assert!(
+        compact["evidence"][0]["omitted_fields_bytes"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(compact["evidence"][0]["record_retrieval"]["id"].is_string());
+    let action = report["guidance"]["next_actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["kind"] == "verify_chain_evidence")
+        .unwrap();
+    assert!(
+        action["argv"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("--compact"))
+    );
+    assert_eq!(action["finding_id"], finding["id"]);
+    fs::write(&claims,json!({"version":1,"required_claim_ids":["literal","missing-link"],"claims":[{"id":"literal","kind":"fact","pointer":"/records/0/fields/payload/asExpected","equals":true}]}).to_string()).unwrap();
+    let failed = run(&args);
+    assert!(!failed.status.success());
+    let result: Value = serde_json::from_slice(&failed.stdout).unwrap();
+    assert_eq!(
+        result["artifact_retrieval"]["claim_verification"]["checks"][0]["status"],
+        "contradicted"
+    );
+    assert_eq!(
+        result["artifact_retrieval"]["claim_verification"]["missing_required_claim_ids"],
+        json!(["missing-link"])
+    );
+    fs::write(&claims,json!({"version":1,"required_claim_ids":["unfinished"],"claims":[{"id":"unfinished","kind":"absence","finding_id":finding["id"],"step_id":"capture-end"}]}).to_string()).unwrap();
+    let absent = run(&args);
+    assert!(!absent.status.success());
+    let checked: Value = serde_json::from_slice(&absent.stdout).unwrap();
+    assert_eq!(
+        checked["artifact_retrieval"]["claim_verification"]["checks"][0]["status"],
+        "contradicted"
+    );
+    fs::write(&claims,json!({"version":1,"required_claim_ids":["x"],"claims":[{"id":"x","kind":"fact","pointer":"/records/0","equals":null,"unexpected":true}]}).to_string()).unwrap();
+    assert!(!run(&args).status.success());
+    assert!(
+        !run(&[
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            report["artifact"]["stored_sha256"].as_str().unwrap(),
+            "--compact"
+        ])
+        .status
+        .success()
+    );
+}
+
+#[test]
+fn profile_recovery_distinguishes_authored_expectations_from_preparation() {
+    let profile = include_str!("../examples/investigations/chains/profile.toml")
+        .replace("equals = \"checkpoint\"", "equals = \"missing-root\"");
+    let (_temp, report, _artifact) = chain_fixture(
+        &[chain_event("checkpoint", "run-1", "capture-1", 0)],
+        Some(&profile),
+    );
+    let actions = report["guidance"]["next_actions"].as_array().unwrap();
+    let kinds: Vec<_> = actions
+        .iter()
+        .map(|a| a["kind"].as_str().unwrap())
+        .collect();
+    let source = kinds
+        .iter()
+        .position(|k| *k == "author_source_expectations")
+        .unwrap();
+    let prepare = kinds
+        .iter()
+        .position(|k| *k == "prepare_profile_candidate")
+        .unwrap();
+    let validate = kinds
+        .iter()
+        .position(|k| *k == "validate_profile_candidate")
+        .unwrap();
+    let rerun = kinds
+        .iter()
+        .position(|k| *k == "rerun_validated_profile")
+        .unwrap();
+    assert!(source < prepare && prepare < validate && validate < rerun);
+    assert!(
+        !actions[prepare]["required_inputs"]
+            .to_string()
+            .contains("expected")
+    );
+    assert!(
+        actions[source]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("not an external truth file")
+    );
+}

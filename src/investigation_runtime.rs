@@ -1,10 +1,11 @@
 //! Runtime orchestration; the public contract validator remains independent.
 mod artifact;
 mod auto_profile;
-mod chains;
+pub(crate) mod chains;
+mod claims;
 mod findings;
 mod guidance;
-mod policy;
+pub(crate) mod policy;
 mod presentation;
 mod resource_observations;
 mod selection;
@@ -524,6 +525,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 !structural_loss && budget.stop.is_none(),
                 &mut budget,
                 &mut findings,
+                None,
             );
             policy::calculate(
                 policy,
@@ -537,6 +539,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &mut findings,
                 &mut populations,
                 &mut memberships,
+                None,
             );
         }
         if let Some(aliases) = &scope_aliases {
@@ -697,6 +700,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         let id = finding["id"].as_str().unwrap_or("");
         if finding["details"]["event_chain"].is_object() {
             return 0;
+        }
+        if id.contains("-chain-") && finding["kind"] == "unknown" {
+            return 1;
         }
         match finding["details"]["resource_status"].as_str() {
             Some("fingerprint_match") => 1,
