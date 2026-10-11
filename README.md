@@ -152,7 +152,9 @@ three selected same-context records after its last linked physical source line.
 Omission counts disclose additional linked/outcome/later records; retrieve retained
 records when the bundle is insufficient. Terminal and contrary roles must be
 configured explicitly. Later activity has a separately declared, potentially
-broader context identity and does not complete an earlier capture. Filters and
+broader context identity and does not complete an earlier capture. Missing root
+context fields make context analysis unavailable and the chain partial;
+supported joins remain available. Filters and
 processing limits also bound the bundle. Redaction masks nested excerpts,
 identities, profile labels and outcome values.
 
@@ -162,7 +164,11 @@ Roles require existing event rule IDs, optional exact scalar `select` conditions
 The profile example documents a graph whose `from` is `$root` or a preceding step
 ID. Join fields are compared exactly with every declared `scope_fields` value;
 missing identities, self joins and unsupported cardinality never become guessed
-links. Up to eight chain declarations with sixteen steps each are supported.
+links. Chain keys use the same canonical scalar identities as policy joins: numeric
+`1` and string `"1"` match, while null, objects and arrays do not form keys. Cited
+values retain their original types. Roots and first/last role witnesses preserve
+parser expansion order when multiple rows share a physical line.
+Up to eight chain declarations with sixteen steps each are supported.
 `context_fields` must include every scope field. The optional
 `component_id.prefix:PREFIX` selector retains the path through the first matching
 segment; batched ` & ` paths qualify only if all branches yield the same path.
@@ -458,8 +464,9 @@ exceed an impossibly small output budget, with an explicit status. An oversized
 atomic bundle requires a larger permitted budget, not automatic unlimited output.
 `--redact` omits captured payloads, raw/message/field data and effective profile,
 replaces excerpts with source omission markers, and hides paths and domain identities.
-Configured resource fingerprint labels and digests are omitted together; the
-analyzer's `fingerprint_match` status remains available. Readable reports escape
+Configured resource fingerprint labels and digests are omitted together. Viewport
+dimensions are omitted from claims and details for every resource status; the
+analyzer's resource status remains available. Readable reports escape
 control characters in source and artifact paths. Continuation commands use Bash/Zsh
 ANSI-C quoting for paths containing those characters, preserving the actual path.
 Arithmetic may remain checkable; source/rule verification losses are declared.

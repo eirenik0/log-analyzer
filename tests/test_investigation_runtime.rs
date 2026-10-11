@@ -4130,6 +4130,106 @@ fn redacted_resource_labels_ids_and_automatic_artifacts_remain_private_and_retri
 }
 
 #[test]
+fn redacted_resources_omit_viewport_dimensions_for_every_status() {
+    let temp = tempfile::tempdir().unwrap();
+    for (status, digest) in [
+        ("fingerprint_match", "a".repeat(64)),
+        ("different_fingerprint", "b".repeat(64)),
+        ("unconfigured_fingerprint", "b".repeat(64)),
+        ("unavailable", "invalid-digest".into()),
+    ] {
+        let profile = temp.path().join(format!("{status}.toml"));
+        let configuration = if status == "unconfigured_fingerprint" {
+            RESOURCE_PROFILE.replace(
+                &format!("[[resource_observations.fingerprints]]\nsha256 = \"{}\"\nlabel = \"synthetic reference image\"\n", "a".repeat(64)),
+                "",
+            )
+        } else {
+            RESOURCE_PROFILE.to_owned()
+        };
+        fs::write(&profile, configuration).unwrap();
+        let source = temp.path().join(format!("{status}.log"));
+        fs::write(&source, [
+            resource_line("run-one:operation-one", "dimensions", json!({"w":987654321,"h":123456789})),
+            resource_line("run-one:operation-one", "manifest listing", json!(["asset:reference"])),
+            resource_line("run-one", "asset batch", json!([{"bundle":{"resources":{"items":[{"address":"asset:reference","digest":digest}]}}}])),
+        ].concat()).unwrap();
+        let original = success(&[
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            temp.path()
+                .join(format!("{status}-original.json"))
+                .to_str()
+                .unwrap(),
+        ]);
+        let original_resource = original["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|finding| finding["details"].get("resource_status").is_some())
+            .unwrap();
+        assert_eq!(original_resource["details"]["resource_status"], status);
+        assert_eq!(
+            original_resource["details"]["viewport"],
+            json!({"width":987654321,"height":123456789})
+        );
+        for (json_output, saved) in [(false, false), (false, true), (true, false), (true, true)] {
+            let artifact = temp
+                .path()
+                .join(format!("{status}-{json_output}-{saved}.json"));
+            let destination = temp.path().join("report.txt");
+            let mut args = vec![
+                "--profile",
+                profile.to_str().unwrap(),
+                "investigate",
+                source.to_str().unwrap(),
+                "--artifact",
+                artifact.to_str().unwrap(),
+                "--redact",
+            ];
+            if json_output {
+                args.push("--json");
+            }
+            if saved {
+                args.extend(["--output", destination.to_str().unwrap()]);
+            }
+            let output = run(&args);
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let text = if saved {
+                fs::read_to_string(&destination).unwrap()
+            } else {
+                stdout.clone()
+            };
+            let retained_text = fs::read_to_string(&artifact).unwrap();
+            for result in [&stdout, &text, &retained_text] {
+                assert!(!result.contains("987654321"), "{status}: {result}");
+                assert!(!result.contains("123456789"), "{status}: {result}");
+            }
+            let retained: Value = serde_json::from_str(&retained_text).unwrap();
+            let resource = retained["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|finding| finding["details"].get("resource_status").is_some())
+                .unwrap();
+            assert_eq!(resource["details"]["resource_status"], status);
+            assert!(resource["details"]["viewport"].is_null());
+            if json_output {
+                check(&serde_json::from_str(&text).unwrap(), &artifact);
+            }
+        }
+    }
+}
+
+#[test]
 fn resource_observations_require_namespace_before_manifests_or_viewport_updates() {
     let temp = tempfile::tempdir().unwrap();
     let profile = temp.path().join("profile.toml");
@@ -4803,6 +4903,144 @@ fn connected_chains_keep_intermediate_contrary_outcomes_in_small_bundles() {
     corrupt["findings"][0]["details"]["event_chain"]["root"]["input_ordinal"] = json!(99);
     assert!(log_analyzer::investigation::validate_relations(&corrupt, None).is_err());
 }
+#[test]
+fn connected_chains_canonicalize_scalar_join_values_without_guessing_other_types() {
+    let profile = include_str!("../examples/investigations/chains/profile.toml")
+        .split("[[investigation.chains.steps]]")
+        .take(2)
+        .collect::<Vec<_>>()
+        .join("[[investigation.chains.steps]]")
+        .replace(
+            "join_fields = [\"capture_id\"]",
+            "join_fields = [\"payload.join_id\"]",
+        );
+    for (source, target, linked) in [
+        (json!(1), json!("1"), 1),
+        (json!(true), json!("true"), 1),
+        (json!(1.5), json!("1.5"), 1),
+        (json!(1), json!("01"), 0),
+        (Value::Null, Value::Null, 0),
+        (json!([1]), json!([1]), 0),
+        (json!({"id":1}), json!({"id":1}), 0),
+        (json!(""), json!(""), 0),
+    ] {
+        let mut events = vec![
+            chain_event("checkpoint", "run-1", "capture-1", 0),
+            chain_event("submitted", "run-1", "capture-1", 0),
+        ];
+        events[0]["payload"]["join_id"] = source.clone();
+        events[1]["payload"]["join_id"] = target.clone();
+        let (_temp, report, _artifact) = chain_fixture(&events, Some(&profile));
+        let step = chain_step(event_chains(&report)[0], "submitted");
+        assert_eq!(step["linked_count"], linked, "{source} -> {target}");
+        if linked == 1 {
+            assert_eq!(step["join_samples"][0]["identity"][0]["value"], source);
+            assert_eq!(step["status"], "observed");
+        }
+    }
+}
+
+#[test]
+fn connected_chains_preserve_expansion_order_for_roots_and_role_endpoints() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(
+        &profile,
+        format!(
+            "{}\n[normalization]\nroot_path = \"/rows\"\nexpand_rows = true\n",
+            include_str!("../examples/investigations/chains/profile.toml")
+        ),
+    )
+    .unwrap();
+    let mut endpoints = vec![
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-1", "capture-1", 0),
+        chain_event("accepted", "run-1", "capture-1", 0),
+    ];
+    endpoints.extend((0..12).map(|i| chain_event("poll_send", "run-1", "capture-1", i)));
+    let roots: Vec<_> = (0..12)
+        .map(|i| chain_event("checkpoint", "run-1", &format!("capture-{i}"), 0))
+        .collect();
+    for (name, rows) in [("endpoints", endpoints), ("roots", roots)] {
+        let input = temp.path().join(format!("{name}.jsonl"));
+        let artifact = temp.path().join(format!("{name}.json"));
+        fs::write(&input, json!({"rows":rows}).to_string() + "\n").unwrap();
+        let report = success(&[
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            input.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        let chains = event_chains(&report);
+        if name == "endpoints" {
+            let step = chain_step(chains[0], "polls");
+            assert_eq!(step["linked_count"], 12);
+            assert_eq!(step["omitted_occurrences"], 10);
+            assert_eq!(
+                step["evidence"][0]["occurrence"]["evidence_ref"]["row_path"],
+                "/rows/3"
+            );
+            assert_eq!(
+                step["evidence"][1]["occurrence"]["evidence_ref"]["row_path"],
+                "/rows/14"
+            );
+        } else {
+            assert_eq!(chains.len(), 12);
+            for (i, chain) in chains.iter().enumerate() {
+                assert_eq!(chain["root"]["evidence_ref"]["line"], 1);
+                assert_eq!(
+                    chain["root"]["evidence_ref"]["row_path"],
+                    format!("/rows/{i}")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn connected_chains_missing_root_context_keep_links_but_report_partial_analysis() {
+    let profile = include_str!("../examples/investigations/chains/profile.toml");
+    let profile = profile.replace(
+        "context_fields = [\"session_id\"]",
+        "context_fields = [\"session_id\", \"worker_id\"]",
+    );
+    let mut events = vec![
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-1", "capture-1", 0),
+        chain_event("accepted", "run-1", "capture-1", 0),
+        chain_event("poll_send", "run-1", "capture-1", 1),
+        chain_event("poll_response", "run-1", "capture-1", 1),
+        chain_event("capture_end", "run-1", "capture-1", 0),
+        chain_event("check_end", "run-1", "capture-1", 0),
+        chain_event("session_end", "run-1", "capture-1", 0),
+        chain_event("contrary", "run-1", "capture-1", 0),
+        chain_event("later_activity", "run-1", "capture-1", 0),
+    ];
+    for event in &mut events {
+        event["worker_id"] = json!("worker-1");
+    }
+    let (_temp, complete, _artifact) = chain_fixture(&events, Some(&profile));
+    let complete = event_chains(&complete)[0];
+    assert_eq!(complete["completeness"], "complete");
+    assert_eq!(complete["later_activity_observed_count"], 1);
+    events[0].as_object_mut().unwrap().remove("worker_id");
+    let (_temp, partial, _artifact) = chain_fixture(&events, Some(&profile));
+    let partial = event_chains(&partial)[0];
+    assert_eq!(partial["completeness"], "partial");
+    assert!(partial["later_activity_observed_count"].is_null());
+    assert!(partial["omitted_later_activity"].is_null());
+    assert!(partial["later_activity"].as_array().unwrap().is_empty());
+    for step in partial["steps"].as_array().unwrap() {
+        assert_eq!(step["linked_count"], 1);
+        assert_eq!(step["status"], "observed");
+        assert_eq!(step["count_completeness"], "partial");
+    }
+}
+
 #[test]
 fn connected_chains_missing_join_identity_is_partial_and_never_guessed() {
     let mut submission = chain_event("submitted", "run-1", "capture-1", 0);

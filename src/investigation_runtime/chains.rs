@@ -72,7 +72,7 @@ fn key(entry: &LogEntry, fields: &[String]) -> Option<Vec<String>> {
             {
                 return None;
             }
-            Some(value.to_string())
+            super::policy::scalar_identity(&value)
         })
         .collect()
 }
@@ -277,12 +277,8 @@ pub(super) fn calculate(
             }
         }
         let mut ordered_roots: Vec<_> = roots.values().collect();
-        ordered_roots.sort_by_key(|events| {
-            (
-                events[0].source_line_number,
-                events[0].source_row_path.as_deref(),
-            )
-        });
+        // References into the same parsed slice retain physical and expansion order.
+        ordered_roots.sort_by_key(|events| std::ptr::from_ref(events[0]) as usize);
         for (root_index, root_entries) in ordered_roots.into_iter().enumerate() {
             if !budget.checkpoint("calculation", 1)
                 || !budget.reserve(
@@ -300,10 +296,12 @@ pub(super) fn calculate(
                 .collect();
             let mut selected_nodes = BTreeMap::from([("$root", root_entries.clone())]);
             let mut steps = Vec::new();
+            let context_key = key(root, &chain.context_fields);
             let complete = input_complete
                 && !unresolved
                 && missing_roots.is_empty()
-                && root_entries.len() == 1;
+                && root_entries.len() == 1
+                && context_key.is_some();
             let mut node_completeness = BTreeMap::from([("$root", complete)]);
             for (step, (fields, index, missing)) in chain.steps.iter().zip(&indices) {
                 let sources = &selected_nodes[step.from.as_str()];
@@ -365,7 +363,7 @@ pub(super) fn calculate(
                         }
                     }
                 }
-                targets.sort_by_key(|e| (e.source_line_number, e.source_row_path.as_deref()));
+                targets.sort_by_key(|e| std::ptr::from_ref(*e) as usize);
                 let sampled = step_samples(&targets, step.outcome_field.as_deref());
                 let joins: Vec<_> = sampled.iter().map(|target| {
                     let (source,source_count,target_count)=joins_by_target[&(target.source_line_number,target.source_row_path.as_deref())];
@@ -393,7 +391,7 @@ pub(super) fn calculate(
                 .map(|e| e.source_line_number)
                 .max()
                 .unwrap_or(root.source_line_number);
-            let activity = key(root, &chain.context_fields).and_then(|k| later_index.get(&k));
+            let activity = context_key.and_then(|k| later_index.get(&k));
             let activity_count = activity.map(|events| {
                 events
                     .len()

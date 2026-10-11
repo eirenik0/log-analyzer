@@ -137,10 +137,24 @@ pub(super) fn redact(artifact: &mut Value) {
         record["verification"] = super::findings::verification(true, "not_applicable");
     }
     for finding in artifact["findings"].as_array_mut().unwrap() {
-        if finding["details"]["resource_status"] == "fingerprint_match" {
-            finding["claim"] = json!(
-                "Resource matches a profile-declared fingerprint. Its private label is omitted by redaction; this observation does not establish displayed content or cause."
-            );
+        if let Some(status) = finding["details"]["resource_status"].as_str() {
+            finding["claim"] = json!(match status {
+                "fingerprint_match" =>
+                    "Resource matches a profile-declared fingerprint; private labels, digests and dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "different_fingerprint" =>
+                    "Resource has different bytes from the profile-declared fingerprints; private dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "unconfigured_fingerprint" =>
+                    "Resource has a digest but no profile-declared fingerprints; private dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "unavailable" =>
+                    "Resource digest is unavailable or ambiguous; private dimensions are omitted by redaction. This observation does not establish displayed content or cause.",
+                "empty_manifest" =>
+                    "Manifest lists no resources; absent displayed content cannot be established from this list.",
+                _ =>
+                    "Resource observation; private details are omitted by redaction. This observation does not establish displayed content or cause.",
+            });
+            if finding["details"].get("viewport").is_some() {
+                finding["details"]["viewport"] = Value::Null;
+            }
         }
         if finding["details"]["fingerprint"].is_object() {
             finding["details"]["fingerprint"] = Value::Null;

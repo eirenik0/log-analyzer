@@ -11,14 +11,17 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+pub(super) fn scalar_identity(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Null | Value::Array(_) | Value::Object(_) => None,
+    }
+}
 fn field(entry: &LogEntry, selector: &str) -> Option<String> {
     if let Some(field) = selector.strip_prefix("payload.") {
-        match crate::extract::extract_payload_field(entry, field)? {
-            Value::String(value) => Some(value.clone()),
-            Value::Number(value) => Some(value.to_string()),
-            Value::Bool(value) => Some(value.to_string()),
-            Value::Null | Value::Array(_) | Value::Object(_) => None,
-        }
+        scalar_identity(crate::extract::extract_payload_field(entry, field)?)
     } else {
         entry.structured_field(selector).map(str::to_owned)
     }
