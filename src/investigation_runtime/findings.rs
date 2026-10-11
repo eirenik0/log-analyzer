@@ -21,7 +21,11 @@ pub(super) fn record(entry: &LogEntry, context: &evidence::Context, snapshot: &V
 }
 pub(super) fn excerpt(entry: &LogEntry, context: &evidence::Context, snapshot: &Value) -> Value {
     let text: String = entry.message.chars().take(512).collect();
-    json!({"occurrence":occurrence(entry,context,snapshot),"text":text,"omitted_characters":entry.message.chars().count().saturating_sub(512),"verification":verification(false,"not_applicable")})
+    let mut result = json!({"occurrence":occurrence(entry,context,snapshot),"text":text,"omitted_characters":entry.message.chars().count().saturating_sub(512),"verification":verification(false,"not_applicable")});
+    if let Some(fields) = context.finding_fields(entry) {
+        result["fields"] = fields;
+    }
+    result
 }
 pub(super) fn rules(entry: &LogEntry) -> Vec<String> {
     match &entry.classification {
@@ -371,5 +375,166 @@ pub(super) fn scope_aliases(
             continue;
         }
         findings.push(fact(format!("{scope}-scope-adequacy-{index}"),scope,"unknown","The selected population intersects a shared effective correlation key; all source-identity witnesses are retained as context, including any outside selection. Intended scope adequacy is unknown.",witnesses.iter().map(|entry|excerpt(entry,context,snapshot)).collect(),json!({"reason":"Source-identity witnesses do not prove intended domain scope. Review the explicit scope before relying on paired lifecycle meaning.","supporting_occurrences":witnesses.iter().map(|entry|occurrence(entry,context,snapshot)).collect::<Vec<_>>()})));
+    }
+}
+
+/// Source severity is observable even when domain outcome rules are unavailable.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn observed_levels(
+    entries: &[&LogEntry],
+    scope: &str,
+    context: &evidence::Context,
+    snapshot: &Value,
+    complete: bool,
+    budget: &mut crate::processing::Budget,
+    findings: &mut Vec<Value>,
+    populations: &mut Vec<Value>,
+    memberships: &mut Vec<Value>,
+) {
+    for (severity, aliases) in [
+        ("errors", &["ERROR", "FATAL"][..]),
+        ("warnings", &["WARN", "WARNING"][..]),
+    ] {
+        // Reserve population metadata and serialization scratch before retaining members.
+        if !budget.checkpoint("calculation", 1) || !budget.reserve("calculation", 16384 * 16) {
+            break;
+        }
+        let mut members = [Vec::new(), Vec::new()];
+        let mut observations = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut index = 0;
+        for entry in entries {
+            if !budget.checkpoint("calculation", 1) {
+                break;
+            }
+            if !aliases
+                .iter()
+                .any(|level| entry.level.eq_ignore_ascii_case(level))
+            {
+                continue;
+            }
+            if !budget.reserve("calculation", 8192 * 16) {
+                break;
+            }
+            members[usize::from(entry.source_row_path.is_some())]
+                .push(json!({"kind":"record","occurrence":occurrence(entry,context,snapshot)}));
+            // Exact occurrences remain retained even if a representative cannot fit.
+            if !budget.checkpoint("calculation", entry.message.len() as u64) {
+                break;
+            }
+            if !seen.contains(&entry.message) {
+                if !budget.reserve(
+                    "calculation",
+                    context.finding_fields_allowance() + 16384 * 16,
+                ) {
+                    break;
+                }
+                seen.insert(&entry.message);
+                observations.push(fact(
+                    format!("{scope}-observed-{severity}-{index}"),
+                    scope,
+                    "observation",
+                    &format!("Observed {severity} source record; domain outcome and cause remain unproven."),
+                    vec![excerpt(entry, context, snapshot)],
+                    json!({"supporting_occurrences":[occurrence(entry,context,snapshot)]}),
+                ));
+            }
+            index += 1;
+        }
+        for (index, members) in members.into_iter().enumerate() {
+            let (entity, suffix) = if index == 0 {
+                ("physical_records", "")
+            } else {
+                ("normalized_records", "-normalized")
+            };
+            if members.is_empty() && (index != 0 || !complete || budget.halted) {
+                continue;
+            }
+            population(
+                scope,
+                &format!("observed-{severity}{suffix}"),
+                entity,
+                &format!(
+                    "Observed {severity} severity records; source severity does not establish domain failure or cause."
+                ),
+                Vec::new(),
+                Vec::new(),
+                members,
+                findings,
+                populations,
+                memberships,
+            );
+            if !complete || budget.halted {
+                populations.last_mut().unwrap()["completeness"] = json!("partial");
+            }
+        }
+        findings.extend(observations);
+        if budget.halted {
+            break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod severity_budget_tests {
+    use super::*;
+
+    #[test]
+    fn severity_retention_obeys_memory_work_time_and_cancellation_limits() {
+        let entries: Vec<_> = (0..100)
+            .map(|index| {
+                crate::parser::parse_log_entry(
+                    &format!("2025-01-01T00:00:00Z ERROR app: failure {index}"),
+                    index + 1,
+                )
+                .unwrap()
+            })
+            .collect();
+        let refs: Vec<_> = entries.iter().collect();
+        let temp = tempfile::tempdir().unwrap();
+        let cancel = temp.path().join("cancel");
+        std::fs::write(&cancel, "cancel").unwrap();
+        for reason in ["memory_limit", "work_limit", "time_limit", "cancelled"] {
+            let mut budget = crate::processing::test_budget();
+            match reason {
+                "memory_limit" => budget.limits.memory_bytes = 1024 * 1024,
+                "work_limit" => budget.limits.work_units = 60,
+                "time_limit" => budget.limits.elapsed_ms = 0,
+                _ => budget.limits.cancel_file = Some(cancel.clone()),
+            }
+            let (mut findings, mut populations, mut memberships) =
+                (Vec::new(), Vec::new(), Vec::new());
+            observed_levels(
+                &refs,
+                "scope-0",
+                &evidence::Context::default(),
+                &Value::Null,
+                true,
+                &mut budget,
+                &mut findings,
+                &mut populations,
+                &mut memberships,
+            );
+            assert_eq!(budget.stop.as_ref().unwrap()["reason"], reason);
+            assert!(budget.memory_bytes <= budget.limits.memory_bytes);
+            assert!(findings.len() < 100);
+            assert!(
+                populations
+                    .iter()
+                    .all(|population| population["completeness"] == "partial")
+            );
+            if matches!(reason, "memory_limit" | "work_limit") {
+                assert!(
+                    !populations.is_empty(),
+                    "valid partial occurrences should be retained"
+                );
+                assert_eq!(
+                    populations[0]["count"],
+                    memberships[0]["members"].as_array().unwrap().len()
+                );
+            } else {
+                assert!(findings.is_empty());
+            }
+        }
     }
 }

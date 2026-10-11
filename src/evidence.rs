@@ -128,6 +128,7 @@ pub fn source(entry: &LogEntry) -> crate::perf_analyzer::SourceLocation {
 
 #[derive(Default)]
 pub(crate) struct Context {
+    finding_source_fields: Vec<String>,
     profile_digest: String,
     query: Value,
     inputs: Vec<Value>,
@@ -138,6 +139,59 @@ pub(crate) struct Context {
     legacy_sanitize_records: bool,
 }
 impl Context {
+    pub fn finding_fields_allowance(&self) -> u64 {
+        (self.finding_source_fields.len() as u64).saturating_mul(4096 * 16)
+    }
+    pub fn finding_fields(&self, entry: &LogEntry) -> Option<Value> {
+        if self.finding_source_fields.is_empty() {
+            return None;
+        }
+        let event = if self
+            .finding_source_fields
+            .iter()
+            .any(|field| field.starts_with("event."))
+        {
+            match &entry.classification {
+                Some(crate::event_rules::ClassifiedRecord::Event { semantics, .. }) => {
+                    serde_json::to_value(semantics).ok()
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let mut fields = serde_json::Map::new();
+        for field in &self.finding_source_fields {
+            let value = if let Some(key) = field.strip_prefix("event.") {
+                event
+                    .as_ref()
+                    .and_then(|event| event.get(key))
+                    .cloned()
+                    .unwrap_or(Value::Null)
+            } else if field == "timestamp" {
+                entry
+                    .source_timestamp
+                    .map_or(Value::Null, |time| Value::String(time.to_rfc3339()))
+            } else {
+                let value = match field.as_str() {
+                    "component" => Some(entry.component.as_str()),
+                    "component_id" => Some(entry.component_id.as_str()),
+                    "level" => Some(entry.level.as_str()),
+                    other => entry.structured_field(other),
+                };
+                value.map_or(Value::Null, |value| Value::String(value.into()))
+            };
+            fields.insert(
+                field.clone(),
+                if value.to_string().len() <= 4096 {
+                    value
+                } else {
+                    Value::Null
+                },
+            );
+        }
+        Some(Value::Object(fields))
+    }
     pub fn new(cli: &Cli, config: &AnalyzerConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let mut query = serde_json::to_value(cli)?;
         if let Some(paths) = query
@@ -174,10 +228,15 @@ impl Context {
             crate::comparator::LogFilter::new()
         };
         Ok(Self {
+            finding_source_fields: config
+                .investigation_view
+                .as_ref()
+                .map_or_else(Vec::new, |view| view.source_fields.clone()),
             profile_digest: profile_digest(config)?,
             query,
             filter,
-            collect_records: cli.common_reports(),
+            collect_records: cli.common_reports()
+                && !matches!(cli.command, crate::cli::Commands::Investigate(_)),
             legacy_sanitize_records: !cli.redact
                 && matches!(
                     &cli.command,

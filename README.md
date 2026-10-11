@@ -59,6 +59,124 @@ are omitted from primary help. `generate-config` returns a JSON object containin
 
 ## Unified investigation and retained evidence
 
+Start with a normal log file or several independent captures:
+
+```bash
+log-analyzer investigate application.log
+log-analyzer investigate captures/*.log
+```
+
+The default output explains processing completion, per-file coverage, observed
+ERROR/WARN records, supported measurements and assessment limits. A fresh local
+`log-analyzer-evidence-*` directory stores `evidence.json`; its path and SHA-256
+appear at the end. With `--redact`, an automatically created artifact keeps a safe
+relative handle that can be used from the investigation directory; private parent
+paths, profile fingerprint labels and rule names are omitted. The printed `Next`
+command quotes artifact paths for a POSIX shell and includes the continuation cursor.
+Severity evidence is retained within processing budgets: unavailable parsing does
+not establish zero errors or warnings, and interrupted counts are partial.
+Profile fingerprint matches appear before source warnings and
+empty manifests; ordering highlights evidence without claiming a root cause.
+Readable output uses the profile's optional `investigation_view` to organize
+processed findings into sections: for example, resource observations by component
+and viewport, followed by performance by component. Configuration selects findings,
+group dimensions and measured summaries; the core has no application-specific
+grouping rules. Each independent capture remains separate. Missing dimensions and
+measurements stay unknown. At most 20 groups appear across sections, with explicit
+omissions and representative citations. Individual JSON findings, measured values,
+evidence references and pagination remain available without grouping.
+Before the configured groups, the initial text report shows ERROR/FATAL counts
+and up to three distinct, cited source-message samples for each input containing
+errors in its selected parsed population. This overview reads all processed
+findings before pagination, so repeated observations cannot push every error
+sample onto a later page. Additional distinct messages are explicitly omitted;
+source severity does not prove operation failure or cause. Individual JSON order
+and continuation cursors are unchanged.
+When findings are omitted, the printed `Next` command includes
+a continuation cursor to retrieve the following page. Use `--artifact PATH` to choose a new destination. Existing
+artifacts are never replaced. For agents, request JSON explicitly:
+
+```bash
+log-analyzer --profile examples/investigations/profile.toml investigate \
+  examples/investigations/slow.jsonl --artifact evidence.json --json --report-max-items 5
+log-analyzer evidence evidence.json \
+  --expected-sha256 <artifact.stored_sha256> --collection /findings --report-max-items 5
+```
+
+`--summary` selects a concise JSON decision brief with up to five findings. JSON presentation budgets
+also imply JSON. `evidence` always returns JSON; `investigation-evidence` remains
+an alias for existing automation. Investigation captures, parses/classifies and
+correlates each independent input once; bounded profile discovery samples the immutable captured bytes. Retrieval reads only the retained artifact.
+
+```mermaid
+flowchart LR
+  A[Log files] --> B[Plan file sizes and capture input bytes]
+  B --> C[Explicit profile or sample every captured input]
+  C --> D[Parse and analyze one independent input]
+  D --> E[Retain evidence and release parsed working set]
+  E --> D
+  E --> V[Configured sections, groups and measured summaries]
+  V --> F[Readable report or individual JSON plus artifact]
+  F --> G[evidence: retrieve retained records and findings]
+```
+
+To organize a profile's measurements like the `perf` component view, add:
+
+```toml
+[investigation_view]
+source_fields = ["component", "event.name", "actor_kind"]
+
+[[investigation_view.groups]]
+id = "component-performance"
+title = "Performance by component and operation"
+select = [{ path = "/kind", equals = "measurement" }, { path = "/details/unit", equals = "ms" }]
+by = [
+  { label = "Component", path = "/evidence/0/fields/component" },
+  { label = "Operation", path = "/evidence/0/fields/event.name" }
+]
+max_groups = 12
+measurements = [
+  { label = "Mean elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "mean" },
+  { label = "Max elapsed", path = "/details/value", unit_path = "/details/unit", unit = "ms", aggregate = "max" }
+]
+```
+
+Selectors are ANDed exact scalar comparisons at JSON pointers in each finding.
+Dimensions can reference any finding field; `source_fields` projects up to eight
+named source fields into evidence excerpts. Native `component`, `component_id`,
+`level` and offset-preserving `timestamp`, classified `event.*` semantics, and
+arbitrary structured fields such as `actor_kind` are supported. Evidence index 0
+selects that finding's first cited record, not every record in a component.
+An optional dimension `template`, such as `"{/width}x{/height}"` for a viewport
+object, formats relative JSON pointers without changing the full grouping key.
+Section order follows configuration; up to eight definitions, eight dimensions
+and four measurements per definition are allowed. `max_groups` is 1–20, subject
+to the 20-group overall limit. Missing and oversized dimensions form an explicit
+unknown group within their capture.
+
+Aggregates support `min`, `max`, `mean` and `sum` of finite numeric values whose
+reported unit matches exactly. They report measured and unavailable counts;
+missing values never become zero. Counts are findings, sections may overlap, and
+summed elapsed intervals are not a critical path or CPU time. Groups summarize
+the processed population before individual pagination, so their counts may exceed
+the current page. Remove `investigation_view` to retain the individual text view.
+If artifact storage fails, text retains individual findings for direct inspection.
+Redacted output clears projected source fields and hides configured titles, labels
+and templates; measurement units use a generic display label.
+
+Source severity counts and representative ERROR/FATAL/WARN/WARNING excerpts remain
+visible even when the profile cannot classify domain outcomes. A severity record
+is an observation, not a proven operation failure or causal diagnosis. Unknown or
+unparsed evidence never becomes a clean-result claim.
+
+Profiles can declare `[[resource_observations]]` rules for scoped resource joins,
+geometry and known fingerprints. Investigation applies the selected profile's
+rules automatically; no domain-specific CLI switch is needed. Message markers,
+identity fields/prefixes, payload paths and fingerprint labels live in TOML.
+Unique ownership is required; missing or conflicting hashes remain unknown.
+A fingerprint match is a profile-declared observation and does not establish
+rendered content or root cause. Empty manifests do not prove absent content.
+
 For an agent's first call, use the concise capability and investigation summaries:
 
 ```bash
@@ -124,9 +242,12 @@ retention. Retrieval saves only new `--output` files.
 Bare `investigate` automatically checks built-ins and TOML profiles discovered
 recursively in `ROOT/config` (the working directory unless `--project-root` is supplied). `--profiles-dir DIR`
 replaces that directory. Detection uses captured prefixes: at most 128 physical
-lines and 64 KiB per input, sharing a 256 KiB total sample allowance equally across inputs. Exactly one matching profile, with lifecycle
+lines and 64 KiB per input, sharing a 256 KiB total sample allowance equally across inputs. Exactly one matching profile, with lifecycle or configured resource
 evidence in every nonempty input and no observed parsing/classification loss, is
-selected. Overlapping grammars (including common `eyes`/`custom-start` wording),
+selected. Profiles can set `[profile].detection_requires_session_scope = true`
+to require lifecycle evidence with a component-ID segment matching their configured
+session prefixes; built-in domain and starter profiles use this to distinguish
+shared lifecycle wording. Overlapping grammars without distinguishing scope,
 mixed profiles, unknown formats and insufficient evidence fall back to generic
 `base`; the highest match count never breaks a tie. Detection is sample-based
 inference, not independent validation or proof of completion. Unsampled content may
@@ -214,10 +335,20 @@ values. Legacy `--filter` keeps substring semantics and runs before correlation;
 removing an end through a filter cannot establish a hang. Elapsed source intervals
 preserve UTC offsets and do not measure CPU time, critical-path time or causes.
 
-Processing limits are separate from output limits. Defaults are 16 MiB captured
-input, 100,000 record attempts, 10,000 expanded-row attempts, 10,000,000 charged
-work units, a cooperative 30-second deadline, a 512 MiB conservative data allowance,
-64 MiB artifact storage and 256 KiB per physical line/multiline record. See
+Processing limits are separate from output limits. The default total input cap
+plans the declared file sizes plus an EOF probe, with a 16 MiB minimum and 1 GiB
+ceiling. Other defaults are 1,000,000 record attempts, 100,000 expanded-row attempts,
+500,000,000 charged work units, a cooperative 180-second deadline, 1 GiB artifact
+storage and 8 MiB per physical line/multiline record. Conservative data allowance
+is 512 times planned input bytes, bounded between 512 MiB and 32 GiB; this is
+accounting, not a RAM allocation or RSS ceiling. Explicit limits override planning.
+Evidence retrieval has a separate 64 MiB default read limit and clones only the
+requested page's items. Larger stored artifacts require an explicit
+`evidence --artifact-max-bytes BYTES` allowance; raise it only on a host with enough
+memory to parse and validate the complete artifact. Output pagination does not
+bound artifact parsing memory.
+Oversized captures can still stop at these finite ceilings; inspect every input's
+capture and scope status. See
 `investigate --help` for overrides. Work accounts for parsing bytes, loop steps
 and sorting reservations; it is not a CPU instruction count. Rejected candidates
 consume attempt capacity; reported record usage counts successfully parsed records.

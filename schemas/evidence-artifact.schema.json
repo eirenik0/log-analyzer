@@ -1250,6 +1250,9 @@
         },
         "verification": {
           "$ref": "#/$defs/verification"
+        },
+        "fields": {
+          "type": "object"
         }
       },
       "required": [
@@ -1348,6 +1351,59 @@
                     "$ref": "#/$defs/occurrence"
                   },
                   "minItems": 1
+                },
+                "resource_status": {
+                  "enum": [
+                    "fingerprint_match",
+                    "different_fingerprint",
+                    "unconfigured_fingerprint",
+                    "unavailable",
+                    "empty_manifest"
+                  ]
+                },
+                "viewport": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "width": {
+                      "type": "number"
+                    },
+                    "height": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "width",
+                    "height"
+                  ],
+                  "additionalProperties": false
+                },
+                "fingerprint": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "sha256",
+                    "label"
+                  ],
+                  "additionalProperties": false
+                },
+                "rule_id": {
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "required": [

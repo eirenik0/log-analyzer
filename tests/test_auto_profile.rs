@@ -9,6 +9,10 @@ fn line(message: &str) -> String {
     )
 }
 
+fn scoped_line(scope: &str, message: &str) -> String {
+    format!("core ({scope}) | 2026-01-01T00:00:00Z [INFO ] {message}\n")
+}
+
 fn run(directory: &Path, inputs: &[String], flags: &[&str]) -> (Value, Value) {
     let paths: Vec<_> = inputs
         .iter()
@@ -112,10 +116,41 @@ fn unique_grammars_are_detected_and_bound_to_captured_evidence() {
 }
 
 #[test]
+fn configured_session_scopes_distinguish_shared_lifecycle_grammars() {
+    for (scope, expected) in [
+        ("manager-one/eyes-one/check-one", "eyes"),
+        ("trace-one/span-one", "custom-start"),
+    ] {
+        let dir = TempDir::new().unwrap();
+        let input = scoped_line(scope, "Command \"sync\" is called")
+            + &scoped_line(scope, "Command \"sync\" completed");
+        let (report, _) = run(dir.path(), &vec![input; 4], &[]);
+        assert_eq!(selection(&report)["status"], "selected", "{report}");
+        assert_eq!(selection(&report)["profile"], expected);
+    }
+    let dir = TempDir::new().unwrap();
+    let (report, _) = run(dir.path(), &[line("Command \"sync\" is called")], &[]);
+    assert_eq!(selection(&report)["status"], "no_match");
+    fs::remove_file(dir.path().join("artifact.json")).unwrap();
+    let (report, _) = run(
+        dir.path(),
+        &[
+            scoped_line("manager-one", "Command \"sync\" is called"),
+            scoped_line("trace-one", "Command \"sync\" is called"),
+        ],
+        &[],
+    );
+    assert_eq!(selection(&report)["status"], "ambiguous");
+}
+
+#[test]
 fn ambiguity_unknown_and_mixed_inputs_remain_generic() {
     let cases = [
         (
-            vec![line("Command \"sync\" is called") + &line("Command \"sync\" completed")],
+            vec![
+                scoped_line("manager-one/trace-one", "Command \"sync\" is called")
+                    + &scoped_line("manager-one/trace-one", "Command \"sync\" completed"),
+            ],
             "ambiguous",
         ),
         (vec![line("ordinary application record")], "no_match"),
@@ -381,7 +416,11 @@ fn blank_inputs_do_not_prevent_detection_but_unsampled_records_still_do() {
 fn redaction_preserves_selection_status_and_coverage_without_profile_identity() {
     for (input, flags, expected) in [
         (line("Operation \"sync\" started"), vec![], "selected"),
-        (line("Command \"sync\" is called"), vec![], "ambiguous"),
+        (
+            scoped_line("manager-one/trace-one", "Command \"sync\" is called"),
+            vec![],
+            "ambiguous",
+        ),
         (line("ordinary record"), vec![], "no_match"),
         (
             line("Operation \"sync\" started")
@@ -430,6 +469,7 @@ fn redaction_preserves_selection_status_and_coverage_without_profile_identity() 
                         "parse_failures",
                         "structural_loss",
                         "lifecycle_records",
+                        "resource_records",
                         "matched_inputs",
                         "invalid_or_conflicting_records",
                     ] {
@@ -562,7 +602,15 @@ fn redaction_retains_probe_parse_failures_for_non_utf8_capture() {
 
 #[test]
 fn global_detection_cutoffs_mark_every_input_despite_complete_generic_parsing() {
-    for (limit, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {
+    // Keep the cutoff at the same processing stage as profile declarations grow.
+    let mut profile = log_analyzer::config::load_config(None, Some("eyes")).unwrap();
+    let configured_bytes = serde_json::to_vec(&profile).unwrap().len();
+    profile.resource_observations.clear();
+    profile.investigation_view = None;
+    let resource_allowance =
+        ((configured_bytes - serde_json::to_vec(&profile).unwrap().len()) as u64) * 16;
+    for (baseline, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {
+        let limit = baseline + resource_allowance;
         let dir = TempDir::new().unwrap();
         fs::create_dir(dir.path().join("config")).unwrap();
         for name in ["a.jsonl", "b.jsonl"] {
