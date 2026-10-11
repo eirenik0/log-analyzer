@@ -197,6 +197,9 @@ unavailable; it does not pick a preferred key. For example,
 `coalesce:payload.resource|payload.resources.0.resource` can join a resource
 record to a render record with the same explicit identifier. Scope fields and
 cardinality still apply, and independent positive/negative witnesses are required.
+Direct relationships resolve join and required-scope selectors with the same
+implementation as chains, including `event.*`, structural component prefixes and
+explicit coalesced field bridges.
 
 Each step reports `recognition`: rule matches, exact selector failures and role
 matches across the selected classified input. Zero linked steps with matching

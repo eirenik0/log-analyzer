@@ -26,7 +26,7 @@ fn field(entry: &LogEntry, selector: &str) -> Option<String> {
         entry.structured_field(selector).map(str::to_owned)
     }
 }
-pub(crate) fn identity(entry: &LogEntry, fields: &[String]) -> Option<Vec<String>> {
+fn identity(entry: &LogEntry, fields: &[String]) -> Option<Vec<String>> {
     fields
         .iter()
         .map(|selector| field(entry, selector).filter(|value| !value.is_empty()))
@@ -181,7 +181,7 @@ pub(crate) fn calculate(
                 unresolved.push(entry);
                 continue;
             }
-            let Some(mut key) = identity(entry, &fields) else {
+            let Some(mut key) = crate::relationship_rules::key(entry, &fields) else {
                 missing += 1;
                 continue;
             };

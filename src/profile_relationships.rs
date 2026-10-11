@@ -334,8 +334,8 @@ fn initial_state(
                     fields.push(field.clone());
                 }
             }
-            if crate::investigation_runtime::policy::identity(source, &fields).is_none()
-                || crate::investigation_runtime::policy::identity(target, &fields).is_none()
+            if key(source, &fields).is_none()
+                || key(target, &fields).is_none()
                 || crate::perf_analyzer::correlation_scope(source, config).is_none()
                 || crate::perf_analyzer::correlation_scope(target, config).is_none()
             {

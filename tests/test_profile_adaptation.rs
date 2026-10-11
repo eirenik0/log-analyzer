@@ -13,8 +13,12 @@ fn cli(args: &[&str]) -> (Value, bool) {
         .unwrap();
     let value: Value = serde_json::from_slice(&output.stdout)
         .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&output.stderr)));
-    let schema: Value =
-        serde_json::from_str(include_str!("../schemas/report.schema.json")).unwrap();
+    let schema: Value = serde_json::from_str(if value.get("artifact").is_some() {
+        include_str!("../schemas/investigation.schema.json")
+    } else {
+        include_str!("../schemas/report.schema.json")
+    })
+    .unwrap();
     let validator = jsonschema::validator_for(&schema).unwrap();
     let errors: Vec<_> = validator
         .iter_errors(&value)
@@ -751,4 +755,91 @@ fn field_bridges_link_renamed_payload_keys_but_reject_conflicting_identifiers() 
         report["profile_validation"]["relationships"]["failed_checks"],
         1
     );
+}
+
+#[test]
+fn direct_relationship_selectors_agree_between_runtime_and_validation() {
+    for (join, scope) in [
+        (
+            "coalesce:payload.resource|payload.resources.0.resource",
+            "session_id",
+        ),
+        ("component_id.prefix:check-", "session_id"),
+        ("event.correlation_id", "component_id.prefix:eyes-"),
+    ] {
+        let suffix = format!(
+            r#"
+[[investigation.relationships]]
+id = "shared-selectors"
+source_role = "checkpoint"
+target_role = "submitted"
+join_fields = ["{join}"]
+required_scope_fields = ["{scope}"]
+cardinality = "one_to_one"
+"#
+        );
+        let mut source = row("checkpoint", "run-a", "capture-a");
+        source["component_id"] = json!("eyes-a/check-a");
+        source["payload"] = json!({"resource":"asset-a"});
+        let mut target = row("submitted", "run-a", "capture-a");
+        target["component_id"] = json!("eyes-a/check-a/request-a");
+        target["payload"] = json!({"resources":[{"resource":"asset-a"}]});
+        let mut other = target.clone();
+        other["session_id"] = json!("run-b");
+        other["component_id"] = json!("eyes-b/check-a/request-a");
+        let (dir, profile, input) = fixture(&[source.clone(), target.clone(), other], &suffix);
+        let facts = [
+            json!({"relationship":"shared-selectors","source":address(0,1),"target":address(0,2),"linked":true}),
+            json!({"relationship":"shared-selectors","source":address(0,1),"target":address(0,3),"linked":false}),
+        ];
+        let (validation, success) = validate(dir.path(), &profile, &input, &facts);
+        assert!(success, "{join}: {validation}");
+        assert_eq!(
+            validation["profile_validation"]["relationships"]["failed_checks"],
+            0
+        );
+        let artifact = dir.path().join("artifact.json");
+        let (runtime, success) = cli(&[
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            input.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        assert!(success, "{runtime}");
+        let joins: Vec<_> = runtime["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| {
+                f["id"].as_str().unwrap().contains("-relationship-") && f["kind"] == "observation"
+            })
+            .collect();
+        assert_eq!(joins.len(), 1, "{join}: {runtime}");
+        let occurrences = joins[0]["details"]["supporting_occurrences"]
+            .as_array()
+            .unwrap();
+        assert_eq!(occurrences[0]["evidence_ref"]["line"], 1);
+        assert_eq!(occurrences[1]["evidence_ref"]["line"], 2);
+        // Duplicate source identities must not become unique joins under any selector.
+        fs::write(&input, format!("{source}\n{target}\n{source}\n")).unwrap();
+        let (ambiguous, success) = validate(dir.path(), &profile, &input, &facts[..1]);
+        assert!(!success, "{join}: {ambiguous}");
+        assert_eq!(
+            ambiguous["profile_validation"]["expected_results"][0]["observed_linked"],
+            false
+        );
+        if join.starts_with("coalesce:") {
+            source["payload"]["resources"] = json!([{"resource":"different-asset"}]);
+            fs::write(&input, format!("{source}\n{target}\n")).unwrap();
+            let (conflict, success) = validate(dir.path(), &profile, &input, &facts[..1]);
+            assert!(!success, "{conflict}");
+            assert_eq!(
+                conflict["profile_validation"]["expected_results"][0]["reason"],
+                "join_identity_unavailable"
+            );
+        }
+    }
 }
