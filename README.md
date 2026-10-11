@@ -450,8 +450,10 @@ stored-byte validation. Native classic, tracing and syslog records reserve worst
 source amplification before parsing, then release unused amplification based on
 retained text and structured payload storage. Dense payloads retain the original
 reservation when needed; JSON envelopes and normalization keep their existing
-allowances. Classification and fixed metadata remain separately charged. Default
-limits are unchanged. A `memory_limit` stop reports exhaustion of this accounting
+allowances. Classification and fixed metadata remain separately charged.
+Retained input coverage, including normalization diagnostics, keeps its reservation
+across independent inputs after parsed and correlation working sets are released.
+Default limits are unchanged. A `memory_limit` stop reports exhaustion of this accounting
 allowance, not a measurement of process RAM. It can stop earlier than the record cap and does
 not promise a process RSS ceiling. Profile loading, compiled regexes, fixed report
 metadata and final partial-outcome delivery are outside that accounting; effective

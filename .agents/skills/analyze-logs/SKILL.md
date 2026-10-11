@@ -105,7 +105,9 @@ Before claiming something is missing or unfinished, verify:
 
 - **Coverage:** all relevant input was processed; rejected/unparsed records,
   cutoffs, unsupported goals, and omitted pages are disclosed. Complete processing
-  does not prove complete upstream capture.
+  does not prove complete upstream capture. Inspect retained per-input normalization
+  diagnostics when a memory stop interrupts processing; do not infer coverage of
+  unread inputs from earlier rejection diagnostics.
 - **Final events:** inspect later records and exact kind, name, ID, scope, and
   occurrence. Check reused IDs; substring matches and the last displayed row are
   not final lifecycle boundaries. For expanded input, inspect row paths and parser

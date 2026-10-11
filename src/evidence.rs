@@ -264,6 +264,25 @@ impl Context {
     pub fn observe(&mut self, coverage: &ParseCoverage, entries: &[LogEntry]) {
         self.observe_selected(coverage, entries, |_| true);
     }
+    /// Measure only the newly retained input, without allocating a serialized copy.
+    pub(crate) fn last_input_serialized_bytes(&self) -> Result<u64, serde_json::Error> {
+        #[derive(Default)]
+        struct Size(u64);
+        impl io::Write for Size {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.0 = self.0.saturating_add(bytes.len() as u64);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut size = Size::default();
+        if let Some(input) = self.inputs.last() {
+            serde_json::to_writer(&mut size, input)?;
+        }
+        Ok(size.0)
+    }
     pub(crate) fn observe_selected(
         &mut self,
         coverage: &ParseCoverage,

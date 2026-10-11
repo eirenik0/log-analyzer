@@ -3790,6 +3790,84 @@ fn evidence_large_unicode_pages_obey_exact_bytes_and_cursor_continuation() {
 }
 
 #[test]
+fn retained_normalization_coverage_accumulates_within_the_memory_budget() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, format!("extends = \"base\"\n[parser]\nformat = \"json-lines\"\n[normalization]\nroot_path = \"/rows\"\nexpand_rows = true\n[normalization.fields]\n\"{}\" = \"/missing\"\n", "synthetic_field_".repeat(128))).unwrap();
+    let sources: Vec<_> = (0..8)
+        .map(|i| {
+            let source = temp.path().join(format!("input-{i}.jsonl"));
+            fs::write(
+                &source,
+                json!({"rows":vec![json!({});20]}).to_string() + "\n",
+            )
+            .unwrap();
+            source
+        })
+        .collect();
+    for (name, limit) in [("bounded", "4000000"), ("sufficient", "10000000")] {
+        let artifact = temp.path().join(format!("{name}.json"));
+        let mut args = vec!["--config", profile.to_str().unwrap(), "investigate"];
+        args.extend(sources.iter().map(|path| path.to_str().unwrap()));
+        args.extend([
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--processing-max-memory-bytes",
+            limit,
+        ]);
+        let report = success(&args);
+        check(&report, &artifact);
+        let inputs = report["report_metadata"]["evidence"]["inputs"]
+            .as_array()
+            .unwrap();
+        assert!(!inputs.is_empty());
+        assert!(inputs.iter().all(|input| {
+            !input["coverage"]["normalization_diagnostics"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        }));
+        let stored: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+        assert_eq!(
+            stored["report_metadata"]["evidence"]["inputs"],
+            report["report_metadata"]["evidence"]["inputs"]
+        );
+        if name == "bounded" {
+            assert_eq!(
+                report["processing"]["status"], "partial",
+                "{}",
+                report["processing"]
+            );
+            assert_eq!(report["processing"]["stop"]["reason"], "memory_limit");
+            assert!(inputs.len() < sources.len(), "{report}");
+            assert!(
+                report["processing"]["inputs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|input| input["capture"] == "unread")
+            );
+        } else {
+            assert_eq!(report["processing"]["status"], "complete");
+            assert_eq!(inputs.len(), sources.len());
+            assert!(inputs.iter().all(|input| {
+                input["coverage"]["normalization_diagnostics"]
+                    .as_array()
+                    .unwrap()
+                    .len()
+                    == 20
+            }));
+            assert!(
+                report["processing"]["usage"]["memory_bytes"]
+                    .as_u64()
+                    .unwrap()
+                    >= (serde_json::to_vec(inputs).unwrap().len() as u64) * 16
+            );
+        }
+    }
+}
+
+#[test]
 fn sequential_processing_releases_independent_parse_working_sets() {
     let temp = tempfile::tempdir().unwrap();
     let row = format!("2025-01-01T00:00:00Z INFO app: {}\n", "context".repeat(150));

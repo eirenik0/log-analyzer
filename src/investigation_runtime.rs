@@ -596,7 +596,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if structural_loss{"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && view.classification_loss>0{semantic_status}else if goal=="failures" && !view.entries.is_empty() && !view.failures_supported{if view.some_failures_supported{"insufficient_evidence"}else{"unsupported"}}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.unrecognized_boundaries>0 {"The explicit profile cannot establish opposite-boundary recognition for every selected lifecycle; missing boundaries remain unavailable."}else if structural_loss {"Rejected or unparsed source candidates may contain relevant evidence; retained calculations cover only parsed selected records. See per-input coverage diagnostics."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
         }
         // Parsed and correlation working sets end here. Keep an allowance for the
-        // JSON evidence that survives this independent input instead of all parsed trees.
+        // JSON evidence and coverage metadata that survive this independent input.
         let retained_bytes = [
             &records[collection_start[0]..],
             &findings[collection_start[1]..],
@@ -605,9 +605,12 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             &sequences[collection_start[4]..],
         ]
         .iter()
-        .try_fold(0u64, |sum, values| -> Result<u64> {
-            Ok(sum.saturating_add(serde_json::to_vec(values)?.len() as u64))
-        })?;
+        .try_fold(
+            context.last_input_serialized_bytes()?,
+            |sum, values| -> Result<u64> {
+                Ok(sum.saturating_add(serde_json::to_vec(values)?.len() as u64))
+            },
+        )?;
         budget.memory_bytes = working_memory_start.saturating_add(retained_capture_extra);
         budget.reserve("calculation", retained_bytes.saturating_mul(16));
     }
