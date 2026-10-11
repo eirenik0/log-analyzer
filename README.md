@@ -87,7 +87,9 @@ omissions and representative citations. Individual JSON findings, measured value
 evidence references and pagination remain available without grouping.
 Before the configured groups, the initial text report shows ERROR/FATAL counts
 and up to three distinct, cited source-message samples for each input containing
-errors in its selected parsed population. This overview reads all processed
+errors in its selected parsed population. Readable excerpts and grouping values
+escape Unicode control characters; JSON and retained evidence preserve the original
+text. This overview reads all processed
 findings before pagination, so repeated observations cannot push every error
 sample onto a later page. Additional distinct messages are explicitly omitted;
 source severity does not prove operation failure or cause. Individual JSON order
@@ -176,7 +178,9 @@ identity fields/prefixes, payload paths and fingerprint labels live in TOML.
 Unique ownership is required; missing or conflicting hashes remain unknown.
 Resource batches with an explicit owner contribute hashes and citations only to
 that owner's manifest. Namespace-only batches remain eligible when the manifest
-has a unique owner.
+has a unique owner. Normalized resource citations retain each distinct row path,
+even when several rows share one physical line; repeated references to the same
+row are deduplicated.
 A fingerprint match is a profile-declared observation and does not establish
 rendered content or root cause. Empty manifests do not prove absent content.
 

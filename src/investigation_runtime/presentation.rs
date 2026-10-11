@@ -34,6 +34,16 @@ pub(super) fn bind_snapshot(value: &mut Value, snapshot: &Value) {
 fn label(value: &Value) -> &str {
     value.as_str().unwrap_or("unknown")
 }
+fn escape_controls(value: &str) -> String {
+    value.chars().fold(String::new(), |mut output, character| {
+        if character.is_control() {
+            output.extend(character.escape_default());
+        } else {
+            output.push(character);
+        }
+        output
+    })
+}
 const MAX_OVERVIEW_GROUPS: usize = 20;
 use crate::investigation_view::{Aggregate, FindingGroup, InvestigationView, Measurement};
 
@@ -196,8 +206,8 @@ struct Group<'a> {
 fn dimension_text(value: &Value) -> String {
     match value {
         Value::Null => "unknown".into(),
-        Value::String(value) => value.replace(['\n', '\r'], " "),
-        value => value.to_string(),
+        Value::String(value) => escape_controls(value),
+        value => escape_controls(&value.to_string()),
     }
 }
 fn formatted_dimension(value: &Value, template: Option<&str>) -> String {
@@ -210,13 +220,13 @@ fn formatted_dimension(value: &Value, template: Option<&str>) -> String {
         rendered.push_str(prefix);
         let Some((path, suffix)) = token.split_once('}') else {
             rendered.push_str(token);
-            return rendered;
+            return escape_controls(&rendered);
         };
         rendered.push_str(&dimension_text(value.pointer(path).unwrap_or(&Value::Null)));
         rest = suffix;
     }
     rendered.push_str(rest);
-    rendered
+    escape_controls(&rendered)
 }
 /// Profile-defined views of all processed findings; individual pages stay unchanged.
 pub(super) fn finding_overview(
@@ -273,7 +283,11 @@ pub(super) fn finding_overview(
         } else {
             &definition.title
         };
-        let _ = writeln!(overview.rendered, "\n{title} (processed findings):");
+        let _ = writeln!(
+            overview.rendered,
+            "\n{} (processed findings):",
+            escape_controls(title)
+        );
         for group in &groups {
             let _ = write!(
                 overview.rendered,
@@ -289,7 +303,7 @@ pub(super) fn finding_overview(
                 let name = if redacted {
                     format!("Field {}", index + 1)
                 } else {
-                    dimension.label.clone()
+                    escape_controls(&dimension.label)
                 };
                 let _ = write!(
                     overview.rendered,
@@ -307,16 +321,16 @@ pub(super) fn finding_overview(
                 let name = if redacted {
                     format!("Measurement {}", index + 1)
                 } else {
-                    metric.label.clone()
+                    escape_controls(&metric.label)
                 };
                 if let Some(value) = measured.result(metric.aggregate) {
                     let _ = writeln!(
                         overview.rendered,
                         "  {name}: {value:.2} {} ({} measured, {} unavailable)",
                         if redacted {
-                            "configured unit"
+                            "configured unit".into()
                         } else {
-                            &metric.unit
+                            escape_controls(&metric.unit)
                         },
                         measured.count,
                         measured.missing
@@ -377,7 +391,7 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
                     .map_or_else(|| "unknown".into(), |ordinal| (ordinal + 1).to_string()),
                 reference["line"],
                 reference["reference_id"].as_str().unwrap_or("source"),
-                label(&excerpt["text"]).replace(['\n', '\r'], " ")
+                escape_controls(label(&excerpt["text"]))
             );
         }
     }
@@ -412,7 +426,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
     let _ = writeln!(
         output,
         "Profile: {}",
-        label(&report["report_metadata"]["active_profile"])
+        escape_controls(label(&report["report_metadata"]["active_profile"]))
     );
     if let Some(selection) =
         report.pointer("/report_metadata/evidence/query/execution/profile_selection")
@@ -486,14 +500,14 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                 "- [{}] {}: {}",
                 label(&finding["scope_id"]),
                 label(&finding["kind"]),
-                label(&finding["claim"])
+                escape_controls(label(&finding["claim"]))
             );
             if !finding["details"]["value"].is_null() {
                 let _ = writeln!(
                     output,
                     "  Value: {} {}",
                     finding["details"]["value"],
-                    label(&finding["details"]["unit"])
+                    escape_controls(label(&finding["details"]["unit"]))
                 );
             }
             write_evidence(&mut output, finding, 2);

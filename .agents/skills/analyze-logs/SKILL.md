@@ -40,6 +40,10 @@ and sums of elapsed intervals are not a critical path. At most 20 groups are sho
 across sections, with omissions and representative citations. Source fields are
 cleared in redacted output. Grouping does not advance the individual findings
 cursor; JSON findings and evidence retrieval remain individual observations.
+Readable excerpts and grouping values escape Unicode controls; use JSON or retained
+evidence for the original decoded text. Retain both physical line and normalized
+row path when citing expanded resource records; sibling rows can provide distinct
+or conflicting hashes even when they share a line.
 Use `--json` for a full structured report or `--summary` for concise findings,
 limitations and next steps; other analysis commands and evidence retrieval default
 to JSON. Summaries do not

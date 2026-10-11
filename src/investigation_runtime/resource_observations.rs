@@ -302,7 +302,10 @@ pub(super) fn analyze(
                     if !resource.matches_owner(&owner) {
                         continue;
                     }
-                    if seen.insert(resource.source.source_line_number) {
+                    if seen.insert((
+                        resource.source.source_line_number,
+                        resource.source.source_row_path.as_deref(),
+                    )) {
                         if !budget.reserve("calculation", 8192 * 16) {
                             return;
                         }

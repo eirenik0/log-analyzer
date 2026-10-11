@@ -704,10 +704,15 @@ fn redaction_cannot_be_proved_by_replacing_original_digests() {
 fn capabilities_require_investigation_discovery_metadata() {
     let caps = invoke(&["capabilities"]);
     let validator = jsonschema::validator_for(&schema("capabilities.schema.json")).unwrap();
+    assert!(validator.is_valid(&caps));
     for (parent, key) in [
         ("", "investigation_contracts"),
         ("/report_schemas", "evidence_artifact"),
         ("/report_schemas", "investigation_contract_versions"),
+        ("/investigation_contracts", "default_output"),
+        ("/investigation_contracts", "retrieval_command"),
+        ("/investigation_contracts", "automatic_artifact"),
+        ("/investigation_contracts", "profile_analysis"),
     ] {
         let mut missing = caps.clone();
         missing

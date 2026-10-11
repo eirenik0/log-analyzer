@@ -4317,3 +4317,172 @@ fn resource_hashes_and_citations_never_cross_manifest_owners() {
         }
     }
 }
+
+#[test]
+fn readable_evidence_escapes_unicode_controls_without_changing_retained_text() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("controls.jsonl");
+    let message: String = (0..=0x9f)
+        .filter_map(char::from_u32)
+        .filter(|character| character.is_control())
+        .collect();
+    let message = format!("synthetic Ω🙂 {message}[2J");
+    fs::write(
+        &source,
+        ["ERROR", "WARN"]
+            .map(|level| {
+                json!({"timestamp":"2025-01-01T00:00:00Z", "level":level, "message":message})
+                    .to_string()
+            })
+            .join("\n")
+            + "\n",
+    )
+    .unwrap();
+    let escaped = message
+        .chars()
+        .fold(String::new(), |mut result, character| {
+            if character.is_control() {
+                result.extend(character.escape_default());
+            } else {
+                result.push(character);
+            }
+            result
+        });
+    for saved in [false, true] {
+        let artifact = temp.path().join(format!("evidence-{saved}.json"));
+        let report_path = temp.path().join("report.txt");
+        let mut args = vec![
+            "--preset",
+            "base",
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+        ];
+        if saved {
+            args.extend(["--output", report_path.to_str().unwrap()]);
+        }
+        let output = run(&args);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = if saved {
+            fs::read_to_string(&report_path).unwrap()
+        } else {
+            String::from_utf8(output.stdout).unwrap()
+        };
+        assert!(text.contains(&escaped), "{text}");
+        assert!(text.contains("Observed ERROR/FATAL records"));
+        assert!(
+            !text
+                .chars()
+                .any(|character| character.is_control() && character != '\n')
+        );
+        let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+        let excerpts: Vec<_> = retained["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|finding| finding["evidence"].as_array().unwrap())
+            .collect();
+        assert_eq!(excerpts.len(), 2);
+        assert!(excerpts.iter().all(|excerpt| excerpt["text"] == message));
+        let report = success(&[
+            "--preset",
+            "base",
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            temp.path()
+                .join(format!("json-{saved}.json"))
+                .to_str()
+                .unwrap(),
+            "--complete-output",
+        ]);
+        assert!(
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|finding| finding["evidence"].as_array().unwrap())
+                .all(|excerpt| excerpt["text"] == message)
+        );
+    }
+}
+
+#[test]
+fn resource_evidence_retains_all_normalized_row_paths_and_deduplicates_exact_rows() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(
+        &profile,
+        format!("{RESOURCE_PROFILE}\n[normalization]\nroot_path = \"/rows\"\nexpand_rows = true\n"),
+    )
+    .unwrap();
+    for (name, sibling_hash, status) in [
+        ("conflict", "b".repeat(64), "unavailable"),
+        ("invalid", "invalid-hash".into(), "unavailable"),
+        ("identical", "a".repeat(64), "fingerprint_match"),
+    ] {
+        let resource = |hash: &str| json!({"address":"asset:reference", "digest":hash});
+        let rows: Vec<Value> = [
+            resource_line("run-one:operation-one", "dimensions", json!({"w":640,"h":480})),
+            resource_line("run-one:operation-one", "manifest listing", json!(["asset:reference"])),
+            resource_line("run-one:operation-one", "asset batch", json!([{"bundle":{"resources":{"items":[resource(&"a".repeat(64)),resource(&"a".repeat(64))]}}}])),
+            resource_line("run-one:operation-one", "asset batch", json!([{"bundle":{"resources":{"items":[resource(&sibling_hash)]}}}])),
+        ].iter().map(|row| serde_json::from_str(row).unwrap()).collect();
+        let source = temp.path().join(format!("{name}.log"));
+        let artifact = temp.path().join(format!("{name}.json"));
+        fs::write(&source, json!({"rows":rows}).to_string() + "\n").unwrap();
+        let report = success(&[
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--complete-output",
+        ]);
+        check(&report, &artifact);
+        let finding = report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|finding| finding["details"].get("resource_status").is_some())
+            .unwrap();
+        assert_eq!(finding["details"]["resource_status"], status);
+        let support = finding["details"]["supporting_occurrences"]
+            .as_array()
+            .unwrap();
+        assert_eq!(support.len(), 4, "{finding}");
+        assert!(
+            support
+                .iter()
+                .all(|occurrence| occurrence["evidence_ref"]["line"] == 1)
+        );
+        let paths: std::collections::BTreeSet<_> = support
+            .iter()
+            .map(|occurrence| occurrence["evidence_ref"]["row_path"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            paths,
+            std::collections::BTreeSet::from(["/rows/0", "/rows/1", "/rows/2", "/rows/3"])
+        );
+        let references: std::collections::BTreeSet<_> = support
+            .iter()
+            .map(|occurrence| occurrence["evidence_ref"]["reference_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(references.len(), 4);
+        let evidence = finding["evidence"].as_array().unwrap();
+        assert_eq!(evidence.len(), 4);
+        assert!(
+            evidence
+                .iter()
+                .all(|excerpt| support.contains(&excerpt["occurrence"]))
+        );
+        let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+        assert!(retained["findings"].as_array().unwrap().contains(finding));
+    }
+}

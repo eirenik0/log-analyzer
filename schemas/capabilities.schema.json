@@ -329,7 +329,11 @@
         "guidance_version",
         "brief_version",
         "project_root_option",
-        "capability_summary"
+        "capability_summary",
+        "default_output",
+        "retrieval_command",
+        "automatic_artifact",
+        "profile_analysis"
       ],
       "additionalProperties": false
     },
