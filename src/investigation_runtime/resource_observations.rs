@@ -93,6 +93,7 @@ pub(super) fn analyze(
     budget: &mut Budget,
     findings: &mut Vec<Value>,
 ) {
+    let rule_key = crate::evidence::digest(rule.id.as_bytes());
     let mut owners: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut resources: BTreeMap<(String, String), Vec<Resource<'_>>> = BTreeMap::new();
     for entry in entries {
@@ -179,6 +180,9 @@ pub(super) fn analyze(
         if !budget.checkpoint("calculation", 1) {
             return;
         }
+        let Some(namespace) = identity(entry, rule, &rule.namespace_prefix) else {
+            continue;
+        };
         let Some(owner) = identity(entry, rule, &rule.owner_prefix) else {
             continue;
         };
@@ -199,7 +203,7 @@ pub(super) fn analyze(
             continue;
         };
         if urls.is_empty() {
-            findings.push(fact(format!("{scope}-resource-observation-{}-{index}", rule.id), scope, "observation", "Manifest lists no resources; absent displayed content cannot be established from this list.", vec![excerpt(entry,context,snapshot)], json!({"resource_status":"empty_manifest","supporting_occurrences":[occurrence(entry,context,snapshot)]})));
+            findings.push(fact(format!("{scope}-resource-observation-{rule_key}-{index}"), scope, "observation", "Manifest lists no resources; absent displayed content cannot be established from this list.", vec![excerpt(entry,context,snapshot)], json!({"resource_status":"empty_manifest","supporting_occurrences":[occurrence(entry,context,snapshot)]})));
             index += 1;
         }
         for url in urls
@@ -210,8 +214,7 @@ pub(super) fn analyze(
             if !budget.checkpoint("calculation", 1) {
                 return;
             }
-            let key = identity(entry, rule, &rule.namespace_prefix)
-                .map(|namespace| (namespace, url.to_owned()));
+            let key = Some((namespace.clone(), url.to_owned()));
             let matches = key
                 .as_ref()
                 .filter(|key| owners.get(*key).is_some_and(|owners| owners.len() == 1))
@@ -298,7 +301,7 @@ pub(super) fn analyze(
                 )
             );
             findings.push(fact(
-                format!("{scope}-resource-observation-{}-{index}", rule.id),
+                format!("{scope}-resource-observation-{rule_key}-{index}"),
                 scope,
                 "observation",
                 &claim,
@@ -312,6 +315,6 @@ pub(super) fn analyze(
         }
     }
     if index == 0 {
-        findings.push(fact(format!("{scope}-resource-observation-{}-unavailable", rule.id), scope, "unknown", "No configured resource observation could be established in the selected processed records.", Vec::new(), json!({"reason":"Unobserved manifest data does not establish absent content.","supporting_occurrences":[]})));
+        findings.push(fact(format!("{scope}-resource-observation-{rule_key}-unavailable"), scope, "unknown", "No configured resource observation could be established in the selected processed records.", Vec::new(), json!({"reason":"Unobserved manifest data does not establish absent content.","supporting_occurrences":[]})));
     }
 }

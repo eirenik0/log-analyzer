@@ -69,7 +69,13 @@ log-analyzer investigate captures/*.log
 The default output explains processing completion, per-file coverage, observed
 ERROR/WARN records, supported measurements and assessment limits. A fresh local
 `log-analyzer-evidence-*` directory stores `evidence.json`; its path and SHA-256
-appear at the end. Profile fingerprint matches appear before source warnings and
+appear at the end. With `--redact`, an automatically created artifact keeps a safe
+relative handle that can be used from the investigation directory; private parent
+paths, profile fingerprint labels and rule names are omitted. The printed `Next`
+command quotes artifact paths for a POSIX shell and includes the continuation cursor.
+Severity evidence is retained within processing budgets: unavailable parsing does
+not establish zero errors or warnings, and interrupted counts are partial.
+Profile fingerprint matches appear before source warnings and
 empty manifests; ordering highlights evidence without claiming a root cause.
 Readable output uses the profile's optional `investigation_view` to organize
 processed findings into sections: for example, resource observations by component
@@ -336,6 +342,11 @@ ceiling. Other defaults are 1,000,000 record attempts, 100,000 expanded-row atte
 storage and 8 MiB per physical line/multiline record. Conservative data allowance
 is 512 times planned input bytes, bounded between 512 MiB and 32 GiB; this is
 accounting, not a RAM allocation or RSS ceiling. Explicit limits override planning.
+Evidence retrieval has a separate 64 MiB default read limit and clones only the
+requested page's items. Larger stored artifacts require an explicit
+`evidence --artifact-max-bytes BYTES` allowance; raise it only on a host with enough
+memory to parse and validate the complete artifact. Output pagination does not
+bound artifact parsing memory.
 Oversized captures can still stop at these finite ceilings; inspect every input's
 capture and scope status. See
 `investigate --help` for overrides. Work accounts for parsing bytes, loop steps

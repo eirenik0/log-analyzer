@@ -553,8 +553,8 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
         );
         let _ = writeln!(
             output,
-            "Next: log-analyzer evidence '{}' --expected-sha256 {} --collection /findings{}",
-            label(&report["artifact"]["location"]),
+            "Next: log-analyzer evidence {} --expected-sha256 {} --collection /findings{}",
+            shell_quote(label(&report["artifact"]["location"])),
             label(&report["artifact"]["stored_sha256"]),
             report["retrieval"]["next_cursor"]
                 .as_str()
@@ -566,4 +566,8 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
         );
     }
     output
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }

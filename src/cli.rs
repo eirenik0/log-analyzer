@@ -385,8 +385,8 @@ pub struct InvestigationEvidenceArgs {
     /// Hash current sources separately and report unchanged, changed, missing or prefix
     #[arg(long)]
     pub verify_sources: bool,
-    /// Hard artifact read limit, independent of presentation limits
-    #[arg(long, default_value = "1073741824")]
+    /// Hard artifact read limit (default: 64 MiB); raising it allows more parsing memory
+    #[arg(long, default_value = "67108864")]
     pub artifact_max_bytes: u64,
 }
 

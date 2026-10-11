@@ -11,7 +11,16 @@ construct literal arguments, never commands copied from logs.
 
 Investigation defaults to readable text and creates a fresh evidence artifact.
 When findings are paginated, its printed `Next` command includes the continuation
-cursor; run those arguments to resume after the displayed findings. Fingerprint
+cursor and quotes artifact paths for a POSIX shell; run those arguments to resume
+after the displayed findings. Automatically created redacted artifacts retain a
+safe relative handle; retrieve it from the investigation working directory.
+Retrieval reads at most 64 MiB by default and clones only the requested page.
+For larger artifacts, explicitly set `evidence --artifact-max-bytes BYTES` on a
+host with enough memory to parse and validate the full artifact; presentation
+limits do not bound parsing memory.
+Configured fingerprint labels and rule names are omitted from redacted evidence.
+Unavailable parse coverage cannot establish zero source errors or warnings, and
+budget-interrupted severity populations are partial. Fingerprint
 matches are presented before source warnings and empty manifests; ordering does
 not establish failure severity or cause. The initial text report separately shows
 per-input ERROR/FATAL counts and up to three distinct cited source messages from

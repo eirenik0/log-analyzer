@@ -139,6 +139,9 @@ pub(crate) struct Context {
     legacy_sanitize_records: bool,
 }
 impl Context {
+    pub fn finding_fields_allowance(&self) -> u64 {
+        (self.finding_source_fields.len() as u64).saturating_mul(4096 * 16)
+    }
     pub fn finding_fields(&self, entry: &LogEntry) -> Option<Value> {
         if self.finding_source_fields.is_empty() {
             return None;

@@ -137,6 +137,14 @@ pub(super) fn redact(artifact: &mut Value) {
         record["verification"] = super::findings::verification(true, "not_applicable");
     }
     for finding in artifact["findings"].as_array_mut().unwrap() {
+        if finding["details"]["resource_status"] == "fingerprint_match" {
+            finding["claim"] = json!(
+                "Resource matches a profile-declared fingerprint. Its private label is omitted by redaction; this observation does not establish displayed content or cause."
+            );
+        }
+        if finding["details"]["fingerprint"].is_object() {
+            finding["details"]["fingerprint"]["label"] = json!("[REDACTED FINGERPRINT]");
+        }
         let arithmetic = finding["verification"]["arithmetic"]
             .as_str()
             .unwrap()
@@ -561,6 +569,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     }
     let full_report = report(&retained, &args.artifact, Some(&bytes));
     crate::investigation::validate_relations(&full_report, Some(&bytes))?;
+    drop(full_report);
     let allowed = [
         "/findings",
         "/records",
@@ -591,7 +600,6 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                         == Some(id)
             })
         })
-        .cloned()
         .collect();
     let base = binding(&retained, &hash);
     let query_binding = digest(
@@ -689,7 +697,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 break;
             }
             payload = candidate;
-            displayed.push(item.clone());
+            displayed.push((*item).clone());
         }
         output["artifact_retrieval"]["items"] = Value::Array(displayed);
     }

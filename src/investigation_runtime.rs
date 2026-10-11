@@ -467,12 +467,15 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         };
         let coverage = perf.as_ref().map(|_| &view);
         scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":if structural_loss{"partial"}else{"complete"},"analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
+        let severity_complete = capture.complete && !structural_loss && budget.stop.is_none();
         budget.begin_stage();
         findings::observed_levels(
             &view.entries,
             &scope_id,
             &context,
             &snapshot,
+            severity_complete,
+            &mut budget,
             &mut findings,
             &mut populations,
             &mut memberships,
@@ -734,6 +737,16 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     }
     let bytes = artifact::bounded_serialization(&retained, budget.limits.artifact_bytes)?;
     let mut report = artifact::report(&retained, &artifact_path, bytes.as_deref());
+    if cli.redact
+        && bytes.is_some()
+        && let Some(directory) = &auto_directory
+    {
+        // This generated handle contains no caller-controlled parent directories.
+        report["artifact"]["location"] = json!(format!(
+            "{}/evidence.json",
+            directory.path().file_name().unwrap().to_string_lossy()
+        ));
+    }
     // Validation reparses the exact stored bytes; release the construction tree first.
     drop(retained);
     if let Some(bytes) = bytes {
