@@ -110,6 +110,12 @@ needed `/findings`, `/records`, and declared membership collections. Follow
 Stop on exhausted budgets, invalid cursors, missing pages, or no progress; do not
 request unlimited output automatically. Retrieval does not repeat analysis.
 
+Readable source/artifact paths escape control characters. For such paths, the
+printed continuation command uses Bash/Zsh ANSI-C quoting; preserve that quoting
+when retrieving evidence. Under redaction, configured resource fingerprint labels
+and digests are omitted together; use the retained match status without trying
+to reconstruct the private fingerprint.
+
 When findings contain `details.event_chain`, inspect the whole chain's evidence
 bundle before explaining it. Retrieve that finding by its `id` from `/findings`
 with the exact artifact checksum; follow pagination if it is not on the current

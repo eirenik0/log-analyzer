@@ -4069,6 +4069,7 @@ fn redacted_resource_labels_ids_and_automatic_artifacts_remain_private_and_retri
         ] {
             assert!(!result.contains(private));
             assert!(!result.contains(private_rule));
+            assert!(!result.contains(&"a".repeat(64)));
             assert!(!result.contains(temp.path().to_str().unwrap()));
         }
         let retained: Value = serde_json::from_str(&bytes).unwrap();
@@ -4078,6 +4079,13 @@ fn redacted_resource_labels_ids_and_automatic_artifacts_remain_private_and_retri
                 .unwrap()
                 .iter()
                 .any(|finding| finding["details"]["resource_status"] == "fingerprint_match")
+        );
+        assert!(
+            retained["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|finding| finding["details"]["fingerprint"].is_null())
         );
         let hash = if json_output {
             serde_json::from_str::<Value>(&text).unwrap()["artifact"]["stored_sha256"]
@@ -4108,6 +4116,7 @@ fn redacted_resource_labels_ids_and_automatic_artifacts_remain_private_and_retri
             String::from_utf8_lossy(&retrieval.stderr)
         );
         let retrieved: Value = serde_json::from_slice(&retrieval.stdout).unwrap();
+        assert!(!String::from_utf8_lossy(&retrieval.stdout).contains(&"a".repeat(64)));
         assert!(
             !retrieved["artifact_retrieval"]["items"]
                 .as_array()
@@ -4316,6 +4325,70 @@ fn resource_hashes_and_citations_never_cross_manifest_owners() {
             assert!(retained["findings"].as_array().unwrap().contains(finding));
         }
     }
+}
+
+#[test]
+#[cfg(unix)]
+fn readable_paths_escape_controls_and_next_command_preserves_the_artifact_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source-\u{1b}[2J\nΩ.log");
+    let artifact = temp.path().join("evidence-\u{1b}[2J\n'\\Ω.json");
+    fs::write(
+        &source,
+        "2025-01-01T00:00:00Z ERROR app: synthetic failure\n",
+    )
+    .unwrap();
+    let output = run(&[
+        "--preset",
+        "base",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!text.chars().any(|c| c.is_control() && c != '\n'));
+    assert!(text.contains("source-\\u{1b}[2J\\nΩ.log"), "{text}");
+    assert!(text.contains("evidence-\\u{1b}[2J\\n"), "{text}");
+    let next = text
+        .lines()
+        .find_map(|line| line.strip_prefix("Next: "))
+        .unwrap();
+    assert!(next.contains("\\033[2J\\012"), "{next}");
+    let bin_dir = Path::new(env!("CARGO_BIN_EXE_log-analyzer"))
+        .parent()
+        .unwrap();
+    let mut paths = vec![bin_dir.to_path_buf()];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    let retrieval = Command::new("/bin/bash")
+        .args(["-c", next])
+        .env("PATH", std::env::join_paths(paths).unwrap())
+        .output()
+        .unwrap();
+    assert!(
+        retrieval.status.success(),
+        "{}",
+        String::from_utf8_lossy(&retrieval.stderr)
+    );
+    let retrieved: Value = serde_json::from_slice(&retrieval.stdout).unwrap();
+    assert!(
+        !retrieved["artifact_retrieval"]["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    assert_eq!(
+        retained["report_metadata"]["evidence"]["inputs"][0]["file"],
+        source.to_str().unwrap()
+    );
 }
 
 #[test]

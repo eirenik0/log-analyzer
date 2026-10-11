@@ -447,14 +447,16 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                 output,
                 "Input {}: {} — {} bytes, {} parsed records ({})",
                 ordinal + 1,
-                coverage["file"]
-                    .as_str()
-                    .or_else(|| report
-                        .pointer("/report_metadata/evidence/query/execution/source_locations")
-                        .and_then(Value::as_array)
-                        .and_then(|paths| paths.get(ordinal))
-                        .and_then(Value::as_str))
-                    .unwrap_or("unavailable source path"),
+                escape_controls(
+                    coverage["file"]
+                        .as_str()
+                        .or_else(|| report
+                            .pointer("/report_metadata/evidence/query/execution/source_locations")
+                            .and_then(Value::as_array)
+                            .and_then(|paths| paths.get(ordinal))
+                            .and_then(Value::as_str))
+                        .unwrap_or("unavailable source path")
+                ),
                 input["consumed_bytes"],
                 coverage["coverage"]["parsed_entries"],
                 label(&input["capture"])
@@ -629,7 +631,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
         let _ = writeln!(
             output,
             "\nEvidence: {}\nSHA-256: {}",
-            label(&report["artifact"]["location"]),
+            escape_controls(label(&report["artifact"]["location"])),
             label(&report["artifact"]["stored_sha256"])
         );
         let _ = writeln!(
@@ -650,5 +652,22 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
 }
 
 fn shell_quote(value: &str) -> String {
+    if value.chars().any(char::is_control) {
+        let mut quoted = String::from("$'");
+        for character in value.chars() {
+            if character.is_control() {
+                for byte in character.encode_utf8(&mut [0; 4]).bytes() {
+                    let _ = write!(quoted, "\\{byte:03o}");
+                }
+            } else {
+                if matches!(character, '\'' | '\\') {
+                    quoted.push('\\');
+                }
+                quoted.push(character);
+            }
+        }
+        quoted.push('\'');
+        return quoted;
+    }
     format!("'{}'", value.replace('\'', "'\\''"))
 }

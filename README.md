@@ -458,6 +458,10 @@ exceed an impossibly small output budget, with an explicit status. An oversized
 atomic bundle requires a larger permitted budget, not automatic unlimited output.
 `--redact` omits captured payloads, raw/message/field data and effective profile,
 replaces excerpts with source omission markers, and hides paths and domain identities.
+Configured resource fingerprint labels and digests are omitted together; the
+analyzer's `fingerprint_match` status remains available. Readable reports escape
+control characters in source and artifact paths. Continuation commands use Bash/Zsh
+ANSI-C quoting for paths containing those characters, preserving the actual path.
 Arithmetic may remain checkable; source/rule verification losses are declared.
 Unavailable source text affects its own input scope; independent retained evidence
 keeps its source verification, with aggregate artifact losses still explicit.

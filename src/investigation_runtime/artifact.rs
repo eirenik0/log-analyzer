@@ -143,7 +143,7 @@ pub(super) fn redact(artifact: &mut Value) {
             );
         }
         if finding["details"]["fingerprint"].is_object() {
-            finding["details"]["fingerprint"]["label"] = json!("[REDACTED FINGERPRINT]");
+            finding["details"]["fingerprint"] = Value::Null;
         }
         if let Some(chain) = finding["details"].get_mut("event_chain") {
             for key in ["id", "title"] {
