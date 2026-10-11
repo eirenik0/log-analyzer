@@ -189,7 +189,7 @@ pub(super) fn analyze(
             }
         }
     }
-    let mut viewports: BTreeMap<String, (&Value, &LogEntry)> = BTreeMap::new();
+    let mut viewports: BTreeMap<(String, String), (&Value, &LogEntry)> = BTreeMap::new();
     let mut index = 0usize;
     for entry in entries {
         if !budget.checkpoint("calculation", 1) {
@@ -201,15 +201,16 @@ pub(super) fn analyze(
         let Some(owner) = identity(entry, rule, &rule.owner_prefix) else {
             continue;
         };
+        let viewport_key = (namespace.clone(), owner.clone());
         if entry.message.starts_with(&rule.viewport_reset_marker) {
-            viewports.remove(&owner);
+            viewports.remove(&viewport_key);
         }
         if entry.message.starts_with(&rule.viewport_marker)
             && let Some(payload) = entry.payload().filter(|value| {
                 value[&rule.width_field].is_number() && value[&rule.height_field].is_number()
             })
         {
-            viewports.insert(owner.clone(), (payload, entry));
+            viewports.insert(viewport_key.clone(), (payload, entry));
         }
         if !entry.message.contains(&rule.manifest_marker) {
             continue;
@@ -286,7 +287,7 @@ pub(super) fn analyze(
             ) {
                 return;
             }
-            let viewport = viewports.get(&owner);
+            let viewport = viewports.get(&viewport_key);
             let mut support = vec![occurrence(entry, context, snapshot)];
             let mut excerpts = vec![excerpt(entry, context, snapshot)];
             if let Some((_, source)) = viewport {

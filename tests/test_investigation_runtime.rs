@@ -4295,6 +4295,101 @@ fn evidence_rejects_large_artifacts_before_reading_with_a_safe_default_limit() {
 }
 
 #[test]
+fn resource_viewports_do_not_cross_namespaces_with_a_shared_owner() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(&profile, RESOURCE_PROFILE).unwrap();
+    let input = temp.path().join("source.log");
+    fs::write(
+        &input,
+        [
+            resource_line(
+                "operation-shared:run-a",
+                "dimensions",
+                json!({"w":640,"h":480}),
+            ),
+            resource_line(
+                "operation-shared:run-b",
+                "manifest listing",
+                json!(["asset:reference"]),
+            ),
+            resource_line(
+                "operation-shared:run-b",
+                "dimensions",
+                json!({"w":800,"h":600}),
+            ),
+            resource_line(
+                "operation-shared:run-a",
+                "manifest listing",
+                json!(["asset:reference"]),
+            ),
+            resource_line("operation-shared:run-b", "new snapshot", Value::Null),
+            resource_line(
+                "operation-shared:run-a",
+                "manifest listing",
+                json!(["asset:reference"]),
+            ),
+            resource_line(
+                "operation-shared:run-b",
+                "manifest listing",
+                json!(["asset:reference"]),
+            ),
+            resource_line(
+                "operation-shared:run-b",
+                "dimensions",
+                json!({"w":1024,"h":768}),
+            ),
+            resource_line(
+                "operation-shared:run-b",
+                "manifest listing",
+                json!(["asset:reference"]),
+            ),
+        ]
+        .concat(),
+    )
+    .unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        input.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    let observations: Vec<_> = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|finding| finding["details"].get("resource_status").is_some())
+        .collect();
+    assert_eq!(observations.len(), 5);
+    for (line, viewport, expected_lines) in [
+        (2, Value::Null, vec![2]),
+        (4, json!({"width":640,"height":480}), vec![1, 4]),
+        (6, json!({"width":640,"height":480}), vec![1, 6]),
+        (7, Value::Null, vec![7]),
+        (9, json!({"width":1024,"height":768}), vec![8, 9]),
+    ] {
+        let finding = observations
+            .iter()
+            .find(|finding| finding["evidence"][0]["occurrence"]["evidence_ref"]["line"] == line)
+            .unwrap();
+        assert_eq!(finding["details"]["viewport"], viewport);
+        let mut lines: Vec<_> = finding["details"]["supporting_occurrences"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|occurrence| occurrence["evidence_ref"]["line"].as_u64().unwrap())
+            .collect();
+        lines.sort_unstable();
+        assert_eq!(lines, expected_lines);
+    }
+}
+
+#[test]
 fn resource_hashes_and_citations_never_cross_manifest_owners() {
     let temp = tempfile::tempdir().unwrap();
     let profile = temp.path().join("profile.toml");
@@ -4998,6 +5093,60 @@ fn connected_chains_preserve_expansion_order_for_roots_and_role_endpoints() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn connected_chains_keep_later_expanded_rows_in_the_same_context() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile.toml");
+    fs::write(
+        &profile,
+        format!(
+            "{}\n[normalization]\nroot_path = \"/rows\"\nexpand_rows = true\n",
+            include_str!("../examples/investigations/chains/profile.toml")
+        ),
+    )
+    .unwrap();
+    let mut rows = vec![
+        chain_event("checkpoint", "run-1", "capture-1", 0),
+        chain_event("submitted", "run-1", "capture-1", 0),
+        chain_event("accepted", "run-1", "capture-1", 0),
+    ];
+    rows.extend((0..12).map(|i| chain_event("poll_send", "run-1", "capture-1", i)));
+    rows.push(chain_event("later_activity", "run-1", "capture-2", 0));
+    rows.push(chain_event("later_activity", "run-2", "capture-1", 0));
+    rows.extend((0..12).map(|i| chain_event("later_activity", "run-1", "capture-3", i)));
+    let input = temp.path().join("events.jsonl");
+    fs::write(&input, json!({"rows":rows}).to_string() + "\n").unwrap();
+    let artifact = temp.path().join("evidence.json");
+    let report = success(&[
+        "--profile",
+        profile.to_str().unwrap(),
+        "investigate",
+        input.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    check(&report, &artifact);
+    let chain = event_chains(&report)[0];
+    assert_eq!(chain["later_activity_observed_count"], 13);
+    assert_eq!(chain["omitted_later_activity"], 10);
+    let later = chain["later_activity"].as_array().unwrap();
+    assert_eq!(later.len(), 3);
+    for (sample, row) in later.iter().zip(26..29) {
+        assert_eq!(sample["occurrence"]["evidence_ref"]["line"], 1);
+        assert_eq!(
+            sample["occurrence"]["evidence_ref"]["row_path"],
+            format!("/rows/{row}")
+        );
+        assert!(
+            report["findings"][0]["evidence"]
+                .as_array()
+                .unwrap()
+                .contains(sample)
+        );
     }
 }
 

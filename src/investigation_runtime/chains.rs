@@ -113,6 +113,10 @@ fn identities(entry: &LogEntry, fields: &[String]) -> Vec<Value> {
         .map(|f| json!({"field":f,"value":field(entry,f)}))
         .collect()
 }
+// References into the same parsed slice retain physical and expansion order.
+fn source_order(entry: &LogEntry) -> usize {
+    std::ptr::from_ref(entry) as usize
+}
 fn samples<'a>(entries: &[&'a LogEntry]) -> Vec<&'a LogEntry> {
     let mut result = Vec::new();
     if let Some(first) = entries.first() {
@@ -277,8 +281,7 @@ pub(super) fn calculate(
             }
         }
         let mut ordered_roots: Vec<_> = roots.values().collect();
-        // References into the same parsed slice retain physical and expansion order.
-        ordered_roots.sort_by_key(|events| std::ptr::from_ref(events[0]) as usize);
+        ordered_roots.sort_by_key(|events| source_order(events[0]));
         for (root_index, root_entries) in ordered_roots.into_iter().enumerate() {
             if !budget.checkpoint("calculation", 1)
                 || !budget.reserve(
@@ -363,7 +366,7 @@ pub(super) fn calculate(
                         }
                     }
                 }
-                targets.sort_by_key(|e| std::ptr::from_ref(*e) as usize);
+                targets.sort_by_key(|e| source_order(e));
                 let sampled = step_samples(&targets, step.outcome_field.as_deref());
                 let joins: Vec<_> = sampled.iter().map(|target| {
                     let (source,source_count,target_count)=joins_by_target[&(target.source_line_number,target.source_row_path.as_deref())];
@@ -385,24 +388,24 @@ pub(super) fn calculate(
                 node_completeness.insert(step.id.as_str(), step_complete);
                 selected_nodes.insert(step.id.as_str(), targets);
             }
-            let last_line = selected_nodes
+            let last_order = selected_nodes
                 .values()
                 .flatten()
-                .map(|e| e.source_line_number)
+                .map(|e| source_order(e))
                 .max()
-                .unwrap_or(root.source_line_number);
+                .unwrap_or_else(|| source_order(root));
             let activity = context_key.and_then(|k| later_index.get(&k));
             let activity_count = activity.map(|events| {
                 events
                     .len()
-                    .saturating_sub(events.partition_point(|e| e.source_line_number <= last_line))
+                    .saturating_sub(events.partition_point(|e| source_order(e) <= last_order))
             });
             let later: Vec<_> = activity
                 .into_iter()
                 .flatten()
                 .rev()
                 .take(3)
-                .filter(|e| e.source_line_number > last_line)
+                .filter(|e| source_order(e) > last_order)
                 .collect::<Vec<_>>()
                 .into_iter()
                 .rev()

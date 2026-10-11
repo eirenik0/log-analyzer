@@ -148,7 +148,8 @@ continuation cursors apply to chains as whole findings.
 
 Each chain's bundle retains first/last linked occurrences per role, up to two
 additional distinct outcome values, up to two ambiguous candidates, and the last
-three selected same-context records after its last linked physical source line.
+three selected same-context records after its last linked event in parser order,
+including later expanded rows on the same physical source line.
 Omission counts disclose additional linked/outcome/later records; retrieve retained
 records when the bundle is insufficient. Terminal and contrary roles must be
 configured explicitly. Later activity has a separately declared, potentially
@@ -231,6 +232,8 @@ geometry and known fingerprints. Investigation applies the selected profile's
 rules automatically; no domain-specific CLI switch is needed. Message markers,
 identity fields/prefixes, payload paths and fingerprint labels live in TOML.
 Unique ownership is required; missing or conflicting hashes remain unknown.
+Viewport observations and resets are scoped by both namespace and owner, even
+when the configured owner segment precedes the namespace segment.
 Resource batches with an explicit owner contribute hashes and citations only to
 that owner's manifest. Namespace-only batches remain eligible when the manifest
 has a unique owner. Normalized resource citations retain each distinct row path,

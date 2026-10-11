@@ -56,7 +56,9 @@ issue. Resource relationships, geometry and fingerprint rules belong in the sele
 profile's `[[resource_observations]]` declarations and run during investigation.
 Do not invent product-specific CLI switches. Unique scoped joins distinguish declared
 fingerprint matches, different bytes and unavailable evidence; a name or fingerprint
-does not establish rendered content or root cause.
+does not establish rendered content or root cause. Verify both namespace and owner
+for every geometry citation; reusing an owner ID does not authorize a join across
+namespaces.
 
 ## 3. Retrieve the evidence
 
@@ -101,7 +103,8 @@ Before claiming something is missing or unfinished, verify:
   does not prove complete upstream capture.
 - **Final events:** inspect later records and exact kind, name, ID, scope, and
   occurrence. Check reused IDs; substring matches and the last displayed row are
-  not final lifecycle boundaries.
+  not final lifecycle boundaries. For expanded input, inspect row paths and parser
+  order even when physical lines or timestamps coincide.
 - **Outcomes:** inspect terminal, result/summary, contrary, and unclassified records.
   A failed end still establishes an ending. An end without a start establishes
   neither a duration nor a reconstructed complete lifecycle.
