@@ -54,6 +54,18 @@ def requirement(claim, artifact):
                       end_operation=subject['end_operation'])
     elif claim['kind'] == 'link':
         result.update(finding_id=claim['finding_id'], step_id=claim['step_id'])
+        subject = claim['subject']
+        for fi, finding in enumerate(artifact['findings']):
+            if finding['id'] != claim['finding_id']:
+                continue
+            for si, step in enumerate(finding['details']['event_chain'].get('steps', [])):
+                if step['id'] != claim['step_id']:
+                    continue
+                for ji, join in enumerate(step.get('join_samples', [])):
+                    if join['source'] == subject['source'] and join['target'] == subject['target']:
+                        result['pointer'] = f'/findings/{fi}/details/event_chain/steps/{si}/join_samples/{ji}'
+                        return result
+        raise ValueError('Link must select an exact retained source/target join')
     elif claim['kind'] == 'distinct_records':
         result['population'] = {'pointer': claim['pointer'], 'operation': claim.get('operation')}
     elif claim['kind'] == 'fact':
@@ -140,8 +152,9 @@ def compile_plan(draft, artifact, plan):
 def inventory(draft, artifact):
     def address(occurrence):
         ref = occurrence.get('evidence_ref', {})
-        return {'input_ordinal': occurrence.get('input_ordinal'),
-                'line': ref.get('line'), 'row_path': ref.get('row_path')}
+        return {k: v for k, v in {'input_ordinal': occurrence.get('input_ordinal'),
+                                  'line': ref.get('line'), 'row_path': ref.get('row_path')}.items()
+                if v is not None}
 
     options = []
     for claim in draft['claims']:

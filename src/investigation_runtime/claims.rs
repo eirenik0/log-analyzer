@@ -838,6 +838,17 @@ fn check_requirements(
                     retained["content"] != "redacted"
                         && spec.finding_id.as_ref() == Some(finding_id)
                         && spec.step_id.as_ref() == Some(step_id)
+                        && finding.is_some_and(|(fi, _)| {
+                            chain.is_some_and(|c| c["steps"].as_array().into_iter().flatten().enumerate().any(|(si, step)| {
+                                step["id"] == *step_id && step["join_samples"].as_array().into_iter().flatten().enumerate().any(|(ji, join)| {
+                                    spec.pointer.as_deref() == Some(format!("/findings/{fi}/details/event_chain/steps/{si}/join_samples/{ji}").as_str())
+                                        && complete_occurrence(&join["source"])
+                                        && complete_occurrence(&join["target"])
+                                        && join["source"] == check["identity"]["observed"]["source"]
+                                        && join["target"] == check["identity"]["observed"]["target"]
+                                })
+                            }))
+                        })
                 }
                 Assertion::DistinctRecords {
                     pointer, operation, ..
@@ -1371,17 +1382,25 @@ mod final_review_tests {
 
     #[test]
     fn link_and_fact_requirements_bind_steps_fields_and_values() {
-        let step = |id| json!({"id":id,"status":"observed","linked_count":1,"count_completeness":"complete"});
-        let retained = json!({"findings":[{"id":"root","details":{"event_chain":{"ambiguity":"none","steps":[step("end"),step("cache")]}}}],"first":true,"second":false,"same":true});
+        let occurrence = |line| json!({"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"input_id":"i","reference_id":"r","line":line,"row_path":null}});
+        let source = occurrence(1);
+        let step = |id, line| json!({"id":id,"status":"observed","linked_count":1,"count_completeness":"complete","join_samples":[{"source":source,"target":occurrence(line)}]});
+        let mut retained = json!({"findings":[{"id":"root","scope_id":"scope","details":{"event_chain":{"root":source,"identity":[{"field":"id","value":"a"}],"ambiguity":"none","steps":[step("end",2),step("cache",3)]}}}],"first":true,"second":false,"same":true});
+        retained["findings"][0]["details"]["event_chain"]["steps"][0]["linked_count"] = json!(2);
+        retained["findings"][0]["details"]["event_chain"]["steps"][0]["join_samples"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"source":source,"target":occurrence(4)}));
+        let subject = |line| json!({"snapshot_id":"s","input_ordinal":0,"scope_id":"scope","root":source,"identity":[{"field":"id","value":"a"}],"source":source,"target":occurrence(line)});
         let assertions = json!({"version":1,"required_claim_ids":["completion","failure","first","second"],
             "claims":[
-                {"id":"completion","kind":"link","finding_id":"root","step_id":"end"},
-                {"id":"failure","kind":"link","finding_id":"root","step_id":"cache"},
+                {"id":"completion","kind":"link","finding_id":"root","step_id":"end","subject":subject(2)},
+                {"id":"failure","kind":"link","finding_id":"root","step_id":"cache","subject":subject(3)},
                 {"id":"first","kind":"fact","pointer":"/first","equals":true},
                 {"id":"second","kind":"fact","pointer":"/second","equals":false}],
             "requirements":[
-                {"id":"completion","kind":"link","finding_id":"root","step_id":"end"},
-                {"id":"failure","kind":"link","finding_id":"root","step_id":"cache"},
+                {"id":"completion","kind":"link","finding_id":"root","step_id":"end","pointer":"/findings/0/details/event_chain/steps/0/join_samples/0"},
+                {"id":"failure","kind":"link","finding_id":"root","step_id":"cache","pointer":"/findings/0/details/event_chain/steps/1/join_samples/0"},
                 {"id":"first","kind":"fact","field":{"pointer":"/first","equals":true}},
                 {"id":"second","kind":"fact","field":{"pointer":"/second","equals":false}}]});
         let temp = tempfile::tempdir().unwrap();
@@ -1399,6 +1418,8 @@ mod final_review_tests {
         let mut links = assertions.clone();
         links["claims"][0]["id"] = json!("failure");
         links["claims"][1]["id"] = json!("completion");
+        let mut other_target = assertions.clone();
+        other_target["claims"][0]["subject"] = subject(4);
         let mut facts = assertions.clone();
         facts["claims"][2]["id"] = json!("second");
         facts["claims"][3]["id"] = json!("first");
@@ -1406,7 +1427,7 @@ mod final_review_tests {
         same_value["claims"][2]["pointer"] = json!("/same");
         let mut wrong_value = assertions.clone();
         wrong_value["requirements"][2]["field"]["equals"] = json!(false);
-        for wrong in [links, facts, same_value, wrong_value] {
+        for wrong in [links, other_target, facts, same_value, wrong_value] {
             let result = verified(&wrong);
             assert!(
                 result["checks"]

@@ -2,7 +2,7 @@
 default: minor
 ---
 
-Bind question claims to exact interval pointers and endpoints, link steps, fact fields and count
+Bind question claims to exact interval pointers and endpoints, exact link joins, fact fields and count
 populations, including intervals between intermediate chain steps. Add editable drafts and require typed mappings for final review.
 Support anchored unknowns with exact interval starts and Unicode reason limits,
 while rejecting invalid selectors and available evidence.

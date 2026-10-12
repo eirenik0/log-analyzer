@@ -221,8 +221,8 @@ class QuestionMappingTests(unittest.TestCase):
 
     def test_link_fact_and_interval_bindings_are_independent_of_selection(self):
         for first, second in [
-            ({'kind': 'link', 'finding_id': 'root-a', 'step_id': 'end'},
-             {'kind': 'link', 'finding_id': 'root-a', 'step_id': 'cache'}),
+            ({'kind': 'link', 'finding_id': 'root-a', 'step_id': 'end', 'subject': {'source': {'line': 1}, 'target': {'line': 2}}},
+             {'kind': 'link', 'finding_id': 'root-a', 'step_id': 'end', 'subject': {'source': {'line': 1}, 'target': {'line': 3}}}),
             ({'kind': 'fact', 'pointer': '/first', 'equals': True},
              {'kind': 'fact', 'pointer': '/second', 'equals': False}),
             (self.draft['claims'][0], {**self.draft['claims'][0],
@@ -233,6 +233,9 @@ class QuestionMappingTests(unittest.TestCase):
             draft = {'claims': [{**first, 'id': 'first'}, {**second, 'id': 'second'}]}
             artifact = copy.deepcopy(self.artifact)
             artifact['report_metadata'] = {}
+            if first['kind'] == 'link':
+                artifact['findings'][0]['details']['event_chain']['steps'] = [
+                    {'id': 'end', 'join_samples': [c['subject'] for c in draft['claims']]}]
             bindings = [{k: v for k, v in mapping.requirement(c, artifact).items() if k != 'kind'}
                         for c in draft['claims']]
             plan = {'questions': [{'id': cid, 'claim_id': cid, 'binding': binding}
@@ -291,6 +294,8 @@ class QuestionMappingTests(unittest.TestCase):
                 {'id': f'interval-{index}', 'kind': 'interval', 'pointer': '/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval',
                  'expected_ms': index, 'subject': {'source': occurrence, 'target': occurrence, 'start_operation': 'Start', 'end_operation': 'End'}},
                 {'id': f'count-{index}', 'kind': 'distinct_records', 'pointer': '/findings/0/details/event_chain/steps/0/evidence', 'expected': 1}])
+        artifact['findings'][0]['details']['event_chain']['steps'] = [
+            {'id': 'end', 'join_samples': [c['subject'] for c in claims if c['kind'] == 'link']}]
         inventory = mapping.inventory({'claims': claims}, artifact)
         text = json.dumps(inventory, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         preview = json.loads(text[:5000])

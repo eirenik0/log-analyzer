@@ -2224,7 +2224,7 @@ Legacy claims remain accepted with weaker `link_exists`/`retained_interval` assu
 Typed `requirements` prevent unrelated claims from satisfying a question ID.
 Intervals bind their selected finding, exact retained pointer and start/end operations, including
 intervals between intermediate steps; counts bind a
-retained population pointer and operation filter. Links bind a finding and step;
+retained population pointer and operation filter. Links bind a finding, step and exact retained join pointer;
 facts bind a field pointer and expected value. Declare unsupported
 questions in `unresolved`, with a retained finding anchor and reason (up to 4096
 Unicode characters); unknown intervals preserve their requested start/end names; available requested
