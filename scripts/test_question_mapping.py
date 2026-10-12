@@ -245,11 +245,20 @@ class QuestionMappingTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             mapping.compile_plan(self.draft, self.artifact, plan)
 
-    def test_nonroot_interval_is_not_a_question_duration(self):
-        wrong = copy.deepcopy(self.draft)
-        wrong['claims'][0]['subject']['source'] = {'line': 2}
-        with self.assertRaises(ValueError):
-            mapping.compile_plan(wrong, self.artifact, self.plan)
+    def test_intermediate_interval_compiles_and_remains_visible(self):
+        draft = copy.deepcopy(self.draft)
+        draft['claims'][0]['subject'].update(source={'input_ordinal': 0, 'evidence_ref': {'line': 2, 'row_path': None}},
+                                           start_operation='Submitted')
+        plan = copy.deepcopy(self.plan)
+        plan['questions'][0]['binding']['start_operation'] = 'Submitted'
+        result = mapping.compile_plan(draft, self.artifact, plan)
+        self.assertEqual(result['requirements'][0]['start_operation'], 'Submitted')
+        self.assertEqual(result['claims'][0]['subject'], draft['claims'][0]['subject'])
+        option = mapping.inventory(draft, self.artifact)['supported_options'][0]
+        self.assertEqual(option['claim_id'], 'interval-a')
+        self.assertEqual(option['source']['line'], 2)
+        with self.assertRaisesRegex(ValueError, 'matching binding'):
+            mapping.compile_plan(draft, self.artifact, self.plan)
         self.positive()
 
 

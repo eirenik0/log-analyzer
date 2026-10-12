@@ -810,13 +810,13 @@ fn check_requirements(
             };
             let bound = match &claim.assertion {
                 Assertion::Interval { pointer, .. } => {
-                    root_matches
+                    chain.is_some_and(|c| complete_occurrence(&c["root"]))
+                        && retained["content"] != "redacted"
                         && finding.is_some_and(|(index, _)| {
                             pointer.starts_with(&format!(
                                 "/findings/{index}/details/event_chain/steps/"
                             ))
                         })
-                        && chain.is_some_and(|c| check["observed"]["source"] == c["root"])
                         && spec
                             .start_operation
                             .as_ref()
@@ -1166,9 +1166,11 @@ mod final_review_tests {
         );
     }
     #[test]
-    fn interval_requirements_distinguish_findings_with_shared_roots() {
+    fn interval_requirements_bind_intermediate_sources_to_exact_findings_and_names() {
         let root = json!({"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"input_id":"i","reference_id":"r","line":1,"row_path":null}});
-        let interval = json!({"status":"measured","unit":"ms","source":root,"start_operation":"start","end_operation":"end",
+        let mut source = root.clone();
+        source["evidence_ref"]["line"] = json!(2);
+        let interval = json!({"status":"measured","unit":"ms","source":source,"start_operation":"submitted","end_operation":"end",
             "start_timestamp":"2026-01-01T00:00:00Z","end_timestamp":"2026-01-01T00:00:00.010Z"});
         let finding = |id| {
             json!({"id":id,"details":{"event_chain":{"root":root,"root_event_name":"start",
@@ -1176,7 +1178,7 @@ mod final_review_tests {
         };
         let retained = json!({"findings":[finding("a"),finding("b")]});
         let mut assertions = json!({"version":1,"required_claim_ids":["duration"],
-            "requirements":[{"id":"duration","kind":"interval","finding_id":"a","start_operation":"start","end_operation":"end"}],
+            "requirements":[{"id":"duration","kind":"interval","finding_id":"a","start_operation":"submitted","end_operation":"end"}],
             "claims":[{"id":"duration","kind":"interval","pointer":"/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval","expected_ms":10}]});
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("interval.json");
@@ -1192,6 +1194,12 @@ mod final_review_tests {
         assert_eq!(wrong["status"], "needs_revision");
         assertions["requirements"][0]["finding_id"] = json!("b");
         assert_eq!(check(&assertions)["status"], "verified");
+        for key in ["start_operation", "end_operation"] {
+            let expected = assertions["requirements"][0][key].clone();
+            assertions["requirements"][0][key] = json!("wrong-operation");
+            assert_eq!(check(&assertions)["status"], "needs_revision");
+            assertions["requirements"][0][key] = expected;
+        }
     }
 
     #[test]

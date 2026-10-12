@@ -49,10 +49,7 @@ def requirement(claim, artifact):
         if len(parts) < 3 or parts[1] != 'findings' or not parts[2].isdigit():
             raise ValueError('Interval must use the draft retained finding pointer')
         finding = artifact['findings'][int(parts[2])]
-        chain = finding['details']['event_chain']
         subject = claim['subject']
-        if subject['source'] != chain['root']:
-            raise ValueError('A question interval must start at its retained scoped root')
         result.update(finding_id=finding['id'], start_operation=subject['start_operation'],
                       end_operation=subject['end_operation'])
     elif claim['kind'] == 'link':
@@ -157,7 +154,7 @@ def inventory(draft, artifact):
             row['finding_id'] = artifact['findings'][int(parts[2])]['id']
         subject = claim.get('subject', {})
         for key in ('source', 'target'):
-            if key in subject and not (claim['kind'] == 'interval' and key == 'source'):
+            if key in subject:
                 row[key] = address(subject[key])
         for key in ('expected_ms', 'expected'):
             if key in claim:

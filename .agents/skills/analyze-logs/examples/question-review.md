@@ -19,8 +19,8 @@ finding anchors for unknowns. For example:
 "summary_consistency","causal_support"]}
 ```
 
-Choose each expected `binding` independently of its claim selector: interval root
-and endpoints; link `finding_id`/`step_id`; fact `field: {pointer, equals}`.
+Choose each expected `binding` independently of its claim selector: interval finding
+and endpoints (the source may be an intermediate step); link `finding_id`/`step_id`; fact `field: {pointer, equals}`.
 Replace illustrative values and include every actual question. Supply the
 review checks only after inspection. Supporting cached/contrary links keep their
 own IDs; they cannot substitute for an unknown measurement. Count questions must
