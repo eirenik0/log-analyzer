@@ -169,7 +169,7 @@ pub(super) fn redact(artifact: &mut Value) {
             finding["details"]["fingerprint"] = Value::Null;
         }
         if let Some(chain) = finding["details"].get_mut("event_chain") {
-            for key in ["id", "title"] {
+            for key in ["id", "title", "root_event_name"] {
                 opaque(&mut chain[key]);
             }
             for key in ["scope_fields"] {
@@ -678,6 +678,43 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     let full_report = report(&retained, &args.artifact, Some(&bytes));
     crate::investigation::validate_relations(&full_report, Some(&bytes))?;
     drop(full_report);
+    if cli.redact && retained["report_metadata"]["evidence"]["redaction"]["applied"] != true {
+        return Err("Retrieve an artifact created with --redact; original evidence cannot be presented as a redacted retained artifact".into());
+    }
+    if args.draft_claims {
+        let draft = super::claims::draft(&retained, args.id.as_deref())?;
+        let path = cli
+            .output
+            .as_ref()
+            .ok_or("--draft-claims requires --output")?;
+        if same_destination(path, &args.artifact, true) {
+            return Err("Claim draft destination conflicts with the retained artifact".into());
+        }
+        for input in retained["report_metadata"]["evidence"]["inputs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            if input["file"]
+                .as_str()
+                .is_some_and(|file| same_destination(path, Path::new(file), true))
+            {
+                return Err("Claim draft destination conflicts with a captured source".into());
+            }
+        }
+        let mut temporary = stage(path)?;
+        serde_json::to_writer_pretty(&mut temporary, &draft)?;
+        temporary.write_all(b"\n")?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist_noclobber(path)
+            .map_err(|_| "Claim drafts save only new files; choose a new --output path")?;
+        println!(
+            "{}",
+            json!({"status":"draft_requires_review","claims_path":crate::evidence::path_label(path),"candidate_claims":draft["claims"].as_array().map_or(0,Vec::len),"limitations":["Draft expectations come from retained evidence, not independent truth. Match the question and source semantics, remove unrelated claims, map checklist IDs, and acknowledge final review only after inspection. Missing endings are not drafted as absence claims."],"next_action":{"kind":"review_then_verify_claims","argv":[std::env::current_exe()?.to_string_lossy(),"evidence",crate::evidence::path_label(&args.artifact),"--expected-sha256",hash,"--claims",crate::evidence::path_label(path)]}})
+        );
+        return Ok(());
+    }
     let allowed = [
         "/findings",
         "/records",
@@ -710,7 +747,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         .transpose()?;
     let claims_failed = claim_verification
         .as_ref()
-        .is_some_and(|v| v["status"] != "verified");
+        .is_some_and(|v| v["status"] != "verified" && v["status"] != "verified_with_unknowns");
     let collection = if args.collection == "/chain-bundles" {
         &bundles
     } else {
@@ -773,9 +810,77 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     if args.compact {
         output["artifact_retrieval"]["view"] = json!("compact");
     }
+    let mut declared_questions: Vec<String> = claim_verification
+        .as_ref()
+        .and_then(|v| v["questions"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    let mut declared_required: Vec<String> = claim_verification
+        .as_ref()
+        .and_then(|v| v["required_claim_ids"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    let checklist = &retained["report_metadata"]["evidence"]["query"]["command"]["Investigate"];
+    if declared_questions.is_empty() {
+        declared_questions = checklist["question"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect();
+    }
+    let original_required: Vec<String> = checklist["required_relationship"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    for id in original_required {
+        if !declared_required.contains(&id) {
+            declared_required.push(id);
+        }
+    }
+    let mut workflow =
+        super::guidance::workflow(&retained, &declared_questions, &declared_required, &[]);
     if let Some(verification) = claim_verification {
+        workflow["declared_claims"] = verification["status"].clone();
+        workflow["claim_results"] = json!(
+            verification["checks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|c| json!({"id":c["id"],"status":c["status"],"assurance":c["assurance"]}))
+                .collect::<Vec<_>>()
+        );
+        let missing: Vec<_> = declared_required
+            .iter()
+            .filter(|id| {
+                !verification["unresolved_required_claim_ids"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|u| u == *id)
+                    && !verification["checks"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .any(|c| c["id"] == **id)
+            })
+            .collect();
+        if !missing.is_empty() {
+            workflow["declared_claims"] = json!("needs_revision");
+        }
+        workflow["missing_required_claim_ids"] = json!(missing);
+        workflow["unresolved_required_claim_ids"] =
+            verification["unresolved_required_claim_ids"].clone();
+        workflow["requirement_results"] = verification["requirement_results"].clone();
         output["artifact_retrieval"]["claim_verification"] = verification;
     }
+    output["artifact_retrieval"]["workflow"] = workflow;
     let refresh = |output: &mut Value, count: usize, status: &str| {
         let section = &mut output["artifact_retrieval"];
         section["displayed"] = json!(count);
@@ -786,6 +891,54 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         } else {
             Value::Null
         };
+        section["workflow"]["evidence_delivery"] = json!({"collection":args.collection,"finding_id":args.id,"delivered_this_page":count,"omitted_this_collection":selected.len()-prior-count,"prior_items":prior});
+        let mut argv = vec![
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.to_str().map(str::to_owned))
+                .unwrap_or_else(|| "log-analyzer".into()),
+            "evidence".into(),
+            crate::evidence::path_label(&args.artifact),
+            "--expected-sha256".into(),
+            hash.clone(),
+            "--collection".into(),
+            args.collection.clone(),
+            "--report-max-items".into(),
+            max.clamp(1, 5).to_string(),
+        ];
+        if let Some(id) = &args.id {
+            argv.extend(["--id".into(), id.clone()]);
+        }
+        if args.compact {
+            argv.push("--compact".into());
+        }
+        if let Some(claims) = &args.claims {
+            argv.extend(["--claims".into(), crate::evidence::path_label(claims)]);
+        }
+        if selected.len() > prior && count == 0 {
+            section["workflow"]["next_action"] = json!({"kind":"retrieval_stopped","argv":null,"reason":"No evidence delivered within this page budget. Stop; revise limits only within the agreed budget. Do not loop the unchanged query."});
+        } else if let Some(cursor) = section["next_cursor"].as_str() {
+            argv.extend(["--report-cursor".into(), cursor.into()]);
+            section["workflow"]["next_action"] =
+                json!({"kind":"retrieve_omitted_evidence","argv":argv});
+        } else if args.claims.is_none()
+            && count > 0
+            && retained["findings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|f| f["details"].get("event_chain").is_some())
+        {
+            argv.truncate(5);
+            argv.extend([
+                "--draft-claims".into(),
+                "--output".into(),
+                crate::evidence::path_label(&args.artifact.with_file_name("claims-draft.json")),
+            ]);
+            section["workflow"]["next_action"] = json!({"kind":"review_then_draft_claims","argv":argv,"reason":"Inspect delivered subjects and gaps first. Save editable assertions, map question checklist IDs, remove unrelated intervals, then run the returned verification argv. Drafting does not establish truth or review."});
+        } else {
+            section["workflow"]["next_action"] = json!({"kind":"inspect_delivered_evidence_and_verification","argv":null,"reason":"Inspect exact subjects, terminal/contrary/later events and omissions. Declare source-bound claims after review; do not repeat completed retrieval without a specific remaining gap."});
+        }
     };
     refresh(
         &mut output,

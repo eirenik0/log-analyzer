@@ -635,3 +635,39 @@ fn embedded_identifiers_in_preparation_query_paths_are_redacted_on_stdout_and_di
     assert!(candidate.is_file());
     log_analyzer::config::load_config_from_path(&candidate).unwrap();
 }
+
+#[test]
+fn preparation_handoff_runs_validation_with_independent_facts() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let input = fixture(root);
+    let template = profile(root, "source", "session");
+    let expected = facts(root, "a");
+    let (prepared, output) = prepare(root, &input, &template, &[]);
+    assert!(output.status.success());
+    let action = &prepared["profile_preparation"]["next_action"];
+    assert!(action["argv"].is_null());
+    assert_eq!(action["required_inputs"][0], "--expected");
+    let mut argv: Vec<String> = serde_json::from_value(action["argv_prefix"].clone()).unwrap();
+    argv.extend(["--expected".into(), expected.clone()]);
+    let refs: Vec<&str> = argv.iter().skip(1).map(String::as_str).collect();
+    let (validated, output) = run(&refs);
+    assert!(output.status.success());
+    assert_eq!(
+        validated["profile_validation"]["expected_facts"]["status"],
+        "passed"
+    );
+    // The same literal handoff must reject independently incorrect scope truth.
+    let mut wrong: Value = serde_json::from_slice(&fs::read(&expected).unwrap()).unwrap();
+    wrong["records"][1]["checks"]["/semantics/scope"] = json!(["wrong-scope"]);
+    fs::write(&expected, wrong.to_string()).unwrap();
+    let (rejected, _) = run(&refs);
+    assert_eq!(
+        rejected["profile_validation"]["expected_facts"]["status"],
+        "failed"
+    );
+    fs::remove_file(root.join("prepared.toml")).unwrap();
+    let (redacted, output) = prepare(root, &input, &template, &["--redact"]);
+    assert!(output.status.success());
+    assert!(redacted["profile_preparation"].get("next_action").is_none());
+}

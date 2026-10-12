@@ -108,6 +108,14 @@ fn explicit_project_root_is_stable_from_nested_working_directory() {
         .map(|a| a.as_str().unwrap())
         .collect();
     assert!(!argv.contains(&"--report-cursor"));
+    let next = &report["guidance"]["workflow"]["next_action"];
+    assert_eq!(next["kind"], "retrieve_findings");
+    assert!(
+        !next["argv"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("--report-cursor"))
+    );
     let page = run(root, &argv[1..]);
     assert_eq!(page["artifact_retrieval"]["prior"], 0);
     assert_eq!(
@@ -370,4 +378,117 @@ fn navigation_fields_are_required_in_full_and_summary_capabilities() {
             assert!(!validator.is_valid(&missing), "{field} omission accepted");
         }
     }
+}
+
+#[test]
+fn evidence_budget_stop_has_no_unchanged_retry_action() {
+    let temp = fixture();
+    let report = run(
+        temp.path(),
+        &[
+            "investigate",
+            "captures/input.jsonl",
+            "--artifact",
+            "evidence.json",
+            "--summary",
+        ],
+    );
+    let sha = report["artifact"]["stored_sha256"].as_str().unwrap();
+    let stopped = run(
+        temp.path(),
+        &[
+            "evidence",
+            "evidence.json",
+            "--expected-sha256",
+            sha,
+            "--report-max-items",
+            "0",
+        ],
+    );
+    let workflow = &stopped["artifact_retrieval"]["workflow"];
+    assert_eq!(stopped["artifact_retrieval"]["displayed"], 0);
+    assert_eq!(workflow["relevant_evidence_review"], "unconfirmed");
+    assert_eq!(workflow["next_action"]["kind"], "retrieval_stopped");
+    assert!(workflow["next_action"]["argv"].is_null());
+    let positive = run(
+        temp.path(),
+        &[
+            "evidence",
+            "evidence.json",
+            "--expected-sha256",
+            sha,
+            "--report-max-items",
+            "1",
+        ],
+    );
+    assert_eq!(positive["artifact_retrieval"]["displayed"], 1);
+    let next = &positive["artifact_retrieval"]["workflow"]["next_action"];
+    assert_eq!(next["kind"], "retrieve_omitted_evidence");
+    let argv: Vec<_> = next["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    let page = run(temp.path(), &argv[1..]);
+    assert_eq!(page["artifact_retrieval"]["prior"], 1);
+}
+
+#[test]
+fn redacted_workflow_does_not_echo_private_question_or_relationship_labels() {
+    let temp = fixture();
+    let report = run(
+        temp.path(),
+        &[
+            "--redact",
+            "investigate",
+            "captures/input.jsonl",
+            "--artifact",
+            "redacted.json",
+            "--question",
+            "Did PRIVATE_CHECKPOINT finish?",
+            "--required-relationship",
+            "PRIVATE_RELATIONSHIP",
+            "--summary",
+        ],
+    );
+    let text = report.to_string();
+    assert!(!text.contains("PRIVATE_CHECKPOINT"));
+    assert!(!text.contains("PRIVATE_RELATIONSHIP"));
+    assert_eq!(
+        report["guidance"]["workflow"]["question_identity_omitted"],
+        true
+    );
+    assert_eq!(
+        report["guidance"]["workflow"]["questions"],
+        serde_json::json!(["[REDACTED QUESTION]"])
+    );
+    assert!(
+        report["guidance"]["workflow"]["required_relationships"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("opaque-")
+    );
+    let positive = run(
+        temp.path(),
+        &[
+            "investigate",
+            "captures/input.jsonl",
+            "--artifact",
+            "original.json",
+            "--question",
+            "Did PRIVATE_CHECKPOINT finish?",
+            "--required-relationship",
+            "PRIVATE_RELATIONSHIP",
+            "--summary",
+        ],
+    );
+    assert_eq!(
+        positive["guidance"]["workflow"]["questions"][0],
+        "Did PRIVATE_CHECKPOINT finish?"
+    );
+    assert_eq!(
+        positive["guidance"]["workflow"]["required_relationships"][0],
+        "PRIVATE_RELATIONSHIP"
+    );
 }

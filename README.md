@@ -699,8 +699,12 @@ typed claim correctness, exact citations, abstention and omissions, and records
 calls, output bytes and elapsed time. It verifies deterministic harness behavior.
 The [layered scripted result](evals/results/layers-scripted.json) additionally separates tool truth, supplied-fact interpretation
 and complete legacy/unified workflows; its scripted checks make no model-quality
-claims. No real-model comparison, investigation-time improvement or token savings have
-been measured. Tokens and provider cost remain unavailable. See the
+claims. The [native evidence-workflow comparison](evals/results/question-plan-compact-native.json)
+completed all 16 attempts with passing factual answers and valid native JSON.
+Seven of eight candidate trials completed typed final review (Haiku 3/4, Opus 4/4);
+Haiku skipped recovery and verification in one held-out trial. Both versions reached
+this small corpus's factual accuracy ceiling, so these results establish neither
+consistent workflow completion nor accuracy gains. See the
 [evaluation methods and limits](evals/README.md).
 
 The analysis skill includes a completion checklist: verify processing coverage,
@@ -2160,12 +2164,20 @@ The [evaluation harness](evals/README.md) scores typed factual claims, exact cit
 unsupported causes, abstention and important omissions. Mandatory CI runs a synthetic
 CLI corpus and paired scripted analyzer/search investigations without credentials.
 The [first published baseline](evals/results/baseline.json) verifies the harness;
-optional repeated same-model comparisons remain unmeasured until an adapter is run.
+its optional adapter comparisons remain unmeasured. The separate
+[native evidence-workflow comparison](evals/results/question-plan-compact-native.json)
+records repeated Haiku/Opus trials against frozen baseline and candidate versions.
 The new layered smoke separates independently checked tool truth, interpretation
 of supplied verified facts, and paired legacy/unified workflows. It includes frozen
 held-out variants and retains answers, known partial usage and independent attempt
 statuses after failures. Canonical artifact records include parsed severity.
-Real-model runs require an explicit provider allocation; none have been executed.
+Real-model runs require an explicit provider allocation. The native results preserve earlier format, schema, fixture-publication and workflow
+failures. The latest comparison uses the same generic native JSON-schema contract
+in both arms at default effort: all 16 answers passed the unchanged factual scorer,
+and seven of eight candidate trials completed typed final reviews with anchored
+unknowns. Haiku still skipped recovery and final verification in one held-out repeat;
+consistent workflow completion is not established. Native format enforcement is a
+runtime protocol change shared by both arms, not a skill-only accuracy gain.
 Unrestricted prose/causal judgment uses a separately documented calibration and
 review protocol, whose review runs remain unperformed. Missing tokens/provider
 cost stay unavailable; known partial usage keeps its completeness indicator.
@@ -2187,3 +2199,122 @@ The **Publish crate** workflow supports GitHub Trusted Publishing with short-liv
 OIDC credentials. It validates an existing stable GitHub release and defaults to a
 package dry run. See [setup and publishing instructions](docs/trusted-publishing.md)
 for crate ownership, licensing, and the one-time crates.io configuration.
+
+## Subject-bound evidence and workflow status
+
+Derive the question checklist before drafting and pass it to `investigate` with
+repeatable `--question TEXT` and `--required-relationship CLAIM_ID` options. The
+summary's `guidance.workflow` separates input processing, evidence review and
+claim verification. Its compact gap ledger distinguishes omitted evidence,
+processing stops, missing/ambiguous scope and unresolved recognition. A zero role
+match cannot distinguish an absent event from missing semantics without source
+inspection. Adapt profiles only for independently established semantic gaps.
+
+Follow `guidance.workflow.next_action.argv` as literal arguments. Targeted
+`/chain-bundles --id FINDING_ID --compact` retrieval includes root identity,
+supported links, configured terminal/contrary evidence, later activity and omission
+counts; retrieve `/records --id REFERENCE_ID` for omitted payload fields. Retrieval
+reports evidence delivered and remaining in the selected collection, and gives
+literal continuation arguments. Delivery never marks evidence review complete.
+When delivery finishes, inspect its output and record a specific remaining gap
+before another query or custom script; stop on no progress or exhausted budgets.
+
+Version-1 `evidence --claims FILE` remains compatible with existing assertions.
+For a `link`, add `subject` containing the expected `snapshot_id`, `input_ordinal`,
+`scope_id`, complete `root` occurrence, exact scoped `identity` array, and complete
+`source`/`target` occurrences from the same supported join. Include the expected
+`event_name` where available. These must identify the requested event, independently
+checked against source records. `label` is a human description and does not bind
+identity. For an `interval`, supply snapshot/input, explicit source/target
+occurrences and `start_operation`/`end_operation` alongside its full-artifact
+`pointer` and `expected_ms`. New interval evidence retains both source addresses.
+
+Inspect each result's `identity.expected`, `identity.observed`, `source_citations`,
+`reason` and `assurance`. Only `subject_verified` establishes the expected subject
+and relationship or interval together. Legacy `link_exists` and `retained_interval`
+checks verify their retained facts without confirming the intended subject.
+Wrong identities are contradicted; missing identity, ambiguous intervals and
+omitted join witnesses remain unavailable. The initial required relationship IDs
+cannot be silently dropped by a later claims file. Missing links cannot prove
+absence, cancellation or a hang.
+
+Save editable assertions without reconstructing their identities or pointers:
+
+```sh
+log-analyzer evidence /absolute/evidence.json --expected-sha256 EXACT_SHA \
+  --draft-claims --output /absolute/new-claims.json
+```
+
+The command writes a new version-1 claims file and returns literal verification
+arguments. After retrieval, workflow guidance supplies this draft action.
+Drafts contain supported links, named endpoint intervals and distinct scoped
+endpoint counts. They omit missing/ambiguous relationships and leave final-review
+acknowledgments empty. Select the requested subjects, independently review source
+meaning, remove unrelated intervals, map question checklist IDs, and complete the
+review before running the returned command. Counts are scoped endpoint records,
+not automatically global attempts. Drafting does not establish truth, understanding
+or completeness; redacted identity is rejected and existing files are preserved.
+
+`distinct_records` optionally accepts `operation: {"kind":"request","name":"send"}`
+to count only that classified operation in a retained record array, deduplicating
+source occurrences. Unknown classifications make this typed count unavailable.
+It does not infer omitted counts, new network attempts or retries.
+
+Before delivery, a claims file may include `final_review` with `summary_claim_ids`,
+`finding_claim_ids` and `checks` containing `event_subjects`,
+`duration_endpoints_and_units`, `operation_types_and_count_semantics`,
+`terminal_later_cached_contrary`, `summary_consistency` and `causal_support`.
+The checker rejects mappings to contradicted/unavailable claims, event claims
+without subject binding, uncovered required IDs, and summary IDs absent from
+mapped detailed findings. These six prose checks are caller acknowledgments;
+deterministic verification covers structured assertions and mappings, not arbitrary
+prose, source semantics, upstream capture completeness or causality. Report
+unresolved facts explicitly and separate observations, measurements and hypotheses.
+See [the portable workflow](.agents/skills/analyze-logs/SKILL.md) for deliverables.
+
+Profile recovery for source-supported event-role gaps uses `--kind event --purpose
+recognition` on both `profile prepare` and `profile validate`. Preparation returns
+an editable-candidate validation handoff; when independent expectations are absent,
+append `--expected PATH` to its `argv_prefix` after authoring source-addressed record
+and positive/negative link facts. Inspect expected-fact and relationship results,
+rerun with a fresh artifact, and verify the requested interval. A verified missing
+status or manual duration does not verify that measurement. See the
+[role recovery recipe](.agents/skills/analyze-logs/examples/role-recovery.md).
+
+
+Typed question requirements in version-1 claim files prevent an unrelated link or
+cached interval from satisfying a requested duration ID. Add `requirements` for
+every required ID: interval entries name their scoped root `finding_id` and exact
+`start_operation`/`end_operation`. Put unsupported answers in a separate
+`unresolved` list with IDs and reasons, anchored through their requirements. The
+checker rejects a declared unknown when the requested interval is retained.
+`final_review.unresolved_question_ids` must match the unresolved list; unknown IDs
+cannot also appear as verified assertions. A valid supported subset returns
+`verified_with_unknowns`, preserving `unresolved_required_claim_ids` and individual
+`requirement_results`. Its exit success verifies bookkeeping and the asserted
+subset, not unknown conclusions or absence. Legacy files remain supported without
+these typed mapping guards. See the
+[question review recipe](.agents/skills/analyze-logs/examples/question-review.md).
+
+The skill includes `scripts/map_questions.py` to compile an explicit reviewed plan
+into schema-correct assertions. Its compact preview lists all proposal selectors
+and root anchors without repeating full source identities;
+the caller selects each question's proposed claim or declares an anchored unknown
+with an independently chosen expected ending. It preserves initial checklist IDs,
+builds typed requirements and review lists, and never marks compilation as verified.
+Supply `--analyzer EXECUTABLE --verification-output NEW_REPORT` when compiling:
+the helper runs checksum-bound verification automatically and prints the claim,
+requirement and final-review results. A missing draft can also be generated by the
+helper. Verification failures exit nonzero and retain the assertions and report.
+Source semantics, question meaning
+and the six review acknowledgments still require independent inspection.
+
+When a wall-time budget is supplied, the skill records a first-tool-call monotonic
+clock state and checks elapsed time before reporting exhaustion. The external
+runtime's hard stop remains authoritative. Its final-answer recipe validates a
+saved object and preserves machine-readable response formats even when questions
+remain unknown. Native comparison runs now pass the disclosed generic answer
+schema to Claude's `--json-schema` flag equally for both versions; the runner uses
+native `structured_output` and rejects missing/error payloads without extracting or
+repairing prose. This delivery-protocol change is reported separately from the
+unchanged factual scorer and earlier text-format failures.

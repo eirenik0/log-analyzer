@@ -314,6 +314,12 @@ pub struct PrepareProfileArgs {
 
 #[derive(serde::Serialize, clap::Args)]
 pub struct InvestigateArgs {
+    /// Question-derived checklist item; repeat for independent questions
+    #[arg(long)]
+    pub question: Vec<String>,
+    /// Required claim/relationship ID derived from the question; repeat as needed
+    #[arg(long)]
+    pub required_relationship: Vec<String>,
     /// Stable project context for profile discovery; defaults to the current directory
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
@@ -389,6 +395,9 @@ pub struct InvestigationEvidenceArgs {
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
     pub claims: Option<PathBuf>,
+    /// Save editable subject-bound assertions to a new --output file; review before verification
+    #[arg(long, requires = "output", conflicts_with = "claims")]
+    pub draft_claims: bool,
     /// Hash current sources separately and report unchanged, changed, missing or prefix
     #[arg(long)]
     pub verify_sources: bool,

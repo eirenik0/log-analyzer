@@ -49,7 +49,13 @@
                 "type": "string",
                 "pattern": "^/"
               },
-              "equals": {}
+              "equals": {},
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
             }
           },
           {
@@ -76,6 +82,74 @@
               "expected_ms": {
                 "type": "number",
                 "minimum": 0
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "subject": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "snapshot_id",
+                  "input_ordinal",
+                  "source",
+                  "target"
+                ],
+                "properties": {
+                  "snapshot_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "input_ordinal": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "scope_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "root": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "identity": {
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "event_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "source": {
+                    "type": "object"
+                  },
+                  "target": {
+                    "type": "object"
+                  },
+                  "start_operation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "end_operation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
               }
             }
           },
@@ -101,6 +175,74 @@
               },
               "step_id": {
                 "type": "string"
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "subject": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "snapshot_id",
+                  "input_ordinal",
+                  "source",
+                  "target"
+                ],
+                "properties": {
+                  "snapshot_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "input_ordinal": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "scope_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "root": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "identity": {
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "event_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "source": {
+                    "type": "object"
+                  },
+                  "target": {
+                    "type": "object"
+                  },
+                  "start_operation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "end_operation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
               }
             }
           },
@@ -126,6 +268,12 @@
               },
               "step_id": {
                 "type": "string"
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           },
@@ -153,10 +301,195 @@
               "expected": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "operation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
               }
             }
           }
         ]
+      }
+    },
+    "questions": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string"
+      }
+    },
+    "final_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary_claim_ids",
+        "finding_claim_ids",
+        "checks"
+      ],
+      "properties": {
+        "summary_claim_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "finding_claim_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "checks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "event_subjects",
+              "duration_endpoints_and_units",
+              "operation_types_and_count_semantics",
+              "terminal_later_cached_contrary",
+              "summary_consistency",
+              "causal_support"
+            ]
+          }
+        },
+        "unresolved_question_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "fact",
+              "interval",
+              "link",
+              "distinct_records"
+            ]
+          },
+          "finding_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "start_operation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "end_operation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "interval"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "finding_id",
+                "start_operation",
+                "end_operation"
+              ],
+              "properties": {
+                "finding_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "start_operation": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "end_operation": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        }
       }
     }
   }

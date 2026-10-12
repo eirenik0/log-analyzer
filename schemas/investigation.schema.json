@@ -1421,6 +1421,12 @@
                 },
                 "event_chain": {
                   "$ref": "#/$defs/event_chain"
+                },
+                "gap_classification": {
+                  "enum": [
+                    "recognition_unresolved",
+                    "identity_or_scope_unavailable"
+                  ]
                 }
               },
               "required": [
@@ -1939,6 +1945,12 @@
                     "$ref": "#/$defs/occurrence"
                   },
                   "minItems": 0
+                },
+                "gap_classification": {
+                  "enum": [
+                    "recognition_unresolved",
+                    "identity_or_scope_unavailable"
+                  ]
                 }
               },
               "required": [
@@ -2723,6 +2735,9 @@
               "items": {
                 "type": "string"
               }
+            },
+            "workflow": {
+              "type": "object"
             }
           },
           "required": [
@@ -2977,6 +2992,12 @@
                             "string",
                             "null"
                           ]
+                        },
+                        "source": {
+                          "$ref": "#/$defs/occurrence"
+                        },
+                        "target": {
+                          "$ref": "#/$defs/occurrence"
                         }
                       },
                       "required": [
@@ -3209,6 +3230,12 @@
             "null"
           ],
           "minimum": 0
+        },
+        "root_event_name": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

@@ -332,9 +332,100 @@ costs. Create an aggregate with `python3 evals/publish.py REPORT OUTPUT`. Inspec
 optional model configuration before sharing; the publisher is a projection, not
 a universal secret detector.
 
-There is currently **no executed model comparison** and no measured model variance,
-accuracy improvement, token savings or provider-cost improvement. Scripted success
-establishes harness/scorer regression gates only. First real paired model runs should
-establish repeat variability and evidence/cause/abstention baselines before choosing
-quality targets. Small public fixtures do not establish production coverage,
+The adapter comparisons above have not been executed. The separate native comparison
+below has run, but establishes no accuracy improvement, token savings or provider-cost
+improvement. Scripted success establishes harness/scorer regression gates only.
+Small public fixtures do not establish production coverage,
 acquisition completeness, arbitrary prompt-injection resistance or throughput.
+
+## Native evidence-workflow comparison
+
+`native_workflow.py` runs a small native Claude comparison of frozen analyzer and
+skill versions. It supplies the entrypoint and permits reading its supporting
+resources; a trusted native CLI can use Bash, Read and Write in a synthetic trial
+directory. This is a protocol boundary, not a filesystem sandbox. The paired
+question, input bytes, explicit starting profile, runtime and budgets are identical.
+Only the frozen analyzer/skill version changes. Repeats alternate version order.
+
+Place complete frozen trees in `FROZEN_ROOT/baseline` and `FROZEN_ROOT/candidate`,
+including `log-analyzer`, `README.md`, `config/` and `.agents/skills/analyze-logs/`.
+Record revision and every binary/source/skill hash in a separate freeze manifest.
+The evaluated baseline is `a55ef9ebb789e4c1dc3eeaecf80a86148673df53`. Do not edit a
+frozen tree during a run. Use a fresh root/results destination for each experiment;
+keep failed attempts and partial output. The runner refuses to overwrite results.
+
+```sh
+python3 evals/native_workflow.py --frozen-root /absolute/frozen-experiment --run
+```
+
+Default models are the native `haiku` and `opus` aliases, with **no effort override**,
+two repeats, one development case and one public held-out variant. Each attempt has
+30 tools, 2 MB output, 180 seconds and a $1 API-equivalent ceiling. This is at most
+16 attempts/$16 API-equivalent for the default comparison. Account subscription
+billing and API-equivalent CLI cost are distinct. Output reports resolved model
+usage when available; missing tokens/cost stay null. Authentication/network/model
+startup failure stops execution until corrected rather than looping unchanged calls.
+
+The incidents include similar names with different IDs, independent close completion,
+a later capture ending, cached failure, mixed send/response types and reused IDs in
+another scope. The held-out variant requires a source-supported role adaptation.
+Truth is derived from synthetic domain definitions/source records and remains outside
+participant messages; candidate output never generates expected truth. Scorer tests
+include minimally changed positive controls for identity, duration, completion,
+citation, totals, causal and summary errors.
+
+Measure supported required relationships, wrong subjects, unsupported typed causes,
+typed summary contradictions and arithmetic errors separately from actual command
+behavior (investigation, bundle retrieval, profile prepare/validate, verification,
+custom script heuristics). No points are awarded for tool calls. Native traces retain
+answers and commands for inspection; command presence does not measure understanding.
+Tokens, turns, wall time and CLI API-equivalent cost accompany each failed or completed
+attempt. The automatic scorer checks typed answers, expected source line witnesses and
+typed summaries; it does not prove citation consumption or score unrestricted prose.
+Review delivered evidence and the explanation separately under `prose-review.md`.
+These few public cases cannot establish broad reliability or acceptable production cost.
+
+## Typed unknown checklists and native JSON delivery
+
+The [latest question-plan comparison](results/question-plan-compact-native.json)
+uses frozen baseline `a55ef9e` and the candidate, Haiku and Opus at default effort,
+two development/held-out cases and two repeats. The factual scorer, source bytes,
+30-call/180-second/2 MB/$1 per-trial limits and model aliases remain unchanged.
+The generic disclosed answer schema is passed natively to both arms, including a
+nullable string cause; format effects cannot be attributed solely to the skill.
+No prose extraction, string-null conversion or replay rescored an answer.
+
+All **16/16 factual answers passed** and delivered native objects. Candidate final
+reviews passed in **7/8** trials (Haiku 3/4; Opus 4/4), each with at least six typed
+requirements and two anchored declared unknowns. Haiku held-out repeat 2 stopped
+at **79.007709 seconds and 9 calls**, without recognition recovery, plan compilation
+or final claim verification. Its source-derived 50 ms answer was correct, but it
+is not a verified retained interval. Independent held-out profile validations cover
+**3/4** trials; requested capture/close interval proof covers **6/8 for Haiku** and
+**8/8 for Opus**. This remaining workflow failure is retained explicitly.
+
+The candidate helper compiles caller-selected question plans, creates typed
+requirements and exact unknown review lists, runs checksum-bound verification,
+saves a new report and prints its results. It rejects existing report paths before
+mutation. The compact inventory includes all 18 proposal selectors and four root
+anchors in 4,768 bytes on the recovered held-out case; full source identity remains
+in drafts and assertions. Source meaning, checklist intent, unknown conclusions
+and prose review remain caller responsibilities.
+
+This comparison cost **$3.60689522 API-equivalent** in total, with complete reported
+usage. Tokens include cached reads/creation. Earlier attempts and their costs,
+including a nullable-schema setup failure and a shared-input publication race,
+are listed in the result's preserved history. Detailed intermediate reports and raw
+traces remain local alongside the frozen experiment directories. All frozen file hashes were checked.
+The controller now publishes captures before parallel workers start and retains
+strict per-trial byte checks. This preparation fix changes neither inputs nor the
+factual scorer. Some attempts overlapped during startup; host load was not controlled.
+Observed time/cost therefore establish neither equal-work savings nor broad accuracy
+or reliability improvements. These small cases already reach the factual ceiling.
+
+Validation passed: 661 Rust tests across 46 suites plus the updated focused compiler
+integration; 53 script tests; 71 evaluation tests; formatting, lint, skill validation
+and generated-wrapper checks. One full eval run missed a pre-deadline frame in the
+existing 300 ms adapter test; focused and full reruns passed without changing that
+test. The cause remains unconfirmed. Independent calibrated prose review remains
+unperformed; command counts do not establish understanding or successful execution.
