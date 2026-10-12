@@ -27,7 +27,9 @@ class NativeWorkflowTests(unittest.TestCase):
                     return Mock(stdin=io.BytesIO(), poll=Mock(return_value=0), returncode=0)
                 limits = {'wall_seconds':60,'output_bytes':2_000_000,'tool_calls':30,'api_equivalent_usd':1}
                 limits.update(overrides)
-                with patch('native_workflow.subprocess.Popen', side_effect=exited_process), patch('native_workflow.time.sleep') as sleep:
+                with patch('native_workflow.subprocess.Popen', side_effect=exited_process), \
+                     patch('native_workflow.time.sleep') as sleep, \
+                     patch('native_workflow.time.monotonic', side_effect=[0, 1, 1]):
                     result = trial(root, 'candidate', 'development', 'haiku', count, limits)
                 sleep.assert_not_called()
                 self.assertEqual(result['tool_calls'], count)
