@@ -29,7 +29,9 @@ selector is rejected. Scoped counts are not automatically global attempts.
 Unknown interval endpoints must come from source meaning; set `start_operation`
 for an intermediate start (otherwise it defaults to the root name). Complete
 source-supported recognition recovery before declaring it unknown. Unknown links
-use `kind: "link"` and `step_id`; unknown counts use `kind: "distinct_records"`
+use `kind: "link"` and `step_id`, with full retained `source`/expected `target`
+addresses for endpoint-specific questions. Use an unknown interval's exact retained
+`pointer` when same-named joins differ in availability. Unknown counts use `kind: "distinct_records"`
 and `population`. The verifier rejects invalid selectors and available requested facts.
 
 Compile and verify using the command in the skill entrypoint. For artifacts above

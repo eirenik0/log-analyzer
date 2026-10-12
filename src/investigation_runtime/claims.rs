@@ -29,6 +29,10 @@ struct Requirement {
     #[serde(default)]
     pointer: Option<String>,
     #[serde(default)]
+    source: Option<Value>,
+    #[serde(default)]
+    target: Option<Value>,
+    #[serde(default)]
     start_operation: Option<String>,
     #[serde(default)]
     end_operation: Option<String>,
@@ -715,28 +719,32 @@ fn check_requirements(
                                 .is_none_or(|name| c["root_event_name"] == *name))
                 });
             let root_matches = root_matches || redacted_anchor;
-            let available = !redacted_anchor
-                && spec.kind == "interval"
-                && chain.is_some_and(|c| {
-                    c["steps"].as_array().into_iter().flatten().any(|step| {
-                        step["join_samples"]
-                            .as_array()
-                            .into_iter()
-                            .flatten()
-                            .any(|j| {
-                                let i = &j["endpoint_interval"];
-                                i["status"] == "measured"
-                                    && spec
-                                        .start_operation
-                                        .as_ref()
-                                        .is_some_and(|name| i["start_operation"] == *name)
-                                    && spec
-                                        .end_operation
-                                        .as_ref()
-                                        .is_some_and(|name| i["end_operation"] == *name)
-                            })
-                    })
-                });
+            let mut intervals = Vec::new();
+            if spec.kind == "interval"
+                && let Some((fi, finding)) = finding
+            {
+                for (si, step) in finding["details"]["event_chain"]["steps"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                {
+                    for (ji, join) in step["join_samples"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .enumerate()
+                    {
+                        let interval = &join["endpoint_interval"];
+                        if spec.start_operation.as_ref().is_some_and(|name| interval["start_operation"] == *name)
+                            && spec.end_operation.as_ref().is_some_and(|name| interval["end_operation"] == *name)
+                            && spec.pointer.as_ref().is_none_or(|pointer| *pointer == format!("/findings/{fi}/details/event_chain/steps/{si}/join_samples/{ji}/endpoint_interval")) {
+                            intervals.push(interval);
+                        }
+                    }
+                }
+            }
+            let available = !redacted_anchor && intervals.iter().any(|i| i["status"] == "measured");
             let step = chain.and_then(|c| c["steps"].as_array()).and_then(|steps| {
                 steps
                     .iter()
@@ -744,24 +752,54 @@ fn check_requirements(
             });
             let (anchor_valid, available, reason) = match spec.kind.as_str() {
                 "interval" => (
-                    root_matches,
+                    root_matches && (spec.pointer.is_none() || !intervals.is_empty()),
                     available,
                     "requested_interval_available_cannot_declare_unknown",
                 ),
-                "link" => (
-                    root_matches && step.is_some(),
-                    !redacted_anchor
-                        && check(
-                            retained,
-                            &Assertion::Link {
-                                finding_id: spec.finding_id.clone().unwrap(),
-                                step_id: spec.step_id.clone().unwrap(),
-                                subject: None,
+                "link" => {
+                    let scoped_source = spec.source.as_ref().is_some_and(|source| {
+                        complete_occurrence(source)
+                            && chain.is_some_and(|c| {
+                                c["root"] == *source
+                                    || c["steps"].as_array().into_iter().flatten().any(|s| {
+                                        s["join_samples"].as_array().into_iter().flatten().any(
+                                            |j| j["source"] == *source || j["target"] == *source,
+                                        )
+                                    })
+                            })
+                    });
+                    let endpoints = spec.source.is_some() || spec.target.is_some();
+                    let exact_available = step.is_some_and(|s| {
+                        s["status"] == "observed"
+                            && s["count_completeness"] == "complete"
+                            && s["join_samples"].as_array().into_iter().flatten().any(|j| {
+                                Some(&j["source"]) == spec.source.as_ref()
+                                    && Some(&j["target"]) == spec.target.as_ref()
+                            })
+                    });
+                    (
+                        root_matches
+                            && step.is_some()
+                            && (!endpoints
+                                || (scoped_source
+                                    && spec.target.as_ref().is_some_and(complete_occurrence))),
+                        !redacted_anchor
+                            && if endpoints {
+                                exact_available
+                            } else {
+                                check(
+                                    retained,
+                                    &Assertion::Link {
+                                        finding_id: spec.finding_id.clone().unwrap(),
+                                        step_id: spec.step_id.clone().unwrap(),
+                                        subject: None,
+                                    },
+                                )
+                                .0 == Some(true)
                             },
-                        )
-                        .0 == Some(true),
-                    "requested_link_available_cannot_declare_unknown",
-                ),
+                        "requested_link_available_cannot_declare_unknown",
+                    )
+                }
                 "distinct_records" => {
                     let population = spec.population.as_ref().unwrap();
                     let measurable = check(
@@ -1262,14 +1300,32 @@ mod final_review_tests {
             available["requirement_results"][0]["reason"],
             "requested_interval_available_cannot_declare_unknown"
         );
-        retained["findings"][0]["details"]["event_chain"]["steps"][0]["join_samples"][0]["endpoint_interval"]
-            ["status"] = json!("unavailable");
+        let mut unavailable = interval.clone();
+        unavailable["source"]["evidence_ref"]["line"] = json!(3);
+        unavailable["status"] = json!("unavailable");
+        retained["findings"][0]["details"]["event_chain"]["steps"][0]["join_samples"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"endpoint_interval":unavailable}));
+        assertions["requirements"][0]["pointer"] =
+            json!("/findings/0/details/event_chain/steps/0/join_samples/1/endpoint_interval");
         let unknown = verify_case(&retained, &assertions).unwrap();
         assert_eq!(unknown["status"], "verified_with_unknowns");
         assert_eq!(
             unknown["final_review"]["status"],
             "declared_checks_passed_with_unknowns"
         );
+        for pointer in [
+            "/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval",
+            "/missing",
+        ] {
+            let mut wrong = assertions.clone();
+            wrong["requirements"][0]["pointer"] = json!(pointer);
+            assert_eq!(
+                verify_case(&retained, &wrong).unwrap()["status"],
+                "needs_revision"
+            );
+        }
         assertions["requirements"][0]["finding_id"] = json!("wrong");
         assert_eq!(
             verify_case(&retained, &assertions).unwrap()["status"],
@@ -1361,6 +1417,17 @@ mod final_review_tests {
         let step = &mut retained["findings"][0]["details"]["event_chain"]["steps"][0];
         step["status"] = json!("observed");
         step["linked_count"] = json!(1);
+        assert_eq!(status(&assertions, &retained), "needs_revision");
+        let mut target = root.clone();
+        target["evidence_ref"]["line"] = json!(2);
+        retained["findings"][0]["details"]["event_chain"]["steps"][0]["join_samples"] =
+            json!([{"source":root,"target":target}]);
+        assertions["requirements"][0]["source"] = root.clone();
+        assertions["requirements"][0]["target"] = target.clone();
+        assert_eq!(status(&assertions, &retained), "needs_revision");
+        assertions["requirements"][0]["target"]["evidence_ref"]["line"] = json!(3);
+        assert_eq!(status(&assertions, &retained), "verified_with_unknowns");
+        assertions["requirements"][0]["source"]["evidence_ref"]["line"] = json!(99);
         assert_eq!(status(&assertions, &retained), "needs_revision");
         assertions["requirements"][0] = json!({"id":"question","kind":"distinct_records","finding_id":"root", "population":{"pointer":"/records","operation":{"kind":"request","name":"send"}}});
         assert_eq!(status(&assertions, &retained), "verified_with_unknowns");

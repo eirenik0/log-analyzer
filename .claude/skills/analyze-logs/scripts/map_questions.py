@@ -101,7 +101,7 @@ def compile_plan(draft, artifact, plan):
             claim['id'] = qid
             claims.append(claim)
         else:
-            selectors = {'interval': {'start_operation', 'end_operation'}, 'link': {'step_id'},
+            selectors = {'interval': {'start_operation', 'end_operation', 'pointer'}, 'link': {'step_id', 'source', 'target'},
                          'distinct_records': {'population'}, 'fact': {'field'}}
             if item['kind'] not in selectors or set(item) - ({'id', 'kind', 'finding_id', 'reason'} | selectors[item['kind']]):
                 raise ValueError('Unknown mapping kind or fields')
@@ -116,11 +116,15 @@ def compile_plan(draft, artifact, plan):
                 if not isinstance(starting, str) or not starting.strip() or not isinstance(ending, str) or not ending.strip():
                     raise ValueError('Unknown interval needs source-supported expected endpoint names')
                 spec.update(start_operation=starting, end_operation=ending)
+                if 'pointer' in item:
+                    spec['pointer'] = item['pointer']
             elif item['kind'] == 'link':
                 step = item['step_id']
                 if not isinstance(step, str) or not step.strip():
                     raise ValueError('Unknown link needs the requested step_id')
                 spec['step_id'] = step
+                if 'source' in item or 'target' in item:
+                    spec.update(source=copy.deepcopy(item['source']), target=copy.deepcopy(item['target']))
             elif item['kind'] == 'distinct_records':
                 spec['population'] = copy.deepcopy(item['population'])
             elif 'field' in item:

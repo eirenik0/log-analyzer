@@ -180,9 +180,10 @@ class QuestionMappingTests(unittest.TestCase):
     def test_unknown_intervals_preserve_intermediate_starts_and_unicode_reason_limits(self):
         plan = copy.deepcopy(self.plan)
         plan['questions'][0] = {'id': 'duration', 'kind': 'interval', 'finding_id': 'root-a',
-                                'start_operation': 'CaptureStart', 'end_operation': 'End', 'reason': '界' * 4096}
+                                'start_operation': 'CaptureStart', 'end_operation': 'End', 'pointer': '/findings/0/details/event_chain/steps/0/join_samples/1/endpoint_interval', 'reason': '界' * 4096}
         result = mapping.compile_plan(self.draft, self.artifact, plan)
         self.assertEqual(result['requirements'][0]['start_operation'], 'CaptureStart')
+        self.assertEqual(result['requirements'][0]['pointer'], plan['questions'][0]['pointer'])
         self.assertEqual(result['unresolved'][0]['reason'], '界' * 4096)
         for change in ({'start_operation': ''}, {'reason': '界' * 4097}):
             bad = copy.deepcopy(plan)
@@ -260,6 +261,13 @@ class QuestionMappingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'step_id'):
             mapping.compile_plan(self.draft, self.artifact, plan)
         del plan['questions'][0]['step_id']
+        with self.assertRaises(KeyError):
+            mapping.compile_plan(self.draft, self.artifact, plan)
+        plan['questions'][0].update(step_id='end', source={'line': 1}, target={'line': 3})
+        result = mapping.compile_plan(self.draft, self.artifact, plan)
+        self.assertEqual(result['requirements'][0]['source'], {'line': 1})
+        self.assertEqual(result['requirements'][0]['target'], {'line': 3})
+        del plan['questions'][0]['target']
         with self.assertRaises(KeyError):
             mapping.compile_plan(self.draft, self.artifact, plan)
 

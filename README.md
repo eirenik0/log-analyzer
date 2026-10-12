@@ -2227,7 +2227,8 @@ intervals between intermediate steps; counts bind a
 retained population pointer and operation filter. Links bind a finding, step and exact retained join pointer;
 facts bind a field pointer and expected value. Declare unsupported
 questions in `unresolved`, with a retained finding anchor and reason (up to 4096
-Unicode characters); unknown intervals preserve their requested start/end names; available requested
+Unicode characters); unknown intervals preserve their requested start/end names and optional exact pointer;
+unknown links can select source/target occurrences rather than the whole step; available requested
 intervals, links, counts and explicitly selected fields cannot be declared unknown. Initial required IDs cannot be dropped. All-unknown plans are accepted when every
 required ID has a typed, anchored unresolved entry. Checklist inputs are limited to
 100 nonempty questions and 100 nonempty, unique IDs. Redaction preserves hashed IDs

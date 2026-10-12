@@ -420,6 +420,8 @@
             ],
             "minLength": 1
           },
+          "source": {"type": "object"},
+          "target": {"type": "object"},
           "pointer": {
             "type": "string",
             "pattern": "^/"

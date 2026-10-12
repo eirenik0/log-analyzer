@@ -4,7 +4,7 @@ default: minor
 
 Bind question claims to exact interval pointers and endpoints, exact link joins, fact fields and count
 populations, including intervals between intermediate chain steps. Add editable drafts and require typed mappings for final review.
-Support anchored unknowns with exact interval starts and Unicode reason limits,
+Support anchored unknowns with exact interval/link selectors and Unicode reason limits,
 while rejecting invalid selectors and available evidence.
 Validate checklist bounds and preserve required IDs and anchored unknowns through redaction.
 Omit caller-supplied private text from redacted verification reports.
