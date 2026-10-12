@@ -89,20 +89,21 @@ def compile_plan(draft, artifact, plan):
             claim['id'] = qid
             claims.append(claim)
         else:
-            selectors = {'interval': {'end_operation'}, 'link': {'step_id'},
+            selectors = {'interval': {'start_operation', 'end_operation'}, 'link': {'step_id'},
                          'distinct_records': {'population'}, 'fact': {'field'}}
             if item['kind'] not in selectors or set(item) - ({'id', 'kind', 'finding_id', 'reason'} | selectors[item['kind']]):
                 raise ValueError('Unknown mapping kind or fields')
             chain = chain_by_id[item['finding_id']]
             reason = item['reason']
-            if not isinstance(reason, str) or not reason.strip() or len(reason.encode('utf-8')) > 4096:
+            if not isinstance(reason, str) or not reason.strip() or len(reason) > 4096:
                 raise ValueError('Unknown needs a nonempty bounded reason')
             spec = {'id': qid, 'kind': item['kind'], 'finding_id': item['finding_id']}
             if item['kind'] == 'interval':
+                starting = item.get('start_operation', chain['root_event_name'])
                 ending = item['end_operation']
-                if not isinstance(ending, str) or not ending.strip():
-                    raise ValueError('Unknown interval needs the source-supported expected end name')
-                spec.update(start_operation=chain['root_event_name'], end_operation=ending)
+                if not isinstance(starting, str) or not starting.strip() or not isinstance(ending, str) or not ending.strip():
+                    raise ValueError('Unknown interval needs source-supported expected endpoint names')
+                spec.update(start_operation=starting, end_operation=ending)
             elif item['kind'] == 'link':
                 step = item['step_id']
                 if not isinstance(step, str) or not step.strip():

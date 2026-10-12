@@ -177,6 +177,19 @@ class QuestionMappingTests(unittest.TestCase):
         self.assertEqual(result['final_review']['unresolved_question_ids'], ['duration', 'cause'])
         self.assertEqual(len(result['claims']), 1)
 
+    def test_unknown_intervals_preserve_intermediate_starts_and_unicode_reason_limits(self):
+        plan = copy.deepcopy(self.plan)
+        plan['questions'][0] = {'id': 'duration', 'kind': 'interval', 'finding_id': 'root-a',
+                                'start_operation': 'CaptureStart', 'end_operation': 'End', 'reason': '界' * 4096}
+        result = mapping.compile_plan(self.draft, self.artifact, plan)
+        self.assertEqual(result['requirements'][0]['start_operation'], 'CaptureStart')
+        self.assertEqual(result['unresolved'][0]['reason'], '界' * 4096)
+        for change in ({'start_operation': ''}, {'reason': '界' * 4097}):
+            bad = copy.deepcopy(plan)
+            bad['questions'][0].update(change)
+            with self.assertRaises(ValueError):
+                mapping.compile_plan(self.draft, self.artifact, bad)
+
     def test_count_selection_must_match_independent_population(self):
         self.positive()
         for operation in ({'kind': 'request', 'name': 'send'}, {'kind': 'request', 'name': 'response'}):

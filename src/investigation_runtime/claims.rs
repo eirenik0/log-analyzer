@@ -664,7 +664,7 @@ fn check_requirements(
         if !required.contains(unknown.id.as_str())
             || !unknowns.insert(unknown.id.clone())
             || unknown.reason.trim().is_empty()
-            || unknown.reason.len() > 4096
+            || unknown.reason.chars().count() > 4096
             || assertions.claims.iter().any(|c| c.id == unknown.id)
         {
             return Err(
@@ -695,20 +695,22 @@ fn check_requirements(
         let chain = finding.map(|(_, f)| &f["details"]["event_chain"]);
         let root_matches = chain.is_some_and(|c| {
             complete_occurrence(&c["root"])
-                && spec
-                    .start_operation
-                    .as_ref()
-                    .is_none_or(|name| c["root_event_name"] == *name)
+                && (spec.kind == "interval"
+                    || spec
+                        .start_operation
+                        .as_ref()
+                        .is_none_or(|name| c["root_event_name"] == *name))
         });
         let (ok, reason) = if unknowns.contains(&spec.id) {
             let redacted_anchor = retained["content"] == "redacted"
                 && chain.is_some_and(|c| {
                     occurrence_anchor(&c["root"])
                         && c["root"]["evidence_ref"]["location_redacted"] == true
-                        && spec
-                            .start_operation
-                            .as_ref()
-                            .is_none_or(|name| c["root_event_name"] == *name)
+                        && (spec.kind == "interval"
+                            || spec
+                                .start_operation
+                                .as_ref()
+                                .is_none_or(|name| c["root_event_name"] == *name))
                 });
             let root_matches = root_matches || redacted_anchor;
             let available = !redacted_anchor
@@ -722,7 +724,6 @@ fn check_requirements(
                             .any(|j| {
                                 let i = &j["endpoint_interval"];
                                 i["status"] == "measured"
-                                    && i["source"] == c["root"]
                                     && spec
                                         .start_operation
                                         .as_ref()
@@ -1200,6 +1201,55 @@ mod final_review_tests {
             assert_eq!(check(&assertions)["status"], "needs_revision");
             assertions["requirements"][0][key] = expected;
         }
+    }
+
+    #[test]
+    fn intermediate_unknowns_reject_available_intervals_and_count_unicode_characters() {
+        let root = json!({"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"input_id":"i","reference_id":"r","line":1,"row_path":null}});
+        let mut source = root.clone();
+        source["evidence_ref"]["line"] = json!(2);
+        let interval = json!({"status":"measured","unit":"ms","source":source,"start_operation":"capture-start","end_operation":"capture-end"});
+        let mut retained = json!({"findings":[{"id":"f","details":{"event_chain":{"root":root,"root_event_name":"checkpoint",
+            "steps":[{"join_samples":[{"endpoint_interval":interval}]}]}}}]});
+        let mut assertions = json!({"version":1,"required_claim_ids":["duration"],"claims":[],
+            "requirements":[{"id":"duration","kind":"interval","finding_id":"f","start_operation":"capture-start","end_operation":"capture-end"}],
+            "unresolved":[{"id":"duration","reason":"界".repeat(4096)}],
+            "final_review":{"finding_claim_ids":[],"summary_claim_ids":[],"unresolved_question_ids":["duration"],
+                "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}});
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("unknown.json");
+        let schema: Value =
+            serde_json::from_str(include_str!("../../schemas/claim-assertions.schema.json"))
+                .unwrap();
+        let schema = jsonschema::validator_for(&schema).unwrap();
+        schema.validate(&assertions).unwrap();
+        let verify_case = |r: &Value, a: &Value| {
+            fs::write(&path, a.to_string()).unwrap();
+            verify(r, &path)
+        };
+        let available = verify_case(&retained, &assertions).unwrap();
+        assert_eq!(available["status"], "needs_revision");
+        assert_eq!(
+            available["requirement_results"][0]["reason"],
+            "requested_interval_available_cannot_declare_unknown"
+        );
+        retained["findings"][0]["details"]["event_chain"]["steps"][0]["join_samples"][0]["endpoint_interval"]
+            ["status"] = json!("unavailable");
+        let unknown = verify_case(&retained, &assertions).unwrap();
+        assert_eq!(unknown["status"], "verified_with_unknowns");
+        assert_eq!(
+            unknown["final_review"]["status"],
+            "declared_checks_passed_with_unknowns"
+        );
+        assertions["requirements"][0]["finding_id"] = json!("wrong");
+        assert_eq!(
+            verify_case(&retained, &assertions).unwrap()["status"],
+            "needs_revision"
+        );
+        assertions["requirements"][0]["finding_id"] = json!("f");
+        assertions["unresolved"][0]["reason"] = json!("界".repeat(4097));
+        assert!(!schema.is_valid(&assertions));
+        assert!(verify_case(&retained, &assertions).is_err());
     }
 
     #[test]
