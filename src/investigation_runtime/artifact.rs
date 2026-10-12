@@ -104,6 +104,67 @@ fn opaque(value: &mut Value) {
         *value = json!(format!("opaque-{}", digest(text.as_bytes())));
     }
 }
+fn redact_claim_verification(verification: &mut Value) {
+    fn identifier(value: &mut Value) {
+        if !value.as_str().is_some_and(|s| {
+            s.strip_prefix("opaque-")
+                .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()))
+        }) {
+            opaque(value);
+        }
+    }
+    fn identifiers(value: &mut Value) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    if matches!(key.as_str(), "id" | "finding_id") {
+                        identifier(child);
+                    } else if key.ends_with("_claim_ids") || key == "unresolved_question_ids" {
+                        for id in child.as_array_mut().into_iter().flatten() {
+                            identifier(id);
+                        }
+                    } else {
+                        identifiers(child);
+                    }
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(identifiers),
+            _ => (),
+        }
+    }
+    for question in verification["questions"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        *question = json!("[REDACTED QUESTION]");
+    }
+    for check in verification["checks"].as_array_mut().into_iter().flatten() {
+        check["label"] = Value::Null;
+        if check["identity"].is_object() {
+            check["identity"]["expected"] = Value::Null;
+        }
+    }
+    for unknown in verification["unresolved"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        unknown["reason"] = json!("[REDACTED REASON]");
+    }
+    if verification["final_review"].is_object() {
+        for issue in verification["final_review"]["issues"]
+            .as_array_mut()
+            .into_iter()
+            .flatten()
+        {
+            *issue = json!("[REDACTED REVIEW ISSUE]");
+        }
+        // Additional caller-defined review dimensions may contain private text.
+        verification["final_review"]["acknowledged_prose_checks"] = Value::Null;
+    }
+    identifiers(verification);
+}
 pub(super) fn checklist(artifact: &Value) -> &Value {
     artifact
         .get("question_checklist")
@@ -760,7 +821,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             compact_bundle(bundle);
         }
     }
-    let claim_verification = args
+    let mut claim_verification = args
         .claims
         .as_ref()
         .map(|path| super::claims::verify(&retained, path))
@@ -802,6 +863,11 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         ])
     };
     let query_binding = digest(query.to_string().as_bytes());
+    if retained["content"] == "redacted"
+        && let Some(verification) = &mut claim_verification
+    {
+        redact_claim_verification(verification);
+    }
     let prior = if let Some(cursor) = &cli.report_cursor {
         let parts: Vec<_> = cursor.split(':').collect();
         if parts.len() != 3 || parts[0] != "v1" || parts[1] != query_binding {

@@ -7,6 +7,7 @@ populations, including intervals between intermediate chain steps. Add editable 
 Support anchored unknowns with exact interval starts and Unicode reason limits,
 while rejecting invalid selectors and available evidence.
 Validate checklist bounds and preserve required IDs and anchored unknowns through redaction.
+Omit caller-supplied private text from redacted verification reports.
 Keep draft handoffs scoped and preserve explicit artifact read allowances.
 Provide a concise skill with a plan compiler and independent profile validation.
 Exclude Python bytecode caches from generated skill resources.

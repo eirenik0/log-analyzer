@@ -2232,6 +2232,7 @@ intervals, links, counts and explicitly selected fields cannot be declared unkno
 required ID has a typed, anchored unresolved entry. Checklist inputs are limited to
 100 nonempty questions and 100 nonempty, unique IDs. Redaction preserves hashed IDs
 and supports anchored unknowns, but does not satisfy positive typed link or interval requirements.
+Redacted verification omits caller-supplied prose and expected identities and uses opaque claim IDs.
 `final_review` requires complete typed question mappings and records six caller review
 acknowledgments. `verified_with_unknowns` validates the supported subset and mappings,
 not unknown conclusions, arbitrary prose, profile semantics or causality.

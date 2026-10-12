@@ -6614,24 +6614,71 @@ fn redacted_chain_pages_do_not_advertise_claim_drafts() {
         .unwrap();
     let id = &report["guidance"]["workflow"]["required_relationships"][0];
     let claims = temp.path().join("redacted-unknown.json");
-    fs::write(&claims, json!({"version":1,"required_claim_ids":[id],"claims":[],
+    let private = "private-client-identity";
+    fs::write(&claims, json!({"version":1,"questions":[private],"required_claim_ids":[id],
+        "claims":[{"id":private,"label":private,"kind":"fact","pointer":"/content","equals":"redacted"}],
         "requirements":[{"id":id,"kind":"link","finding_id":finding["id"],"step_id":step["id"]}],
-        "unresolved":[{"id":id,"reason":"Original source identity redacted"}],
+        "unresolved":[{"id":id,"reason":private}],
         "final_review":{"summary_claim_ids":[],"finding_claim_ids":[],"unresolved_question_ids":[id],
             "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}}).to_string()).unwrap();
+    let saved = temp.path().join("redacted-verification.json");
     let verified = success(&[
+        "--redact",
         "evidence",
         artifact.to_str().unwrap(),
         "--expected-sha256",
         report["artifact"]["stored_sha256"].as_str().unwrap(),
         "--claims",
         claims.to_str().unwrap(),
+        "--output",
+        saved.to_str().unwrap(),
     ]);
+    assert!(!verified.to_string().contains(private));
+    assert!(!fs::read_to_string(&saved).unwrap().contains(private));
     let verification = &verified["artifact_retrieval"]["claim_verification"];
+    assert_eq!(verification["questions"], json!(["[REDACTED QUESTION]"]));
+    assert_eq!(verification["checks"][0]["label"], Value::Null);
+    assert_eq!(verification["unresolved"][0]["reason"], "[REDACTED REASON]");
+    assert_eq!(verification["unresolved"][0]["id"], *id);
     assert_eq!(verification["status"], "verified_with_unknowns");
     assert_eq!(
         verification["final_review"]["status"],
         "declared_checks_passed_with_unknowns"
+    );
+    let mut assertions: Value = serde_json::from_slice(&fs::read(&claims).unwrap()).unwrap();
+    assertions["claims"][0] = json!({"id":private,"label":private,"kind":"link",
+        "finding_id":finding["id"],"step_id":step["id"],
+        "subject":{"snapshot_id":private,"input_ordinal":0,"source":{},"target":{},"event_name":private}});
+    assertions["final_review"]["finding_claim_ids"] = json!([private]);
+    assertions["final_review"]["summary_claim_ids"] = json!([private]);
+    fs::write(&claims, assertions.to_string()).unwrap();
+    let failed_saved = temp.path().join("redacted-failed-verification.json");
+    let failed = binary()
+        .args([
+            "--redact",
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            report["artifact"]["stored_sha256"].as_str().unwrap(),
+            "--claims",
+            claims.to_str().unwrap(),
+            "--output",
+            failed_saved.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(!failed.status.success());
+    assert!(!String::from_utf8_lossy(&failed.stdout).contains(private));
+    assert!(!fs::read_to_string(&failed_saved).unwrap().contains(private));
+    let failed: Value = serde_json::from_slice(&failed.stdout).unwrap();
+    let verification = &failed["artifact_retrieval"]["claim_verification"];
+    assert_eq!(verification["status"], "needs_revision");
+    assert!(verification["checks"][0]["identity"]["expected"].is_null());
+    assert!(
+        !verification["final_review"]["issues"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 }
 
