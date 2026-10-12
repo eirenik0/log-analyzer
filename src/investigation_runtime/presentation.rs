@@ -543,6 +543,15 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                         label(&step["count_completeness"]),
                         escape_controls(label(&step["from"]))
                     );
+                    if let Some(recognition) = step.get("recognition") {
+                        let _ = writeln!(
+                            output,
+                            "       Recognition: {} role matches in this selected input; {} rule matches; failed selectors: {}",
+                            recognition["role_matched_records"],
+                            recognition["rule_matched_records"],
+                            escape_controls(&recognition["failed_selectors"].to_string())
+                        );
+                    }
                     let _ = writeln!(
                         output,
                         "       Join: {}; ambiguity: {}",

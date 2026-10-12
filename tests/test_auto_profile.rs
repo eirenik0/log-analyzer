@@ -602,16 +602,27 @@ fn redaction_retains_probe_parse_failures_for_non_utf8_capture() {
 
 #[test]
 fn global_detection_cutoffs_mark_every_input_despite_complete_generic_parsing() {
-    // Keep the cutoff at the same processing stage as profile declarations grow.
-    let mut profile = log_analyzer::config::load_config(None, Some("eyes")).unwrap();
-    let configured_bytes = serde_json::to_vec(&profile).unwrap().len();
-    profile.resource_observations.clear();
-    profile.investigation_view = None;
-    profile.investigation = None;
-    let configured_allowance =
-        ((configured_bytes - serde_json::to_vec(&profile).unwrap().len()) as u64) * 16;
-    for (baseline, stage) in [(1_000_000, "profile_discovery"), (1_120_000, "parse")] {
-        let limit = baseline + configured_allowance;
+    // Discovery reserves serialized candidates at 16x their size. Keep these
+    // stage-specific cutoffs relative to the whole shipped catalog as it grows.
+    let catalog_allowance: u64 = log_analyzer::config::builtin_template_names()
+        .iter()
+        .filter(|name| **name != "base")
+        .map(|name| {
+            serde_json::to_vec(&log_analyzer::config::load_builtin_template(name).unwrap())
+                .unwrap()
+                .len() as u64
+                * 16
+        })
+        .sum();
+    for (headroom, stage) in [(0, "profile_discovery"), (25_000, "parse")] {
+        let initial_configuration =
+            serde_json::to_vec(&log_analyzer::config::load_config(None, None).unwrap())
+                .unwrap()
+                .len() as u64
+                * 16;
+        // Two short files each reserve one 8 KiB data read and one EOF read.
+        let capture_allowance = 2 * 2 * 8192 * 16;
+        let limit = catalog_allowance + initial_configuration + capture_allowance + headroom;
         let dir = TempDir::new().unwrap();
         fs::create_dir(dir.path().join("config")).unwrap();
         for name in ["a.jsonl", "b.jsonl"] {

@@ -301,7 +301,10 @@ pub(crate) fn resolve(
                     facts.as_ref(),
                     facts_digest.clone(),
                 );
-                if !parsed {
+                if !complete {
+                    profile_validation::invalidate_relationships(
+                        &mut validation["profile_validation"],
+                    );
                     validation["profile_validation"]["suitability"] = json!({"status":"insufficient_evidence","reason":"input_structure_unavailable","basis":"observed_sample_only","semantic_correctness":"not_established_by_match_count"});
                 }
                 if parsed

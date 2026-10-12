@@ -30,10 +30,13 @@ mod output;
 pub mod parser;
 pub mod perf_analyzer;
 mod processing;
+mod profile_adaptation;
 mod profile_mappings;
 mod profile_preparation;
+mod profile_relationships;
 pub mod profile_resolution;
 pub mod profile_validation;
+mod relationship_rules;
 mod report_budget;
 pub mod resource_observations;
 pub mod search;
@@ -632,6 +635,18 @@ fn run_analysis_with_cli(cli: &cli::Cli) -> Result<(), Box<dyn std::error::Error
                 expectations.as_ref(),
                 expected_digest,
             );
+            if coverage.files.iter().any(|f| {
+                f.is_unparsed()
+                    || f.rejected_candidates > 0
+                    || f.structural_diagnostics.diagnostic_count > 0
+                    || f.structural_diagnostics.unsupported_python_headers > 0
+            }) {
+                profile_validation::invalidate_relationships(&mut report["profile_validation"]);
+                report["profile_validation"]["suitability"]["status"] =
+                    serde_json::json!("insufficient_evidence");
+                report["profile_validation"]["suitability"]["reason"] =
+                    serde_json::json!("input_structure_unavailable");
+            }
             if coverage.status != "parsed" {
                 report["profile_validation"]["suitability"]["status"] =
                     serde_json::json!("insufficient_evidence");

@@ -152,6 +152,76 @@
           }
         }
       }
+    },
+    "links": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "chain",
+              "step",
+              "root",
+              "source",
+              "target",
+              "linked"
+            ],
+            "properties": {
+              "chain": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "step": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "root": {
+                "$ref": "#/$defs/address"
+              },
+              "source": {
+                "$ref": "#/$defs/address"
+              },
+              "target": {
+                "$ref": "#/$defs/address"
+              },
+              "linked": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "relationship",
+              "source",
+              "target",
+              "linked"
+            ],
+            "properties": {
+              "relationship": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "source": {
+                "$ref": "#/$defs/address"
+              },
+              "target": {
+                "$ref": "#/$defs/address"
+              },
+              "linked": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      }
     }
   },
   "anyOf": [
@@ -171,6 +241,16 @@
       ],
       "properties": {
         "pairs": {
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "required": [
+        "links"
+      ],
+      "properties": {
+        "links": {
           "minItems": 1
         }
       }

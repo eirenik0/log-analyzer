@@ -28,20 +28,10 @@ pub struct Expectations {
     records: Vec<RecordFact>,
     #[serde(default)]
     pairs: Vec<PairFact>,
+    #[serde(default)]
+    links: Vec<crate::profile_relationships::LinkFact>,
 }
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Address {
-    input: usize,
-    line: usize,
-    #[serde(deserialize_with = "required_row_path")]
-    row_path: Option<String>,
-}
-fn required_row_path<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<String>, D::Error> {
-    Option::<String>::deserialize(deserializer)
-}
+use crate::profile_relationships::Address;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,9 +55,18 @@ pub fn load_expectations(
     };
     let bytes = std::fs::read(path)?;
     let facts: Expectations = serde_json::from_slice(&bytes)?;
-    if facts.version != 1 || facts.records.is_empty() && facts.pairs.is_empty() {
+    if facts.version != 1
+        || facts.records.is_empty() && facts.pairs.is_empty() && facts.links.is_empty()
+    {
         return Err(
-            "Expected facts require version 1 and at least one record or pair assertion".into(),
+            "Expected facts require version 1 and at least one record, pair or link assertion"
+                .into(),
+        );
+    }
+    if facts.links.len() > 1024 || facts.links.iter().any(|f| !f.valid_names()) {
+        return Err(
+            "Link assertions require bounded nonempty declaration IDs and at most 1024 witnesses"
+                .into(),
         );
     }
     for record in &facts.records {
@@ -106,7 +105,12 @@ pub fn load_expectations(
         .records
         .iter()
         .map(|f| &f.source)
-        .chain(facts.pairs.iter().flat_map(|f| [&f.start, &f.end]));
+        .chain(facts.pairs.iter().flat_map(|f| [&f.start, &f.end]))
+        .chain(facts.links.iter().flat_map(|f| {
+            [Some(f.source()), Some(f.target()), f.root()]
+                .into_iter()
+                .flatten()
+        }));
     for address in addresses {
         if address.line == 0
             || address
@@ -346,6 +350,13 @@ pub fn analyze(
             }
         }
     }
+    let (relationships, link_checks) = crate::profile_relationships::analyze(
+        inputs,
+        config,
+        filter,
+        expectations.map_or(&[], |facts| facts.links.as_slice()),
+    );
+    checks.extend(link_checks);
     let failed = checks
         .iter()
         .filter(|check| check["status"] == "failed")
@@ -437,9 +448,42 @@ pub fn analyze(
         "totals":{"records":records.len(),"diagnostics":diagnostics.len(),"operations":analysis.operations.len(),"expected_checks":checks.len(),"failed_expected_checks":failed,"scope_alias_groups":scope_aliases},
         "expected_facts":{"sha256":expected_digest,"status":if expectations.is_some(){if failed==0{"passed"}else{"failed"}}else{"not_supplied"}},
         "effective_rules":{"event_rules":config.event_rules,"command_rules":config.command_rules,"inherited_scope_fields":config.perf.correlation_scope_fields,"legacy_marker_compatibility":true},
-        "records":records,"diagnostics":diagnostics,"operations":operations,"expected_results":checks,
+        "records":records,"diagnostics":diagnostics,"operations":operations,"expected_results":checks,"relationships":relationships,
         "suggestions":suggestions,
         "limitations":["Support describes selected observed sample, not all future logs","Upstream capture completeness and intended domain scope remain unknown","Parsing or rule-match counts alone do not establish semantic correctness"]}})
+}
+
+/// Rejected records can change cardinality or hide a counterpart. Do not turn
+/// observed-subset joins into assertion support when structure is unavailable.
+pub(crate) fn invalidate_relationships(validation: &mut Value) {
+    invalidate_relationship_summary(&mut validation["relationships"]);
+    if let Some(checks) = validation["expected_results"].as_array_mut() {
+        for check in checks.iter_mut().filter(|c| c["type"] == "link") {
+            check["status"] = json!("failed");
+            check["reason"] = json!("input_structure_unavailable");
+            check["observed_available"] = json!(false);
+            check["observed_linked"] = Value::Null;
+        }
+        let failed = checks.iter().filter(|c| c["status"] == "failed").count();
+        let failed_links = checks.iter().filter(|c| c["type"] == "link").count();
+        validation["totals"]["failed_expected_checks"] = json!(failed);
+        validation["relationships"]["failed_checks"] = json!(failed_links);
+        if failed > 0 {
+            validation["expected_facts"]["status"] = json!("failed");
+        }
+    }
+}
+
+pub(crate) fn invalidate_relationship_summary(relationships: &mut Value) {
+    if relationships["status"] == "not_configured" {
+        return;
+    }
+    relationships["status"] = json!("unavailable");
+    relationships["processing"]["status"] = json!("partial");
+    relationships["processing"]["stop"] =
+        json!({"stage":"relationships","reason":"input_structure_unavailable","limit_name":null});
+    relationships["supported_links"] = Value::Null;
+    relationships["unasserted_supported_links"] = Value::Null;
 }
 
 #[cfg(test)]
@@ -540,6 +584,12 @@ pub fn selection_evidence(
                 return json!({"status":"insufficient","reason":"operation_pair_or_duration_assertion_missing","covered_records":covered});
             }
         }
+    }
+    if !facts.links.is_empty()
+        && (validation["relationships"]["status"] != "passed_on_asserted_links"
+            || validation["relationships"]["unasserted_supported_links"] != 0)
+    {
+        return json!({"status":"insufficient","reason":"relationship_link_assertions_incomplete","covered_records":covered});
     }
     json!({"status":"sufficient_on_assertion_covered_sample","reason":"requested_population_and_boundaries_asserted","covered_records":covered,
         "unknown":"Unclassified records, missed lifecycles, capture completeness and intended domain scope remain unknown"})

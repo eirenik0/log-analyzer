@@ -345,7 +345,14 @@
                   "inspect_mappings",
                   "retrieve_findings",
                   "verify_terminal_evidence",
-                  "inspect_goal_support"
+                  "verify_chain_evidence",
+                  "inspect_goal_support",
+                  "inspect_relationship_coverage",
+                  "author_source_expectations",
+                  "prepare_profile_candidate",
+                  "validate_profile_candidate",
+                  "rerun_validated_profile",
+                  "verify_answer_claims"
                 ]
               },
               "reason": {
@@ -370,6 +377,9 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "finding_id": {
+                "type": "string"
               }
             },
             "required": [

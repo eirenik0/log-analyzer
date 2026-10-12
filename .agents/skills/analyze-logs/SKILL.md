@@ -55,6 +55,10 @@ because auxiliary commands report unknown semantics. Treat detection as grammar
 inference, not semantic validation; never choose an ambiguous profile solely by
 match count.
 
+Treat “configured chain found no matching roots” as a relationship recognition
+gap. Inspect its rule/selector failure counts even when every line parsed.
+Matched roots with missing identity/scope are also excluded, not silently joined.
+
 Source ERROR/FATAL and WARN/WARNING findings remain observations when domain
 failure rules are unsupported. Inspect their cited records before explaining an
 issue. Resource relationships, geometry and fingerprint rules belong in the selected
@@ -77,9 +81,13 @@ Use literal continuation arguments and preserve their supplied quoting. Do not
 reconstruct private details omitted by redaction.
 
 When findings contain `details.event_chain`, inspect the whole chain's evidence
-bundle before explaining it. Retrieve that finding by its `id` from `/findings`
-with the exact artifact checksum; follow pagination if it is not on the current
-page. Read the root identity, scope fields, each step's `from`, event type, join samples,
+bundle before explaining it. Prefer the literal `verify_chain_evidence` action:
+it supplies the artifact path and `artifact.stored_sha256` checksum. For a specific
+finding, retrieve `/chain-bundles` with `--id FINDING_ID` and the same checksum.
+The response is `artifact_retrieval.items[]`; each item's `chain` contains the
+relationships and `evidence` contains cited excerpts. `/findings` remains available
+with the original `details.event_chain` layout. Follow `next_cursor` for omitted
+bundles. Read the root identity, scope fields, each step's `from`, event type, join samples,
 source lines/row paths and cardinality. Distinguish `observed_count` (matching
 candidates, including ambiguous ones) from `linked_count` (supported scoped joins).
 Poll sends and responses are independent roles: neither wrappers nor retries
@@ -115,16 +123,61 @@ Before claiming something is missing or unfinished, verify:
 - **Outcomes:** inspect terminal, result/summary, contrary, and unclassified records.
   A failed end still establishes an ending. An end without a start establishes
   neither a duration nor a reconstructed complete lifecycle.
+- **Cached failures:** inspect configured cached-failure roles and retained scoped
+  cache records, including INFO records. A cache hit can explain a returned failure
+  without establishing a fresh submission, retry, poll, or new network failure.
+  If cache recognition is unavailable, disclose that gap before declaring attempts
+  or failure counts exhaustive.
 
 ## 4. Resolve a specific gap
 
-For missing semantics, use `profile resolve`, or `profile prepare` when rules need
-editing, then `profile validate` against independently known facts. Apply a justified
-choice with `--profile` and rerun only when the changed profile or limits address
-the gap. Use the same `--project-root` for `profile resolve`: it revalidates saved
-project/user mappings with current assertions. Bare investigation does not activate
-saved mappings. Inspecting and revalidating are read-only; persist mappings only
-when requested. See [the reference](reference.md) and the
+For missing semantics, use `profile resolve` to check existing candidates. When
+wording, field names, component aliases, or relationships differ, adapt a separate
+candidate with `profile prepare --template STARTING_PROFILE --candidate-output
+NEW_PATH --kind KIND`. Choose a starting profile by its declared lifecycle and
+scope, rather than a product label or match count. This workflow applies to custom
+logs as well as SDK logs; similarity is a hypothesis about meaning.
+
+Inspect `profile_preparation.adaptation`: observed field shapes, source excerpts,
+role matches, failed selectors, missing join keys, roots, scoped links, and later
+activity. Inspect `structure` and `presentation.omissions` too. Shapes and witnesses
+are bounded samples. Missing grammar requires parser/normalization work before
+event rules can establish relationships. Do not widen scope merely to obtain joins.
+
+Independent expectations are source facts you author, not an externally supplied
+truth file. Do not decline preparation merely because the user supplied no
+expectations. Follow the staged recovery actions: read source witnesses, prepare a
+separate candidate (no `--expected` required), edit it, validate independently and
+rerun explicitly. If the input container is unsupported, establish normalization
+and source row addresses before adapting relationships; do not mistake this for a
+component alias problem.
+
+Read independent source records to establish intended roles, outcomes, identity
+bridges, and boundaries before editing the candidate. Version-1 `--expected` facts
+support `records`, `pairs`, and `links`. Link assertions name a `chain` and `step`
+plus exact `root`, `source`, and `target` addresses, or a direct `relationship` plus
+`source` and `target`; each address has `input`, physical `line`, and `row_path`
+(null for unexpanded records). Set `linked:true` for a supported intended join and
+`linked:false` for a recognized pair that must remain separate. Include wrong-scope,
+reused-ID, or ambiguous examples where present. Never generate expected facts from
+candidate output. Record facts establish meaning; link assertions alone do not.
+
+Validate the edited candidate with those facts, then inspect suitability,
+`expected_results`, and `relationships` separately. A negative assertion cannot
+pass when endpoints, keys, predecessors, or input structure are unavailable.
+`passed_on_asserted_links` verifies the supplied witnesses only; inspect
+`unasserted_supported_links`, undiscovered roots, unsupported declarations, and
+processing stops before calling relationship coverage complete. Relationship
+checks run before display sampling. No supplied links means `not_asserted`, even
+when lifecycle facts pass.
+
+Apply a justified choice with explicit `--profile` and rerun investigation with a
+fresh artifact only when edits address the named gap. Retrieve its evidence and
+repeat the final checks above before answering. Stop adapting on no progress,
+exhausted budgets, or missing domain facts; disclose the unresolved distinction.
+Preparation never activates the candidate or saves mappings. Use the same
+`--project-root` for resolution: saved mappings need current revalidation.
+Persist mappings only when requested. See [the reference](reference.md) and the
 [profile-recovery example](examples/profile-recovery.md).
 
 If custom analysis is still needed, document the input/profile, attempted
@@ -132,6 +185,19 @@ investigation, exact unsupported field/relationship or processing boundary, and
 question the script will answer. Reuse retained records where possible and keep
 the same budgets and citation requirements. If the initial investigation is
 blocked, disclose why rather than implying it ran.
+
+When a chain has zero links, inspect each step's `recognition` across every
+relevant bundle, not only the first checkpoint. Rule/selector failures identify
+recognition gaps; matching roles with zero joins identify identity, ambiguity or
+predecessor gaps. Optional operations can be absent. If raw events establish a
+needed role that the selected profile misses, complete prepare → independent
+validation → explicit rerun before relying on an adapted relationship. Manual
+fallback must disclose the exact unresolved gap and preserve source addresses.
+
+Read validation dimensions independently: a request-focused pair check can fail
+for a command pair without invalidating separately passed link assertions.
+Report the exact failed link and preserve passed positives/negatives; neither
+one failed assertion nor overall suitability makes every join unconfirmed.
 
 ## 5. Report supported conclusions
 
@@ -150,8 +216,62 @@ later evidence and join ambiguity. Cite the supported links and leave unsupporte
 ones explicitly unknown. Do not generalize model rankings or attribute improved
 answers to this structure without a controlled evaluation.
 
+Perform this final evidence check before writing the answer:
+
+- For every “missing”, “unfinished”, or “hung” claim, retrieve later scoped records
+  and terminal/contrary evidence. A completed `close` stays completed even if an
+  earlier capture or check has no recognized end. Record retrieval omissions or
+  unsupported selectors keep absence uncertain.
+- For every elapsed time, name the start and end operations, IDs, occurrences,
+  timestamps with offsets, and units; subtract those exact endpoints. Do not use
+  chain order, the final displayed timestamp, or a session result as an unstated
+  substitute endpoint. If an endpoint is ambiguous, leave duration unknown.
+- For every causal sentence, identify evidence beyond temporal proximity or a
+  returned/cached error. Present an observed failure as a fact and an unproven
+  explanation as a hypothesis. Preserve contrary evidence and outcomes at each
+  level in the final answer.
+
 Use the [failure](examples/debug-failure.md) or
 [performance](examples/performance.md) example when relevant; use
 [late terminal evidence](examples/late-terminal.md) when an early page looks incomplete. Read supporting
 resources only as needed; their paths are relative to this skill. Inspect sensitive
 content before sharing; masking cannot guarantee secrecy.
+
+Use analyzer-provided `join_samples[].endpoint_interval` for an interval with
+those exact endpoints. Inspect its status, named operations, source/target
+occurrences and explicit timestamps before citing it. An interval from a check
+start to a close ending is not the close duration. Unavailable intervals remain
+unknown; other requested intervals need independently identified endpoints and
+exact subtraction. Before finalizing, retain a source-addressed check for every
+completion/absence, duration and causal claim; cite the relevant witnesses in
+the answer. Verify close endings independently, and treat same-session failed
+URL/cache associations as observations, not new network attempts or proven
+visual causes. Instructions and passed fixtures do not prove a model followed
+these checks; answer-quality claims require a controlled model rerun.
+
+## Structured final claim verification
+
+Before drafting, declare required claim IDs from the question, including every
+requested relationship. Use each finding's targeted `verify_chain_evidence` action
+(`--id` and `--compact`), not just the first bundle in an inventory. Follow omitted
+finding pages and retrieve full `/records` by reference ID for omitted payload
+fields. Compact sample omissions remain limitations, not measured zeroes.
+
+Write version-1 assertions and run checksum-bound `evidence --claims FILE` before
+concluding. The format is `{"version":1,"required_claim_ids":["capture-to-check"],
+"claims":[{"id":"capture-to-check","kind":"link","finding_id":"FINDING_ID",
+"step_id":"STEP_ID"}]}`. Use `fact` with `pointer` and `equals` for literal
+outcomes; `interval` with a retained endpoint-interval `pointer` and `expected_ms`
+for named durations; `distinct_records` with an array `pointer` and `expected`
+for unique source occurrences. Pointers address the full retained artifact, not a
+compact response or a paged item index. Retrieve the relevant retained collection
+to locate them. Do not translate `asExpected:false` into a failed session without
+source-supported semantics. Keep separate outcome levels separate.
+
+Inspect `artifact_retrieval.claim_verification`, not merely the exit status.
+Revise contradicted claims; leave unavailable claims uncertain and missing required
+relationships explicitly uncovered. `absence` is contradicted by observed unambiguous links and otherwise unavailable: check
+later completion, cached and contrary records independently rather than claiming
+unfinished from missing configured links. Verification covers declared assertions,
+not arbitrary prose or causes. Do not describe the checker as enforcing the whole
+answer, and do not manufacture assertions from candidate output as profile truth.

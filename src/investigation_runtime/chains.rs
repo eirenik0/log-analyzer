@@ -5,108 +5,14 @@ use super::{
     selected,
 };
 use crate::{
-    config::AnalyzerConfig,
-    event_rules::ClassifiedRecord,
-    evidence,
-    investigation_policy::{Cardinality, InvestigationPolicy, Role},
-    parser::LogEntry,
-    processing::Budget,
+    config::AnalyzerConfig, event_rules::ClassifiedRecord, evidence,
+    investigation_policy::InvestigationPolicy, parser::LogEntry, processing::Budget,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) fn field(entry: &LogEntry, selector: &str) -> Option<Value> {
-    if let Some(prefix) = selector.strip_prefix("component_id.prefix:") {
-        if entry.component_id.len() > 4096 {
-            return None;
-        }
-        let mut values = BTreeSet::new();
-        for branch in entry.component_id.split(" & ") {
-            let segments: Vec<_> = branch.split('/').collect();
-            let position = segments
-                .iter()
-                .position(|segment| segment.starts_with(prefix))?;
-            values.insert(segments[..=position].join("/"));
-        }
-        return (values.len() == 1).then(|| json!(values.first().unwrap()));
-    }
-    if let Some(key) = selector.strip_prefix("event.") {
-        let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification else {
-            return None;
-        };
-        return match key {
-            "name" => Some(json!(semantics.name)),
-            "kind" => serde_json::to_value(semantics.kind).ok(),
-            "phase" => semantics.phase.and_then(|v| serde_json::to_value(v).ok()),
-            "outcome" => semantics.outcome.and_then(|v| serde_json::to_value(v).ok()),
-            "correlation_id" => semantics.correlation_id.as_ref().map(|v| json!(v)),
-            "direction" => semantics.direction.as_ref().map(|v| json!(v)),
-            "endpoint" => semantics.endpoint.as_ref().map(|v| json!(v)),
-            "end_expected" => Some(json!(semantics.end_expected)),
-            _ => None,
-        };
-    }
-    if let Some(key) = selector.strip_prefix("payload.") {
-        return crate::extract::extract_payload_field(entry, key)
-            .filter(|v| !v.is_array() && !v.is_object() && v.to_string().len() <= 4096)
-            .cloned();
-    }
-    let value = match selector {
-        "component_id" => Some(entry.component_id.as_str()),
-        "component" => Some(entry.component.as_str()),
-        "level" => Some(entry.level.as_str()),
-        _ => entry.structured_field(selector),
-    };
-    value.filter(|v| v.len() <= 4096).map(|v| json!(v))
-}
-fn key(entry: &LogEntry, fields: &[String]) -> Option<Vec<String>> {
-    fields
-        .iter()
-        .map(|selector| {
-            let value = field(entry, selector)?;
-            if value.is_null()
-                || value.is_array()
-                || value.is_object()
-                || value == ""
-                || value.to_string().len() > 4096
-            {
-                return None;
-            }
-            super::policy::scalar_identity(&value)
-        })
-        .collect()
-}
-pub(super) struct Matcher<'a> {
-    role: &'a Role,
-    pattern: Option<regex::Regex>,
-}
-impl<'a> Matcher<'a> {
-    pub(super) fn new(role: &'a Role) -> Self {
-        Self {
-            role,
-            pattern: role.message_pattern.as_ref().map(|p| {
-                regex::RegexBuilder::new(p)
-                    .size_limit(1_048_576)
-                    .build()
-                    .expect("validated role pattern")
-            }),
-        }
-    }
-    pub(super) fn matches(&self, entry: &LogEntry) -> bool {
-        rules(entry)
-            .iter()
-            .any(|id| self.role.rule_ids.contains(id))
-            && self
-                .role
-                .select
-                .iter()
-                .all(|c| field(entry, &c.field).as_ref() == Some(&c.equals))
-            && self
-                .pattern
-                .as_ref()
-                .is_none_or(|pattern| pattern.is_match(&entry.message))
-    }
-}
+pub(super) use crate::relationship_rules::{Matcher, field};
+use crate::relationship_rules::{cardinality_supported, key};
 fn identities(entry: &LogEntry, fields: &[String]) -> Vec<Value> {
     fields
         .iter()
@@ -149,8 +55,32 @@ fn step_samples<'a>(entries: &[&'a LogEntry], outcome: Option<&str>) -> Vec<&'a 
     }
     result
 }
+// These are endpoint intervals, never inferred operation durations or causes.
+fn endpoint_interval(source: &LogEntry, target: &LogEntry, unique: bool) -> Value {
+    let start = source
+        .source_timestamp
+        .filter(|_| !source.timestamp_year_inferred);
+    let end = target
+        .source_timestamp
+        .filter(|_| !target.timestamp_year_inferred);
+    let elapsed = if unique {
+        start.zip(end).and_then(|(start, end)| {
+            end.signed_duration_since(start)
+                .num_nanoseconds()
+                .filter(|n| *n >= 0)
+        })
+    } else {
+        None
+    };
+    json!({"status":if elapsed.is_some(){"measured"}else{"unavailable"},
+        "value":elapsed.map(|n| n as f64 / 1_000_000.0),"unit":"ms",
+        "start_timestamp":start.map(|t| t.to_rfc3339()),"end_timestamp":end.map(|t| t.to_rfc3339()),
+        "start_operation":field(source,"event.name"),"end_operation":field(target,"event.name"),
+        "semantics":"selected_endpoint_interval_not_causality_or_operation_duration",
+        "reason":if !unique {Some("ambiguous_endpoint_population")}else if start.is_none() || end.is_none(){Some("explicit_source_timestamps_unavailable")}else if elapsed.is_none(){Some("negative_or_out_of_range_interval")}else{None}})
+}
 #[allow(clippy::too_many_arguments)]
-pub(super) fn calculate(
+pub(crate) fn calculate(
     policy: &InvestigationPolicy,
     config: &AnalyzerConfig,
     entries: &[LogEntry],
@@ -161,6 +91,7 @@ pub(super) fn calculate(
     input_complete: bool,
     budget: &mut Budget,
     findings: &mut Vec<Value>,
+    mut observer: Option<&mut dyn crate::relationship_rules::Observer>,
 ) {
     if policy.chains.is_empty()
         || !budget.reserve(
@@ -186,6 +117,12 @@ pub(super) fn calculate(
         .map(|r| (r.id.as_str(), Matcher::new(r)))
         .collect();
     let mut roles: BTreeMap<&str, Vec<&LogEntry>> = BTreeMap::new();
+    // Independent selector counts explain recognition failures without guessing aliases.
+    let mut diagnostics: BTreeMap<&str, Vec<usize>> = policy
+        .roles
+        .iter()
+        .map(|role| (role.id.as_str(), vec![0; role.select.len() + 3]))
+        .collect();
     let mut unresolved = false;
     for entry in entries {
         if !budget.checkpoint(
@@ -205,6 +142,27 @@ pub(super) fn calculate(
             continue;
         }
         for (id, matcher) in &matchers {
+            if let Some(counts) = diagnostics.get_mut(id) {
+                counts[0] += 1;
+                if rules(entry)
+                    .iter()
+                    .any(|rule| matcher.role.rule_ids.contains(rule))
+                {
+                    counts[1] += 1;
+                    for (index, condition) in matcher.role.select.iter().enumerate() {
+                        if field(entry, &condition.field).as_ref() != Some(&condition.equals) {
+                            counts[index + 2] += 1;
+                        }
+                    }
+                    if matcher
+                        .pattern
+                        .as_ref()
+                        .is_some_and(|pattern| !pattern.is_match(&entry.message))
+                    {
+                        counts[matcher.role.select.len() + 2] += 1;
+                    }
+                }
+            }
             if matcher.matches(entry) {
                 if !budget.reserve("calculation", 32) {
                     return;
@@ -214,6 +172,35 @@ pub(super) fn calculate(
         }
     }
     for (chain_index, chain) in policy.chains.iter().enumerate() {
+        if roles
+            .get(chain.root_role.as_str())
+            .is_none_or(Vec::is_empty)
+        {
+            if !budget.reserve("calculation", 262144) {
+                return;
+            }
+            let matcher = &matchers[chain.root_role.as_str()];
+            let counts = &diagnostics[chain.root_role.as_str()];
+            let failed: Vec<_> = matcher
+                .role
+                .select
+                .iter()
+                .enumerate()
+                .map(|(index, condition)| {
+                    format!(
+                        "{} equals {}: {} rule-matched records failed",
+                        condition.field,
+                        condition.equals,
+                        counts[index + 2]
+                    )
+                })
+                .collect();
+            findings.push(fact(
+                format!("{scope}-chain-{chain_index}-unrecognized"), scope, "unknown",
+                "Configured chain found no matching roots; complete parsing does not establish relationship coverage.",
+                Vec::new(), json!({"supporting_occurrences":[],"reason": format!("Chain {}; root role {}; {} selected classified events, {} matched rule IDs {:?}; selectors [{}]; message_pattern {:?}: {} rule-matched records failed; processed coverage {}. Counts are independent selector failures, not disjoint populations.", chain.id, chain.root_role, counts[0], counts[1], matcher.role.rule_ids, failed.join("; "), matcher.role.message_pattern, counts[matcher.role.select.len() + 2], if input_complete {"complete"} else {"partial"})}),
+            ));
+        }
         let root_fields: Vec<_> = chain
             .identity_fields
             .iter()
@@ -308,6 +295,12 @@ pub(super) fn calculate(
             let mut node_completeness = BTreeMap::from([("$root", complete)]);
             for (step, (fields, index, missing)) in chain.steps.iter().zip(&indices) {
                 let sources = &selected_nodes[step.from.as_str()];
+                if let Some(observer) = observer.as_deref_mut() {
+                    if !budget.checkpoint("calculation", observer.work_units()) {
+                        return;
+                    }
+                    observer.chain_step(chain, step, root_entries, sources);
+                }
                 let mut source_keys: BTreeMap<Vec<String>, Vec<&LogEntry>> = BTreeMap::new();
                 let mut missing_source = 0usize;
                 for source in sources {
@@ -335,12 +328,16 @@ pub(super) fn calculate(
                     let Some(to) = index.get(&k) else {
                         continue;
                     };
-                    let supported = match step.cardinality {
-                        Cardinality::OneToOne => from.len() == 1 && to.len() == 1,
-                        Cardinality::OneToMany => from.len() == 1,
-                        Cardinality::ManyToOne => to.len() == 1,
-                    };
-                    if !supported || to.iter().any(|t| from.iter().any(|s| std::ptr::eq(*s, *t))) {
+                    let supported = cardinality_supported(step.cardinality, from.len(), to.len());
+                    let supported =
+                        supported && !to.iter().any(|t| from.iter().any(|s| std::ptr::eq(*s, *t)));
+                    if let Some(observer) = observer.as_deref_mut() {
+                        if !budget.checkpoint("calculation", observer.work_units()) {
+                            return;
+                        }
+                        observer.chain_group(chain, step, root_entries, &from, to, supported);
+                    }
+                    if !supported {
                         ambiguous += to.len();
                         for target in samples(to) {
                             if ambiguous_samples.len() < 2 {
@@ -370,7 +367,7 @@ pub(super) fn calculate(
                 let sampled = step_samples(&targets, step.outcome_field.as_deref());
                 let joins: Vec<_> = sampled.iter().map(|target| {
                     let (source,source_count,target_count)=joins_by_target[&(target.source_line_number,target.source_row_path.as_deref())];
-                    json!({"source":occurrence(source,context,snapshot),"target":occurrence(target,context,snapshot),"identity":identities(source,fields),"source_count":source_count,"target_count":target_count})
+                    json!({"source":occurrence(source,context,snapshot),"target":occurrence(target,context,snapshot),"identity":identities(source,fields),"source_count":source_count,"target_count":target_count,"endpoint_interval":endpoint_interval(source,target,source_count==1 && target_count==1 && root_entries.len()==1)})
                 }).collect();
                 let witnesses: Vec<_> = sampled
                     .iter()
@@ -384,7 +381,14 @@ pub(super) fn calculate(
                     && missing_source == 0
                     && ambiguous == 0
                     && !sources.is_empty();
-                steps.push(json!({"id":step.id,"label":step.label,"event_type":step.event_type,"from":step.from,"observed_count":targets.len()+ambiguous,"linked_count":targets.len(),"status":if ambiguous>0{"ambiguous"}else if sources.is_empty() || missing_source_identity {"unavailable"}else if targets.is_empty(){"not_observed"}else{"observed"},"count_completeness":if step_complete{"complete"}else{"partial"},"join_fields":fields,"cardinality":step.cardinality,"join_samples":joins,"ambiguity":{"excluded_target_occurrences":ambiguous,"role_occurrences_missing_identity":missing,"source_occurrences_missing_identity":missing_source},"evidence":witnesses,"ambiguous_evidence":ambiguous_samples,"omitted_occurrences":targets.len().saturating_sub(sampled.len()),"outcomes":outcomes,"omitted_outcomes":if step.outcome_field.is_some(){targets.len().saturating_sub(sampled.len())}else{0}}));
+                let role = matchers[step.role.as_str()].role;
+                let counts = &diagnostics[step.role.as_str()];
+                let recognition = json!({"role":step.role,"rule_ids":role.rule_ids,
+                    "rule_matched_records":counts[1],"role_matched_records":roles.get(step.role.as_str()).map_or(0,Vec::len),
+                    "population":"selected_classified_records_in_this_input",
+                    "failed_selectors":role.select.iter().enumerate().map(|(i,c)|json!({"field":c.field,"equals":c.equals,"failed_records":counts[i+2]})).collect::<Vec<_>>(),
+                    "message_pattern_failed_records":counts[role.select.len()+2]});
+                steps.push(json!({"recognition":recognition,"id":step.id,"label":step.label,"event_type":step.event_type,"from":step.from,"observed_count":targets.len()+ambiguous,"linked_count":targets.len(),"status":if ambiguous>0{"ambiguous"}else if sources.is_empty() || missing_source_identity {"unavailable"}else if targets.is_empty(){"not_observed"}else{"observed"},"count_completeness":if step_complete{"complete"}else{"partial"},"join_fields":fields,"cardinality":step.cardinality,"join_samples":joins,"ambiguity":{"excluded_target_occurrences":ambiguous,"role_occurrences_missing_identity":missing,"source_occurrences_missing_identity":missing_source},"evidence":witnesses,"ambiguous_evidence":ambiguous_samples,"omitted_occurrences":targets.len().saturating_sub(sampled.len()),"outcomes":outcomes,"omitted_outcomes":if step.outcome_field.is_some(){targets.len().saturating_sub(sampled.len())}else{0}}));
                 node_completeness.insert(step.id.as_str(), step_complete);
                 selected_nodes.insert(step.id.as_str(), targets);
             }
@@ -400,6 +404,18 @@ pub(super) fn calculate(
                     .len()
                     .saturating_sub(events.partition_point(|e| source_order(e) <= last_order))
             });
+            if let Some(observer) = observer.as_deref_mut() {
+                if !budget.checkpoint("calculation", observer.work_units()) {
+                    return;
+                }
+                observer.chain_later(
+                    chain,
+                    root_entries,
+                    activity.map(|events| {
+                        &events[events.partition_point(|e| source_order(e) <= last_order)..]
+                    }),
+                );
+            }
             let later: Vec<_> = activity
                 .into_iter()
                 .flatten()
@@ -430,7 +446,17 @@ pub(super) fn calculate(
             findings.push(fact(format!("{scope}-chain-{chain_index}-{root_index}"),scope,"observation","Connected event chain from explicit profile roles and exact identity/scope joins; outcome levels remain independent.",bundle,details));
         }
         if let Some(root) = missing_roots.first() {
-            findings.push(fact(format!("{scope}-chain-{chain_index}-missing"),scope,"unknown","Some chain roots lack declared identity or scope; no relationship is guessed.",vec![excerpt(root,context,snapshot)],json!({"reason":format!("{} root occurrences excluded",missing_roots.len()),"supporting_occurrences":[occurrence(root,context,snapshot)]})));
+            let failed: Vec<_> = root_fields
+                .iter()
+                .map(|field| {
+                    let count = missing_roots
+                        .iter()
+                        .filter(|entry| key(entry, std::slice::from_ref(field)).is_none())
+                        .count();
+                    format!("{field}: {count} roots missing a usable key")
+                })
+                .collect();
+            findings.push(fact(format!("{scope}-chain-{chain_index}-missing"),scope,"unknown","Some chain roots lack declared identity or scope; no relationship is guessed.",vec![excerpt(root,context,snapshot)],json!({"reason":format!("{} root occurrences excluded; selectors [{}]",missing_roots.len(), failed.join("; ")),"supporting_occurrences":[occurrence(root,context,snapshot)]})));
         }
     }
 }

@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     evidence,
-    investigation_policy::{Cardinality, Grouping, InvestigationPolicy},
+    investigation_policy::{Grouping, InvestigationPolicy},
     parser::LogEntry,
     processing::Budget,
 };
@@ -33,7 +33,7 @@ fn identity(entry: &LogEntry, fields: &[String]) -> Option<Vec<String>> {
         .collect()
 }
 #[allow(clippy::too_many_arguments)]
-pub(super) fn calculate(
+pub(crate) fn calculate(
     policy: &InvestigationPolicy,
     config: &crate::config::AnalyzerConfig,
     entries: &[LogEntry],
@@ -45,6 +45,7 @@ pub(super) fn calculate(
     findings: &mut Vec<Value>,
     populations: &mut Vec<Value>,
     memberships: &mut Vec<Value>,
+    mut observer: Option<&mut dyn crate::relationship_rules::Observer>,
 ) {
     let roles: BTreeMap<_, _> = policy
         .roles
@@ -180,7 +181,7 @@ pub(super) fn calculate(
                 unresolved.push(entry);
                 continue;
             }
-            let Some(mut key) = identity(entry, &fields) else {
+            let Some(mut key) = crate::relationship_rules::key(entry, &fields) else {
                 missing += 1;
                 continue;
             };
@@ -211,11 +212,17 @@ pub(super) fn calculate(
                 missing += from.len();
                 continue;
             };
-            let supported = match declaration.cardinality {
-                Cardinality::OneToOne => from.len() == 1 && to.len() == 1,
-                Cardinality::ManyToOne => to.len() == 1,
-                Cardinality::OneToMany => from.len() == 1,
-            };
+            let supported = crate::relationship_rules::cardinality_supported(
+                declaration.cardinality,
+                from.len(),
+                to.len(),
+            );
+            if let Some(observer) = observer.as_deref_mut() {
+                if !budget.checkpoint("calculation", observer.work_units()) {
+                    return;
+                }
+                observer.relationship_group(declaration, &from, to, supported);
+            }
             if !supported {
                 ambiguous += from.len() + to.len();
                 continue;

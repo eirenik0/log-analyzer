@@ -26,7 +26,8 @@ inference of lifecycle meaning.
 ## Purpose and verdict
 
 `--kind request|event|command` is required. `--purpose timing` is the default;
-`recognition` only establishes classification of the requested kind. Parsing and
+`recognition` checks classification of the requested kind. Supplied link assertions
+are also checked for either purpose. Parsing and
 global classification cover all selected records. Requested coverage is
 calculated from requested-kind events and relevant conflicting/invalid records,
 so events of another kind cannot establish applicability. Generic unclassified
@@ -85,7 +86,7 @@ records, normalization losses, and upstream capture completeness remain visible;
 
 ## Expected facts
 
-Use version 1 JSON with `records`, `pairs`, or both. Addresses require a declared
+Use version 1 JSON with `records`, `pairs`, `links`, or a combination. Addresses require a declared
 input ordinal (zero-based), physical line (one-based), and normalized JSON
 Pointer `row_path` (null for ordinary rows). Missing, ambiguous, or filtered-out
 targets fail explicitly. Addresses refer to original source locations before
@@ -121,6 +122,26 @@ profile, and expectation filename remain unchanged. Positive and negative
 classification assertions and exact pair witnesses remain separate. A supplied
 pair duration checks the existing engine's measured milliseconds; validation
 does not manufacture a duration for missing or ambiguous boundaries.
+
+`links` assertions observe the same scoped joins and cardinality decisions used
+by investigation, before display sampling. A chain assertion requires `chain`,
+`step`, `root`, `source`, `target`, and boolean `linked`; a direct relationship
+requires `relationship`, `source`, `target`, and `linked`. All three source fields
+use the address shape above. Negative witnesses require recognized endpoints,
+usable identities, and a reachable chain predecessor. Unavailable evidence cannot
+verify separation. Rejected source structure and processing stops invalidate link
+support and expose null totals. `relationships.status` distinguishes no declarations,
+no assertions, passing supplied links, failed assertions, and unavailable analysis.
+Passing links neither establish domain meaning nor discover missed relationships;
+inspect unasserted supported links, root recognition gaps, and source records.
+
+Preparation adds starting-profile `adaptation` observations: field shapes, source
+representatives, role selectors and their failures, missing keys, roots, steps and
+later activity. These guide editing a separate candidate without activating it.
+The [README adaptation procedure](../../README.md#prepare-a-separate-profile-candidate)
+describes limits and the validation/reinvestigation loop. Keep independent facts
+separate from candidate output and retain scope boundaries when adapting aliases
+or a different grammar.
 
 ## Redaction and bounds
 

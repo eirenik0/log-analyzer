@@ -135,7 +135,11 @@ impl InvestigationPolicy {
             !fields.is_empty()
                 && fields.len() <= 16
                 && fields.iter().all(|field| {
-                    !field.is_empty() && field.len() <= 4096 && field != "component_id.prefix:"
+                    !field.is_empty()
+                        && field.len() <= 4096
+                        && field != "component_id.prefix:"
+                        && field != "component_id.ends_at_first:"
+                        && field != "coalesce:"
                 })
                 && fields.iter().collect::<BTreeSet<_>>().len() == fields.len()
         };

@@ -175,7 +175,57 @@ Up to eight chain declarations with sixteen steps each are supported.
 segment; batched ` & ` paths qualify only if all branches yield the same path.
 The shipped profile uses this to connect checkpoint activity across components
 while excluding batches spanning different checkpoints. All domain meaning stays
-in profile configuration; no new CLI flags are required. These structural tests
+in profile configuration. Checkpoint roots and ends use structural check/eyes
+identity instead of requiring the component label `core-ufg`; `core-002` and
+classic component labels can qualify with the same scope boundaries.
+`component_id.ends_at_first:PREFIX` returns a boolean only when the prefix path
+is unambiguous, and is true when every branch ends at that first matching segment.
+The shipped roots use it to exclude nested environment/base checks. Repeated
+outer roots remain ambiguous; no time-based reassignment is performed.
+
+The shipped profile recognizes NML `Request "takeScreenshots" called` and
+finished events, broker POST acceptance, and polling sends/responses by request
+path, endpoint and attempt number. Acceptance and capture completion remain
+separate; an unanswered poll does not become a response. Command and normalized
+structured screenshot events remain supported. Close endings are retained
+independently of check completion; check `asExpected` and session `status`
+outcomes remain separate levels.
+
+For validated field-name bridges, `coalesce:FIELD_A|FIELD_B` supplies the single
+nonempty scalar value present at those selectors. Conflicting values remain
+unavailable; it does not pick a preferred key. For example,
+`coalesce:payload.resource|payload.resources.0.resource` can join a resource
+record to a render record with the same explicit identifier. Scope fields and
+cardinality still apply, and independent positive/negative witnesses are required.
+Direct relationships resolve join and required-scope selectors with the same
+implementation as chains, including `event.*`, structural component prefixes and
+explicit coalesced field bridges.
+
+Each step reports `recognition`: rule matches, exact selector failures and role
+matches across the selected classified input. Zero linked steps with matching
+roles indicate a join/predecessor gap, not absent activity. Zero role matches
+can mean a format difference or an optional operation absent from this input.
+`inspect_relationship_coverage` guidance calls for source inspection and,
+where justified, independent candidate validation and explicit rerun.
+
+Each sampled join includes `endpoint_interval`, with named source/target
+operations, explicit timestamps preserving offsets, and milliseconds calculated
+by the analyzer. Ambiguous populations, assumed timestamps, negative intervals
+and out-of-range arithmetic are unavailable. These are intervals between the
+cited endpoints; they establish neither causality nor an operation duration
+unless those endpoints are its actual lifecycle boundaries.
+
+The resource-cache evidence chain associates explicit Forbidden/Not Found
+observations with same-URL cache records within the same full session path,
+including INFO records and later checkpoints. It does not infer a fresh fetch,
+cache contents, or visual impact. Other sessions and different URLs are excluded;
+first/last evidence samples and omission counts still apply.
+
+A configured chain with no matching root reports an unknown recognition gap,
+including root rule IDs, failed exact selectors and message-pattern counts.
+Selector counts are independent, not disjoint populations. Complete parsing is
+separate from relationship coverage; roots missing identity/scope remain excluded.
+These structural tests
 make no claim about model rankings or explanation quality.
 
 To organize a profile's measurements like the `perf` component view, add:
@@ -493,6 +543,55 @@ Declare screenshot attempts, poll sends, observed responses, cached failures and
 downstream links separately when the domain supports them. Repeated starts remain
 start occurrences; domain attempt/resource grouping needs explicit declarations.
 A supported join establishes an observed relationship and does not establish causality.
+
+### Targeted evidence and final claim checks
+
+Use a finding's `verify_chain_evidence` action to retrieve one checksum-bound
+chain with `evidence ARTIFACT --expected-sha256 SHA --collection /chain-bundles
+--id FINDING_ID --compact`. The compact view removes repeated excerpts and payload
+fields, preserving linked endpoints, outcomes, later activity and sample omissions.
+Retrieve full `/records --id REFERENCE_ID` when omitted fields matter. Follow the
+finding inventory cursor to find additional relevant chains; one bundle is not
+whole-incident coverage. Compact output requires an exact finding ID.
+
+Before drafting, list the question's required relationship and factual claims.
+Pass their assertions to `evidence` using `--claims claims.json`:
+
+```json
+{
+  "version": 1,
+  "required_claim_ids": ["capture-to-check", "check-outcome"],
+  "claims": [
+    {"id": "capture-to-check", "kind": "link", "finding_id": "FINDING_ID", "step_id": "STEP_ID"},
+    {"id": "check-outcome", "kind": "fact", "pointer": "/records/0/fields/payload/asExpected", "equals": false}
+  ]
+}
+```
+
+Replace example IDs and pointers with addresses from the retained artifact.
+The strict version-1 format is defined in `schemas/claim-assertions.schema.json`.
+`fact` compares exact JSON values; `interval` takes a pointer to a retained
+`endpoint_interval` and `expected_ms`, recalculating explicit timestamps with their
+offsets; `distinct_records` counts unique occurrences in an addressed array;
+`link` checks a configured, unambiguous, completely counted scoped step. These
+checks do not infer cause, attempt identity, or meaning from outcome values.
+`absence` assertions are contradicted by observed unambiguous links and otherwise
+remain unavailable: missing links cannot establish that an operation never
+completed. Inspect later records and recognition gaps.
+
+Results appear under `artifact_retrieval.claim_verification`. Contradicted,
+unavailable, or missing required assertions produce a nonzero exit after the JSON
+result is emitted. Assertions use full retained-artifact pointers, independently
+of presentation paging and compact views. A verified result covers only submitted
+assertions and the retained snapshot, not every sentence of an answer or upstream
+capture completeness. The claims input is capped at 1 MiB and 100 assertions.
+
+Profile recovery now separates source-expectation authoring, candidate preparation,
+validation and an explicit rerun. Preparation does not require supplied expectations.
+Derive expectations by reading original source records independently of candidate
+output; an external truth file is unnecessary. Unsupported nested containers need
+parser normalization before relationship adaptation. No candidate is automatically
+activated, and validation never invents domain meaning or widens scope.
 
 ## First investigation: what failed, and why?
 
@@ -1507,7 +1606,8 @@ The JSON report separates parsing, global classification, requested-kind pairing
 rule/source witnesses, missing identities and scope, and expected results.
 `--purpose timing` requires reliable observed pairs; `--purpose recognition`
 checks classification and can support identity-only or intentional start-only
-events. Unsupported, conflicting, and insufficient evidence remain distinct.
+events. Supplied relationship assertions are checked for either purpose.
+Unsupported, conflicting, and insufficient evidence remain distinct.
 Exit 0 means supported on the observed sample, without asserting general semantic
 correctness from match counts. Candidates are never activated automatically.
 
@@ -1613,13 +1713,69 @@ structural support can create a candidate while reporting insufficient evidence.
 Unsupported Python headers require parser/normalization work rather than guessed
 rules. Creation never activates a profile or saves a persistent mapping.
 
-Inspect `creation`, `structure`, `sample_validation`, `semantic_proof` and
+Inspect `creation`, `structure`, `adaptation`, `sample_validation`, `semantic_proof` and
 `missing_information` separately. Validation runs without expected facts; missing
 or partial independent facts cannot verify the requested population and timing
 pairs. A successful exit can report an unsuitable candidate or abstention.
 There is no automatic repair/retry loop. If a report cannot be saved after candidate
 creation, stdout reports the committed candidate and failed delivery; validate the
 saved file rather than retrying creation.
+
+`adaptation` describes the **starting profile** against the selected sample:
+observed payload/structured-field shapes, representative first/final and error or
+unclassified records, role/rule matches, selector failures, missing join keys,
+recognized chain roots, step counts and later context. Field paths use JSON Pointer
+for payload shapes and `structured:NAME` for flattened fields. Shapes are sampled
+(128 paths, depth 8, first three array members), and excerpts are bounded. They
+provide evidence for editing a candidate; similar wording or fields do not establish
+event meaning. A component rename, changed payload field, or SDK-like custom
+grammar can reuse a profile's lifecycle while needing different adapters/selectors.
+Keep entity, request and run identities separate, retain scope boundaries, and
+declare an identity bridge only when records establish it. Replacing `event_rules`
+through inheritance clears inherited investigation policy; redeclare the applicable
+roles and relationships when doing so.
+
+Version-1 expected facts can include `links` alongside `records` and `pairs`:
+
+```json
+{
+  "version": 1,
+  "links": [{
+    "chain": "capture", "step": "submitted",
+    "root": {"input": 0, "line": 1, "row_path": null},
+    "source": {"input": 0, "line": 1, "row_path": null},
+    "target": {"input": 0, "line": 2, "row_path": null},
+    "linked": true
+  }]
+}
+```
+
+For direct relationships, replace `chain`, `step`, and `root` with
+`"relationship": "DECLARED_ID"`. `linked:false` asserts that recognized endpoints
+must remain separate. An unknown role, missing key, unreachable predecessor,
+rejected input structure, or stopped processing fails an assertion with unavailable
+evidence; it cannot verify a negative link. Addresses distinguish independent input
+ordinals, physical lines, and normalized row paths. Checks use the runtime's scoped
+joins and cardinality **before evidence sampling**, including middle polls and late
+completions. They establish supported links, not temporal order, duration, or cause.
+
+`sample_validation.relationships` reports assertion status, supported and unasserted
+link counts, root witnesses, steps and later context. `not_asserted` means no link
+facts were supplied; `passed_on_asserted_links` covers only those facts. Record facts
+remain necessary to establish lifecycle meaning. When supplied during resolution,
+link facts must pass and cover every observed supported link, in addition to the
+existing requested-kind record/pair requirements. This still cannot prove undiscovered
+relationships or capture completeness. Relationship processing has separate limits
+of 20 million work units, 10 seconds and 256 MiB of accounting reservations; a stop
+reports unavailable totals. These limits cover relationship calculation, rather
+than parsing, field inventory or the process's total memory.
+
+Adaptation is the agent's bounded recovery procedure: inspect the packet and raw
+source witnesses, edit a separate candidate, establish independent positive and
+negative facts, validate, then rerun `investigate --profile CANDIDATE` with fresh
+evidence. Never derive expected facts from candidate output or activate by match
+count. The analysis skill follows this procedure and verifies later completions,
+cached outcomes, contrary evidence, and named timing boundaries before answering.
 
 `--witness-limit` bounds representatives (default 20, maximum 100). Representatives
 with an atomic string over 512 Unicode scalars or serialized size over 4096 scalars
