@@ -24,7 +24,7 @@
     },
     "claims": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "maxItems": 100,
       "items": {
         "oneOf": [
@@ -433,6 +433,44 @@
               "null"
             ],
             "minLength": 1
+          },
+          "population": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "pointer"
+            ],
+            "properties": {
+              "pointer": {
+                "type": "string",
+                "pattern": "^/"
+              },
+              "operation": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind",
+                      "name"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
           }
         },
         "allOf": [
@@ -465,6 +503,20 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "distinct_records"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "population"
+              ]
+            }
           }
         ]
       }
@@ -492,5 +544,28 @@
         }
       }
     }
-  }
+  },
+  "anyOf": [
+    {
+      "properties": {
+        "claims": {
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "required": [
+        "unresolved",
+        "requirements"
+      ],
+      "properties": {
+        "unresolved": {
+          "minItems": 1
+        },
+        "requirements": {
+          "minItems": 1
+        }
+      }
+    }
+  ]
 }

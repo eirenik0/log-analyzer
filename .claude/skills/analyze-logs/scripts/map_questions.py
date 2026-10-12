@@ -37,7 +37,9 @@ def requirement(claim, artifact):
                       end_operation=subject['end_operation'])
     elif claim['kind'] == 'link':
         result['finding_id'] = claim['finding_id']
-    elif claim['kind'] not in ('fact', 'distinct_records'):
+    elif claim['kind'] == 'distinct_records':
+        result['population'] = {'pointer': claim['pointer'], 'operation': claim.get('operation')}
+    elif claim['kind'] != 'fact':
         raise ValueError('Unsupported question claim kind')
     return result
 
@@ -55,11 +57,18 @@ def compile_plan(draft, artifact, plan):
             raise ValueError('Question IDs must be unique nonempty strings')
         ids.append(qid)
         if 'claim_id' in item:
-            if set(item) != {'id', 'claim_id'} or item['claim_id'] in used_claims:
+            if set(item) - {'id', 'claim_id', 'population'} or item['claim_id'] in used_claims:
                 raise ValueError('A supported question selects one distinct draft claim ID')
             claim = copy.deepcopy(claims_by_id[item['claim_id']])
             used_claims.add(item['claim_id'])
-            requirements.append({'id': qid, **requirement(claim, artifact)})
+            spec = requirement(claim, artifact)
+            if claim['kind'] == 'distinct_records':
+                if item.get('population') != spec['population']:
+                    raise ValueError('Count question needs an explicit matching population pointer and operation')
+                spec['population'] = copy.deepcopy(item['population'])
+            elif 'population' in item:
+                raise ValueError('Only count questions accept a population')
+            requirements.append({'id': qid, **spec})
             claim['id'] = qid
             claims.append(claim)
         else:
@@ -138,7 +147,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--draft', required=True)
     parser.add_argument('--artifact', required=True)
-    parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id} or declaring {id,kind,finding_id,end_operation?,reason}; reviewed_checks and optional supporting_claim_ids')
+    parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id,population?} (population required for counts) or declaring {id,kind,finding_id,end_operation?,reason}; reviewed_checks and optional supporting_claim_ids')
     parser.add_argument('--output', help='New assertions file; never overwrites')
     parser.add_argument('--analyzer', type=Path, help='Analyzer executable; required for plans or creating a missing draft')
     parser.add_argument('--verification-output', type=Path, help='New retained verification report; required for plans')

@@ -6584,6 +6584,37 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
     };
     let compiled = compile(&plan, "compiled.json");
     assert!(verify(&compiled).0);
+    let all_unknown = json!({"questions":[
+        {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],
+         "end_operation":"capture_end","reason":"No supported ending for this scoped root"},
+        {"id":"cause","kind":"fact","finding_id":unknown["id"],"reason":"No causal mechanism established"}],
+        "reviewed_checks":assertions["final_review"]["checks"]});
+    let all_unknown = compile(&all_unknown, "compiled-unknown.json");
+    assert_eq!(all_unknown["claims"], json!([]));
+    let (ok, value) = verify(&all_unknown);
+    assert!(ok, "{value}");
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["checks"],
+        json!([])
+    );
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["final_review"]["status"],
+        "declared_checks_passed_with_unknowns"
+    );
+    let mut incomplete_unknown = all_unknown.clone();
+    incomplete_unknown["unresolved"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(!verify(&incomplete_unknown).0);
+    let mut unanchored_unknown = all_unknown.clone();
+    unanchored_unknown["requirements"][0]["finding_id"] = json!("missing-root");
+    assert!(!verify(&unanchored_unknown).0);
+    let mut available_unknown = all_unknown.clone();
+    available_unknown["requirements"][0]["finding_id"] = known["id"].clone();
+    assert!(!verify(&available_unknown).0);
+    assert!(verify(&all_unknown).0);
+    fs::write(&plan_path, plan.to_string()).unwrap();
     let prior_report = temp.path().join("compiled.verification.json");
     let prior_bytes = fs::read(&prior_report).unwrap();
     let fresh_claims = temp.path().join("stale-proof-claims.json");

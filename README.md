@@ -2222,9 +2222,11 @@ check source meaning and select the requested subjects before verification.
 Legacy claims remain accepted with weaker `link_exists`/`retained_interval` assurance.
 
 Typed `requirements` prevent unrelated claims from satisfying a question ID.
-Intervals name their root finding and exact start/end operations. Declare unsupported
+Intervals name their root finding and exact start/end operations; counts bind a
+retained population pointer and operation filter. Declare unsupported
 questions in `unresolved`, with a retained finding anchor and reason; an available
-requested interval cannot be declared unknown. Initial required IDs cannot be dropped.
+requested interval cannot be declared unknown. Initial required IDs cannot be dropped. All-unknown plans are accepted when every
+required ID has a typed, anchored unresolved entry.
 `final_review` maps supported claims and unknowns and records six caller review
 acknowledgments. `verified_with_unknowns` validates the supported subset and mappings,
 not unknown conclusions, arbitrary prose, profile semantics or causality.

@@ -30,6 +30,8 @@ struct Requirement {
     start_operation: Option<String>,
     #[serde(default)]
     end_operation: Option<String>,
+    #[serde(default)]
+    population: Option<CountPopulation>,
 }
 #[derive(Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
@@ -142,11 +144,18 @@ fn review_final(
     json!({"status":if issues.is_empty() && unresolved.is_empty(){"declared_checks_passed"}else if issues.is_empty(){"declared_checks_passed_with_unknowns"}else{"needs_revision"},"issues":issues,"summary_claim_ids":review.summary_claim_ids,"finding_claim_ids":review.finding_claim_ids,"unresolved_question_ids":review.unresolved_question_ids,"acknowledged_prose_checks":review.checks,"limitations":["Claim mappings are checked deterministically; prose checks are caller acknowledgments, not validated prose or causal proof. Unknown facts must be reported explicitly outside the verified observation/measurement claim list."]})
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct CountOperation {
     kind: String,
     name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CountPopulation {
+    pointer: String,
+    operation: Option<CountOperation>,
 }
 
 /// Labels describe the answer; these fields identify its evidence subject.
@@ -603,6 +612,16 @@ fn check_requirements(
                 "Interval requirements need finding_id and exact start/end operation names".into(),
             );
         }
+        if spec.kind == "distinct_records"
+            && spec.population.as_ref().is_none_or(|p| {
+                !p.pointer.starts_with('/')
+                    || p.operation
+                        .as_ref()
+                        .is_some_and(|o| o.kind.is_empty() || o.name.is_empty())
+            })
+        {
+            return Err("Count requirements need a retained population pointer and optional operation filter".into());
+        }
     }
     if !specs.is_empty() && specs != required {
         return Err(
@@ -702,6 +721,12 @@ fn check_requirements(
                 Assertion::Link { finding_id, .. } => {
                     spec.finding_id.as_ref().is_none_or(|id| id == finding_id)
                 }
+                Assertion::DistinctRecords {
+                    pointer, operation, ..
+                } => spec
+                    .population
+                    .as_ref()
+                    .is_some_and(|p| p.pointer == *pointer && p.operation == *operation),
                 _ => true,
             };
             (
@@ -761,10 +786,10 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
     if assertions.version != 1
         || assertions.required_claim_ids.is_empty()
         || assertions.required_claim_ids.len() > 100
-        || assertions.claims.is_empty()
+        || (assertions.claims.is_empty() && assertions.unresolved.is_empty())
         || assertions.claims.len() > 100
     {
-        return Err("Claims require version 1, 1..100 required IDs and 1..100 assertions".into());
+        return Err("Claims require version 1, 1..100 required IDs, at most 100 assertions and at least one assertion or explicit unknown".into());
     }
     let required: BTreeSet<_> = assertions.required_claim_ids.iter().collect();
     if required.len() != assertions.required_claim_ids.len()
@@ -819,12 +844,22 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
         .filter(|id| !ids.contains(id.as_str()) && !unresolved_ids.contains(id.as_str()))
         .collect();
     let final_review = assertions.final_review.as_ref().map(|review| {
-        review_final(
+        let mut result = review_final(
             review,
             &checks,
             &assertions.required_claim_ids,
             &assertions.unresolved,
-        )
+        );
+        for requirement in &requirement_results {
+            if requirement["status"] == "needs_revision" {
+                result["issues"].as_array_mut().unwrap().push(json!(format!(
+                    "question requirement not satisfied: {}",
+                    requirement["id"]
+                )));
+                result["status"] = json!("needs_revision");
+            }
+        }
+        result
     });
     let final_ok = final_review.as_ref().is_none_or(|r| {
         r["status"] == "declared_checks_passed"
@@ -1012,6 +1047,71 @@ mod final_review_tests {
             "declared_checks_passed"
         );
     }
+    #[test]
+    fn count_questions_bind_operation_and_population() {
+        let record = |id, kind, name| json!({"occurrence":{"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"reference_id":id}},"fields":{"classification":{"status":"event","semantics":{"kind":kind,"name":name}}}});
+        let records = json!([
+            record("a", "request", "send"),
+            record("b", "request", "response"),
+            record("c", "request", "response"),
+            record("d", "event", "send")
+        ]);
+        let retained = json!({"east":records,"west":records});
+        let claim = |id, name, expected| json!({"id":id,"kind":"distinct_records","pointer":"/east","operation":{"kind":"request","name":name},"expected":expected});
+        let requirement = |id, name| json!({"id":id,"kind":"distinct_records","population":{"pointer":"/east","operation":{"kind":"request","name":name}}});
+        let assertions = json!({"version":1,"required_claim_ids":["send-count","response-count"],
+            "claims":[claim("send-count","send",1),claim("response-count","response",2)],
+            "requirements":[requirement("send-count","send"),requirement("response-count","response")],
+            "final_review":{"summary_claim_ids":["send-count","response-count"],"finding_claim_ids":["send-count","response-count"],
+                "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}});
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("claims.json");
+        let schema: Value =
+            serde_json::from_str(include_str!("../../schemas/claim-assertions.schema.json"))
+                .unwrap();
+        let schema = jsonschema::validator_for(&schema).unwrap();
+        let verified = |a: &Value| {
+            schema.validate(a).unwrap();
+            fs::write(&path, a.to_string()).unwrap();
+            verify(&retained, &path).unwrap()
+        };
+        assert_eq!(verified(&assertions)["status"], "verified");
+        let mut swapped = assertions.clone();
+        swapped["claims"][0]["id"] = json!("response-count");
+        swapped["claims"][1]["id"] = json!("send-count");
+        let mut other_population = assertions.clone();
+        other_population["claims"][0]["pointer"] = json!("/west");
+        let mut other_kind = assertions.clone();
+        other_kind["claims"][0]["operation"]["kind"] = json!("event");
+        let mut no_filter = assertions.clone();
+        no_filter["claims"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("operation");
+        no_filter["claims"][0]["expected"] = json!(4);
+        for wrong in [swapped, other_population, other_kind, no_filter] {
+            let result = verified(&wrong);
+            assert!(
+                result["checks"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|c| c["status"] == "verified")
+            );
+            assert_eq!(result["status"], "needs_revision");
+            assert_eq!(result["final_review"]["status"], "needs_revision");
+            assert_eq!(verified(&assertions)["status"], "verified");
+        }
+        let mut unbound = assertions.clone();
+        unbound["requirements"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("population");
+        assert!(!schema.is_valid(&unbound));
+        fs::write(&path, unbound.to_string()).unwrap();
+        assert!(verify(&retained, &path).is_err());
+    }
+
     #[test]
     fn typed_counts_keep_mixed_requests_and_duplicate_serialization_separate() {
         let record = |name| json!({"occurrence":{"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"reference_id":name}},"fields":{"classification":{"status":"event","semantics":{"kind":"request","name":name}}}});

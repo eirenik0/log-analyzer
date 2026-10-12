@@ -19,7 +19,7 @@ class QuestionMappingTests(unittest.TestCase):
              'expected_ms': 5, 'subject': {'source': {'line': 1}, 'start_operation': 'Start', 'end_operation': 'End'}},
             {'id': 'count-a', 'kind': 'distinct_records', 'pointer': '/records', 'expected': 1}]}
         self.plan = {'questions': [{'id': 'duration', 'claim_id': 'interval-a'},
-                                  {'id': 'count', 'claim_id': 'count-a'},
+                                  {'id': 'count', 'claim_id': 'count-a', 'population': {'pointer': '/records', 'operation': None}},
                                   {'id': 'cause', 'kind': 'fact', 'finding_id': 'root-a', 'reason': 'No mechanism established'}],
                      'reviewed_checks': mapping.CHECKS}
 
@@ -57,6 +57,35 @@ class QuestionMappingTests(unittest.TestCase):
         self.assertEqual(result['requirements'][0]['start_operation'], 'Start')
         self.assertEqual(result['final_review']['unresolved_question_ids'], ['duration', 'cause'])
         self.assertEqual(len(result['claims']), 1)
+
+    def test_count_selection_must_match_independent_population(self):
+        self.positive()
+        for operation in ({'kind': 'request', 'name': 'send'}, {'kind': 'request', 'name': 'response'}):
+            draft = copy.deepcopy(self.draft)
+            draft['claims'][1]['operation'] = operation
+            with self.assertRaisesRegex(ValueError, 'population'):
+                mapping.compile_plan(draft, self.artifact, self.plan)
+            plan = copy.deepcopy(self.plan)
+            plan['questions'][1]['population']['operation'] = operation
+            result = mapping.compile_plan(draft, self.artifact, plan)
+            self.assertEqual(result['requirements'][1]['population'], plan['questions'][1]['population'])
+            draft['claims'][1]['pointer'] = '/other-scope'
+            with self.assertRaisesRegex(ValueError, 'population'):
+                mapping.compile_plan(draft, self.artifact, plan)
+        draft = copy.deepcopy(self.draft)
+        draft['claims'].append({'id': 'response-a', 'kind': 'distinct_records', 'pointer': '/responses', 'expected': 2})
+        plan = copy.deepcopy(self.plan)
+        plan['questions'].append({'id': 'response-count', 'claim_id': 'response-a',
+                                  'population': {'pointer': '/responses', 'operation': None}})
+        mapping.compile_plan(draft, self.artifact, plan)
+        plan['questions'][1]['claim_id'], plan['questions'][-1]['claim_id'] = 'response-a', 'count-a'
+        with self.assertRaisesRegex(ValueError, 'population'):
+            mapping.compile_plan(draft, self.artifact, plan)
+        plan = copy.deepcopy(self.plan)
+        del plan['questions'][1]['population']
+        with self.assertRaisesRegex(ValueError, 'population'):
+            mapping.compile_plan(self.draft, self.artifact, plan)
+        self.positive()
 
     def test_nonroot_interval_is_not_a_question_duration(self):
         wrong = copy.deepcopy(self.draft)
