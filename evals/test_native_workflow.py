@@ -4,6 +4,36 @@ from native_workflow import fixture, score, metrics, final_json, ANSWER_SCHEMA
 
 
 class NativeWorkflowTests(unittest.TestCase):
+    def test_final_tool_burst_cannot_bypass_trial_limit(self):
+        import io, json, tempfile
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+        from native_workflow import prepare_inputs, trial
+        answer, _ = self.answer()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prepare_inputs(root, ['development'])
+            skill = root / 'candidate/.agents/skills/analyze-logs/SKILL.md'
+            skill.parent.mkdir(parents=True)
+            skill.write_text('Synthetic skill', encoding='utf-8')
+            (root / 'candidate/log-analyzer').write_bytes(b'synthetic binary')
+            for count, overrides, stop in [(30, {}, None), (31, {}, 'tool_limit'),
+                                           (30, {'output_bytes':1}, 'output_limit'),
+                                           (30, {'wall_seconds':0}, 'wall_limit')]:
+                def exited_process(*args, **kwargs):
+                    events = [{'type':'assistant','message':{'content':[{'type':'tool_use','name':'Read'}] * count}},
+                              {'type':'result','structured_output':answer}]
+                    kwargs['stdout'].write(('\n'.join(map(json.dumps, events)) + '\n').encode())
+                    return Mock(stdin=io.BytesIO(), poll=Mock(return_value=0), returncode=0)
+                limits = {'wall_seconds':60,'output_bytes':2_000_000,'tool_calls':30,'api_equivalent_usd':1}
+                limits.update(overrides)
+                with patch('native_workflow.subprocess.Popen', side_effect=exited_process), patch('native_workflow.time.sleep') as sleep:
+                    result = trial(root, 'candidate', 'development', 'haiku', count, limits)
+                sleep.assert_not_called()
+                self.assertEqual(result['tool_calls'], count)
+                self.assertEqual(result['execution'], stop or 'complete')
+                self.assertEqual(result['score']['status'], 'unavailable' if stop else 'passed')
+
     def answer(self, held_out=False):
         _, expected=fixture(held_out)
         answer=copy.deepcopy(expected)

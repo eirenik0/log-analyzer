@@ -284,6 +284,11 @@ Supplied skill entrypoint:\n{skill.read_text(encoding='utf-8')}
     for line in raw.read_text(encoding='utf-8',errors='replace').splitlines():
         try: events.append(json.loads(line))
         except ValueError: pass
+    measured = metrics(events)
+    if not stop:
+        if time.monotonic()-started > limits['wall_seconds']: stop='wall_limit'
+        elif raw.stat().st_size > limits['output_bytes']: stop='output_limit'
+        elif measured['tool_calls'] > limits['tool_calls']: stop='tool_limit'
     answer,result=final_json(events, structured=True)
     usage=result.get('usage')
     tokens = sum(usage.get(k,0) for k in ['input_tokens','output_tokens','cache_creation_input_tokens','cache_read_input_tokens']) if isinstance(usage,dict) else None
@@ -294,7 +299,7 @@ Supplied skill entrypoint:\n{skill.read_text(encoding='utf-8')}
             'api_equivalent_cost_usd':result.get('total_cost_usd'),'model_usage':result.get('modelUsage'),
             'prompt_sha256':digest(directory/'prompt.txt'),'input_sha256':digest(capture),
             'profile_sha256':digest(selected),'skill_sha256':digest(skill),'binary_sha256':digest(binary),
-            'limits':limits,'answer':answer,'score':score(answer,expected),**metrics(events)}
+            'limits':limits,'answer':answer,'score':score(answer if not stop else None,expected),**measured}
 
 
 def main():

@@ -5993,6 +5993,7 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
         chain_event("checkpoint", "run-a", "capture-a", 0),
         chain_event("capture_end", "run-a", "capture-a", 20),
         chain_event("checkpoint", "run-a", "capture-b", 30),
+        chain_event("capture_end", "run-a", "capture-b", 40),
     ];
     let (temp, report, artifact) = chain_fixture(&events, None);
     let path = temp.path().join("draft.json");
@@ -6084,6 +6085,14 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
     let original = fs::read(&artifact).unwrap();
     assert!(!run(&argv).status.success());
     assert_eq!(fs::read(&artifact).unwrap(), original);
+    let selected_id = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"].get("event_chain").is_some())
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
     let page = run(&[
         "evidence",
         artifact.to_str().unwrap(),
@@ -6091,6 +6100,9 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
         report["artifact"]["stored_sha256"].as_str().unwrap(),
         "--collection",
         "/chain-bundles",
+        "--id",
+        selected_id,
+        "--compact",
         "--report-max-items",
         "50",
     ]);
@@ -6112,6 +6124,21 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
             .success()
     );
     assert!(temp.path().join("claims-draft.json").is_file());
+    assert!(command.windows(2).any(|pair| pair == ["--id", selected_id]));
+    assert!(
+        !command
+            .iter()
+            .any(|arg| matches!(*arg, "--collection" | "--report-max-items" | "--compact"))
+    );
+    let selected_draft: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("claims-draft.json")).unwrap()).unwrap();
+    assert!(
+        selected_draft["claims"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["id"].as_str().unwrap().starts_with(selected_id))
+    );
 }
 fn verify_subject_claim(
     temp: &tempfile::TempDir,

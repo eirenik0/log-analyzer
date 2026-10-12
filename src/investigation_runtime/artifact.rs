@@ -930,6 +930,9 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 .any(|f| f["details"].get("event_chain").is_some())
         {
             argv.truncate(5);
+            if let Some(id) = &args.id {
+                argv.extend(["--id".into(), id.clone()]);
+            }
             argv.extend([
                 "--draft-claims".into(),
                 "--output".into(),
