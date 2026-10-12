@@ -2222,7 +2222,7 @@ check source meaning and select the requested subjects before verification.
 Legacy claims remain accepted with weaker `link_exists`/`retained_interval` assurance.
 
 Typed `requirements` prevent unrelated claims from satisfying a question ID.
-Intervals bind their selected finding and exact start/end operations, including
+Intervals bind their selected finding, exact retained pointer and start/end operations, including
 intervals between intermediate steps; counts bind a
 retained population pointer and operation filter. Links bind a finding and step;
 facts bind a field pointer and expected value. Declare unsupported

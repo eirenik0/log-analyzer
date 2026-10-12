@@ -6812,7 +6812,7 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
     contrary["id"] = json!("contrary-link");
     let mut assertions = json!({"version":1,"required_claim_ids":["finished-duration","unfinished-duration"],
         "requirements":[
-            {"id":"finished-duration","kind":"interval","finding_id":known["id"],"start_operation":"checkpoint","end_operation":"capture_end"},
+            {"id":"finished-duration","kind":"interval","finding_id":known["id"],"pointer":interval["pointer"],"start_operation":"checkpoint","end_operation":"capture_end"},
             {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],"start_operation":"checkpoint","end_operation":"capture_end"}],
         "claims":[interval,contrary],"unresolved":[{"id":"unfinished-duration","reason":"No capture ending retained for this scoped root; completion and duration remain unknown."}],
         "final_review":{"summary_claim_ids":["finished-duration"],"finding_claim_ids":["finished-duration","contrary-link"],"unresolved_question_ids":["unfinished-duration"],"checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}});
@@ -6869,7 +6869,7 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
         .clone();
     let mut plan = json!({"questions":[
         {"id":"finished-duration","claim_id":proposal_id,
-         "binding":{"finding_id":known["id"],"start_operation":"checkpoint","end_operation":"capture_end"}},
+         "binding":{"finding_id":known["id"],"pointer":interval["pointer"],"start_operation":"checkpoint","end_operation":"capture_end"}},
         {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],
          "end_operation":"capture_end","reason":"No supported ending for this scoped root"}],
         "reviewed_checks":assertions["final_review"]["checks"]});

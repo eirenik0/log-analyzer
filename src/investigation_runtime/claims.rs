@@ -27,6 +27,8 @@ struct Requirement {
     #[serde(default)]
     finding_id: Option<String>,
     #[serde(default)]
+    pointer: Option<String>,
+    #[serde(default)]
     start_operation: Option<String>,
     #[serde(default)]
     end_operation: Option<String>,
@@ -813,6 +815,7 @@ fn check_requirements(
                 Assertion::Interval { pointer, .. } => {
                     chain.is_some_and(|c| complete_occurrence(&c["root"]))
                         && retained["content"] != "redacted"
+                        && spec.pointer.as_ref() == Some(pointer)
                         && finding.is_some_and(|(index, _)| {
                             pointer.starts_with(&format!(
                                 "/findings/{index}/details/event_chain/steps/"
@@ -1177,9 +1180,16 @@ mod final_review_tests {
             json!({"id":id,"details":{"event_chain":{"root":root,"root_event_name":"start",
             "steps":[{"join_samples":[{"endpoint_interval":interval}]}]}}})
         };
-        let retained = json!({"findings":[finding("a"),finding("b")]});
+        let mut retained = json!({"findings":[finding("a"),finding("b")]});
+        let mut other = interval.clone();
+        other["source"]["evidence_ref"]["line"] = json!(3);
+        other["end_timestamp"] = json!("2026-01-01T00:00:00.020Z");
+        retained["findings"][0]["details"]["event_chain"]["steps"][0]["join_samples"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"endpoint_interval":other}));
         let mut assertions = json!({"version":1,"required_claim_ids":["duration"],
-            "requirements":[{"id":"duration","kind":"interval","finding_id":"a","start_operation":"submitted","end_operation":"end"}],
+            "requirements":[{"id":"duration","kind":"interval","finding_id":"a","pointer":"/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval","start_operation":"submitted","end_operation":"end"}],
             "claims":[{"id":"duration","kind":"interval","pointer":"/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval","expected_ms":10}]});
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("interval.json");
@@ -1189,11 +1199,19 @@ mod final_review_tests {
         };
         assert_eq!(check(&assertions)["status"], "verified");
         assertions["claims"][0]["pointer"] =
+            json!("/findings/0/details/event_chain/steps/0/join_samples/1/endpoint_interval");
+        assertions["claims"][0]["expected_ms"] = json!(20);
+        let swapped = check(&assertions);
+        assert_eq!(swapped["checks"][0]["status"], "verified");
+        assert_eq!(swapped["status"], "needs_revision");
+        assertions["claims"][0]["expected_ms"] = json!(10);
+        assertions["claims"][0]["pointer"] =
             json!("/findings/1/details/event_chain/steps/0/join_samples/0/endpoint_interval");
         let wrong = check(&assertions);
         assert_eq!(wrong["checks"][0]["status"], "verified");
         assert_eq!(wrong["status"], "needs_revision");
         assertions["requirements"][0]["finding_id"] = json!("b");
+        assertions["requirements"][0]["pointer"] = assertions["claims"][0]["pointer"].clone();
         assert_eq!(check(&assertions)["status"], "verified");
         for key in ["start_operation", "end_operation"] {
             let expected = assertions["requirements"][0][key].clone();

@@ -50,7 +50,7 @@ def requirement(claim, artifact):
             raise ValueError('Interval must use the draft retained finding pointer')
         finding = artifact['findings'][int(parts[2])]
         subject = claim['subject']
-        result.update(finding_id=finding['id'], start_operation=subject['start_operation'],
+        result.update(finding_id=finding['id'], pointer=claim['pointer'], start_operation=subject['start_operation'],
                       end_operation=subject['end_operation'])
     elif claim['kind'] == 'link':
         result.update(finding_id=claim['finding_id'], step_id=claim['step_id'])

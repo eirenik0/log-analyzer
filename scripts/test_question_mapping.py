@@ -19,14 +19,14 @@ class QuestionMappingTests(unittest.TestCase):
              'expected_ms': 5, 'subject': {'source': {'line': 1}, 'start_operation': 'Start', 'end_operation': 'End'}},
             {'id': 'count-a', 'kind': 'distinct_records', 'pointer': '/records', 'expected': 1}]}
         self.plan = {'questions': [{'id': 'duration', 'claim_id': 'interval-a',
-                                   'binding': {'finding_id': 'root-a', 'start_operation': 'Start', 'end_operation': 'End'}},
+                                   'binding': {'finding_id': 'root-a', 'pointer': '/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval', 'start_operation': 'Start', 'end_operation': 'End'}},
                                   {'id': 'count', 'claim_id': 'count-a', 'population': {'pointer': '/records', 'operation': None}},
                                   {'id': 'cause', 'kind': 'fact', 'finding_id': 'root-a', 'reason': 'No mechanism established'}],
                      'reviewed_checks': mapping.CHECKS}
 
     def positive(self):
         result = mapping.compile_plan(self.draft, self.artifact, self.plan)
-        self.assertEqual(result['requirements'][0], {'id': 'duration', 'kind': 'interval', 'finding_id': 'root-a', 'start_operation': 'Start', 'end_operation': 'End'})
+        self.assertEqual(result['requirements'][0], {'id': 'duration', 'kind': 'interval', 'finding_id': 'root-a', 'pointer': '/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval', 'start_operation': 'Start', 'end_operation': 'End'})
         self.assertEqual(result['unresolved'], [{'id': 'cause', 'reason': 'No mechanism established'}])
         self.assertEqual(result['final_review']['unresolved_question_ids'], ['cause'])
         self.assertEqual(result['claims'][0]['id'], 'duration')
@@ -225,6 +225,8 @@ class QuestionMappingTests(unittest.TestCase):
              {'kind': 'link', 'finding_id': 'root-a', 'step_id': 'cache'}),
             ({'kind': 'fact', 'pointer': '/first', 'equals': True},
              {'kind': 'fact', 'pointer': '/second', 'equals': False}),
+            (self.draft['claims'][0], {**self.draft['claims'][0],
+                                     'pointer': '/findings/0/details/event_chain/steps/0/join_samples/1/endpoint_interval'}),
             (self.draft['claims'][0], {**self.draft['claims'][0],
                                      'subject': {**self.draft['claims'][0]['subject'], 'end_operation': 'Other end'}})
         ]:

@@ -420,6 +420,10 @@
             ],
             "minLength": 1
           },
+          "pointer": {
+            "type": "string",
+            "pattern": "^/"
+          },
           "start_operation": {
             "type": [
               "string",

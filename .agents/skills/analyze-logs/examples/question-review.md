@@ -7,7 +7,7 @@ finding anchors for unknowns. For example:
 ```json
 {"questions":[
   {"id":"capture-duration","claim_id":"EXACT_DRAFT_INTERVAL_ID",
-   "binding":{"finding_id":"ROOT","start_operation":"capture","end_operation":"capture completed"}},
+   "binding":{"finding_id":"ROOT","pointer":"EXACT_RETAINED_INTERVAL_POINTER","start_operation":"capture","end_operation":"capture completed"}},
   {"id":"other-duration","kind":"interval","finding_id":"OTHER_ROOT",
    "end_operation":"capture completed","reason":"No supported ending for this scoped root."},
   {"id":"send-count","claim_id":"EXACT_DRAFT_COUNT_ID",
@@ -20,7 +20,7 @@ finding anchors for unknowns. For example:
 ```
 
 Choose each expected `binding` independently of its claim selector: interval finding
-and endpoints (the source may be an intermediate step); link `finding_id`/`step_id`; fact `field: {pointer, equals}`.
+and exact interval `pointer`/endpoints (the source may be an intermediate step); link `finding_id`/`step_id`; fact `field: {pointer, equals}`.
 Replace illustrative values and include every actual question. Supply the
 review checks only after inspection. Supporting cached/contrary links keep their
 own IDs; they cannot substitute for an unknown measurement. Count questions must
