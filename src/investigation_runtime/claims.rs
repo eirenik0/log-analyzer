@@ -32,6 +32,10 @@ struct Requirement {
     end_operation: Option<String>,
     #[serde(default)]
     population: Option<CountPopulation>,
+    #[serde(default)]
+    step_id: Option<String>,
+    #[serde(default)]
+    field: Option<FactField>,
 }
 #[derive(Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
@@ -156,6 +160,13 @@ struct CountOperation {
 struct CountPopulation {
     pointer: String,
     operation: Option<CountOperation>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FactField {
+    pointer: String,
+    equals: Value,
 }
 
 /// Labels describe the answer; these fields identify its evidence subject.
@@ -622,6 +633,24 @@ fn check_requirements(
         {
             return Err("Count requirements need a retained population pointer and optional operation filter".into());
         }
+        if spec.kind == "link"
+            && (spec.finding_id.as_ref().is_none_or(String::is_empty)
+                || spec.step_id.as_ref().is_none_or(String::is_empty))
+        {
+            return Err("Link requirements need a finding_id and step_id".into());
+        }
+        if spec.kind == "fact"
+            && assertions.claims.iter().any(|c| c.id == spec.id)
+            && spec
+                .field
+                .as_ref()
+                .is_none_or(|f| !f.pointer.starts_with('/'))
+        {
+            return Err(
+                "Supported fact requirements need a retained field pointer and expected value"
+                    .into(),
+            );
+        }
     }
     if !specs.is_empty() && specs != required {
         return Err(
@@ -649,6 +678,11 @@ fn check_requirements(
         }
     }
     let mut results = Vec::new();
+    if assertions.final_review.is_some() {
+        for id in required.difference(&specs) {
+            results.push(json!({"id":id,"status":"needs_revision","reason":"typed_question_requirement_missing"}));
+        }
+    }
     for spec in &assertions.requirements {
         let finding = retained["findings"]
             .as_array()
@@ -718,8 +752,13 @@ fn check_requirements(
                             .as_ref()
                             .is_none_or(|name| check["observed"]["end_operation"] == *name)
                 }
-                Assertion::Link { finding_id, .. } => {
-                    spec.finding_id.as_ref().is_none_or(|id| id == finding_id)
+                Assertion::Link {
+                    finding_id,
+                    step_id,
+                    ..
+                } => {
+                    spec.finding_id.as_ref() == Some(finding_id)
+                        && spec.step_id.as_ref() == Some(step_id)
                 }
                 Assertion::DistinctRecords {
                     pointer, operation, ..
@@ -727,7 +766,11 @@ fn check_requirements(
                     .population
                     .as_ref()
                     .is_some_and(|p| p.pointer == *pointer && p.operation == *operation),
-                _ => true,
+                Assertion::Fact { pointer, equals } => spec
+                    .field
+                    .as_ref()
+                    .is_some_and(|f| f.pointer == *pointer && f.equals == *equals),
+                Assertion::Absence { .. } => false,
             };
             (
                 kind == spec.kind && bound && check["status"] == "verified",
@@ -1047,6 +1090,67 @@ mod final_review_tests {
             "declared_checks_passed"
         );
     }
+    #[test]
+    fn link_and_fact_requirements_bind_steps_fields_and_values() {
+        let step = |id| json!({"id":id,"status":"observed","linked_count":1,"count_completeness":"complete"});
+        let retained = json!({"findings":[{"id":"root","details":{"event_chain":{"ambiguity":"none","steps":[step("end"),step("cache")]}}}],"first":true,"second":false,"same":true});
+        let assertions = json!({"version":1,"required_claim_ids":["completion","failure","first","second"],
+            "claims":[
+                {"id":"completion","kind":"link","finding_id":"root","step_id":"end"},
+                {"id":"failure","kind":"link","finding_id":"root","step_id":"cache"},
+                {"id":"first","kind":"fact","pointer":"/first","equals":true},
+                {"id":"second","kind":"fact","pointer":"/second","equals":false}],
+            "requirements":[
+                {"id":"completion","kind":"link","finding_id":"root","step_id":"end"},
+                {"id":"failure","kind":"link","finding_id":"root","step_id":"cache"},
+                {"id":"first","kind":"fact","field":{"pointer":"/first","equals":true}},
+                {"id":"second","kind":"fact","field":{"pointer":"/second","equals":false}}]});
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("claims.json");
+        let schema: Value =
+            serde_json::from_str(include_str!("../../schemas/claim-assertions.schema.json"))
+                .unwrap();
+        let schema = jsonschema::validator_for(&schema).unwrap();
+        let verified = |a: &Value| {
+            schema.validate(a).unwrap();
+            fs::write(&path, a.to_string()).unwrap();
+            verify(&retained, &path).unwrap()
+        };
+        assert_eq!(verified(&assertions)["status"], "verified");
+        let mut links = assertions.clone();
+        links["claims"][0]["id"] = json!("failure");
+        links["claims"][1]["id"] = json!("completion");
+        let mut facts = assertions.clone();
+        facts["claims"][2]["id"] = json!("second");
+        facts["claims"][3]["id"] = json!("first");
+        let mut same_value = assertions.clone();
+        same_value["claims"][2]["pointer"] = json!("/same");
+        let mut wrong_value = assertions.clone();
+        wrong_value["requirements"][2]["field"]["equals"] = json!(false);
+        for wrong in [links, facts, same_value, wrong_value] {
+            let result = verified(&wrong);
+            assert!(
+                result["checks"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|c| c["status"] == "verified")
+            );
+            assert_eq!(result["status"], "needs_revision");
+            assert_eq!(verified(&assertions)["status"], "verified");
+        }
+        let mut legacy = assertions.clone();
+        legacy.as_object_mut().unwrap().remove("requirements");
+        assert_eq!(verified(&legacy)["status"], "verified");
+        let mut unbound = assertions;
+        unbound["requirements"][2]
+            .as_object_mut()
+            .unwrap()
+            .remove("field");
+        fs::write(&path, unbound.to_string()).unwrap();
+        assert!(verify(&retained, &path).is_err());
+    }
+
     #[test]
     fn count_questions_bind_operation_and_population() {
         let record = |id, kind, name| json!({"occurrence":{"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"reference_id":id}},"fields":{"classification":{"status":"event","semantics":{"kind":kind,"name":name}}}});

@@ -18,7 +18,8 @@ class QuestionMappingTests(unittest.TestCase):
             {'id': 'interval-a', 'kind': 'interval', 'pointer': '/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval',
              'expected_ms': 5, 'subject': {'source': {'line': 1}, 'start_operation': 'Start', 'end_operation': 'End'}},
             {'id': 'count-a', 'kind': 'distinct_records', 'pointer': '/records', 'expected': 1}]}
-        self.plan = {'questions': [{'id': 'duration', 'claim_id': 'interval-a'},
+        self.plan = {'questions': [{'id': 'duration', 'claim_id': 'interval-a',
+                                   'binding': {'finding_id': 'root-a', 'start_operation': 'Start', 'end_operation': 'End'}},
                                   {'id': 'count', 'claim_id': 'count-a', 'population': {'pointer': '/records', 'operation': None}},
                                   {'id': 'cause', 'kind': 'fact', 'finding_id': 'root-a', 'reason': 'No mechanism established'}],
                      'reviewed_checks': mapping.CHECKS}
@@ -87,6 +88,28 @@ class QuestionMappingTests(unittest.TestCase):
             mapping.compile_plan(self.draft, self.artifact, plan)
         self.positive()
 
+    def test_link_fact_and_interval_bindings_are_independent_of_selection(self):
+        for first, second in [
+            ({'kind': 'link', 'finding_id': 'root-a', 'step_id': 'end'},
+             {'kind': 'link', 'finding_id': 'root-a', 'step_id': 'cache'}),
+            ({'kind': 'fact', 'pointer': '/first', 'equals': True},
+             {'kind': 'fact', 'pointer': '/second', 'equals': False}),
+            (self.draft['claims'][0], {**self.draft['claims'][0],
+                                     'subject': {**self.draft['claims'][0]['subject'], 'end_operation': 'Other end'}})
+        ]:
+            draft = {'claims': [{**first, 'id': 'first'}, {**second, 'id': 'second'}]}
+            artifact = copy.deepcopy(self.artifact)
+            artifact['report_metadata'] = {}
+            bindings = [{k: v for k, v in mapping.requirement(c, artifact).items() if k != 'kind'}
+                        for c in draft['claims']]
+            plan = {'questions': [{'id': cid, 'claim_id': cid, 'binding': binding}
+                                  for cid, binding in zip(('first', 'second'), bindings)],
+                    'reviewed_checks': mapping.CHECKS}
+            mapping.compile_plan(draft, artifact, plan)
+            plan['questions'][0]['claim_id'], plan['questions'][1]['claim_id'] = 'second', 'first'
+            with self.assertRaisesRegex(ValueError, 'binding'):
+                mapping.compile_plan(draft, artifact, plan)
+
     def test_nonroot_interval_is_not_a_question_duration(self):
         wrong = copy.deepcopy(self.draft)
         wrong['claims'][0]['subject']['source'] = {'line': 2}
@@ -104,7 +127,7 @@ class QuestionMappingTests(unittest.TestCase):
         claims = []
         for index in range(6):
             claims.extend([
-                {'id': f'link-{index}', 'kind': 'link', 'finding_id': 'root-a',
+                {'id': f'link-{index}', 'kind': 'link', 'finding_id': 'root-a', 'step_id': 'end',
                  'subject': {'source': occurrence, 'target': {**occurrence, 'evidence_ref': {**occurrence['evidence_ref'], 'line': index + 2}}}},
                 {'id': f'interval-{index}', 'kind': 'interval', 'pointer': '/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval',
                  'expected_ms': index, 'subject': {'source': occurrence, 'target': occurrence, 'start_operation': 'Start', 'end_operation': 'End'}},

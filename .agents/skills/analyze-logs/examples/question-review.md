@@ -6,7 +6,8 @@ finding anchors for unknowns. For example:
 
 ```json
 {"questions":[
-  {"id":"capture-duration","claim_id":"EXACT_DRAFT_INTERVAL_ID"},
+  {"id":"capture-duration","claim_id":"EXACT_DRAFT_INTERVAL_ID",
+   "binding":{"finding_id":"ROOT","start_operation":"capture","end_operation":"capture completed"}},
   {"id":"other-duration","kind":"interval","finding_id":"OTHER_ROOT",
    "end_operation":"capture completed","reason":"No supported ending for this scoped root."},
   {"id":"send-count","claim_id":"EXACT_DRAFT_COUNT_ID",
@@ -18,7 +19,9 @@ finding anchors for unknowns. For example:
 "summary_consistency","causal_support"]}
 ```
 
-Replace all illustrative IDs/names and include every actual question. Supply the
+Choose each expected `binding` independently of its claim selector: interval root
+and endpoints; link `finding_id`/`step_id`; fact `field: {pointer, equals}`.
+Replace illustrative values and include every actual question. Supply the
 review checks only after inspection. Supporting cached/contrary links keep their
 own IDs; they cannot substitute for an unknown measurement. Count questions must
 independently declare the expected `population` pointer and operation from the inventory (`operation: null` means unfiltered); a mismatched
@@ -34,6 +37,6 @@ output paths are rejected; failed checks preserve their report and exit nonzero.
 Inspect each `requirement_results` status: `verified`, `declared_unknown`, or
 `needs_revision`. An available requested interval cannot be declared unknown.
 `verified_with_unknowns` means the asserted subset and unknown bookkeeping passed,
-not that unknown conclusions or absence were proved. All-unknown plans are valid
-when every required ID has a typed, anchored unresolved entry. Preserve those
+not that unknown conclusions or absence were proved. All-unknown plans need only
+typed, anchored unresolved entries; no draft file is needed. Preserve those
 unknowns in the answer, using the user's requested format.

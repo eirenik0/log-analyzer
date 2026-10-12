@@ -36,10 +36,12 @@ def requirement(claim, artifact):
         result.update(finding_id=finding['id'], start_operation=subject['start_operation'],
                       end_operation=subject['end_operation'])
     elif claim['kind'] == 'link':
-        result['finding_id'] = claim['finding_id']
+        result.update(finding_id=claim['finding_id'], step_id=claim['step_id'])
     elif claim['kind'] == 'distinct_records':
         result['population'] = {'pointer': claim['pointer'], 'operation': claim.get('operation')}
-    elif claim['kind'] != 'fact':
+    elif claim['kind'] == 'fact':
+        result['field'] = {'pointer': claim['pointer'], 'equals': claim['equals']}
+    else:
         raise ValueError('Unsupported question claim kind')
     return result
 
@@ -57,17 +59,15 @@ def compile_plan(draft, artifact, plan):
             raise ValueError('Question IDs must be unique nonempty strings')
         ids.append(qid)
         if 'claim_id' in item:
-            if set(item) - {'id', 'claim_id', 'population'} or item['claim_id'] in used_claims:
+            if item['claim_id'] in used_claims:
                 raise ValueError('A supported question selects one distinct draft claim ID')
             claim = copy.deepcopy(claims_by_id[item['claim_id']])
             used_claims.add(item['claim_id'])
             spec = requirement(claim, artifact)
-            if claim['kind'] == 'distinct_records':
-                if item.get('population') != spec['population']:
-                    raise ValueError('Count question needs an explicit matching population pointer and operation')
-                spec['population'] = copy.deepcopy(item['population'])
-            elif 'population' in item:
-                raise ValueError('Only count questions accept a population')
+            key = 'population' if claim['kind'] == 'distinct_records' else 'binding'
+            expected = spec['population'] if key == 'population' else {k: v for k, v in spec.items() if k != 'kind'}
+            if set(item) != {'id', 'claim_id', key} or item[key] != expected:
+                raise ValueError(f'Question needs an explicit matching {key} independent of its selected claim')
             requirements.append({'id': qid, **spec})
             claim['id'] = qid
             claims.append(claim)
@@ -147,7 +147,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--draft', required=True)
     parser.add_argument('--artifact', required=True)
-    parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id,population?} (population required for counts) or declaring {id,kind,finding_id,end_operation?,reason}; reviewed_checks and optional supporting_claim_ids')
+    parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id,binding} (population instead of binding for counts) or declaring {id,kind,finding_id,end_operation?,reason}; reviewed_checks and optional supporting_claim_ids')
     parser.add_argument('--output', help='New assertions file; never overwrites')
     parser.add_argument('--analyzer', type=Path, help='Analyzer executable; required for plans or creating a missing draft')
     parser.add_argument('--verification-output', type=Path, help='New retained verification report; required for plans')
@@ -160,19 +160,22 @@ def main():
             raise ValueError('Plans require --analyzer and --verification-output; compilation must be followed by retained verification')
         if args.plan and args.verification_output.exists():
             raise ValueError('Verification report must be a new path; do not reuse prior proof')
-        if not Path(args.draft).exists():
+        plan = load(args.plan) if args.plan else None
+        unknown_only = plan is not None and not plan.get('supporting_claim_ids') and all('claim_id' not in q for q in plan['questions'])
+        if not Path(args.draft).exists() and not unknown_only:
             if analyzer is None:
                 raise ValueError('A missing draft requires --analyzer to create it from the retained snapshot')
             subprocess.run([str(analyzer), 'evidence', str(artifact_path), '--expected-sha256', sha,
                             '--draft-claims', '--output', args.draft], check=True,
                            stdout=subprocess.DEVNULL)
-        draft, artifact = load(args.draft), load(artifact_path)
+        draft = load(args.draft) if Path(args.draft).exists() else {'claims': []}
+        artifact = load(artifact_path)
         if bool(args.plan) != bool(args.output):
             raise ValueError('--plan and --output must be supplied together')
         if not args.plan:
             print(json.dumps(inventory(draft, artifact), ensure_ascii=False, separators=(',', ':')))
             return
-        result = compile_plan(draft, artifact, load(args.plan))
+        result = compile_plan(draft, artifact, plan)
         with Path(args.output).open('x', encoding='utf-8') as stream:
             json.dump(result, stream, ensure_ascii=False, indent=2)
             stream.write('\n')

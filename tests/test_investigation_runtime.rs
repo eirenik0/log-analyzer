@@ -6061,6 +6061,19 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
             .all(|c| c["status"] == "verified"),
         "{v}"
     );
+    draft["final_review"] = json!({"summary_claim_ids":draft["required_claim_ids"],
+        "finding_claim_ids":draft["required_claim_ids"],
+        "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]});
+    let (ok, unmapped) = verify(&draft);
+    assert!(!ok);
+    assert_eq!(unmapped["final_review"]["status"], "needs_revision");
+    assert!(
+        unmapped["requirement_results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["reason"] == "typed_question_requirement_missing")
+    );
     // A caller can check a supported subset before acknowledging prose review.
     draft.as_object_mut().unwrap().remove("final_review");
     assert!(verify(&draft).0);
@@ -6532,7 +6545,8 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
         .unwrap()["id"]
         .clone();
     let mut plan = json!({"questions":[
-        {"id":"finished-duration","claim_id":proposal_id},
+        {"id":"finished-duration","claim_id":proposal_id,
+         "binding":{"finding_id":known["id"],"start_operation":"checkpoint","end_operation":"capture_end"}},
         {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],
          "end_operation":"capture_end","reason":"No supported ending for this scoped root"}],
         "reviewed_checks":assertions["final_review"]["checks"]});
@@ -6544,7 +6558,11 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
             .args(["-I"])
             .arg(root().join(".agents/skills/analyze-logs/scripts/map_questions.py"))
             .arg("--draft")
-            .arg(&draft_path)
+            .arg(if name == "compiled-unknown.json" {
+                temp.path().join("no-draft.json")
+            } else {
+                draft_path.clone()
+            })
             .arg("--artifact")
             .arg(&artifact)
             .arg("--plan")
