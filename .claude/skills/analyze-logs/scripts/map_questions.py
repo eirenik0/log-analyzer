@@ -16,6 +16,19 @@ def load(path):
         return json.load(stream)
 
 
+def read_artifact(path, limit):
+    if path.stat().st_size > limit:
+        raise ValueError('Artifact exceeds --artifact-max-bytes (default: 64 MiB)')
+    content, digest = bytearray(), hashlib.sha256()
+    with path.open('rb') as stream:
+        while chunk := stream.read(min(65536, limit - len(content) + 1)):
+            if len(content) + len(chunk) > limit:
+                raise ValueError('Artifact exceeds --artifact-max-bytes while reading')
+            digest.update(chunk)
+            content.extend(chunk)
+    return json.loads(content), digest.hexdigest()
+
+
 def required_ids(artifact):
     if 'question_checklist' in artifact:
         return artifact['question_checklist']['required_relationship']
@@ -173,13 +186,21 @@ def main():
         if args.artifact_max_bytes is not None and not 0 < args.artifact_max_bytes <= 2**64 - 1:
             raise ValueError('--artifact-max-bytes must be a positive u64 byte limit')
         allowance = [] if args.artifact_max_bytes is None else ['--artifact-max-bytes', str(args.artifact_max_bytes)]
+        if bool(args.plan) != bool(args.output):
+            raise ValueError('--plan and --output must be supplied together')
         artifact_path = Path(args.artifact).resolve()
-        sha = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
         analyzer = args.analyzer.resolve() if args.analyzer else None
         if args.plan and (analyzer is None or args.verification_output is None):
             raise ValueError('Plans require --analyzer and --verification-output; compilation must be followed by retained verification')
+        if args.plan:
+            claims_path, verification_path, draft_path = Path(args.output).resolve(), args.verification_output.resolve(), Path(args.draft).resolve()
+            if len({claims_path, verification_path, draft_path}) != 3:
+                raise ValueError('Claims, verification and draft paths must be distinct')
+            if claims_path.exists():
+                raise ValueError('Claims output must be a new path')
         if args.plan and args.verification_output.exists():
             raise ValueError('Verification report must be a new path; do not reuse prior proof')
+        artifact, sha = read_artifact(artifact_path, args.artifact_max_bytes or 67108864)
         plan = load(args.plan) if args.plan else None
         unknown_only = plan is not None and not plan.get('supporting_claim_ids') and all('claim_id' not in q for q in plan['questions'])
         if not Path(args.draft).exists() and not unknown_only:
@@ -189,9 +210,6 @@ def main():
                             '--draft-claims', '--output', args.draft] + allowance, check=True,
                            stdout=subprocess.DEVNULL)
         draft = load(args.draft) if Path(args.draft).exists() else {'claims': []}
-        artifact = load(artifact_path)
-        if bool(args.plan) != bool(args.output):
-            raise ValueError('--plan and --output must be supplied together')
         if not args.plan:
             print(json.dumps(inventory(draft, artifact), ensure_ascii=False, separators=(',', ':')))
             return

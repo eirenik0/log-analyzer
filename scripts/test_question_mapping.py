@@ -106,6 +106,56 @@ class QuestionMappingTests(unittest.TestCase):
                     else:
                         self.assertEqual(command[command.index('--artifact-max-bytes') + 1], allowance)
 
+    def test_artifact_reads_are_bounded_and_hash_the_parsed_bytes(self):
+        import hashlib, io, json
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        content = json.dumps(self.artifact).encode('utf-8')
+        path = Mock(spec=Path)
+        path.stat.return_value = SimpleNamespace(st_size=67108865)
+        with self.assertRaisesRegex(ValueError, 'Artifact exceeds'):
+            mapping.read_artifact(path, 67108864)
+        path.open.assert_not_called()
+        path.stat.return_value = SimpleNamespace(st_size=len(content))
+        path.open.return_value = io.BytesIO(content)
+        value, sha = mapping.read_artifact(path, len(content))
+        self.assertEqual(value, self.artifact)
+        self.assertEqual(sha, hashlib.sha256(content).hexdigest())
+        path.reset_mock()
+        with self.assertRaisesRegex(ValueError, 'Artifact exceeds'):
+            mapping.read_artifact(path, len(content) - 1)
+        path.open.assert_not_called()
+        path.stat.return_value = SimpleNamespace(st_size=1)
+        path.open.return_value = io.BytesIO(content)
+        with self.assertRaisesRegex(ValueError, 'while reading'):
+            mapping.read_artifact(path, 1)
+
+    def test_output_collisions_fail_before_drafting_or_publication(self):
+        import contextlib, io, json, sys, tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, value in [('artifact', self.artifact), ('plan', self.plan)]:
+                (root / name).write_text(json.dumps(value), encoding='utf-8')
+            draft = root / 'draft'
+            for output, verification in [(root / 'output', root / 'output'),
+                                         (root / 'output', root / 'unused/../output'),
+                                         (draft, root / 'verification'),
+                                         (root / 'output', draft)]:
+                argv = ['map_questions', '--draft', str(draft), '--artifact', str(root / 'artifact'),
+                        '--plan', str(root / 'plan'), '--output', str(output),
+                        '--analyzer', sys.executable, '--verification-output', str(verification)]
+                error = io.StringIO()
+                with patch('sys.argv', argv), patch.object(mapping.subprocess, 'run') as run, contextlib.redirect_stderr(error):
+                    with self.assertRaises(SystemExit) as caught:
+                        mapping.main()
+                self.assertEqual(caught.exception.code, 1)
+                self.assertIn('paths must be distinct', error.getvalue())
+                run.assert_not_called()
+                self.assertFalse(draft.exists())
+                self.assertFalse(output.exists())
+                self.assertFalse(verification.exists())
+
     def test_unknown_intervals_require_explicit_expected_ending(self):
         plan = copy.deepcopy(self.plan)
         plan['questions'][0] = {'id': 'duration', 'kind': 'interval', 'finding_id': 'root-a', 'reason': 'No supported ending'}
