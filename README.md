@@ -2204,7 +2204,8 @@ for crate ownership, licensing, and the one-time crates.io configuration.
 ## Subject-bound evidence and workflow status
 
 Give each question a stable ID with repeatable `investigate --question TEXT` and
-`--required-relationship ID`. Follow `guidance.workflow.next_action.argv` for
+`--required-relationship ID`. Supply at least one required ID per question; extra
+IDs may cover its subparts. Follow `guidance.workflow.next_action.argv` for
 checksum-bound evidence retrieval. Workflow status separates processing, delivery
 and verification; delivery does not establish review.
 

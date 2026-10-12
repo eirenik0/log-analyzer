@@ -314,7 +314,7 @@ pub struct PrepareProfileArgs {
 
 #[derive(serde::Serialize, clap::Args)]
 pub struct InvestigateArgs {
-    /// Question-derived checklist item; at most 100 nonempty questions
+    /// Question-derived checklist item; at most 100 nonempty questions, each requiring a relationship ID
     #[arg(long)]
     pub question: Vec<String>,
     /// Required claim/relationship ID; at most 100 nonempty, unique IDs

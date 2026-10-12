@@ -6715,6 +6715,31 @@ fn invalid_checklists_fail_before_artifact_creation() {
         assert!(String::from_utf8_lossy(&output.stderr).contains("Checklist accepts"));
         assert!(!artifact.exists());
     }
+    for checklist in [
+        vec!["--question", "Did the first event finish?"],
+        vec![
+            "--question",
+            "Did the first event finish?",
+            "--question",
+            "Did the second finish?",
+            "--required-relationship",
+            "first",
+        ],
+    ] {
+        let output = binary()
+            .args([
+                "investigate",
+                "examples/investigations/slow.jsonl",
+                "--artifact",
+                artifact.to_str().unwrap(),
+            ])
+            .args(checklist)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("at least one ID per question"));
+        assert!(!artifact.exists());
+    }
     let mut options = Vec::new();
     for i in 0..100 {
         options.extend([

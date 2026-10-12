@@ -23,7 +23,7 @@ identity, physical lines, expanded row paths, redaction and agreed budgets.
      --artifact /absolute/new-evidence.json --report-max-items 5
    ```
 
-   Repeat the question/relationship options for the checklist. Honor the user's
+   Repeat question/relationship options, with at least one ID per question. Honor the user's
    profile selection; automatic detection establishes grammar, not domain meaning.
 2. Inspect processing coverage, profile support, assessments and workflow gaps.
    Follow checksum-bound continuations for relevant omitted evidence. For event
