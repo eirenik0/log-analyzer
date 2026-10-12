@@ -981,6 +981,7 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
         match &claim.assertion {
             Assertion::Fact { pointer, .. } | Assertion::DistinctRecords { pointer, .. } | Assertion::Interval { pointer, .. } if !pointer.starts_with('/') => return Err("Claim pointers must address the retained artifact with a JSON Pointer starting with /".into()),
             Assertion::Interval { expected_ms, .. } if !expected_ms.is_finite() || *expected_ms < 0.0 => return Err("Expected interval must be finite and nonnegative".into()),
+            Assertion::DistinctRecords { operation: Some(operation), .. } if operation.name.is_empty() => return Err("Count operation names must be nonempty".into()),
             _ => {}
         }
         let (mut result, observed, reason) = check(retained, &claim.assertion);
@@ -1592,6 +1593,12 @@ mod final_review_tests {
             fs::write(&path, invalid.to_string()).unwrap();
             assert!(verify(&retained, &path).is_err());
         }
+        let mut empty_name = zero.clone();
+        empty_name["claims"][0]["operation"]["name"] = json!("");
+        empty_name.as_object_mut().unwrap().remove("requirements");
+        assert!(!schema.is_valid(&empty_name));
+        fs::write(&path, empty_name.to_string()).unwrap();
+        assert!(verify(&retained, &path).is_err());
         let mut unbound = assertions.clone();
         unbound["requirements"][0]
             .as_object_mut()
