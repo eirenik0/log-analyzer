@@ -157,7 +157,7 @@ fn review_final(
 #[derive(Clone, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct CountOperation {
-    kind: String,
+    kind: crate::config::OperationKind,
     name: String,
 }
 
@@ -567,6 +567,7 @@ fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'sta
             expected,
             operation,
         } => {
+            let operation_kind = operation.as_ref().map(|o| json!(o.kind));
             let count = retained
                 .pointer(pointer)
                 .and_then(Value::as_array)
@@ -579,7 +580,7 @@ fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'sta
                                 return None;
                             }
                             let semantics = &classification["semantics"];
-                            if semantics["kind"] != operation.kind
+                            if semantics["kind"] != *operation_kind.as_ref().unwrap()
                                 || semantics["name"] != operation.name
                             {
                                 continue;
@@ -634,9 +635,7 @@ fn check_requirements(
         if spec.kind == "distinct_records"
             && spec.population.as_ref().is_none_or(|p| {
                 !p.pointer.starts_with('/')
-                    || p.operation
-                        .as_ref()
-                        .is_some_and(|o| o.kind.is_empty() || o.name.is_empty())
+                    || p.operation.as_ref().is_some_and(|o| o.name.is_empty())
             })
         {
             return Err("Count requirements need a retained population pointer and optional operation filter".into());
@@ -757,8 +756,13 @@ fn check_requirements(
                     "requested_interval_available_cannot_declare_unknown",
                 ),
                 "link" => {
+                    let endpoint_anchor = if redacted_anchor {
+                        occurrence_anchor
+                    } else {
+                        complete_occurrence
+                    };
                     let scoped_source = spec.source.as_ref().is_some_and(|source| {
-                        complete_occurrence(source)
+                        endpoint_anchor(source)
                             && chain.is_some_and(|c| {
                                 c["root"] == *source
                                     || c["steps"].as_array().into_iter().flatten().any(|s| {
@@ -782,7 +786,7 @@ fn check_requirements(
                             && step.is_some()
                             && (!endpoints
                                 || (scoped_source
-                                    && spec.target.as_ref().is_some_and(complete_occurrence))),
+                                    && spec.target.as_ref().is_some_and(endpoint_anchor))),
                         !redacted_anchor
                             && if endpoints {
                                 exact_available
@@ -1356,6 +1360,7 @@ mod final_review_tests {
         for selector in [
             json!({"kind":"interval","start_operation":"start","end_operation":"end"}),
             json!({"kind":"link","step_id":"end"}),
+            json!({"kind":"link","step_id":"end","source":root,"target":root}),
             json!({"kind":"distinct_records","population":{"pointer":"/records","operation":{"kind":"request","name":"send"}}}),
             json!({"kind":"fact"}),
         ] {
@@ -1573,6 +1578,20 @@ mod final_review_tests {
             assert_eq!(result["final_review"]["status"], "needs_revision");
             assert_eq!(verified(&assertions)["status"], "verified");
         }
+        let mut zero = assertions.clone();
+        zero["claims"][0]["operation"]["kind"] = json!("command");
+        zero["claims"][0]["expected"] = json!(0);
+        zero["requirements"][0]["population"]["operation"]["kind"] = json!("command");
+        assert_eq!(verified(&zero)["status"], "verified");
+        for kind in ["reqest", "unsupported", "Request", ""] {
+            let mut invalid = assertions.clone();
+            invalid["claims"][0]["operation"]["kind"] = json!(kind);
+            invalid["claims"][0]["expected"] = json!(0);
+            invalid["requirements"][0]["population"]["operation"]["kind"] = json!(kind);
+            assert!(!schema.is_valid(&invalid));
+            fs::write(&path, invalid.to_string()).unwrap();
+            assert!(verify(&retained, &path).is_err());
+        }
         let mut unbound = assertions.clone();
         unbound["requirements"][0]
             .as_object_mut()
@@ -1593,7 +1612,7 @@ mod final_review_tests {
             pointer: "/records".into(),
             expected,
             operation: Some(CountOperation {
-                kind: "request".into(),
+                kind: crate::config::OperationKind::Request,
                 name: name.into(),
             }),
         };

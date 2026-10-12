@@ -317,8 +317,7 @@
                 ],
                 "properties": {
                   "kind": {
-                    "type": "string",
-                    "minLength": 1
+                    "enum": ["command", "request", "event"]
                   },
                   "name": {
                     "type": "string",
@@ -462,8 +461,7 @@
                     ],
                     "properties": {
                       "kind": {
-                        "type": "string",
-                        "minLength": 1
+                        "enum": ["command", "request", "event"]
                       },
                       "name": {
                         "type": "string",
