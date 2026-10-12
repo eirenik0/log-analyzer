@@ -52,6 +52,7 @@ class QuestionMappingTests(unittest.TestCase):
         import hashlib, json, subprocess, sys, tempfile
         artifact = copy.deepcopy(self.artifact)
         initial = ['opaque-' + hashlib.sha256(item['id'].encode()).hexdigest() for item in self.plan['questions']]
+        artifact['content'] = 'redacted'
         artifact['question_checklist'] = {'question': ['[REDACTED QUESTION]'], 'required_relationship': initial}
         artifact['report_metadata']['evidence']['query']['command'] = '[REDACTED QUERY]'
         self.assertEqual(mapping.inventory(self.draft, artifact)['required_initial_ids'], initial)
@@ -66,6 +67,15 @@ class QuestionMappingTests(unittest.TestCase):
             root = Path(directory)
             for name, value in [('draft', self.draft), ('artifact', artifact), ('plan', plan)]:
                 (root / name).write_text(json.dumps(value), encoding='utf-8')
+            missing_draft = root / 'missing-draft'
+            inventory = subprocess.run([sys.executable, mapping.__file__, '--draft', str(missing_draft),
+                                        '--artifact', str(root / 'artifact')], capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(inventory.returncode, 0, inventory.stderr)
+            view = json.loads(inventory.stdout)
+            self.assertEqual(view['required_initial_ids'], initial)
+            self.assertEqual(view['supported_options'], [])
+            self.assertEqual(view['unknown_anchors'][0]['finding_id'], 'root-a')
+            self.assertFalse(missing_draft.exists())
             output, verification = root / 'claims.json', root / 'verification.json'
             result = subprocess.run([sys.executable, mapping.__file__, '--draft', str(root / 'draft'),
                                      '--artifact', str(root / 'artifact'), '--plan', str(root / 'plan'),

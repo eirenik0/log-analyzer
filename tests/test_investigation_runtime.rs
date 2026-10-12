@@ -6572,6 +6572,8 @@ fn redacted_chain_pages_do_not_advertise_claim_drafts() {
         temp.path().join("events.jsonl").to_str().unwrap(),
         "--artifact",
         artifact.to_str().unwrap(),
+        "--required-relationship",
+        "completion",
     ]);
     let page = success(&[
         "evidence",
@@ -6596,6 +6598,40 @@ fn redacted_chain_pages_do_not_advertise_claim_drafts() {
             .as_str()
             .unwrap()
             .contains("Redacted evidence")
+    );
+    let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    let finding = retained["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"]["event_chain"].is_object())
+        .unwrap();
+    let step = finding["details"]["event_chain"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["status"] == "observed")
+        .unwrap();
+    let id = &report["guidance"]["workflow"]["required_relationships"][0];
+    let claims = temp.path().join("redacted-unknown.json");
+    fs::write(&claims, json!({"version":1,"required_claim_ids":[id],"claims":[],
+        "requirements":[{"id":id,"kind":"link","finding_id":finding["id"],"step_id":step["id"]}],
+        "unresolved":[{"id":id,"reason":"Original source identity redacted"}],
+        "final_review":{"summary_claim_ids":[],"finding_claim_ids":[],"unresolved_question_ids":[id],
+            "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}}).to_string()).unwrap();
+    let verified = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--claims",
+        claims.to_str().unwrap(),
+    ]);
+    let verification = &verified["artifact_retrieval"]["claim_verification"];
+    assert_eq!(verification["status"], "verified_with_unknowns");
+    assert_eq!(
+        verification["final_review"]["status"],
+        "declared_checks_passed_with_unknowns"
     );
 }
 

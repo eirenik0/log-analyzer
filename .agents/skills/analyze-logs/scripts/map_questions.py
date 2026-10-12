@@ -169,7 +169,7 @@ def inventory(draft, artifact):
                                  'root': address(c['root']), 'identity': c.get('identity')}
                                 for fid, c in anchors(artifact).items()],
             'supported_options': options,
-            'limitation': 'Compact selectors for an explicit plan, not verified truth. Full snapshot/subject addresses remain in the draft; compilation runs checksum-bound verification.'}
+            'limitation': 'Compact selectors for an explicit plan, not verified truth. Supported draft claims retain their snapshot/subject addresses; compilation runs checksum-bound verification.'}
 
 
 def main():
@@ -203,7 +203,7 @@ def main():
         artifact, sha = read_artifact(artifact_path, args.artifact_max_bytes or 67108864)
         plan = load(args.plan) if args.plan else None
         unknown_only = plan is not None and not plan.get('supporting_claim_ids') and all('claim_id' not in q for q in plan['questions'])
-        if not Path(args.draft).exists() and not unknown_only:
+        if not Path(args.draft).exists() and not unknown_only and artifact.get('content') != 'redacted':
             if analyzer is None:
                 raise ValueError('A missing draft requires --analyzer to create it from the retained snapshot')
             subprocess.run([str(analyzer), 'evidence', str(artifact_path), '--expected-sha256', sha,

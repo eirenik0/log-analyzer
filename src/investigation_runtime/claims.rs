@@ -191,7 +191,7 @@ struct Subject {
     end_operation: Option<String>,
 }
 
-fn complete_occurrence(value: &Value) -> bool {
+fn occurrence_anchor(value: &Value) -> bool {
     !value["snapshot_id"].is_null()
         && value["input_ordinal"].is_u64()
         && value["evidence_ref"]["reference_id"]
@@ -204,7 +204,9 @@ fn complete_occurrence(value: &Value) -> bool {
             .as_u64()
             .is_some_and(|v| v > 0)
         && value["evidence_ref"].get("row_path").is_some()
-        && value["evidence_ref"]["location_redacted"] != true
+}
+fn complete_occurrence(value: &Value) -> bool {
+    occurrence_anchor(value) && value["evidence_ref"]["location_redacted"] != true
 }
 
 /// Editable proposals only: never infer missing endings or acknowledge caller review.
@@ -699,7 +701,18 @@ fn check_requirements(
                     .is_none_or(|name| c["root_event_name"] == *name)
         });
         let (ok, reason) = if unknowns.contains(&spec.id) {
-            let available = spec.kind == "interval"
+            let redacted_anchor = retained["content"] == "redacted"
+                && chain.is_some_and(|c| {
+                    occurrence_anchor(&c["root"])
+                        && c["root"]["evidence_ref"]["location_redacted"] == true
+                        && spec
+                            .start_operation
+                            .as_ref()
+                            .is_none_or(|name| c["root_event_name"] == *name)
+                });
+            let root_matches = root_matches || redacted_anchor;
+            let available = !redacted_anchor
+                && spec.kind == "interval"
                 && chain.is_some_and(|c| {
                     c["steps"].as_array().into_iter().flatten().any(|step| {
                         step["join_samples"]
@@ -734,15 +747,16 @@ fn check_requirements(
                 ),
                 "link" => (
                     root_matches && step.is_some(),
-                    check(
-                        retained,
-                        &Assertion::Link {
-                            finding_id: spec.finding_id.clone().unwrap(),
-                            step_id: spec.step_id.clone().unwrap(),
-                            subject: None,
-                        },
-                    )
-                    .0 == Some(true),
+                    !redacted_anchor
+                        && check(
+                            retained,
+                            &Assertion::Link {
+                                finding_id: spec.finding_id.clone().unwrap(),
+                                step_id: spec.step_id.clone().unwrap(),
+                                subject: None,
+                            },
+                        )
+                        .0 == Some(true),
                     "requested_link_available_cannot_declare_unknown",
                 ),
                 "distinct_records" => {
@@ -817,7 +831,8 @@ fn check_requirements(
                     step_id,
                     ..
                 } => {
-                    spec.finding_id.as_ref() == Some(finding_id)
+                    retained["content"] != "redacted"
+                        && spec.finding_id.as_ref() == Some(finding_id)
                         && spec.step_id.as_ref() == Some(step_id)
                 }
                 Assertion::DistinctRecords {
@@ -1177,6 +1192,51 @@ mod final_review_tests {
         assert_eq!(wrong["status"], "needs_revision");
         assertions["requirements"][0]["finding_id"] = json!("b");
         assert_eq!(check(&assertions)["status"], "verified");
+    }
+
+    #[test]
+    fn redacted_roots_anchor_unknowns_but_not_supported_events() {
+        let root = json!({"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"input_id":"i","reference_id":"r","line":1,"row_path":null,"location_redacted":true}});
+        let interval = json!({"status":"measured","unit":"ms","source":root,"start_operation":"start","end_operation":"end",
+            "start_timestamp":"2026-01-01T00:00:00Z","end_timestamp":"2026-01-01T00:00:00.010Z"});
+        let retained = json!({"content":"redacted","findings":[{"id":"root","details":{"event_chain":{"root":root,"root_event_name":"start","ambiguity":"none",
+            "steps":[{"id":"end","status":"observed","linked_count":1,"count_completeness":"complete","join_samples":[{"endpoint_interval":interval}]}]}}}],
+            "records":[{"occurrence":root}]});
+        let mut assertions = json!({"version":1,"required_claim_ids":["question"],"claims":[],
+            "requirements":[],"unresolved":[{"id":"question","reason":"Source identity redacted"}]});
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("redacted.json");
+        let verify_status = |a: &Value| {
+            fs::write(&path, a.to_string()).unwrap();
+            verify(&retained, &path).unwrap()["status"].clone()
+        };
+        for selector in [
+            json!({"kind":"interval","start_operation":"start","end_operation":"end"}),
+            json!({"kind":"link","step_id":"end"}),
+            json!({"kind":"distinct_records","population":{"pointer":"/records","operation":{"kind":"request","name":"send"}}}),
+            json!({"kind":"fact"}),
+        ] {
+            let mut spec = selector;
+            spec["id"] = json!("question");
+            spec["finding_id"] = json!("root");
+            assertions["requirements"] = json!([spec]);
+            assert_eq!(verify_status(&assertions), "verified_with_unknowns");
+            assertions["requirements"][0]["finding_id"] = json!("missing");
+            assert_eq!(verify_status(&assertions), "needs_revision");
+        }
+        assertions["requirements"] = json!([{"id":"question","kind":"distinct_records","finding_id":"root","population":{"pointer":"/records"}}]);
+        assert_eq!(verify_status(&assertions), "needs_revision");
+        assertions["requirements"] =
+            json!([{"id":"question","kind":"link","finding_id":"root","step_id":"missing"}]);
+        assert_eq!(verify_status(&assertions), "needs_revision");
+        assertions["requirements"][0]["step_id"] = json!("end");
+        assertions["unresolved"] = json!([]);
+        assertions["claims"] =
+            json!([{"id":"question","kind":"link","finding_id":"root","step_id":"end"}]);
+        assert_eq!(verify_status(&assertions), "needs_revision");
+        assertions["requirements"] = json!([{"id":"question","kind":"interval","finding_id":"root","start_operation":"start","end_operation":"end"}]);
+        assertions["claims"] = json!([{"id":"question","kind":"interval","pointer":"/findings/0/details/event_chain/steps/0/join_samples/0/endpoint_interval","expected_ms":10}]);
+        assert_eq!(verify_status(&assertions), "needs_revision");
     }
 
     #[test]
