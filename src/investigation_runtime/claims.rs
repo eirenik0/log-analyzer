@@ -148,7 +148,7 @@ fn review_final(
     json!({"status":if issues.is_empty() && unresolved.is_empty(){"declared_checks_passed"}else if issues.is_empty(){"declared_checks_passed_with_unknowns"}else{"needs_revision"},"issues":issues,"summary_claim_ids":review.summary_claim_ids,"finding_claim_ids":review.finding_claim_ids,"unresolved_question_ids":review.unresolved_question_ids,"acknowledged_prose_checks":review.checks,"limitations":["Claim mappings are checked deterministically; prose checks are caller acknowledgments, not validated prose or causal proof. Unknown facts must be reported explicitly outside the verified observation/measurement claim list."]})
 }
 
-#[derive(Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct CountOperation {
     kind: String,
@@ -640,11 +640,11 @@ fn check_requirements(
             return Err("Link requirements need a finding_id and step_id".into());
         }
         if spec.kind == "fact"
-            && assertions.claims.iter().any(|c| c.id == spec.id)
-            && spec
+            && (spec
                 .field
                 .as_ref()
-                .is_none_or(|f| !f.pointer.starts_with('/'))
+                .is_some_and(|f| !f.pointer.starts_with('/'))
+                || (spec.field.is_none() && assertions.claims.iter().any(|c| c.id == spec.id)))
         {
             return Err(
                 "Supported fact requirements need a retained field pointer and expected value"
@@ -720,12 +720,66 @@ fn check_requirements(
                             })
                     })
                 });
+            let step = chain.and_then(|c| c["steps"].as_array()).and_then(|steps| {
+                steps
+                    .iter()
+                    .find(|step| spec.step_id.as_ref().is_some_and(|id| step["id"] == *id))
+            });
+            let (anchor_valid, available, reason) = match spec.kind.as_str() {
+                "interval" => (
+                    root_matches,
+                    available,
+                    "requested_interval_available_cannot_declare_unknown",
+                ),
+                "link" => (
+                    root_matches && step.is_some(),
+                    check(
+                        retained,
+                        &Assertion::Link {
+                            finding_id: spec.finding_id.clone().unwrap(),
+                            step_id: spec.step_id.clone().unwrap(),
+                            subject: None,
+                        },
+                    )
+                    .0 == Some(true),
+                    "requested_link_available_cannot_declare_unknown",
+                ),
+                "distinct_records" => {
+                    let population = spec.population.as_ref().unwrap();
+                    let measurable = check(
+                        retained,
+                        &Assertion::DistinctRecords {
+                            pointer: population.pointer.clone(),
+                            expected: 0,
+                            operation: population.operation.clone(),
+                        },
+                    )
+                    .0
+                    .is_some();
+                    (
+                        root_matches
+                            && retained
+                                .pointer(&population.pointer)
+                                .is_some_and(Value::is_array),
+                        measurable,
+                        "requested_count_available_cannot_declare_unknown",
+                    )
+                }
+                "fact" => (
+                    root_matches,
+                    spec.field
+                        .as_ref()
+                        .is_some_and(|f| retained.pointer(&f.pointer).is_some()),
+                    "requested_field_available_cannot_declare_unknown",
+                ),
+                _ => unreachable!(),
+            };
             (
-                root_matches && !available,
-                if available {
-                    "requested_interval_available_cannot_declare_unknown"
-                } else if !root_matches {
+                anchor_valid && !available,
+                if !anchor_valid {
                     "unresolved_finding_anchor_unavailable_or_wrong_subject"
+                } else if available {
+                    reason
                 } else {
                     "explicit_unknown_anchored_not_verified_as_a_fact"
                 },
@@ -1090,6 +1144,60 @@ mod final_review_tests {
             "declared_checks_passed"
         );
     }
+    #[test]
+    fn unresolved_subjects_reject_available_or_invalid_evidence() {
+        let root = json!({"snapshot_id":"s","input_ordinal":0,"evidence_ref":{"input_id":"i","reference_id":"r","line":1,"row_path":null}});
+        let mut retained = json!({"findings":[{"id":"root","details":{"event_chain":{"root":root,"ambiguity":"none",
+            "steps":[{"id":"end","status":"not_observed","linked_count":0,"count_completeness":"complete"}]}}}],
+            "records":[{"occurrence":root,"fields":{"classification":{"status":"unclassified"}}}],"known":null});
+        let mut assertions = json!({"version":1,"required_claim_ids":["question"],"claims":[],
+            "requirements":[{"id":"question","kind":"link","finding_id":"root","step_id":"end"}],
+            "unresolved":[{"id":"question","reason":"No supported relationship"}],
+            "final_review":{"summary_claim_ids":[],"finding_claim_ids":[],"unresolved_question_ids":["question"],
+                "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}});
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("unknown.json");
+        let schema: Value =
+            serde_json::from_str(include_str!("../../schemas/claim-assertions.schema.json"))
+                .unwrap();
+        let schema = jsonschema::validator_for(&schema).unwrap();
+        let status = |a: &Value, r: &Value| {
+            schema.validate(a).unwrap();
+            fs::write(&path, a.to_string()).unwrap();
+            verify(r, &path).unwrap()["status"].clone()
+        };
+        for step_status in ["not_observed", "ambiguous", "unavailable"] {
+            retained["findings"][0]["details"]["event_chain"]["steps"][0]["status"] =
+                json!(step_status);
+            retained["findings"][0]["details"]["event_chain"]["steps"][0]["linked_count"] =
+                json!(if step_status == "not_observed" { 0 } else { 1 });
+            assert_eq!(status(&assertions, &retained), "verified_with_unknowns");
+        }
+        assertions["requirements"][0]["step_id"] = json!("nonexistent");
+        assert_eq!(status(&assertions, &retained), "needs_revision");
+        assertions["requirements"][0]["step_id"] = json!("end");
+        let step = &mut retained["findings"][0]["details"]["event_chain"]["steps"][0];
+        step["status"] = json!("observed");
+        step["linked_count"] = json!(1);
+        assert_eq!(status(&assertions, &retained), "needs_revision");
+        assertions["requirements"][0] = json!({"id":"question","kind":"distinct_records","finding_id":"root", "population":{"pointer":"/records","operation":{"kind":"request","name":"send"}}});
+        assert_eq!(status(&assertions, &retained), "verified_with_unknowns");
+        retained["records"][0]["fields"]["classification"] =
+            json!({"status":"event","semantics":{"kind":"request","name":"send"}});
+        assert_eq!(status(&assertions, &retained), "needs_revision");
+        assertions["requirements"][0]["population"]["pointer"] = json!("/nonexistent");
+        assert_eq!(status(&assertions, &retained), "needs_revision");
+        assertions["requirements"][0] = json!({"id":"question","kind":"fact","finding_id":"root", "field":{"pointer":"/missing","equals":null}});
+        assert_eq!(status(&assertions, &retained), "verified_with_unknowns");
+        assertions["requirements"][0]["field"]["pointer"] = json!("/known");
+        assert_eq!(status(&assertions, &retained), "needs_revision");
+        assertions["requirements"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("field");
+        assert_eq!(status(&assertions, &retained), "verified_with_unknowns");
+    }
+
     #[test]
     fn link_and_fact_requirements_bind_steps_fields_and_values() {
         let step = |id| json!({"id":id,"status":"observed","linked_count":1,"count_completeness":"complete"});

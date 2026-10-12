@@ -2225,8 +2225,8 @@ Typed `requirements` prevent unrelated claims from satisfying a question ID.
 Intervals name their root finding and exact start/end operations; counts bind a
 retained population pointer and operation filter. Links bind a finding and step;
 facts bind a field pointer and expected value. Declare unsupported
-questions in `unresolved`, with a retained finding anchor and reason; an available
-requested interval cannot be declared unknown. Initial required IDs cannot be dropped. All-unknown plans are accepted when every
+questions in `unresolved`, with a retained finding anchor and reason; available requested
+intervals, links, counts and explicitly selected fields cannot be declared unknown. Initial required IDs cannot be dropped. All-unknown plans are accepted when every
 required ID has a typed, anchored unresolved entry.
 `final_review` requires complete typed question mappings and records six caller review
 acknowledgments. `verified_with_unknowns` validates the supported subset and mappings,

@@ -72,11 +72,11 @@ def compile_plan(draft, artifact, plan):
             claim['id'] = qid
             claims.append(claim)
         else:
-            if set(item) - {'id', 'kind', 'finding_id', 'end_operation', 'reason'}:
-                raise ValueError('Unknown mapping fields')
+            selectors = {'interval': {'end_operation'}, 'link': {'step_id'},
+                         'distinct_records': {'population'}, 'fact': {'field'}}
+            if item['kind'] not in selectors or set(item) - ({'id', 'kind', 'finding_id', 'reason'} | selectors[item['kind']]):
+                raise ValueError('Unknown mapping kind or fields')
             chain = chain_by_id[item['finding_id']]
-            if item['kind'] not in ('interval', 'fact'):
-                raise ValueError('Unknown questions require an interval or fact anchor')
             reason = item['reason']
             if not isinstance(reason, str) or not reason.strip() or len(reason.encode('utf-8')) > 4096:
                 raise ValueError('Unknown needs a nonempty bounded reason')
@@ -86,6 +86,15 @@ def compile_plan(draft, artifact, plan):
                 if not isinstance(ending, str) or not ending.strip():
                     raise ValueError('Unknown interval needs the source-supported expected end name')
                 spec.update(start_operation=chain['root_event_name'], end_operation=ending)
+            elif item['kind'] == 'link':
+                step = item['step_id']
+                if not isinstance(step, str) or not step.strip():
+                    raise ValueError('Unknown link needs the requested step_id')
+                spec['step_id'] = step
+            elif item['kind'] == 'distinct_records':
+                spec['population'] = copy.deepcopy(item['population'])
+            elif 'field' in item:
+                spec['field'] = copy.deepcopy(item['field'])
             requirements.append(spec)
             unresolved.append({'id': qid, 'reason': reason})
     if not ids or len(ids) > 100:
@@ -147,7 +156,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--draft', required=True)
     parser.add_argument('--artifact', required=True)
-    parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id,binding} (population instead of binding for counts) or declaring {id,kind,finding_id,end_operation?,reason}; reviewed_checks and optional supporting_claim_ids')
+    parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id,binding} (population instead of binding for counts) or declaring {id,kind,finding_id,reason} plus end_operation, step_id, population or optional field; reviewed_checks and optional supporting_claim_ids')
     parser.add_argument('--output', help='New assertions file; never overwrites')
     parser.add_argument('--analyzer', type=Path, help='Analyzer executable; required for plans or creating a missing draft')
     parser.add_argument('--verification-output', type=Path, help='New retained verification report; required for plans')

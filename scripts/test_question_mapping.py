@@ -110,6 +110,23 @@ class QuestionMappingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'binding'):
                 mapping.compile_plan(draft, artifact, plan)
 
+    def test_unknown_links_and_counts_keep_explicit_selectors(self):
+        plan = copy.deepcopy(self.plan)
+        plan['questions'][0] = {'id': 'duration', 'kind': 'link', 'finding_id': 'root-a',
+                                'step_id': 'end', 'reason': 'Ambiguous relationship'}
+        plan['questions'][1] = {'id': 'count', 'kind': 'distinct_records', 'finding_id': 'root-a',
+                                'population': {'pointer': '/records', 'operation': None}, 'reason': 'Unclassified records'}
+        result = mapping.compile_plan(self.draft, self.artifact, plan)
+        self.assertEqual(result['claims'], [])
+        self.assertEqual(result['requirements'][0]['step_id'], 'end')
+        self.assertEqual(result['requirements'][1]['population'], plan['questions'][1]['population'])
+        plan['questions'][0]['step_id'] = ''
+        with self.assertRaisesRegex(ValueError, 'step_id'):
+            mapping.compile_plan(self.draft, self.artifact, plan)
+        del plan['questions'][0]['step_id']
+        with self.assertRaises(KeyError):
+            mapping.compile_plan(self.draft, self.artifact, plan)
+
     def test_nonroot_interval_is_not_a_question_duration(self):
         wrong = copy.deepcopy(self.draft)
         wrong['claims'][0]['subject']['source'] = {'line': 2}

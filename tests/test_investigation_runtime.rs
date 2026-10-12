@@ -6605,7 +6605,8 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
     let all_unknown = json!({"questions":[
         {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],
          "end_operation":"capture_end","reason":"No supported ending for this scoped root"},
-        {"id":"cause","kind":"fact","finding_id":unknown["id"],"reason":"No causal mechanism established"}],
+        {"id":"cause","kind":"fact","finding_id":unknown["id"],"reason":"No causal mechanism established"},
+        {"id":"finish-link","kind":"link","finding_id":unknown["id"],"step_id":"capture-end","reason":"No supported scoped ending"}],
         "reviewed_checks":assertions["final_review"]["checks"]});
     let all_unknown = compile(&all_unknown, "compiled-unknown.json");
     assert_eq!(all_unknown["claims"], json!([]));

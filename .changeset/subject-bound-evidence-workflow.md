@@ -2,9 +2,8 @@
 default: minor
 ---
 
-Bind evidence claims to exact subjects and typed question requirements, including
-count populations/operations, link steps and fact fields/values. Require complete
-typed mappings for final review. Accept fully anchored all-unknown plans. Add editable
-drafts, anchored unknowns and final-review mappings. Provide a concise analysis
-workflow with a question-plan compiler and independent profile-recovery validation.
+Bind question claims to exact interval endpoints, link steps, fact fields and count
+populations. Add editable drafts and require typed mappings for final review.
+Support anchored unknowns while rejecting invalid selectors and available evidence.
+Provide a concise skill with a plan compiler and independent profile validation.
 Exclude Python bytecode caches from generated skill resources.

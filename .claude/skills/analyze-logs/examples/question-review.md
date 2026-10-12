@@ -27,7 +27,9 @@ own IDs; they cannot substitute for an unknown measurement. Count questions must
 independently declare the expected `population` pointer and operation from the inventory (`operation: null` means unfiltered); a mismatched
 selector is rejected. Scoped counts are not automatically global attempts.
 An unknown interval's expected ending must come from source meaning. Complete
-source-supported recognition recovery before declaring it unknown.
+source-supported recognition recovery before declaring it unknown. Unknown links
+use `kind: "link"` and `step_id`; unknown counts use `kind: "distinct_records"`
+and `population`. The verifier rejects invalid selectors and available requested facts.
 
 Compile and verify using the command in the skill entrypoint. The helper creates
 `requirements`, `unresolved`, and exact final-review mappings; it does not infer
