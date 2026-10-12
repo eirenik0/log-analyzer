@@ -166,9 +166,13 @@ def main():
     parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id,binding} (population instead of binding for counts) or declaring {id,kind,finding_id,reason} plus end_operation, step_id, population or optional field; reviewed_checks and optional supporting_claim_ids')
     parser.add_argument('--output', help='New assertions file; never overwrites')
     parser.add_argument('--analyzer', type=Path, help='Analyzer executable; required for plans or creating a missing draft')
+    parser.add_argument('--artifact-max-bytes', type=int, help='Explicit artifact read allowance forwarded to drafting and verification (native default: 64 MiB)')
     parser.add_argument('--verification-output', type=Path, help='New retained verification report; required for plans')
     args = parser.parse_args()
     try:
+        if args.artifact_max_bytes is not None and not 0 < args.artifact_max_bytes <= 2**64 - 1:
+            raise ValueError('--artifact-max-bytes must be a positive u64 byte limit')
+        allowance = [] if args.artifact_max_bytes is None else ['--artifact-max-bytes', str(args.artifact_max_bytes)]
         artifact_path = Path(args.artifact).resolve()
         sha = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
         analyzer = args.analyzer.resolve() if args.analyzer else None
@@ -182,7 +186,7 @@ def main():
             if analyzer is None:
                 raise ValueError('A missing draft requires --analyzer to create it from the retained snapshot')
             subprocess.run([str(analyzer), 'evidence', str(artifact_path), '--expected-sha256', sha,
-                            '--draft-claims', '--output', args.draft], check=True,
+                            '--draft-claims', '--output', args.draft] + allowance, check=True,
                            stdout=subprocess.DEVNULL)
         draft = load(args.draft) if Path(args.draft).exists() else {'claims': []}
         artifact = load(artifact_path)
@@ -197,7 +201,7 @@ def main():
             stream.write('\n')
         executed = subprocess.run([str(analyzer), 'evidence', str(artifact_path),
                                    '--expected-sha256', sha, '--claims', args.output,
-                                   '--output', str(args.verification_output)],
+                                   '--output', str(args.verification_output)] + allowance,
                                   stdout=subprocess.DEVNULL, check=False)
         if not args.verification_output.exists():
             raise ValueError('Verifier did not save a report; inspect its error and correct the plan')

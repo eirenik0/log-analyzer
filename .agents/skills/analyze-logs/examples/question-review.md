@@ -31,7 +31,8 @@ source-supported recognition recovery before declaring it unknown. Unknown links
 use `kind: "link"` and `step_id`; unknown counts use `kind: "distinct_records"`
 and `population`. The verifier rejects invalid selectors and available requested facts.
 
-Compile and verify using the command in the skill entrypoint. The helper creates
+Compile and verify using the command in the skill entrypoint. For artifacts above
+64 MiB, pass the agreed `--artifact-max-bytes` allowance to the helper. The helper creates
 `requirements`, `unresolved`, and exact final-review mappings; it does not infer
 question meaning. Regenerate the draft after changing the artifact. Existing
 output paths are rejected; failed checks preserve their report and exit nonzero.

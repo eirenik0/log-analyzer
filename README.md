@@ -2215,7 +2215,7 @@ log-analyzer evidence /absolute/evidence.json --expected-sha256 EXACT_SHA \
   --draft-claims --output /absolute/new-claims.json
 ```
 
-Drafts propose scoped links, intervals and distinct endpoint counts. Independently
+Drafts require unredacted identities and propose scoped links, intervals and distinct endpoint counts. Independently
 check source meaning and select the requested subjects before verification.
 `evidence --claims FILE` reports expected/observed identity, citations and assurance;
 `subject_verified` binds the assertion to its snapshot, input and exact endpoints.
@@ -2235,6 +2235,6 @@ not unknown conclusions, arbitrary prose, profile semantics or causality.
 
 The analysis skill's [question-plan helper](.agents/skills/analyze-logs/examples/question-review.md)
 compiles explicit selections and runs verification, preserving failures and rejecting
-existing output paths. Use [profile recovery](.agents/skills/analyze-logs/examples/role-recovery.md)
+existing output paths. Pass `--artifact-max-bytes` to retain an agreed larger read allowance. Use [profile recovery](.agents/skills/analyze-logs/examples/role-recovery.md)
 only for source-supported recognition gaps: prepare, independently validate positive
 and negative witnesses, then investigate into a fresh artifact and verify its claims.

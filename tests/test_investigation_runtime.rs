@@ -6002,6 +6002,8 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
         artifact.to_str().unwrap(),
         "--expected-sha256",
         report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--artifact-max-bytes",
+        "100000000",
         "--draft-claims",
         "--output",
         path.to_str().unwrap(),
@@ -6014,6 +6016,13 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
     );
     let summary: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(summary["status"], "draft_requires_review");
+    assert!(
+        summary["next_action"]["argv"]
+            .as_array()
+            .unwrap()
+            .windows(2)
+            .any(|pair| pair == [json!("--artifact-max-bytes"), json!("100000000")])
+    );
     let mut draft: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     let schema: Value =
         serde_json::from_str(include_str!("../schemas/claim-assertions.schema.json")).unwrap();
@@ -6103,6 +6112,8 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
         "--id",
         selected_id,
         "--compact",
+        "--artifact-max-bytes",
+        "100000000",
         "--report-max-items",
         "50",
     ]);
@@ -6125,6 +6136,11 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
     );
     assert!(temp.path().join("claims-draft.json").is_file());
     assert!(command.windows(2).any(|pair| pair == ["--id", selected_id]));
+    assert!(
+        command
+            .windows(2)
+            .any(|pair| pair == ["--artifact-max-bytes", "100000000"])
+    );
     assert!(
         !command
             .iter()
@@ -6536,6 +6552,51 @@ fn redacted_checklists_preserve_opaque_required_ids() {
     assertion["required_claim_ids"] = required.clone();
     assertion["claims"][0]["id"] = required[0].clone();
     assert!(verify(&assertion).0);
+}
+
+#[test]
+fn redacted_chain_pages_do_not_advertise_claim_drafts() {
+    let (temp, _, _) = chain_fixture(
+        &[
+            chain_event("checkpoint", "run", "capture", 0),
+            chain_event("capture_end", "run", "capture", 10),
+        ],
+        None,
+    );
+    let artifact = temp.path().join("redacted.json");
+    let report = success(&[
+        "--config",
+        temp.path().join("profile.toml").to_str().unwrap(),
+        "--redact",
+        "investigate",
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    let page = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/chain-bundles",
+        "--report-max-items",
+        "100",
+    ]);
+    assert!(page["artifact_retrieval"]["displayed"].as_u64().unwrap() > 0);
+    assert!(page["artifact_retrieval"]["next_cursor"].is_null());
+    let action = &page["artifact_retrieval"]["workflow"]["next_action"];
+    assert_eq!(
+        action["kind"],
+        "inspect_delivered_evidence_and_verification"
+    );
+    assert!(action["argv"].is_null());
+    assert!(
+        action["reason"]
+            .as_str()
+            .unwrap()
+            .contains("Redacted evidence")
+    );
 }
 
 #[test]

@@ -731,7 +731,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             .map_err(|_| "Claim drafts save only new files; choose a new --output path")?;
         println!(
             "{}",
-            json!({"status":"draft_requires_review","claims_path":crate::evidence::path_label(path),"candidate_claims":draft["claims"].as_array().map_or(0,Vec::len),"limitations":["Draft expectations come from retained evidence, not independent truth. Match the question and source semantics, remove unrelated claims, map checklist IDs, and acknowledge final review only after inspection. Missing endings are not drafted as absence claims."],"next_action":{"kind":"review_then_verify_claims","argv":[std::env::current_exe()?.to_string_lossy(),"evidence",crate::evidence::path_label(&args.artifact),"--expected-sha256",hash,"--claims",crate::evidence::path_label(path)]}})
+            json!({"status":"draft_requires_review","claims_path":crate::evidence::path_label(path),"candidate_claims":draft["claims"].as_array().map_or(0,Vec::len),"limitations":["Draft expectations come from retained evidence, not independent truth. Match the question and source semantics, remove unrelated claims, map checklist IDs, and acknowledge final review only after inspection. Missing endings are not drafted as absence claims."],"next_action":{"kind":"review_then_verify_claims","argv":[std::env::current_exe()?.to_string_lossy(),"evidence",crate::evidence::path_label(&args.artifact),"--expected-sha256",hash,"--artifact-max-bytes",args.artifact_max_bytes.to_string(),"--claims",crate::evidence::path_label(path)]}})
         );
         return Ok(());
     }
@@ -929,11 +929,16 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             crate::evidence::path_label(&args.artifact),
             "--expected-sha256".into(),
             hash.clone(),
+            "--artifact-max-bytes".into(),
+            args.artifact_max_bytes.to_string(),
+        ];
+        let draft_base = argv.clone();
+        argv.extend([
             "--collection".into(),
             args.collection.clone(),
             "--report-max-items".into(),
             max.clamp(1, 5).to_string(),
-        ];
+        ]);
         if let Some(id) = &args.id {
             argv.extend(["--id".into(), id.clone()]);
         }
@@ -950,6 +955,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             section["workflow"]["next_action"] =
                 json!({"kind":"retrieve_omitted_evidence","argv":argv});
         } else if args.claims.is_none()
+            && retained["content"] == "original"
             && count > 0
             && retained["findings"]
                 .as_array()
@@ -957,7 +963,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 .flatten()
                 .any(|f| f["details"].get("event_chain").is_some())
         {
-            argv.truncate(5);
+            let mut argv = draft_base;
             if let Some(id) = selected_finding_id {
                 argv.extend(["--id".into(), id.into()]);
             }
@@ -968,7 +974,12 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             ]);
             section["workflow"]["next_action"] = json!({"kind":"review_then_draft_claims","argv":argv,"reason":"Inspect delivered subjects and gaps first. Save editable assertions, map question checklist IDs, remove unrelated intervals, then run the returned verification argv. Drafting does not establish truth or review."});
         } else {
-            section["workflow"]["next_action"] = json!({"kind":"inspect_delivered_evidence_and_verification","argv":null,"reason":"Inspect exact subjects, terminal/contrary/later events and omissions. Declare source-bound claims after review; do not repeat completed retrieval without a specific remaining gap."});
+            let reason = if retained["content"] == "redacted" {
+                "Redacted evidence cannot produce source-bound drafts. Preserve unknowns and report identity and source-verification limits."
+            } else {
+                "Inspect exact subjects, terminal/contrary/later events and omissions. Declare source-bound claims after review; do not repeat completed retrieval without a specific remaining gap."
+            };
+            section["workflow"]["next_action"] = json!({"kind":"inspect_delivered_evidence_and_verification","argv":null,"reason":reason});
         }
     };
     refresh(

@@ -78,6 +78,34 @@ class QuestionMappingTests(unittest.TestCase):
         del artifact['question_checklist']
         self.assertEqual(mapping.inventory(self.draft, artifact)['required_initial_ids'], [])
 
+    def test_artifact_allowance_reaches_drafting_and_verification(self):
+        import contextlib, io, json, sys, tempfile
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        for allowance in [None, '100000000']:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                for name, value in [('artifact', self.artifact), ('plan', self.plan)]:
+                    (root / name).write_text(json.dumps(value), encoding='utf-8')
+                argv = ['map_questions', '--draft', str(root / 'draft'), '--artifact', str(root / 'artifact'),
+                        '--plan', str(root / 'plan'), '--output', str(root / 'claims'),
+                        '--analyzer', sys.executable, '--verification-output', str(root / 'verification')]
+                if allowance is not None: argv.extend(['--artifact-max-bytes', allowance])
+                def analyzer(command, **kwargs):
+                    destination = Path(command[command.index('--output') + 1])
+                    value = self.draft if '--draft-claims' in command else {'artifact_retrieval': {'claim_verification': {'status': 'verified'}}}
+                    destination.write_text(json.dumps(value), encoding='utf-8')
+                    return SimpleNamespace(returncode=0)
+                with patch('sys.argv', argv), patch.object(mapping.subprocess, 'run', side_effect=analyzer) as run, contextlib.redirect_stdout(io.StringIO()):
+                    mapping.main()
+                self.assertEqual(run.call_count, 2)
+                for call in run.call_args_list:
+                    command = call.args[0]
+                    if allowance is None:
+                        self.assertNotIn('--artifact-max-bytes', command)
+                    else:
+                        self.assertEqual(command[command.index('--artifact-max-bytes') + 1], allowance)
+
     def test_unknown_intervals_require_explicit_expected_ending(self):
         plan = copy.deepcopy(self.plan)
         plan['questions'][0] = {'id': 'duration', 'kind': 'interval', 'finding_id': 'root-a', 'reason': 'No supported ending'}
