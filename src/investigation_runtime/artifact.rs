@@ -104,7 +104,28 @@ fn opaque(value: &mut Value) {
         *value = json!(format!("opaque-{}", digest(text.as_bytes())));
     }
 }
+pub(super) fn checklist(artifact: &Value) -> &Value {
+    artifact["report_metadata"]
+        .get("question_checklist")
+        .unwrap_or(&artifact["report_metadata"]["evidence"]["query"]["command"]["Investigate"])
+}
 pub(super) fn redact(artifact: &mut Value) {
+    let original = checklist(artifact);
+    let questions: Vec<_> = original["question"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|_| "[REDACTED QUESTION]")
+        .collect();
+    let required: Vec<_> = original["required_relationship"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|id| format!("opaque-{}", digest(id.as_bytes())))
+        .collect();
+    artifact["report_metadata"]["question_checklist"] =
+        json!({"question":questions,"required_relationship":required});
     artifact["content"] = json!("redacted");
     artifact["effective_profile"] = Value::Null;
     artifact["effective_profile_omitted"] = json!(true);
@@ -824,7 +845,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         .flatten()
         .filter_map(|v| v.as_str().map(str::to_owned))
         .collect();
-    let checklist = &retained["report_metadata"]["evidence"]["query"]["command"]["Investigate"];
+    let checklist = checklist(&retained);
     if declared_questions.is_empty() {
         declared_questions = checklist["question"]
             .as_array()

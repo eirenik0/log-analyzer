@@ -314,10 +314,10 @@ pub struct PrepareProfileArgs {
 
 #[derive(serde::Serialize, clap::Args)]
 pub struct InvestigateArgs {
-    /// Question-derived checklist item; repeat for independent questions
+    /// Question-derived checklist item; at most 100 nonempty questions
     #[arg(long)]
     pub question: Vec<String>,
-    /// Required claim/relationship ID derived from the question; repeat as needed
+    /// Required claim/relationship ID; at most 100 nonempty, unique IDs
     #[arg(long)]
     pub required_relationship: Vec<String>,
     /// Stable project context for profile discovery; defaults to the current directory

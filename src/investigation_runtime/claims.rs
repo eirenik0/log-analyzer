@@ -285,7 +285,7 @@ pub(super) fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value
                 .into(),
         );
     }
-    let checklist = &retained["report_metadata"]["evidence"]["query"]["command"]["Investigate"];
+    let checklist = super::artifact::checklist(retained);
     let mut required = checklist["required_relationship"]
         .as_array()
         .cloned()
@@ -860,7 +860,7 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
     }
     let mut assertions: Assertions = serde_json::from_slice(&bytes)?;
     // The initial checklist cannot be silently dropped by a later claims file.
-    let checklist = &retained["report_metadata"]["evidence"]["query"]["command"]["Investigate"];
+    let checklist = super::artifact::checklist(retained);
     for id in checklist["required_relationship"]
         .as_array()
         .into_iter()

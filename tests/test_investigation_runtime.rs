@@ -6442,6 +6442,125 @@ fn workflow_checklist_survives_retrieval_and_cannot_be_dropped_by_claims() {
 }
 
 #[test]
+fn redacted_checklists_preserve_opaque_required_ids() {
+    let temp = tempfile::tempdir().unwrap();
+    let (report, artifact) = investigate(
+        temp.path(),
+        &[
+            "--redact",
+            "--question",
+            "Private checkpoint question",
+            "--required-relationship",
+            "private-relationship",
+        ],
+    );
+    let required = report["guidance"]["workflow"]["required_relationships"].clone();
+    assert!(required[0].as_str().unwrap().starts_with("opaque-"));
+    let bytes = fs::read_to_string(&artifact).unwrap();
+    assert!(!bytes.contains("Private checkpoint question"));
+    assert!(!bytes.contains("private-relationship"));
+    let retained: Value = serde_json::from_str(&bytes).unwrap();
+    assert_eq!(
+        retained["report_metadata"]["question_checklist"]["required_relationship"],
+        required
+    );
+    let hash = report["artifact"]["stored_sha256"].as_str().unwrap();
+    let page = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        hash,
+    ]);
+    assert_eq!(
+        page["artifact_retrieval"]["workflow"]["required_relationships"],
+        required
+    );
+    assert_eq!(
+        page["artifact_retrieval"]["workflow"]["questions"],
+        json!(["[REDACTED QUESTION]"])
+    );
+    let claims = temp.path().join("claims.json");
+    let mut assertion = json!({"version":1,"required_claim_ids":["unrelated"],"claims":[{"id":"unrelated","kind":"fact","pointer":"/contract_version","equals":1}]});
+    let verify = |a: &Value| {
+        fs::write(&claims, a.to_string()).unwrap();
+        let result = run(&[
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            hash,
+            "--claims",
+            claims.to_str().unwrap(),
+        ]);
+        let output: Value = serde_json::from_slice(&result.stdout).unwrap();
+        (
+            result.status.success(),
+            output["artifact_retrieval"]["claim_verification"].clone(),
+        )
+    };
+    let (ok, wrong) = verify(&assertion);
+    assert!(!ok);
+    assert_eq!(wrong["missing_required_claim_ids"], required);
+    assertion["required_claim_ids"] = required.clone();
+    assertion["claims"][0]["id"] = required[0].clone();
+    assert!(verify(&assertion).0);
+}
+
+#[test]
+fn invalid_checklists_fail_before_artifact_creation() {
+    let temp = tempfile::tempdir().unwrap();
+    let artifact = temp.path().join("invalid.json");
+    for (flag, values) in [
+        ("--question", vec!["".to_string()]),
+        ("--required-relationship", vec!["".to_string()]),
+        ("--required-relationship", vec![" ".to_string()]),
+        ("--required-relationship", vec!["duplicate".to_string(); 2]),
+        (
+            "--question",
+            (0..101).map(|i| format!("question-{i}")).collect(),
+        ),
+        (
+            "--required-relationship",
+            (0..101).map(|i| format!("id-{i}")).collect(),
+        ),
+    ] {
+        let mut command = binary();
+        command.current_dir(root()).args([
+            "investigate",
+            "examples/investigations/slow.jsonl",
+            "--artifact",
+            artifact.to_str().unwrap(),
+        ]);
+        for value in values {
+            command.args([flag, &value]);
+        }
+        let output = command.output().unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Checklist accepts"));
+        assert!(!artifact.exists());
+    }
+    let mut options = Vec::new();
+    for i in 0..100 {
+        options.extend([
+            "--question".to_string(),
+            format!("question-{i}"),
+            "--required-relationship".to_string(),
+            format!("id-{i}"),
+        ]);
+    }
+    let (report, _) = investigate(
+        temp.path(),
+        &options.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        report["guidance"]["workflow"]["required_relationships"]
+            .as_array()
+            .unwrap()
+            .len(),
+        100
+    );
+}
+
+#[test]
 fn identical_ids_in_independent_snapshots_do_not_verify_as_the_same_subject() {
     let events = [
         chain_event("checkpoint", "run-a", "capture-a", 0),
