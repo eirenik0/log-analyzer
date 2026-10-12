@@ -901,6 +901,14 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         output["artifact_retrieval"]["claim_verification"] = verification;
     }
     output["artifact_retrieval"]["workflow"] = workflow;
+    let selected_finding_id = args.id.as_deref().filter(|id| {
+        matches!(args.collection.as_str(), "/findings" | "/chain-bundles")
+            && retained["findings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|f| f["id"] == *id && f["details"]["event_chain"].is_object())
+    });
     let refresh = |output: &mut Value, count: usize, status: &str| {
         let section = &mut output["artifact_retrieval"];
         section["displayed"] = json!(count);
@@ -911,7 +919,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         } else {
             Value::Null
         };
-        section["workflow"]["evidence_delivery"] = json!({"collection":args.collection,"finding_id":args.id,"delivered_this_page":count,"omitted_this_collection":selected.len()-prior-count,"prior_items":prior});
+        section["workflow"]["evidence_delivery"] = json!({"collection":args.collection,"finding_id":selected_finding_id,"delivered_this_page":count,"omitted_this_collection":selected.len()-prior-count,"prior_items":prior});
         let mut argv = vec![
             std::env::current_exe()
                 .ok()
@@ -950,8 +958,8 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 .any(|f| f["details"].get("event_chain").is_some())
         {
             argv.truncate(5);
-            if let Some(id) = &args.id {
-                argv.extend(["--id".into(), id.clone()]);
+            if let Some(id) = selected_finding_id {
+                argv.extend(["--id".into(), id.into()]);
             }
             argv.extend([
                 "--draft-claims".into(),

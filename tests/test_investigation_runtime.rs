@@ -6139,6 +6139,39 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
             .iter()
             .all(|c| c["id"].as_str().unwrap().starts_with(selected_id))
     );
+    let retained: Value = serde_json::from_slice(&original).unwrap();
+    let record_id = retained["records"][0]["occurrence"]["evidence_ref"]["reference_id"]
+        .as_str()
+        .unwrap();
+    let page = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/records",
+        "--id",
+        record_id,
+    ]);
+    let workflow = &page["artifact_retrieval"]["workflow"];
+    assert!(workflow["evidence_delivery"]["finding_id"].is_null());
+    assert_eq!(workflow["next_action"]["kind"], "review_then_draft_claims");
+    let command: Vec<_> = workflow["next_action"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(!command.contains(&"--id"));
+    fs::remove_file(temp.path().join("claims-draft.json")).unwrap();
+    assert!(
+        Command::new(command[0])
+            .args(&command[1..])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 }
 fn verify_subject_claim(
     temp: &tempfile::TempDir,
