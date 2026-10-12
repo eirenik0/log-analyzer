@@ -48,6 +48,36 @@ class QuestionMappingTests(unittest.TestCase):
                 mapping.compile_plan(self.draft, self.artifact, bad)
             self.positive()
 
+    def test_redacted_initial_ids_are_checked_before_creating_outputs(self):
+        import hashlib, json, subprocess, sys, tempfile
+        artifact = copy.deepcopy(self.artifact)
+        initial = ['opaque-' + hashlib.sha256(item['id'].encode()).hexdigest() for item in self.plan['questions']]
+        artifact['question_checklist'] = {'question': ['[REDACTED QUESTION]'], 'required_relationship': initial}
+        artifact['report_metadata']['evidence']['query']['command'] = '[REDACTED QUERY]'
+        self.assertEqual(mapping.inventory(self.draft, artifact)['required_initial_ids'], initial)
+        plan = copy.deepcopy(self.plan)
+        for item, qid in zip(plan['questions'], initial):
+            item['id'] = qid
+        self.assertEqual(mapping.compile_plan(self.draft, artifact, plan)['required_claim_ids'], initial)
+        plan['questions'].pop()
+        with self.assertRaisesRegex(ValueError, 'initial required'):
+            mapping.compile_plan(self.draft, artifact, plan)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, value in [('draft', self.draft), ('artifact', artifact), ('plan', plan)]:
+                (root / name).write_text(json.dumps(value), encoding='utf-8')
+            output, verification = root / 'claims.json', root / 'verification.json'
+            result = subprocess.run([sys.executable, mapping.__file__, '--draft', str(root / 'draft'),
+                                     '--artifact', str(root / 'artifact'), '--plan', str(root / 'plan'),
+                                     '--output', str(output), '--analyzer', sys.executable,
+                                     '--verification-output', str(verification)], capture_output=True, text=True, encoding='utf-8')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('initial required', result.stderr)
+            self.assertFalse(output.exists())
+            self.assertFalse(verification.exists())
+        del artifact['question_checklist']
+        self.assertEqual(mapping.inventory(self.draft, artifact)['required_initial_ids'], [])
+
     def test_unknown_intervals_require_explicit_expected_ending(self):
         plan = copy.deepcopy(self.plan)
         plan['questions'][0] = {'id': 'duration', 'kind': 'interval', 'finding_id': 'root-a', 'reason': 'No supported ending'}

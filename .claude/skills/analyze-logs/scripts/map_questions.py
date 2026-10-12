@@ -16,6 +16,13 @@ def load(path):
         return json.load(stream)
 
 
+def required_ids(artifact):
+    if 'question_checklist' in artifact:
+        return artifact['question_checklist']['required_relationship']
+    command = artifact.get('report_metadata', {}).get('evidence', {}).get('query', {}).get('command', {})
+    return command.get('Investigate', {}).get('required_relationship', []) if isinstance(command, dict) else []
+
+
 def anchors(artifact):
     return {f['id']: f['details']['event_chain'] for f in artifact.get('findings', [])
             if isinstance(f.get('details', {}).get('event_chain'), dict)
@@ -99,7 +106,7 @@ def compile_plan(draft, artifact, plan):
             unresolved.append({'id': qid, 'reason': reason})
     if not ids or len(ids) > 100:
         raise ValueError('Select 1 to 100 question IDs')
-    initial = artifact.get('report_metadata', {}).get('evidence', {}).get('query', {}).get('command', {}).get('Investigate', {}).get('required_relationship', [])
+    initial = required_ids(artifact)
     if not set(initial).issubset(ids):
         raise ValueError('Plan cannot omit an initial required relationship ID')
     for cid in plan.get('supporting_claim_ids', []):
@@ -143,7 +150,7 @@ def inventory(draft, artifact):
             if key in claim:
                 row[key] = claim[key]
         options.append(row)
-    initial = artifact.get('report_metadata', {}).get('evidence', {}).get('query', {}).get('command', {}).get('Investigate', {}).get('required_relationship', [])
+    initial = required_ids(artifact)
     return {'required_initial_ids': initial, 'required_review_checks': CHECKS,
             'unknown_anchors': [{'finding_id': fid, 'start_operation': c['root_event_name'],
                                  'root': address(c['root']), 'identity': c.get('identity')}
