@@ -6461,7 +6461,7 @@ fn redacted_checklists_preserve_opaque_required_ids() {
     assert!(!bytes.contains("private-relationship"));
     let retained: Value = serde_json::from_str(&bytes).unwrap();
     assert_eq!(
-        retained["report_metadata"]["question_checklist"]["required_relationship"],
+        retained["question_checklist"]["required_relationship"],
         required
     );
     let hash = report["artifact"]["stored_sha256"].as_str().unwrap();

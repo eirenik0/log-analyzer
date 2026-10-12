@@ -19,33 +19,6 @@
         },
         "evidence": {
           "$ref": "#/$defs/evidence"
-        },
-        "question_checklist": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "question",
-            "required_relationship"
-          ],
-          "properties": {
-            "question": {
-              "type": "array",
-              "maxItems": 100,
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "required_relationship": {
-              "type": "array",
-              "maxItems": 100,
-              "uniqueItems": true,
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            }
-          }
         }
       },
       "required": [
@@ -3390,6 +3363,33 @@
     },
     "verification": {
       "$ref": "#/$defs/verification"
+    },
+    "question_checklist": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question",
+        "required_relationship"
+      ],
+      "properties": {
+        "question": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_relationship": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "required": [

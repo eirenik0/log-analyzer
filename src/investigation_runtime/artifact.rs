@@ -105,7 +105,7 @@ fn opaque(value: &mut Value) {
     }
 }
 pub(super) fn checklist(artifact: &Value) -> &Value {
-    artifact["report_metadata"]
+    artifact
         .get("question_checklist")
         .unwrap_or(&artifact["report_metadata"]["evidence"]["query"]["command"]["Investigate"])
 }
@@ -124,8 +124,7 @@ pub(super) fn redact(artifact: &mut Value) {
         .filter_map(Value::as_str)
         .map(|id| format!("opaque-{}", digest(id.as_bytes())))
         .collect();
-    artifact["report_metadata"]["question_checklist"] =
-        json!({"question":questions,"required_relationship":required});
+    artifact["question_checklist"] = json!({"question":questions,"required_relationship":required});
     artifact["content"] = json!("redacted");
     artifact["effective_profile"] = Value::Null;
     artifact["effective_profile_omitted"] = json!(true);
