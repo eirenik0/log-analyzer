@@ -8,6 +8,10 @@ SOURCE = ROOT / '.agents/skills/analyze-logs'
 TARGET = ROOT / '.claude/skills/analyze-logs'
 
 
+def is_resource(path):
+    return path.is_file() and '__pycache__' not in path.parts and path.suffix not in {'.pyc', '.pyo'}
+
+
 def generated_files():
     skill = (SOURCE / 'SKILL.md').read_text(encoding='utf-8')
     front, body = skill.split('---', 2)[1:]
@@ -29,14 +33,14 @@ Claude permissions and fork context apply only to this wrapper.
     files = {Path('SKILL.md'): wrapper.encode(), Path('workflow.md'): body.lstrip().encode()}
     for path in SOURCE.rglob('*'):
         relative = path.relative_to(SOURCE)
-        if path.is_file() and relative != Path('SKILL.md') and relative.parts[0] != 'agents':
+        if is_resource(path) and relative != Path('SKILL.md') and relative.parts[0] != 'agents':
             files[relative] = path.read_bytes()
     return files
 
 
 def sync(check=False):
     files = generated_files()
-    existing = {p.relative_to(TARGET) for p in TARGET.rglob('*') if p.is_file()}
+    existing = {p.relative_to(TARGET) for p in TARGET.rglob('*') if is_resource(p)}
     def matches(relative, expected):
         destination = TARGET / relative
         if not destination.is_file():
