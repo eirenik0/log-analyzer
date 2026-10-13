@@ -143,6 +143,10 @@ text, while ambiguity and completeness remain in ordinary text.
 [[src/investigation.rs#validate_relations|Relation validation]] also checks optional
 checked subjects against retained records, population and scope projections, and
 nested endpoint interval arithmetic, timestamp provenance and cited event names.
+Checked subjects must equal the distinct chain root and sampled outcome occurrences,
+or all evidence occurrences for other finding kinds. Missing, extra and duplicate
+subjects are rejected; ordering does not affect the set. Artifact-backed checks
+derive this set from the retained finding.
 Assurance levels must match source binding and retained joins. Present endpoint
 timestamps and names remain source-bound even when an interval is unavailable
 because its endpoints are ambiguous or their elapsed time is negative.

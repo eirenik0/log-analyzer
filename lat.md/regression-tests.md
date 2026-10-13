@@ -32,6 +32,9 @@ rejects altered assurance levels and coordinated binding changes.
 [[tests/test_checked_presentation.rs#unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact]]
 rejects timestamp and operation changes in both report and artifact for ambiguous
 and negative intervals, preserving the distinction between endpoints and measurements.
+[[tests/test_checked_presentation.rs#checked_subjects_require_exact_root_outcome_and_evidence_sets]]
+rejects missing, duplicated or substituted subjects in original and redacted
+reports, while accepting reordered subjects and older reports without the projection.
 
 ## Missing join identity
 

@@ -711,3 +711,96 @@ fn unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact
         }
     }
 }
+
+#[test]
+fn checked_subjects_require_exact_root_outcome_and_evidence_sets() {
+    let temp = tempfile::tempdir().unwrap();
+    for (name, options) in [
+        ("original", vec!["--json", "--complete-output"]),
+        ("redacted", vec!["--json", "--complete-output", "--redact"]),
+    ] {
+        let report: Value =
+            serde_json::from_str(&run(temp.path(), name, PROFILE, &[INPUT], &options)).unwrap();
+        let bytes = fs::read(temp.path().join(name)).unwrap();
+        let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+        for is_chain in [true, false] {
+            let (index, finding) = report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .enumerate()
+                .find(|(_, f)| {
+                    f["details"]["event_chain"].is_object() == is_chain
+                        && f["checked"]["subjects"]
+                            .as_array()
+                            .is_some_and(|s| !s.is_empty())
+                })
+                .unwrap();
+            let subjects = finding["checked"]["subjects"].as_array().unwrap();
+            if is_chain {
+                assert!(subjects.len() > 1);
+                assert!(
+                    subjects
+                        .iter()
+                        .any(|s| s["occurrence"] == finding["details"]["event_chain"]["root"])
+                );
+            }
+            let mut mutations = vec![("empty", Vec::new())];
+            // Removing each subject individually covers the root and every sampled outcome.
+            for removed in 0..subjects.len() {
+                let mut omitted = subjects.clone();
+                omitted.remove(removed);
+                mutations.push(("missing", omitted));
+            }
+            let mut duplicate = subjects.clone();
+            duplicate.push(subjects[0].clone());
+            mutations.push(("duplicate", duplicate));
+            if is_chain {
+                let witness = finding["evidence"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|e| !subjects.iter().any(|s| s["occurrence"] == e["occurrence"]))
+                    .unwrap();
+                let record = artifact["records"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|r| r["occurrence"] == witness["occurrence"])
+                    .unwrap();
+                let replacement = json!({"occurrence": witness["occurrence"], "event":record["fields"]["classification"]["semantics"]});
+                let mut substituted = subjects.clone();
+                substituted[0] = replacement.clone();
+                mutations.push(("substituted", substituted));
+                let mut extra = subjects.clone();
+                extra.push(replacement);
+                mutations.push(("extra", extra));
+            }
+            for (mutation, subjects) in mutations {
+                let mut altered = report.clone();
+                altered["findings"][index]["checked"]["subjects"] = json!(subjects);
+                shape(&altered, false);
+                for artifact in [None, Some(bytes.as_slice())] {
+                    let error = log_analyzer::investigation::validate_relations(&altered, artifact)
+                        .unwrap_err();
+                    assert!(
+                        error.reason.contains("checked subject set"),
+                        "{name}/{is_chain}/{mutation}: {error}"
+                    );
+                }
+            }
+            // The projection is a set: display order does not change its subjects.
+            let mut reordered = report.clone();
+            reordered["findings"][index]["checked"]["subjects"]
+                .as_array_mut()
+                .unwrap()
+                .reverse();
+            log_analyzer::investigation::validate_relations(&reordered, Some(&bytes)).unwrap();
+        }
+        let mut legacy = report;
+        for finding in legacy["findings"].as_array_mut().unwrap() {
+            finding.as_object_mut().unwrap().remove("checked");
+        }
+        log_analyzer::investigation::validate_relations(&legacy, Some(&bytes)).unwrap();
+    }
+}

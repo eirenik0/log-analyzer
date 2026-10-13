@@ -13,3 +13,5 @@ affected findings are omitted from the displayed page.
 Validate aggregate uncertainty against retained findings when artifact bytes are supplied.
 Reject assurance labels that disagree with source binding or retained joins, and
 validate present endpoint metadata even when its interval cannot be measured.
+Require the complete checked subject set, rejecting missing, extra or duplicated
+root, outcome and evidence occurrences.

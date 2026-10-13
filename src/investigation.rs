@@ -1129,7 +1129,34 @@ pub fn validate_relations(
                 "/findings/checked/assurance/level",
                 "assurance level differs from source binding and retained links",
             )?;
-            for subject in list(checked, "/subjects")? {
+            let source_finding = findings
+                .get(text(finding, "/id")?)
+                .ok_or_else(|| error("/findings/checked/subjects", "finding absent"))?;
+            let chain = &source_finding["details"]["event_chain"];
+            let mut expected_subjects = BTreeSet::new();
+            if chain.is_object() {
+                expected_subjects.insert(occurrence(get(chain, "/root")?)?);
+                for step in list(chain, "/steps")? {
+                    for outcome in list(step, "/outcomes")? {
+                        expected_subjects.insert(occurrence(get(outcome, "/occurrence")?)?);
+                    }
+                }
+            } else {
+                for excerpt in list(source_finding, "/evidence")? {
+                    expected_subjects.insert(occurrence(get(excerpt, "/occurrence")?)?);
+                }
+            }
+            let subjects = list(checked, "/subjects")?;
+            let actual_subjects = subjects
+                .iter()
+                .map(|subject| occurrence(get(subject, "/occurrence")?))
+                .collect::<Result<BTreeSet<_>, _>>()?;
+            require(
+                actual_subjects == expected_subjects && actual_subjects.len() == subjects.len(),
+                "/findings/checked/subjects",
+                "checked subject set differs from finding subjects or contains duplicates",
+            )?;
+            for subject in subjects {
                 let source = get(subject, "/occurrence")?;
                 require(
                     list(finding, "/evidence")?
