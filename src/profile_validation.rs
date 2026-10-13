@@ -242,6 +242,7 @@ pub(crate) fn scope_adequacy(
     Some(diagnostics)
 }
 
+// @lat: [[design-decisions#Implemented design decisions#Keep profile adaptation independent]]
 pub fn analyze(
     inputs: &[Vec<LogEntry>],
     config: &AnalyzerConfig,

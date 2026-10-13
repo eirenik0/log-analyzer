@@ -385,6 +385,7 @@ pub struct ParsedLogFile {
 }
 
 /// Parse with coverage, retaining diagnostics even when no entries are recognized.
+// @lat: [[architecture#Architecture#Parsing and analysis]]
 pub fn parse_log_file_report(
     path: impl AsRef<Path>,
     config: &AnalyzerConfig,

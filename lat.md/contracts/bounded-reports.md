@@ -130,4 +130,4 @@ input/output sizes, first-page latency, complete-output latency, cumulative
 traversal latency and child-process peak RSS. It uses 1000-item/2-MiB pages.
 Results depend on hardware, build mode, corpus and page size. Peak RSS covers the
 maximum binary invocation, not the Python driver's memory. Measurements are
-reported in `docs/evals/report-retrieval-resources.json` with build/input identity.
+reported in [[evals/results/report-retrieval-resources.json]] with build/input identity.

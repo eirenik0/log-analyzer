@@ -181,8 +181,8 @@ history does not assert that current originals match: checking current originals
 is a separate revalidation step before a new analysis or reuse against current data.
 
 Retention states its actual policy: unspecified, until explicit deletion, or an
-expiry. Raw-byte archival and a default lifetime are not selected by this contract.
-#71 must choose/document storage location, privacy, cleanup and cancellation behavior.
+expiry. The [[src/investigation_runtime.rs#investigate|runtime]] retains artifacts
+until deletion, in a fresh local directory or an explicit new destination.
 Artifact storage belongs outside tracked project/profile configuration.
 
 Requested redaction applies after analysis and before persistence/output. Each
@@ -219,15 +219,14 @@ a successful summary-only check is not exhaustive evidence verification.
 
 These checks do not establish event meaning, replay classification, authenticate
 files, synchronize clocks, prove upstream completeness or judge unrestricted prose.
-The producer must supply valid scoped classifications/calculations; #71 will exercise
-this contract through the shared Rust engines. Shape validation alone cannot prove
-that a citation supports a claim.
+The producer supplies scoped classifications and calculations through the shared
+Rust engines. Shape validation alone cannot prove that a citation supports a claim.
 
 Existing CLI outputs, report/evidence versions, agent-result fields, capabilities keys
-and stateless bounded retrieval keep their meaning. No `investigate` or saved-artifact
-retrieval command is implemented by #66. Consumers validate either shape against the advertised
-version-1 schema and must not infer feature availability from its existence. Text and JSON in #71 must render the same selected model,
-including scope, assessment, limitations and omissions.
+and stateless bounded retrieval keep their meaning. Consumers validate against the
+advertised version-1 schema and must not infer feature availability from its existence. The [[architecture|implemented runtime]]
+produces text and JSON from the retained report, including scope, assessments,
+limitations and omissions.
 
 Synthetic [examples](../../examples/investigation-contract/) cover supported,
 insufficient, conflicting, unsupported, output-limited, processing-limited, redacted,

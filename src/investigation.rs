@@ -84,6 +84,7 @@ impl OccurrenceId {
 /// A missing artifact does not invalidate a self-contained presentation; exhaustive
 /// membership and retained-source checks run only when artifact bytes are supplied.
 /// Malformed inputs return errors rather than panicking.
+// @lat: [[design-decisions#Implemented design decisions#Check relations separately from meaning]]
 pub fn validate_relations(
     report: &Value,
     artifact_bytes: Option<&[u8]>,

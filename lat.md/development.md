@@ -7,7 +7,7 @@ Build identity, performance checks, evaluation limits and release practices supp
 Python evaluation and skill-check scripts read and write UTF-8 text explicitly,
 including on Windows systems using an ANSI code page.
 
-See [CONTRIBUTING.md](contributing.md) for Conventional Commit rules, local hooks,
+See [the contribution guide](contributing.md) for Conventional Commit rules, local hooks,
 quality checks, and hosted Codex review. Agent and reviewer guidance lives in
 [AGENTS.md](../AGENTS.md).
 

@@ -2,6 +2,10 @@
 
 This [Lat](https://www.lat.md/) graph is the canonical project documentation. It connects usage, contracts, design decisions and validation. [[AGENTS.md]] keeps repository working rules; [[CHANGELOG.md]] records releases.
 
+- [[architecture]] — implemented modules and execution paths.
+- [[domain]] — records, events, identities, findings and artifacts.
+- [[design-decisions]] — implemented choices and their rationale.
+- [[regression-tests]] — key invariants linked to executable tests.
 - [[usage]] — installation, investigations, evidence retrieval and limits.
 - [[investigation-workflow]] — worked failure and performance investigations.
 - [[cli-reference]] — input, output, filters and command options.

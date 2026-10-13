@@ -78,6 +78,7 @@ pub fn analyze_performance_with_config(
 }
 
 /// One shared correlation pass. Interrupted work publishes no tentative group outcomes.
+// @lat: [[design-decisions#Implemented design decisions#Preserve uncertainty at boundaries]]
 pub(crate) fn analyze_performance_checked(
     logs: &[LogEntry],
     filter: &LogFilter,

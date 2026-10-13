@@ -720,6 +720,7 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
     Ok(())
 }
 
+// @lat: [[design-decisions#Implemented design decisions#Retain evidence separately from presentation]]
 pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()> {
     if args.compact && (args.collection != "/chain-bundles" || args.id.is_none()) {
         return Err("--compact requires --collection /chain-bundles and --id".into());

@@ -56,6 +56,7 @@ fn step_samples<'a>(entries: &[&'a LogEntry], outcome: Option<&str>) -> Vec<&'a 
     result
 }
 // These are endpoint intervals, never inferred operation durations or causes.
+// @lat: [[domain#Domain concepts#Chains and intervals]]
 fn endpoint_interval(source: &LogEntry, target: &LogEntry, unique: bool) -> Value {
     let start = source
         .source_timestamp
