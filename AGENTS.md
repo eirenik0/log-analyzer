@@ -33,6 +33,17 @@ Project behavior/details should be discovered from:
 - Validate with targeted tests/commands when practical.
 - State assumptions and verification gaps explicitly.
 
+## Design Decisions
+
+- Follow the [design philosophy](README.md#design-philosophy). Keep deterministic
+  work inside the analyzer and the normal CLI and skill concise.
+- Prefer removing caller obligations over adding helper scripts, manual proof
+  formats or repeated instructions. Test through the interface users call.
+- Preserve independently useful fixes and regression tests when replacing an
+  approach; do not carry forward an entire experiment merely to save its work.
+- Compare completed, supported answers under matched budgets. Do not weaken
+  checks, hide uncertainty or reward verification activity instead of correctness.
+
 ## Communication Style
 
 - Be concise, direct, and technical.
