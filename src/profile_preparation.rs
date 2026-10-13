@@ -385,6 +385,37 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
         "Retrieve omitted sample evidence with profile validate and common report cursors using the saved candidate; for unparsed input use info diagnostics"
     };
     let mut report = json!({"profile_preparation":{"version":1,"requested":{"kind":operation_kind,"purpose":purpose},"candidate":if wholly_unsupported {Value::Null} else {json!({"path":evidence::path_label(candidate_output),"sha256":evidence::profile_digest(&candidate_config)?,"status":"saved","activation":false})},"creation":{"status":if empty {"not_created_empty_input"} else if wholly_unsupported {"not_created_unsupported_structure"} else {"saved"}},"structure":{"status":if coverage.iter().any(structural_failure){"unsupported"}else if logs.is_empty(){"unverified_empty"}else{"observed_compatible"},"files":coverage},"provenance":{"inherited":{"profile":base.profile_name,"sha256":evidence::profile_digest(&base)?,"lifecycle_rules":"preserved_from_supplied_starting_point_not_verified_by_matching"},"observed":{"components":candidate_config.profile.known_components,"commands":candidate_config.profile.known_commands,"requests":candidate_config.profile.known_requests,"witnesses":observed_witnesses,"basis":"parsed_sample_inventory_not_semantic_truth"},"heuristic_changes":heuristics},"sample_validation":validation["profile_validation"],"semantic_proof":proof,"adaptation":adaptation,"missing_information":missing_information,"presentation":{"witness_limit":witness_limit,"atomic_string_unicode_scalars":ATOMIC_STRING_CHARS,"representative_unicode_scalars":REPRESENTATIVE_CHARS,"metadata_budget_exception":"Outcome metadata, coverage totals and opaque retrieval identities remain exact","follow_up":follow_up,"omissions":[]},"report_save":{"status":if staged_report.is_some(){"succeeded"}else{"not_requested"}},"limitations":["Candidate creation is distinct from validation support and never activates a profile","Observed sample support does not establish capture completeness or intended event meaning","No automatic semantic repair or retry loop is performed","Representative count and atomic size limits bound presentation, not processing memory or total metadata"]}});
+    // An incomplete template is not executable until independent facts are supplied.
+    if !wholly_unsupported && !cli.redact {
+        let mut argv = vec![
+            std::env::current_exe()?.to_string_lossy().into_owned(),
+            "profile".into(),
+            "validate".into(),
+            "--profile".into(),
+            candidate_output.to_string_lossy().into_owned(),
+            "--kind".into(),
+            serde_json::to_value(operation_kind)?
+                .as_str()
+                .unwrap()
+                .into(),
+            "--purpose".into(),
+            serde_json::to_value(purpose)?.as_str().unwrap().into(),
+        ];
+        if let Some(filter) = &cli.filter {
+            argv.extend(["--filter".into(), filter.clone()]);
+        }
+        argv.extend(files.iter().map(|p| p.to_string_lossy().into_owned()));
+        let prefix = argv.clone();
+        if let Some(expected) = expected {
+            argv.extend(["--expected".into(), expected.to_string_lossy().into_owned()]);
+        }
+        report["profile_preparation"]["next_action"] = json!({
+            "kind":"edit_then_validate_independent_expectations",
+            "argv":if expected.is_some() {json!(argv)} else {Value::Null},
+            "argv_prefix":prefix,
+            "required_inputs":if expected.is_some() {json!([])} else {json!(["--expected", "independently_authored_expectations_path"])},
+            "reason":"Inspect and edit source-supported roles first. Author expected records and positive/wrong-scope or wrong-ID negative links from original source meaning, never candidate output. Append --expected and its file path to argv_prefix when absent. Inspect expected_facts.status and relationships before a fresh investigation. For event-chain links use kind event and purpose recognition; timing is for classified paired lifecycle boundaries. Validation success covers supplied witnesses only."});
+    }
     context.annotate(&mut report);
     let mut omissions = Vec::new();
     for field in [

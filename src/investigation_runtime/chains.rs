@@ -198,7 +198,7 @@ pub(crate) fn calculate(
             findings.push(fact(
                 format!("{scope}-chain-{chain_index}-unrecognized"), scope, "unknown",
                 "Configured chain found no matching roots; complete parsing does not establish relationship coverage.",
-                Vec::new(), json!({"supporting_occurrences":[],"reason": format!("Chain {}; root role {}; {} selected classified events, {} matched rule IDs {:?}; selectors [{}]; message_pattern {:?}: {} rule-matched records failed; processed coverage {}. Counts are independent selector failures, not disjoint populations.", chain.id, chain.root_role, counts[0], counts[1], matcher.role.rule_ids, failed.join("; "), matcher.role.message_pattern, counts[matcher.role.select.len() + 2], if input_complete {"complete"} else {"partial"})}),
+                Vec::new(), json!({"supporting_occurrences":[],"gap_classification":"recognition_unresolved","reason": format!("Chain {}; root role {}; {} selected classified events, {} matched rule IDs {:?}; selectors [{}]; message_pattern {:?}: {} rule-matched records failed; processed coverage {}. Counts are independent selector failures, not disjoint populations.", chain.id, chain.root_role, counts[0], counts[1], matcher.role.rule_ids, failed.join("; "), matcher.role.message_pattern, counts[matcher.role.select.len() + 2], if input_complete {"complete"} else {"partial"})}),
             ));
         }
         let root_fields: Vec<_> = chain
@@ -367,7 +367,7 @@ pub(crate) fn calculate(
                 let sampled = step_samples(&targets, step.outcome_field.as_deref());
                 let joins: Vec<_> = sampled.iter().map(|target| {
                     let (source,source_count,target_count)=joins_by_target[&(target.source_line_number,target.source_row_path.as_deref())];
-                    json!({"source":occurrence(source,context,snapshot),"target":occurrence(target,context,snapshot),"identity":identities(source,fields),"source_count":source_count,"target_count":target_count,"endpoint_interval":endpoint_interval(source,target,source_count==1 && target_count==1 && root_entries.len()==1)})
+                    json!({"source":occurrence(source,context,snapshot),"target":occurrence(target,context,snapshot),"identity":identities(source,fields),"source_count":source_count,"target_count":target_count,"endpoint_interval":({let mut interval=endpoint_interval(source,target,source_count==1 && target_count==1 && root_entries.len()==1); interval["source"]=occurrence(source,context,snapshot); interval["target"]=occurrence(target,context,snapshot); interval})})
                 }).collect();
                 let witnesses: Vec<_> = sampled
                     .iter()
@@ -442,7 +442,7 @@ pub(crate) fn calculate(
                         .flat_map(|j| [j["source"].clone(), j["target"].clone()])
                 }))
                 .collect();
-            let details = json!({"supporting_occurrences":support,"event_chain":{"id":chain.id,"title":chain.title,"root":occurrence(root,context,snapshot),"identity":identities(root,&root_fields),"scope_fields":chain.scope_fields,"context_identity":identities(root,&chain.context_fields),"root_occurrences":root_entries.len(),"ambiguity":if root_entries.len()>1{"reused_root_identity"}else{"none"},"steps":steps,"later_activity":later,"later_activity_observed_count":activity_count,"omitted_later_activity":activity_count.map(|n|n.saturating_sub(later.len())),"completeness":if complete && node_completeness.values().all(|v|*v) {"complete"}else{"partial"},"evidence_policy":"First and last occurrence per role, up to two additional distinct outcomes and two ambiguous candidates, plus last three selected same-context records after the last linked event. Terminal and contrary roles must be explicitly configured; absence is not proof of failure. Outcomes at different levels are independent; source order implies no causality."}});
+            let details = json!({"supporting_occurrences":support,"event_chain":{"id":chain.id,"title":chain.title,"root":occurrence(root,context,snapshot),"root_event_name":field(root,"event.name"),"identity":identities(root,&root_fields),"scope_fields":chain.scope_fields,"context_identity":identities(root,&chain.context_fields),"root_occurrences":root_entries.len(),"ambiguity":if root_entries.len()>1{"reused_root_identity"}else{"none"},"steps":steps,"later_activity":later,"later_activity_observed_count":activity_count,"omitted_later_activity":activity_count.map(|n|n.saturating_sub(later.len())),"completeness":if complete && node_completeness.values().all(|v|*v) {"complete"}else{"partial"},"evidence_policy":"First and last occurrence per role, up to two additional distinct outcomes and two ambiguous candidates, plus last three selected same-context records after the last linked event. Terminal and contrary roles must be explicitly configured; absence is not proof of failure. Outcomes at different levels are independent; source order implies no causality."}});
             findings.push(fact(format!("{scope}-chain-{chain_index}-{root_index}"),scope,"observation","Connected event chain from explicit profile roles and exact identity/scope joins; outcome levels remain independent.",bundle,details));
         }
         if let Some(root) = missing_roots.first() {
@@ -456,7 +456,7 @@ pub(crate) fn calculate(
                     format!("{field}: {count} roots missing a usable key")
                 })
                 .collect();
-            findings.push(fact(format!("{scope}-chain-{chain_index}-missing"),scope,"unknown","Some chain roots lack declared identity or scope; no relationship is guessed.",vec![excerpt(root,context,snapshot)],json!({"reason":format!("{} root occurrences excluded; selectors [{}]",missing_roots.len(), failed.join("; ")),"supporting_occurrences":[occurrence(root,context,snapshot)]})));
+            findings.push(fact(format!("{scope}-chain-{chain_index}-missing"),scope,"unknown","Some chain roots lack declared identity or scope; no relationship is guessed.",vec![excerpt(root,context,snapshot)],json!({"gap_classification":"identity_or_scope_unavailable","reason":format!("{} root occurrences excluded; selectors [{}]",missing_roots.len(), failed.join("; ")),"supporting_occurrences":[occurrence(root,context,snapshot)]})));
         }
     }
 }

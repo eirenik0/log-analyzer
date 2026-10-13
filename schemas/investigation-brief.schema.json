@@ -396,6 +396,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "workflow": {
+          "type": "object"
         }
       },
       "required": [

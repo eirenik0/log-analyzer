@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "status": "executed",
+  "date": "2026-10-12",
+  "runtime": "2.1.295 (Claude Code)",
+  "models": [
+    "haiku",
+    "opus"
+  ],
+  "effort_override": null,
+  "baseline_revision": "a55ef9ebb789e4c1dc3eeaecf80a86148673df53",
+  "candidate_base_revision": "4f5845e54d1da0a87502a44d04ba59ef8a481efb",
+  "limits": {
+    "wall_seconds": 180,
+    "api_equivalent_usd": 1,
+    "tool_calls": 30,
+    "output_bytes": 2000000
+  },
+  "repeats": 2,
+  "cases": [
+    "development",
+    "held-out"
+  ],
+  "attempts": 16,
+  "completed_answers": 16,
+  "typed_passes": 16,
+  "typed_unavailable": 0,
+  "accuracy_improvement_supported": false,
+  "api_equivalent_usd": 3.6068952199999997,
+  "answer_transport": "native_structured_output",
+  "answer_schema_sha256": "182ba37787d49583d551162d455cfdf636b190e4e9f34611d74123d90adcdd3c",
+  "factual_scorer_changed": false,
+  "evaluated_snapshot": "Historical run before PR scope reduction; the shortened skill has not been rerun with models.",
+  "provenance": {
+    "raw_results_local_path": "target/evals/subject-workflow/question-plan-compact/results.json",
+    "raw_results_sha256": "cb69f36a9de1df83724470f611b30c7988cfec3a6e5eb7a5322b59b01c6b254d",
+    "frozen_manifest_sha256": "901e52c57e26a74d5b226a06e9c3e2090cea75549e259232b4f9e04b7d07c7ad",
+    "harness_sha256": "632c6662f2c5df54843c10a0198c858a29b404174b5bd4b3d3c1eba3a7a618c8",
+    "all_frozen_file_hashes_verified_after_run": true,
+    "factual_scorer_ast_sha256": "6bc382a3cc32457c7a9049789d0d75dda0541f1325752a28707a471d04771bf9",
+    "detailed_report_local_path": "target/evals/subject-workflow/question-plan-compact/published-report.json",
+    "detailed_report_sha256": "efbbdbacca73103f1e1523ba324ddee0980114c41cdd7ea3f11775a66827c979"
+  },
+  "candidate_workflow": {
+    "haiku": {
+      "final_reviews_passed": 3,
+      "trials": 4,
+      "verified_requested_intervals": 6,
+      "requested_intervals": 8,
+      "independent_held_out_validations": 1,
+      "held_out_trials": 2
+    },
+    "opus": {
+      "final_reviews_passed": 4,
+      "trials": 4,
+      "verified_requested_intervals": 8,
+      "requested_intervals": 8,
+      "independent_held_out_validations": 2,
+      "held_out_trials": 2
+    }
+  },
+  "remaining_failure": {
+    "trial": "haiku-held-out-1-candidate",
+    "elapsed_seconds": 79.007709,
+    "tool_calls": 9,
+    "missing": [
+      "profile_recovery",
+      "independent_profile_validation",
+      "final_claim_verification"
+    ],
+    "factual_answer_passed": true
+  },
+  "preserved_attempt_history": [
+    {
+      "report": "question-mapping-native.json",
+      "status": "executed",
+      "attempts": 16,
+      "known_api_equivalent_usd": 4.725270640000001,
+      "complete_api_equivalent_usd": 4.725270640000001
+    },
+    {
+      "report": "question-schema-setup.json",
+      "status": "stopped_protocol_setup_error",
+      "attempts": 0,
+      "known_api_equivalent_usd": null,
+      "complete_api_equivalent_usd": null
+    },
+    {
+      "report": "question-mapping-structured-native.json",
+      "status": "executed",
+      "attempts": 16,
+      "known_api_equivalent_usd": 3.66128138,
+      "complete_api_equivalent_usd": null
+    },
+    {
+      "report": "question-compiler-native.json",
+      "status": "executed",
+      "attempts": 16,
+      "known_api_equivalent_usd": 4.27715899,
+      "complete_api_equivalent_usd": 4.27715899
+    },
+    {
+      "report": "question-map-verify-native.json",
+      "status": "executed",
+      "attempts": 16,
+      "known_api_equivalent_usd": 4.11771048,
+      "complete_api_equivalent_usd": 4.11771048
+    },
+    {
+      "report": "question-plan-publication-failure.json",
+      "status": "infrastructure_failure",
+      "attempts": 1,
+      "known_api_equivalent_usd": 0.02132113,
+      "complete_api_equivalent_usd": 0.02132113
+    },
+    {
+      "report": "question-plan-ready-native.json",
+      "status": "executed",
+      "attempts": 16,
+      "known_api_equivalent_usd": 4.04428434,
+      "complete_api_equivalent_usd": 4.04428434
+    }
+  ],
+  "limitations": [
+    "Haiku still bypassed the mandatory recovery and final review in one held-out repeat; consistent completion is not established. The compiler guards mappings only when invoked.",
+    "Native schema enforcement improves delivery in both arms; its format effect cannot be attributed solely to candidate skill changes.",
+    "Small synthetic public cases, two repeats and unblinded implementing-agent inspection do not establish production reliability, causal/prose accuracy or equal-work savings.",
+    "Independent adaptation validation covers supplied positive/negative witnesses, not the whole profile population.",
+    "Tokens include cached reads/creation and API-equivalent costs differ from subscription billing; unavailable usage remains null.",
+    "All earlier format/protocol failures and raw traces remain preserved locally; no post-hoc normalization or inspector replay counts as participant delivery.",
+    "Some successive attempts overlapped during startup; host load was not controlled. Timing and cost comparisons are observational."
+  ]
+}

@@ -187,6 +187,25 @@ fn layered_smoke_separates_tool_truth_interpretation_and_workflow() {
 
 #[test]
 fn evaluation_schema_compositions_agree_with_rust_validation() {
+    let unique =
+        jsonschema::validator_for(&serde_json::json!({"type":"array","uniqueItems":true})).unwrap();
+    for value in [
+        serde_json::json!([]),
+        serde_json::json!(["a", "b"]),
+        serde_json::json!([true, 1]),
+        serde_json::json!([[true], [1]]),
+        serde_json::json!([{"a":1},{"a":2}]),
+    ] {
+        assert!(unique.is_valid(&value));
+    }
+    for value in [
+        serde_json::json!(["a", "a"]),
+        serde_json::json!([1, 1.0]),
+        serde_json::json!([[1], [1.0]]),
+        serde_json::json!([{"a":1,"b":2},{"b":2,"a":1}]),
+    ] {
+        assert!(!unique.is_valid(&value));
+    }
     let schema = serde_json::json!({"allOf":[{"anyOf":[{"type":"integer","minimum":2,"maximum":4},{"type":"string","minLength":2}]}],"if":{"type":"string"},"then":{"pattern":"^ok"},"else":{"const":3}});
     let validator = jsonschema::validator_for(&schema).unwrap();
     for value in [serde_json::json!(3), serde_json::json!("okay")] {

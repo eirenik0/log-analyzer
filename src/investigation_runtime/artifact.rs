@@ -104,7 +104,88 @@ fn opaque(value: &mut Value) {
         *value = json!(format!("opaque-{}", digest(text.as_bytes())));
     }
 }
+fn redact_claim_verification(verification: &mut Value) {
+    fn identifier(value: &mut Value) {
+        if !value.as_str().is_some_and(|s| {
+            s.strip_prefix("opaque-")
+                .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()))
+        }) {
+            opaque(value);
+        }
+    }
+    fn identifiers(value: &mut Value) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    if matches!(key.as_str(), "id" | "finding_id") {
+                        identifier(child);
+                    } else if key.ends_with("_claim_ids") || key == "unresolved_question_ids" {
+                        for id in child.as_array_mut().into_iter().flatten() {
+                            identifier(id);
+                        }
+                    } else {
+                        identifiers(child);
+                    }
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(identifiers),
+            _ => (),
+        }
+    }
+    for question in verification["questions"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        *question = json!("[REDACTED QUESTION]");
+    }
+    for check in verification["checks"].as_array_mut().into_iter().flatten() {
+        check["label"] = Value::Null;
+        if check["identity"].is_object() {
+            check["identity"]["expected"] = Value::Null;
+        }
+    }
+    for unknown in verification["unresolved"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        unknown["reason"] = json!("[REDACTED REASON]");
+    }
+    if verification["final_review"].is_object() {
+        for issue in verification["final_review"]["issues"]
+            .as_array_mut()
+            .into_iter()
+            .flatten()
+        {
+            *issue = json!("[REDACTED REVIEW ISSUE]");
+        }
+        // Additional caller-defined review dimensions may contain private text.
+        verification["final_review"]["acknowledged_prose_checks"] = Value::Null;
+    }
+    identifiers(verification);
+}
+pub(super) fn checklist(artifact: &Value) -> &Value {
+    artifact
+        .get("question_checklist")
+        .unwrap_or(&artifact["report_metadata"]["evidence"]["query"]["command"]["Investigate"])
+}
 pub(super) fn redact(artifact: &mut Value) {
+    let original = checklist(artifact);
+    let questions: Vec<_> = original["question"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|_| "[REDACTED QUESTION]")
+        .collect();
+    let required: Vec<_> = original["required_relationship"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|id| format!("opaque-{}", digest(id.as_bytes())))
+        .collect();
+    artifact["question_checklist"] = json!({"question":questions,"required_relationship":required});
     artifact["content"] = json!("redacted");
     artifact["effective_profile"] = Value::Null;
     artifact["effective_profile_omitted"] = json!(true);
@@ -169,7 +250,7 @@ pub(super) fn redact(artifact: &mut Value) {
             finding["details"]["fingerprint"] = Value::Null;
         }
         if let Some(chain) = finding["details"].get_mut("event_chain") {
-            for key in ["id", "title"] {
+            for key in ["id", "title", "root_event_name"] {
                 opaque(&mut chain[key]);
             }
             for key in ["scope_fields"] {
@@ -678,6 +759,43 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     let full_report = report(&retained, &args.artifact, Some(&bytes));
     crate::investigation::validate_relations(&full_report, Some(&bytes))?;
     drop(full_report);
+    if cli.redact && retained["report_metadata"]["evidence"]["redaction"]["applied"] != true {
+        return Err("Retrieve an artifact created with --redact; original evidence cannot be presented as a redacted retained artifact".into());
+    }
+    if args.draft_claims {
+        let draft = super::claims::draft(&retained, args.id.as_deref())?;
+        let path = cli
+            .output
+            .as_ref()
+            .ok_or("--draft-claims requires --output")?;
+        if same_destination(path, &args.artifact, true) {
+            return Err("Claim draft destination conflicts with the retained artifact".into());
+        }
+        for input in retained["report_metadata"]["evidence"]["inputs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            if input["file"]
+                .as_str()
+                .is_some_and(|file| same_destination(path, Path::new(file), true))
+            {
+                return Err("Claim draft destination conflicts with a captured source".into());
+            }
+        }
+        let mut temporary = stage(path)?;
+        serde_json::to_writer_pretty(&mut temporary, &draft)?;
+        temporary.write_all(b"\n")?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist_noclobber(path)
+            .map_err(|_| "Claim drafts save only new files; choose a new --output path")?;
+        println!(
+            "{}",
+            json!({"status":"draft_requires_review","claims_path":crate::evidence::path_label(path),"candidate_claims":draft["claims"].as_array().map_or(0,Vec::len),"limitations":["Draft expectations come from retained evidence, not independent truth. Match the question and source semantics, remove unrelated claims, map checklist IDs, and acknowledge final review only after inspection. Missing endings are not drafted as absence claims."],"next_action":{"kind":"review_then_verify_claims","argv":[std::env::current_exe()?.to_string_lossy(),"evidence",crate::evidence::path_label(&args.artifact),"--expected-sha256",hash,"--artifact-max-bytes",args.artifact_max_bytes.to_string(),"--claims",crate::evidence::path_label(path)]}})
+        );
+        return Ok(());
+    }
     let allowed = [
         "/findings",
         "/records",
@@ -703,14 +821,14 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             compact_bundle(bundle);
         }
     }
-    let claim_verification = args
+    let mut claim_verification = args
         .claims
         .as_ref()
         .map(|path| super::claims::verify(&retained, path))
         .transpose()?;
     let claims_failed = claim_verification
         .as_ref()
-        .is_some_and(|v| v["status"] != "verified");
+        .is_some_and(|v| v["status"] != "verified" && v["status"] != "verified_with_unknowns");
     let collection = if args.collection == "/chain-bundles" {
         &bundles
     } else {
@@ -745,6 +863,11 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         ])
     };
     let query_binding = digest(query.to_string().as_bytes());
+    if retained["content"] == "redacted"
+        && let Some(verification) = &mut claim_verification
+    {
+        redact_claim_verification(verification);
+    }
     let prior = if let Some(cursor) = &cli.report_cursor {
         let parts: Vec<_> = cursor.split(':').collect();
         if parts.len() != 3 || parts[0] != "v1" || parts[1] != query_binding {
@@ -773,9 +896,85 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     if args.compact {
         output["artifact_retrieval"]["view"] = json!("compact");
     }
+    let mut declared_questions: Vec<String> = claim_verification
+        .as_ref()
+        .and_then(|v| v["questions"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    let mut declared_required: Vec<String> = claim_verification
+        .as_ref()
+        .and_then(|v| v["required_claim_ids"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    let checklist = checklist(&retained);
+    if declared_questions.is_empty() {
+        declared_questions = checklist["question"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect();
+    }
+    let original_required: Vec<String> = checklist["required_relationship"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    for id in original_required {
+        if !declared_required.contains(&id) {
+            declared_required.push(id);
+        }
+    }
+    let mut workflow =
+        super::guidance::workflow(&retained, &declared_questions, &declared_required, &[]);
     if let Some(verification) = claim_verification {
+        workflow["declared_claims"] = verification["status"].clone();
+        workflow["claim_results"] = json!(
+            verification["checks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|c| json!({"id":c["id"],"status":c["status"],"assurance":c["assurance"]}))
+                .collect::<Vec<_>>()
+        );
+        let missing: Vec<_> = declared_required
+            .iter()
+            .filter(|id| {
+                !verification["unresolved_required_claim_ids"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|u| u == *id)
+                    && !verification["checks"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .any(|c| c["id"] == **id)
+            })
+            .collect();
+        if !missing.is_empty() {
+            workflow["declared_claims"] = json!("needs_revision");
+        }
+        workflow["missing_required_claim_ids"] = json!(missing);
+        workflow["unresolved_required_claim_ids"] =
+            verification["unresolved_required_claim_ids"].clone();
+        workflow["requirement_results"] = verification["requirement_results"].clone();
         output["artifact_retrieval"]["claim_verification"] = verification;
     }
+    output["artifact_retrieval"]["workflow"] = workflow;
+    let selected_finding_id = args.id.as_deref().filter(|id| {
+        matches!(args.collection.as_str(), "/findings" | "/chain-bundles")
+            && retained["findings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|f| f["id"] == *id && f["details"]["event_chain"].is_object())
+    });
     let refresh = |output: &mut Value, count: usize, status: &str| {
         let section = &mut output["artifact_retrieval"];
         section["displayed"] = json!(count);
@@ -786,6 +985,68 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         } else {
             Value::Null
         };
+        section["workflow"]["evidence_delivery"] = json!({"collection":args.collection,"finding_id":selected_finding_id,"delivered_this_page":count,"omitted_this_collection":selected.len()-prior-count,"prior_items":prior});
+        let mut argv = vec![
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.to_str().map(str::to_owned))
+                .unwrap_or_else(|| "log-analyzer".into()),
+            "evidence".into(),
+            crate::evidence::path_label(&args.artifact),
+            "--expected-sha256".into(),
+            hash.clone(),
+            "--artifact-max-bytes".into(),
+            args.artifact_max_bytes.to_string(),
+        ];
+        let draft_base = argv.clone();
+        argv.extend([
+            "--collection".into(),
+            args.collection.clone(),
+            "--report-max-items".into(),
+            max.clamp(1, 5).to_string(),
+        ]);
+        if let Some(id) = &args.id {
+            argv.extend(["--id".into(), id.clone()]);
+        }
+        if args.compact {
+            argv.push("--compact".into());
+        }
+        if let Some(claims) = &args.claims {
+            argv.extend(["--claims".into(), crate::evidence::path_label(claims)]);
+        }
+        if selected.len() > prior && count == 0 {
+            section["workflow"]["next_action"] = json!({"kind":"retrieval_stopped","argv":null,"reason":"No evidence delivered within this page budget. Stop; revise limits only within the agreed budget. Do not loop the unchanged query."});
+        } else if let Some(cursor) = section["next_cursor"].as_str() {
+            argv.extend(["--report-cursor".into(), cursor.into()]);
+            section["workflow"]["next_action"] =
+                json!({"kind":"retrieve_omitted_evidence","argv":argv});
+        } else if args.claims.is_none()
+            && retained["content"] == "original"
+            && count > 0
+            && retained["findings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|f| f["details"].get("event_chain").is_some())
+        {
+            let mut argv = draft_base;
+            if let Some(id) = selected_finding_id {
+                argv.extend(["--id".into(), id.into()]);
+            }
+            argv.extend([
+                "--draft-claims".into(),
+                "--output".into(),
+                crate::evidence::path_label(&args.artifact.with_file_name("claims-draft.json")),
+            ]);
+            section["workflow"]["next_action"] = json!({"kind":"review_then_draft_claims","argv":argv,"reason":"Inspect delivered subjects and gaps first. Save editable assertions, map question checklist IDs, remove unrelated intervals, then run the returned verification argv. Drafting does not establish truth or review."});
+        } else {
+            let reason = if retained["content"] == "redacted" {
+                "Redacted evidence cannot produce source-bound drafts. Preserve unknowns and report identity and source-verification limits."
+            } else {
+                "Inspect exact subjects, terminal/contrary/later events and omissions. Declare source-bound claims after review; do not repeat completed retrieval without a specific remaining gap."
+            };
+            section["workflow"]["next_action"] = json!({"kind":"inspect_delivered_evidence_and_verification","argv":null,"reason":reason});
+        }
     };
     refresh(
         &mut output,

@@ -214,6 +214,36 @@ class StandaloneSkillLinksTests(unittest.TestCase):
         result = subprocess.run([os.sys.executable, str(ROOT / 'scripts/sync-skills.py'), '--check'], capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_bytecode_is_not_a_skill_resource(self):
+        spec = importlib.util.spec_from_file_location('sync_skills', ROOT / 'scripts/sync-skills.py')
+        generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generator)
+        with tempfile.TemporaryDirectory(prefix='skill bytecode ') as directory:
+            source, target = Path(directory) / 'canonical', Path(directory) / 'claude'
+            source.mkdir()
+            (source / 'SKILL.md').write_text('---\nname: analyze-logs\ndescription: Test\n---\nWorkflow\n', encoding='utf-8')
+            script = source / 'scripts/helper.py'
+            script.parent.mkdir()
+            script.write_text('value = 1\n', encoding='utf-8')
+            with patch.object(generator, 'SOURCE', source), patch.object(generator, 'TARGET', target):
+                cache = source / 'scripts/__pycache__/helper.cpython-310.pyc'
+                cache.parent.mkdir()
+                cache.write_bytes(b'generated cache')
+                (source / 'scripts/helper.pyc').write_bytes(b'legacy cache')
+                generator.sync()
+                self.assertFalse((target / cache.relative_to(source)).exists())
+                self.assertFalse((target / 'scripts/helper.pyc').exists())
+                cache.write_bytes(b'changed by another interpreter')
+                target_cache = target / 'scripts/__pycache__/helper.cpython-311.pyc'
+                target_cache.parent.mkdir()
+                target_cache.write_bytes(b'target cache')
+                generator.sync(check=True)
+                script.write_text('value = 2\n', encoding='utf-8')
+                with self.assertRaisesRegex(SystemExit, 'helper.py'):
+                    generator.sync(check=True)
+                generator.sync()
+                generator.sync(check=True)
+
     def test_generated_crlf_checkout_passes_but_content_drift_still_fails(self):
         spec = importlib.util.spec_from_file_location('sync_skills', ROOT / 'scripts/sync-skills.py')
         generator = importlib.util.module_from_spec(spec)

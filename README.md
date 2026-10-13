@@ -699,8 +699,12 @@ typed claim correctness, exact citations, abstention and omissions, and records
 calls, output bytes and elapsed time. It verifies deterministic harness behavior.
 The [layered scripted result](evals/results/layers-scripted.json) additionally separates tool truth, supplied-fact interpretation
 and complete legacy/unified workflows; its scripted checks make no model-quality
-claims. No real-model comparison, investigation-time improvement or token savings have
-been measured. Tokens and provider cost remain unavailable. See the
+claims. The [native evidence-workflow comparison](evals/results/question-plan-compact-native.json)
+completed all 16 attempts with passing factual answers and valid native JSON.
+Seven of eight candidate trials completed typed final review (Haiku 3/4, Opus 4/4);
+Haiku skipped recovery and verification in one held-out trial. Both versions reached
+this small corpus's factual accuracy ceiling, so these results establish neither
+consistent workflow completion nor accuracy gains. See the
 [evaluation methods and limits](evals/README.md).
 
 The analysis skill includes a completion checklist: verify processing coverage,
@@ -2160,12 +2164,21 @@ The [evaluation harness](evals/README.md) scores typed factual claims, exact cit
 unsupported causes, abstention and important omissions. Mandatory CI runs a synthetic
 CLI corpus and paired scripted analyzer/search investigations without credentials.
 The [first published baseline](evals/results/baseline.json) verifies the harness;
-optional repeated same-model comparisons remain unmeasured until an adapter is run.
+its optional adapter comparisons remain unmeasured. The separate
+[native evidence-workflow comparison](evals/results/question-plan-compact-native.json)
+records historical Haiku/Opus trials against frozen baseline and candidate versions;
+the subsequently shortened skill has not been rerun with models.
 The new layered smoke separates independently checked tool truth, interpretation
 of supplied verified facts, and paired legacy/unified workflows. It includes frozen
 held-out variants and retains answers, known partial usage and independent attempt
 statuses after failures. Canonical artifact records include parsed severity.
-Real-model runs require an explicit provider allocation; none have been executed.
+Real-model runs require an explicit provider allocation. The native results preserve earlier format, schema, fixture-publication and workflow
+failures. The latest comparison uses the same generic native JSON-schema contract
+in both arms at default effort: all 16 answers passed the unchanged factual scorer,
+and seven of eight candidate trials completed typed final reviews with anchored
+unknowns. Haiku still skipped recovery and final verification in one held-out repeat;
+consistent workflow completion is not established. Native format enforcement is a
+runtime protocol change shared by both arms, not a skill-only accuracy gain.
 Unrestricted prose/causal judgment uses a separately documented calibration and
 review protocol, whose review runs remain unperformed. Missing tokens/provider
 cost stay unavailable; known partial usage keeps its completeness indicator.
@@ -2187,3 +2200,47 @@ The **Publish crate** workflow supports GitHub Trusted Publishing with short-liv
 OIDC credentials. It validates an existing stable GitHub release and defaults to a
 package dry run. See [setup and publishing instructions](docs/trusted-publishing.md)
 for crate ownership, licensing, and the one-time crates.io configuration.
+
+## Subject-bound evidence and workflow status
+
+Give each question a stable ID with repeatable `investigate --question TEXT` and
+`--required-relationship ID`. Supply at least one required ID per question; extra
+IDs may cover its subparts. Follow `guidance.workflow.next_action.argv` for
+checksum-bound evidence retrieval. Workflow status separates processing, delivery
+and verification; delivery does not establish review.
+
+Create editable assertions from the retained artifact:
+
+```sh
+log-analyzer evidence /absolute/evidence.json --expected-sha256 EXACT_SHA \
+  --draft-claims --output /absolute/new-claims.json
+```
+
+Drafts require unredacted identities and propose scoped links, intervals and distinct endpoint counts. Independently
+check source meaning and select the requested subjects before verification.
+`evidence --claims FILE` reports expected/observed identity, citations and assurance;
+`subject_verified` binds the assertion to its snapshot, input and exact endpoints.
+Legacy claims remain accepted with weaker `link_exists`/`retained_interval` assurance.
+
+Typed `requirements` prevent unrelated claims from satisfying a question ID.
+Intervals bind their selected finding, exact retained pointer and start/end operations, including
+intervals between intermediate steps; counts bind a
+retained population pointer and a `command`, `request` or `event` operation filter. Links bind a finding, step and exact retained join pointer;
+facts bind a field pointer and expected value. Declare unsupported
+questions in `unresolved`, with a retained finding anchor and reason (up to 4096
+Unicode characters); unknown intervals preserve their requested start/end names and optional exact pointer;
+unknown links can select source/target occurrences rather than the whole step; available requested
+intervals, links, counts and explicitly selected fields cannot be declared unknown. Initial required IDs cannot be dropped. All-unknown plans are accepted when every
+required ID has a typed, anchored unresolved entry. Checklist inputs are limited to
+100 nonempty questions and 100 nonempty, unique IDs. Redaction preserves hashed IDs
+and supports anchored unknowns, but does not satisfy positive typed link or interval requirements.
+Redacted verification omits caller-supplied prose and expected identities and uses opaque claim IDs.
+`final_review` requires complete typed question mappings and records six caller review
+acknowledgments. `verified_with_unknowns` validates the supported subset and mappings,
+not unknown conclusions, arbitrary prose, profile semantics or causality.
+
+The analysis skill's [question-plan helper](.agents/skills/analyze-logs/examples/question-review.md)
+compiles explicit selections and runs verification, preserving failures and rejecting
+existing output paths. Pass `--artifact-max-bytes` to retain an agreed larger read allowance. Use [profile recovery](.agents/skills/analyze-logs/examples/role-recovery.md)
+only for source-supported recognition gaps: prepare, independently validate positive
+and negative witnesses, then investigate into a fresh artifact and verify its claims.

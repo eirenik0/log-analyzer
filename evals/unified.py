@@ -84,7 +84,7 @@ class UnifiedTools(Tools):
         # The current binary advertises artifact/item schemas, not a page
         # envelope schema. These are separately declared broker invariants.
         keys = {'artifact_sha256','binding_sha256','collection','contract_version','correlation_passes','displayed','id','items','next_cursor','parse_passes','prior','remaining','source_verification','status','total'}
-        require(isinstance(page, dict) and set(page) == keys, 'unsupported artifact page envelope')
+        require(isinstance(page, dict) and keys <= set(page) <= keys | {'workflow'}, 'unsupported artifact page envelope')
         require(page['contract_version'] == 1 and page['status'] in {'page','complete'} and page['id'] is None, 'unsupported artifact page contract')
         collection, group = request.get('collection', '/findings'), request['group']
         require(page['collection'] == collection, 'page collection changed')
@@ -94,6 +94,11 @@ class UnifiedTools(Tools):
             require(type(page[name]) is int and page[name] >= 0, 'invalid page count')
         require(isinstance(page['items'], list) and page['displayed'] == len(page['items']), 'displayed count mismatch')
         require(page['prior'] + page['displayed'] + page['remaining'] == page['total'], 'page count partition mismatch')
+        if 'workflow' in page:
+            workflow = page['workflow']
+            require(isinstance(workflow, dict) and workflow.get('relevant_evidence_review') == 'unconfirmed', 'delivery must not establish review')
+            delivery = workflow.get('evidence_delivery', {})
+            require(delivery.get('delivered_this_page') == page['displayed'] and delivery.get('omitted_this_collection') == page['remaining'], 'workflow delivery counts differ from page')
         previous = self.pages.get((group, collection))
         if 'cursor' in request:
             require(previous is not None and request['cursor'] == previous['next_cursor'], 'cursor not delivered by prior page')

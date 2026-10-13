@@ -133,6 +133,23 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
 }
 
 fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
+    if args.question.len() > 100
+        || args.question.len() > args.required_relationship.len()
+        || args.required_relationship.len() > 100
+        || args
+            .question
+            .iter()
+            .chain(&args.required_relationship)
+            .any(|item| item.trim().is_empty())
+        || args
+            .required_relationship
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != args.required_relationship.len()
+    {
+        return Err("Checklist accepts at most 100 nonempty questions and 100 nonempty, unique required relationship IDs, with at least one ID per question".into());
+    }
     if cli.report_cursor.is_some() {
         return Err("Use investigation-evidence to resume a retained artifact without processing sources again".into());
     }
