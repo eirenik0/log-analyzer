@@ -411,3 +411,4 @@ Versions lacking the required checklist/drafting protocol are marked ineligible
 before model calls, rather than counted as model failures or given a compatibility shim.
 Prose review receives the same disclosed domain semantics and the checked profile,
 so task-provided facts are not mistaken for unsupported model inferences.
+Relative retained source/profile paths resolve from the recorded analysis project root.

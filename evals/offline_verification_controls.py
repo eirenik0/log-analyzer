@@ -14,7 +14,7 @@ from native_workflow import fixture, input_content, profile
 from verification_required import QUESTION_IDS, acceptance_gate, coverage
 
 
-def control_packet(directory, binary, repository, held_out=False, recognition_gap=False):
+def control_packet(directory, binary, repository, held_out=False, recognition_gap=False, relative_paths=False):
     directory.mkdir(parents=True, exist_ok=True)
     capture = directory / 'capture.jsonl'
     capture.write_text(input_content('held-out' if held_out else 'development'), encoding='utf-8')
@@ -22,10 +22,10 @@ def control_packet(directory, binary, repository, held_out=False, recognition_ga
     text = profile().replace('equals = "capture_end"', 'equals = "result"') if held_out and not recognition_gap else profile()
     selected.write_text(text, encoding='utf-8')
     artifact = directory / 'evidence.json'
-    argv = [str(binary), '--config', str(selected), 'investigate',
-            '--profiles-dir', str(repository / 'config/profiles'), str(capture), '--artifact', str(artifact), '--summary', '--question', 'Investigate the public incident']
+    argv = [str(binary), '--config', selected.name if relative_paths else str(selected), 'investigate',
+            '--profiles-dir', str(repository / 'config/profiles'), capture.name if relative_paths else str(capture), '--artifact', str(artifact), '--summary', '--question', 'Investigate the public incident']
     for qid in QUESTION_IDS: argv += ['--required-relationship', qid]
-    subprocess.run(argv, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(argv, check=True, stdout=subprocess.DEVNULL, cwd=directory if relative_paths else None)
     helper = repository / '.agents/skills/analyze-logs/scripts/map_questions.py'
     spec = importlib.util.spec_from_file_location('offline_question_mapping', helper)
     mapping = importlib.util.module_from_spec(spec); spec.loader.exec_module(mapping)
@@ -183,6 +183,11 @@ def controls(binary, repository):
         result = acceptance_gate(proposed, directory, binary, capture, requested, 0, 10, 30)
         assert not result['accepted'] and any('source-supported ending' in issue for issue in result['issues'])
         results.append({'case': 'held-out', 'control': 'supported-recognition-gap', 'status': 'passed', 'accepted': False})
+        directory = Path(temporary).resolve() / 'relative-paths'
+        proposed, capture, requested, _ = control_packet(directory, binary, repository, held_out=True, relative_paths=True)
+        result = acceptance_gate(proposed, directory, binary, capture, requested, 0, 10, 30)
+        assert result['accepted'], result
+        results.append({'case': 'held-out', 'control': 'relative-input-and-profile', 'status': 'passed', 'accepted': True})
     return {'kind': 'offline_verification_required_controls', 'model_calls': 0, 'controls': results,
             'limitations': ['Scripted controls validate mechanics, not model compliance or prose-review accuracy.']}
 

@@ -223,6 +223,12 @@ def profile_expectations(answer, artifact, assertions, source_records):
     return {'version': 1, 'records': records, 'links': links}
 
 
+def retained_path(value, artifact, directory):
+    path = Path(value)
+    root = artifact['report_metadata']['evidence']['query']['execution']['profile_selection'].get('project_root')
+    return (path if path.is_absolute() else Path(root or directory) / path).resolve()
+
+
 def acceptance_gate(answer, directory, binary, capture, requested, attempt, remaining_seconds, remaining_tools, capture_sha256=None):
     if not isinstance(answer, dict):
         return {'accepted': False, 'issues': ['Return the required structured answer with verification files and claim IDs.'], 'tool_calls': 0}
@@ -238,7 +244,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
         assertions, claims, _ = read_local(directory, proof['claims'], 1_048_576)
         saved, _, _ = read_local(directory, proof['report'])
         inputs = artifact['report_metadata']['evidence']['inputs']
-        if len(inputs) != 1 or inputs[0]['sha256'] != digest(capture) or Path(inputs[0]['file']).resolve() != capture.resolve():
+        if len(inputs) != 1 or inputs[0]['sha256'] != digest(capture) or retained_path(inputs[0]['file'], artifact, directory) != capture.resolve():
             raise ValueError('artifact must retain this trial capture, not an unrelated input')
         # These controlled fixtures contain one valid JSON event per nonempty line.
         measured = inputs[0]['coverage']
@@ -289,8 +295,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
             configs = [o['config'] for o in selection['origins'] if 'config' in o]
             if len(configs) != 1:
                 raise ValueError('Retain one explicit local profile for independent validation.')
-            selected = Path(configs[0])
-            selected = (directory / selected).resolve() if not selected.is_absolute() else selected.resolve()
+            selected = retained_path(configs[0], artifact, directory)
             if not selected.is_relative_to(directory.resolve()):
                 raise ValueError('Validated profile must stay in this trial directory.')
             expectations = directory / f'runner-expectations-{attempt}.json'
@@ -396,7 +401,7 @@ def trial_required(root, version, case, model, repeat, limits):
                 'effort_override': None, **metrics([])}
     requested = {key: (expected[key]['subject'], expected[key]['scope']) for key in ['capture', 'other', 'close']}
     prompt += '\nVerification-required experiment: register these --required-relationship IDs: ' + ', '.join(QUESTION_IDS)
-    prompt += '\nBefore answering, select subject-bound claims and retain verification.artifact, verification.claims, verification.report paths. Use the optional question-plan helper if available. '
+    prompt += '\nBefore answering, select subject-bound claims and return absolute verification.artifact, verification.claims, verification.report paths. Use the optional question-plan helper if available. '
     prompt += 'Reference checked IDs in claim_ids for each substantive field and explanation. Include exact coverage; upstream completeness is unknown. '
     prompt += 'Reserve two tool slots and time/cost for final checking and tool-free prose review. '
     prompt += 'The runner rechecks claims and independently validates the selected profile against source roles and positive/wrong-identity links, then reviews prose. Correct feedback within the same remaining budget.'
