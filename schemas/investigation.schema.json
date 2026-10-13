@@ -2311,7 +2311,7 @@
               "minimum": 0
             },
             "subject_verification": {
-              "const": "not_requested"
+              "enum": ["not_requested", "unavailable"]
             },
             "limits": {
               "type": "array",

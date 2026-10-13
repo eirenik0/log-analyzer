@@ -60,7 +60,7 @@ impl CheckedResult {
             "unknown_findings":findings.iter().filter(|f| f["kind"] == "unknown").count(),
             "incomplete_chains":findings.iter().filter(|f| f["details"]["event_chain"].is_object() && (f["details"]["event_chain"]["completeness"] != "complete" || f["details"]["event_chain"]["steps"].as_array().into_iter().flatten().any(|s| s["status"] != "observed"))).count(),
             "source_binding_unavailable_findings":findings.iter().filter(|f| f["checked"]["assurance"]["source_binding"] == "unavailable").count(),
-            "subject_verification":"not_requested",
+            "subject_verification":if findings.iter().any(|f| f["checked"]["assurance"]["subject_verification"] == "unavailable") {"unavailable"} else {"not_requested"},
             "limits":["Counts above describe all processed findings, including omitted detail. Missing endpoints remain unavailable within the selected capture. Upstream completeness, clock synchronization and causality are unknown.", "An existing link does not establish intended subject meaning. Independent expected subjects are required for subject_verified assurance."]
         });
         drop(records);

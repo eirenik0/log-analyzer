@@ -128,6 +128,9 @@ facts; `relations_only` discloses unavailable source checking. None implies
 `subject_verified`. Independent expected subjects remain the responsibility of the
 existing claim verifier. Intended-subject verification is `not_requested` when
 source checking ran and `unavailable` when its prerequisites are missing.
+The aggregate is `unavailable` if any processed finding lacks those prerequisites,
+including omitted findings; otherwise it is `not_requested`. The unavailable
+finding count distinguishes mixed input assurance from wholly unavailable checking.
 
 [[src/investigation_runtime/presentation.rs#text|Text presentation]] places coverage
 and material uncertainty before findings. Each fact retains its limits. Intervals

@@ -318,7 +318,11 @@ fn bounded_and_redacted_output_keeps_limits_without_claiming_subject_verificatio
         shape(&report, true);
         assert_eq!(
             report["presentation"]["uncertainty"]["subject_verification"],
-            "not_requested"
+            if name == "redacted" {
+                "unavailable"
+            } else {
+                "not_requested"
+            }
         );
         assert!(report["coverage"].is_array());
         if name == "tiny" {
@@ -338,6 +342,83 @@ fn bounded_and_redacted_output_keeps_limits_without_claiming_subject_verificatio
             }
             assert!(!report.to_string().contains("alpha"));
         }
+    }
+}
+
+#[test]
+fn aggregate_subject_verification_preserves_unavailable_prerequisites_when_paged() {
+    let temp = tempfile::tempdir().unwrap();
+    let non_utf8 = temp.path().join("non-utf8.jsonl");
+    let mut bytes = fs::read(INPUT).unwrap();
+    bytes.extend_from_slice(b"\xff\n");
+    fs::write(&non_utf8, bytes).unwrap();
+    for (name, inputs, options, expected) in [
+        ("available", vec![INPUT], vec![], "not_requested"),
+        ("redacted", vec![INPUT], vec!["--redact"], "unavailable"),
+        (
+            "artifact-limit",
+            vec![INPUT],
+            vec!["--artifact-max-bytes", "1"],
+            "unavailable",
+        ),
+        (
+            "mixed",
+            vec![INPUT, non_utf8.to_str().unwrap()],
+            vec![],
+            "unavailable",
+        ),
+    ] {
+        let mut full_options = options.clone();
+        full_options.extend(["--json", "--complete-output"]);
+        let full: Value = serde_json::from_str(&run(
+            temp.path(),
+            &format!("{name}-full"),
+            PROFILE,
+            &inputs,
+            &full_options,
+        ))
+        .unwrap();
+        shape(&full, false);
+        let uncertainty = &full["presentation"]["uncertainty"];
+        assert_eq!(uncertainty["subject_verification"], expected, "{name}");
+        let unavailable = full["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| f["checked"]["assurance"]["subject_verification"] == "unavailable")
+            .count();
+        assert_eq!(
+            uncertainty["source_binding_unavailable_findings"],
+            unavailable
+        );
+        assert_eq!(unavailable > 0, expected == "unavailable", "{name}");
+        if name == "mixed" {
+            assert!(unavailable < full["findings"].as_array().unwrap().len());
+        }
+        let mut summary_options = options.clone();
+        summary_options.extend(["--summary", "--report-max-items", "0"]);
+        let summary: Value = serde_json::from_str(&run(
+            temp.path(),
+            &format!("{name}-summary"),
+            PROFILE,
+            &inputs,
+            &summary_options,
+        ))
+        .unwrap();
+        shape(&summary, true);
+        assert_eq!(summary["findings"]["displayed"], 0);
+        assert_eq!(summary["presentation"]["uncertainty"], *uncertainty);
+        let text = run(
+            temp.path(),
+            &format!("{name}-text"),
+            PROFILE,
+            &inputs,
+            &options,
+        );
+        assert!(
+            text.contains(&format!("Intended subject verification: {expected}.")),
+            "{name}: {text}"
+        );
     }
 }
 

@@ -22,6 +22,9 @@ The same test suite covers failed ends, missing ends, ambiguous starts, renamed
 identities, independent inputs, redaction, tiny budgets and rejection of mutated
 arithmetic, source citations and event subjects. Existing coverage and zero tests
 below also exercise the checked publication boundary.
+[[tests/test_checked_presentation.rs#aggregate_subject_verification_preserves_unavailable_prerequisites_when_paged]]
+keeps aggregate assurance unavailable for redaction, artifact limits and mixed
+UTF-8/non-UTF-8 input, including pages with no displayed findings.
 
 ## Missing join identity
 
