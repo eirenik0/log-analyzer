@@ -221,3 +221,34 @@ approximately 5 / 25 / 100 MiB artifacts. Across complete-record delivery, exact
 measurement lookup and operation-filtered claim counts, peak RSS stayed between
 8.5 and 11.2 MiB. The largest requests took 140 seconds or less on this run;
 validation time still grows with artifact size.
+
+
+## End-to-end selected investigation baseline
+
+Run the complete investigation process (including artifact construction,
+validation, publication, and report delivery) with all source records selected:
+
+```sh
+python3 scripts/measure-selected-investigation-memory.py target/release/log-analyzer
+```
+
+This benchmark currently **fails** its 96 MiB RSS ceiling and 24 MiB growth
+allowance. Those fixed thresholds are acceptance criteria for the remaining CLI
+construction refactor, not a guarantee of the current implementation. Use
+`--baseline` only to record the existing failure without enforcing RSS thresholds;
+all evidence and completion assertions still run.
+
+The recorded baseline uses 1,000 / 5,000 / 20,000 selected records, with every
+start before every completion. Default-page RSS was 56.3 / 240.1 / 824.7 MiB;
+complete-output RSS was 59.5 / 240.2 / 833.8 MiB. Every run completed and retained
+all selected records and pairs. Fixed input, processing, record, correlation, and
+artifact limits apply at every size. Each measurement launches a fresh CLI child
+before allocating expected-artifact trees. This includes construction and
+validation, unlike the separate retrieval probe.
+
+The harness checks exact physical record order and contents, input and artifact
+hashes, exact start/end pairing, source timestamp offsets, measured durations,
+distribution sample counts, and complete-output finding equality. Results:
+[`../evals/streaming-selected-investigation-memory-baseline.json`](../evals/streaming-selected-investigation-memory-baseline.json).
+The CLI still retains selected records and its report tree; issue #86 remains
+incomplete until this end-to-end benchmark passes without partial processing.

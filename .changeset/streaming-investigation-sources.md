@@ -21,3 +21,8 @@ limits, corruption regressions, and selected-record retrieval RSS measurements.
 
 CLI selected-record/report construction still requires the remaining out-of-core
 integration; this does not complete issue #86.
+
+Add an end-to-end selected-input RSS regression harness covering both default
+pages and complete output. Record the current failing construction baseline;
+keep its fixed RSS acceptance thresholds separate from passing correlation and
+retrieval-only measurements.

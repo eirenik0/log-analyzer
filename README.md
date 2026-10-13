@@ -555,6 +555,14 @@ investigation pipeline does not yet have bounded RSS for growing selected inputs
 Selected-state and artifact-retrieval memory sweeps are documented in
 [the streaming design](docs/design/streaming-pipeline.md).
 
+The remaining CLI construction memory gap has a reproducible end-to-end probe:
+`python3 scripts/measure-selected-investigation-memory.py target/release/log-analyzer`.
+It includes capture through report delivery, verifies all selected records and
+paired measurements, and currently fails its fixed RSS thresholds. The recorded
+[baseline](docs/evals/streaming-selected-investigation-memory-baseline.json)
+rises from about 56 MiB to 834 MiB for 1,000 to 20,000 selected records; bounded
+correlation and retrieval alone do not imply bounded investigation construction.
+
 The memory setting bounds a conservative reservation model for buffered/retained
 source and calculated data, including normalization field-mapping amplification
 and owned classifications. Shared configuration is reserved once; fixed per-record

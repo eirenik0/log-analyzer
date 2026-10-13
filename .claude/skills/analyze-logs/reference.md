@@ -33,8 +33,10 @@ index. `--correlation-max-index-bytes` controls the index allowance and
 `--correlation-max-disk-bytes` caps its temporary payload and database pages.
 State exhaustion leaves correlation unavailable, not a measured zero. The CLI
 still retains selected report records and completed evidence under the processing
-allowance. Do not interpret ingestion/correlation streaming as proof that an
-arbitrarily large investigation will complete. Evidence retrieval uses temporary
+allowance. The selected-input end-to-end RSS probe
+(`scripts/measure-selected-investigation-memory.py`) currently fails its fixed
+thresholds, including for complete output. Do not interpret ingestion/correlation
+streaming as proof that an arbitrarily large investigation will complete. Evidence retrieval uses temporary
 JSON offset/reference indexes and bounded validation passes, then spools its page.
 It still verifies the entire artifact before returning facts. `--artifact-max-item-bytes`
 bounds atomic items and witness bundles; `--artifact-max-index-bytes` and
