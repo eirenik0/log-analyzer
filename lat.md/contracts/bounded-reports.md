@@ -1,7 +1,9 @@
 # Bounded reports and evidence retrieval
 
 Common report controls support `info`, `search`, `extract`, `perf`, `trace`
-(including configured timelines), `process`, comparisons, and `errors`. Discover
+(including configured timelines), `process`, comparisons, and `errors`.
+
+Discover
 these controls through `capabilities.bounded_reports`. Existing output and
 bounded-error options keep their behavior when common controls are absent.
 
@@ -20,12 +22,14 @@ and `generate-config` do not accept them. All commands accept `--summary`, but
 its presentation is command-specific: paginated commands cap items at five,
 capabilities omit schemas, and schema/generated-profile summaries use explicit
 omission envelopes. A summary is not a byte budget. See
-[output modes](../../README.md#output-for-models-and-people).
+[output modes](../cli-reference.md#output-for-models-and-people).
 
 ## Units and exceptions
 
 `--report-max-bytes` measures serialized UTF-8 bytes; `--report-max-chars`
-measures serialized Unicode scalar characters. Both include JSON escaping,
+measures serialized Unicode scalar characters.
+
+Both include JSON escaping,
 metadata, cursor, separators and the final newline. Characters are neither
 bytes, grapheme clusters nor exact model tokens. Simultaneous limits all apply.
 `--report-max-items` limits atomic presentation items across collections. Pages
@@ -51,7 +55,9 @@ next item and return the next cursor normally.
 ## Ordering and reconstruction
 
 `retrieval.collections` identifies each JSON Pointer, its complete total, prior
-items, items displayed in this page, and remaining items. Arrays concatenate in
+items, items displayed in this page, and remaining items.
+
+Arrays concatenate in
 page order, maps merge by key, and designated strings concatenate. An item's
 identity is `(collection pointer, original ordinal)`. Items retain their complete
 nested values and source references. This explicit registry prevents arbitrary
@@ -86,7 +92,9 @@ existing evidence contract's OS-path handling.
 ## Complete output, redaction and resource limits
 
 `--complete-output` uses the same collections and ordering with pagination
-disabled. It conflicts with common budgets/cursors. Common mode overrides native
+disabled.
+
+It conflicts with common budgets/cursors. Common mode overrides native
 `process --limit`, `perf --top-n`, and `errors --top-n` to zero and disables
 process message/payload compaction. It retains semantic selections such as
 operation type, orphan-only, warning inclusion and comparison differences.

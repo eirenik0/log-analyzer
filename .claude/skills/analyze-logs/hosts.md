@@ -64,6 +64,6 @@ Append `@<tag-or-commit>` for a reproducible version. Claude marketplace install
 /plugin install log-analyzer
 ```
 
-See the [host validation record](https://github.com/eirenik0/log-analyzer/blob/main/docs/skill-host-validation.md)
+See the [host validation record](https://github.com/eirenik0/log-analyzer/blob/main/lat.md/skill-host-validation.md)
 for tested versions and limits. Host discovery and fixture checks do not measure
 model quality or injection resistance.

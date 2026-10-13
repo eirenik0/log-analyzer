@@ -1,7 +1,9 @@
 # Profile suitability on sample evidence
 
 `profile validate` checks the built-in or TOML profile selected with `--profile`
-against representative logs. It emits JSON, uses the existing deterministic
+against representative logs.
+
+It emits JSON, uses the existing deterministic
 parser/classifier/pairing engines, and never edits or activates a configuration.
 External agents can propose TOML in a separate file and invoke the same command.
 
@@ -25,7 +27,9 @@ inference of lifecycle meaning.
 
 ## Purpose and verdict
 
-`--kind request|event|command` is required. `--purpose timing` is the default;
+`--kind request|event|command` is required.
+
+`--purpose timing` is the default;
 `recognition` checks classification of the requested kind. Supplied link assertions
 are also checked for either purpose. Parsing and
 global classification cover all selected records. Requested coverage is
@@ -59,7 +63,9 @@ when supplied under either purpose.
 ## Evidence and configuration identity
 
 The report separates input `coverage`, `global_classification`,
-`requested_coverage`, expected results, and suitability. `records` contains rule
+`requested_coverage`, expected results, and suitability.
+
+`records` contains rule
 IDs and mapped semantics, with snapshot-scoped evidence references. The
 `effective_rules` section exposes the configured adapters/conditions/mappings;
 rule IDs connect each classification to the rule that matched. Text adapters
@@ -86,7 +92,9 @@ records, normalization losses, and upstream capture completeness remain visible;
 
 ## Expected facts
 
-Use version 1 JSON with `records`, `pairs`, `links`, or a combination. Addresses require a declared
+Use version 1 JSON with `records`, `pairs`, `links`, or a combination.
+
+Addresses require a declared
 input ordinal (zero-based), physical line (one-based), and normalized JSON
 Pointer `row_path` (null for ordinary rows). Missing, ambiguous, or filtered-out
 targets fail explicitly. Addresses refer to original source locations before
@@ -138,14 +146,16 @@ inspect unasserted supported links, root recognition gaps, and source records.
 Preparation adds starting-profile `adaptation` observations: field shapes, source
 representatives, role selectors and their failures, missing keys, roots, steps and
 later activity. These guide editing a separate candidate without activating it.
-The [README adaptation procedure](../../README.md#prepare-a-separate-profile-candidate)
+The [profile adaptation procedure](../profiles.md#prepare-a-separate-profile-candidate)
 describes limits and the validation/reinvestigation loop. Keep independent facts
 separate from candidate output and retain scope boundaries when adapting aliases
 or a different grammar.
 
 ## Redaction and bounds
 
-Common report controls apply to validation. Rule inventories, representative
+Common report controls apply to validation.
+
+Rule inventories, representative
 records, diagnostics, suggestions, operations, expected results, and source
 records paginate; full-scope totals and verdicts remain mandatory metadata.
 Consult `retrieval.collections` for this page's samples. Complete output and
@@ -161,7 +171,7 @@ Response addresses replace hidden row pointers with null plus
 `location_redacted=true`; the strict input-facts schema retains original pointers.
 Array ID masking also learns individual values for consistent raw/structured-field
 masking. Source-location losses remain explicit; masked rule containers can be represented
-by a mask label. Redaction retains the limitations described in the README.
+by a mask label. Redaction retains the limitations in [[cli-reference#CLI reference#Command-Specific Options#Report redaction]].
 
 Validation operation boundary times retain each paired source record's explicit
 offset, including mixed-offset pairs; elapsed durations compare their instants.

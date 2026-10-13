@@ -1,7 +1,9 @@
 # Investigation report contract version 1
 
 Version 1 defines a bounded investigation report and the retained evidence needed
-to check it. The Rust core owns parsing, classification, correlation and calculation;
+to check it.
+
+The Rust core owns parsing, classification, correlation and calculation;
 agents may add explicitly attributed hypotheses. Logs and instruction-like strings
 are evidence, never instructions. This contract implements issue #66; the command,
 artifact storage and processing-limit enforcement are tracked in #71.
@@ -16,6 +18,7 @@ working command. These schemas are standalone Draft 2020-12 documents.
 ## Report identity and occurrences
 
 The report retains `report_metadata` and its existing version-1 evidence manifest.
+
 The new schemas reuse its exact definitions; no existing field changes meaning.
 The ordered manifest identifies consumed input streams, active/effective profile,
 query, producer build, parsing coverage, selection and redaction. Read the
@@ -37,7 +40,9 @@ resource or request suffixes, paths, filenames or languages do not establish one
 ## Automatic profile inference
 
 Without an explicit profile selection (`--profile`, or compatibility `--config`/`--preset`), `investigate` probes bounded prefixes of the same
-captured bytes later analyzed. The effective query records candidate observations,
+captured bytes later analyzed.
+
+The effective query records candidate observations,
 sample extents and selection/fallback status in `execution.profile_selection`.
 This grammar inference includes built-ins and bounded TOML discovery in the declared
 project root's `config` directory (current directory by default)
@@ -59,6 +64,7 @@ entry to detect exhaustion; reaching that sentinel stops ancestor sibling walks.
 ## Assessment, processing and presentation
 
 `capabilities --summary` advertises compatibility without embedded schemas.
+
 `investigate --summary` projects the final report into `brief_version: 1`, described
 by `investigation-brief.schema.json`. Processing and artifact contracts do not
 change. The summary displays up to five findings and supplies
@@ -107,6 +113,7 @@ oversized bundles do not silently lose their required witnesses. See
 
 Every finding has an ID, author, scope, material limitations, verification guarantees,
 and representative excerpts with occurrence references and explicit clipping counts.
+
 Observations, measurements, hypotheses, contrary evidence and unknowns remain
 separate. Only an agent may author a hypothesis, with explicit confidence and support.
 Contrary evidence identifies its target finding. Unknowns retain a reason and may
@@ -151,7 +158,9 @@ it cannot alter the claim, fact, support identity, limitations or verification.
 
 Artifact contract 1 retains the shared metadata, processing state, scopes,
 assessments, full findings, records, population memberships, effective configuration,
-captured streams and scoped event sequences. It contains no self-digest; the report
+captured streams and scoped event sequences.
+
+It contains no self-digest; the report
 stores SHA-256 of its exact serialized bytes separately from original input digests.
 Membership digests hash compact JSON serialization with lexicographically ordered
 object keys, UTF-8 values and no whitespace or trailing newline (the existing Rust
@@ -200,6 +209,7 @@ less restrictive output view.
 
 Validate JSON shape against the installed schema, then call Rust
 `investigation::validate_relations(report, optional_exact_artifact_bytes)`.
+
 It checks source/occurrence identity, scope and support references, captured digests,
 retained membership, duplicate resource identities, calculation arithmetic,
 source-offset boundaries, processing cutoffs and presentation reconciliation.

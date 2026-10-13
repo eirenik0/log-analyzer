@@ -1,6 +1,8 @@
 # Portable skill validation
 
-Checked on 2026-10-09 on macOS with Python 3.13.5. The Rust executable was the
+Checked on 2026-10-09 on macOS with Python 3.13.5.
+
+The Rust executable was the
 locally built `log-analyzer 0.3.0`, base revision `9b35994`, dirty worktree. This
 record describes specific compatibility checks, not a minimum host version or
 a claim that every provider/model supports the workflow equally well.
@@ -33,7 +35,9 @@ real-model evaluations and establish no model accuracy or token savings.
 ## CLI and skill refresh (2026-10-10)
 
 The PR #84 follow-up uses canonical `profile`/`evidence` commands, JSON defaults,
-and the shared `--summary` option. The canonical skill and generated Claude bundle
+and the shared `--summary` option.
+
+The canonical skill and generated Claude bundle
 were synchronized and validated. The current deterministic checks cover maintained
 command examples, eight workflow cases, and nine profile-discovery/recovery cases
 without injected profiles, including summary-schema validation and retained evidence.
@@ -43,13 +47,15 @@ Relative links and README anchors were checked locally. Python checks passed
 The native host observations below predate these CLI/skill changes. They have not
 been rerun for this revision, so they do not demonstrate current host activation,
 model adherence, accuracy, reliability gains, or token savings. See the
-[discovery evaluation protocol](../evals/README.md#profile-discovery-and-recovery)
+[discovery evaluation protocol](evaluation.md#profile-discovery-and-recovery)
 for the separate model trials needed to measure those outcomes.
 
 ## Native host smoke checks
 
 Each smoke installed the skill in a temporary project outside the source
-repository. Only synthetic `examples/investigations/failure.jsonl`,
+repository.
+
+Only synthetic `examples/investigations/failure.jsonl`,
 `failure.expected.json` and `profile.toml` were supplied. The question asked what
 failed, its lifecycle duration, and whether the capture established a cause.
 The executable was copied to a temporary PATH directory. Invocations used
@@ -98,7 +104,9 @@ not silently replace them with credential-free scripted checks.
 ## Reproduce the native checks
 
 Build the binary, create an isolated project, copy only the three synthetic
-fixtures, and run the installer from there for the desired host. Put the built
+fixtures, and run the installer from there for the desired host.
+
+Put the built
 executable on that process's PATH. Supply absolute fixture/profile paths and an
 explicit call/output/time budget. For Codex, use:
 
@@ -133,7 +141,9 @@ capability/profile checks, pages and citations; process exit alone is insufficie
 
 Native user-scope discovery, Codex desktop skill-selector display, Pi Git
 installation, marketplace network installation, Windows host execution and
-repeated reloads in already-running sessions were not exercised. Unit tests
+repeated reloads in already-running sessions were not exercised.
+
+Unit tests
 cover user-scope destinations and packaged paths; documentation describes the
 host discovery paths verified against current primary sources. The materialized
 bundle uses regular files so symlink support is not required for distribution.

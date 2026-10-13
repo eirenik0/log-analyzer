@@ -60,7 +60,7 @@ and run `lat check` after changing the graph or code it references.
   `type(scope): description`. Scope is optional; use `!` for breaking changes.
   Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
   `build`, `ci`, `chore`, `revert`. Example: `fix(parser): preserve timezone offsets`.
-- Follow [CONTRIBUTING.md](CONTRIBUTING.md) for pre-commit setup and quality checks.
+- Follow the [contribution guide](lat.md/contributing.md) for pre-commit setup and quality checks.
 - Keep formatting, lint, tests, and applicable evaluation checks passing. Do not
   silence failures or weaken assertions to make CI green.
 - Add a focused regression test for a bug fix. Use synthetic, generic data;

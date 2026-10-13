@@ -1,11 +1,15 @@
 # Publish a crate with GitHub Trusted Publishing
 
 `.github/workflows/publish.yml` publishes the package from an existing
-stable GitHub release. It uses GitHub OIDC and a short-lived crates.io token;
+stable GitHub release.
+
+It uses GitHub OIDC and a short-lived crates.io token;
 no persistent crates.io token is stored in repository secrets. GitHub binary
 releases continue to use the existing Release workflow.
 
 ## One-time setup
+
+Configure crate ownership and the GitHub publisher identity before attempting publication.
 
 1. Sign in as an owner of the existing `log-analyzer` crate.
 2. Include the Cargo description, MIT license declaration and `LICENSE` file in
