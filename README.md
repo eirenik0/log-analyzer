@@ -45,6 +45,8 @@ The first refactoring milestone is capture and close timings, record counts and
 causal uncertainty through the existing CLI, with checks inside the analyzer.
 Preserve proven parsing and correlation code; expand only after demonstrating
 better answer completion under the same evaluation budget.
+See the [checked analysis design](docs/checked-analysis.md) for the proposed
+interface, failure behavior and acceptance cases.
 
 ## Installation
 
