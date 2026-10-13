@@ -822,6 +822,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 .as_ref()
                 .filter(|_| report["artifact"]["status"] != "unavailable"),
             cli.redact,
+            cli.verbose > 0,
         )
     });
     artifact::present(&mut report, cli, 0)?;

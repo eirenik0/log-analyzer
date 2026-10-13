@@ -2,6 +2,6 @@
 default: patch
 ---
 
-Restore direct, readable investigation output with named event intervals, source
-lines and explicit unknowns. Keep join diagnostics and provenance behind
-`--verbose`, and make claim verification and the skill helper optional.
+Restore one-command investigation with a concise summary of events, timings and
+unknowns. Keep technical findings, scope IDs, repeated assessment diagnostics
+and provenance behind `--verbose`; claim verification and helpers are optional.

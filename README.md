@@ -66,13 +66,14 @@ log-analyzer investigate application.log
 log-analyzer investigate captures/*.log
 ```
 
-The default output explains processing completion, per-file coverage, observed
-ERROR/WARN records, supported measurements and assessment limits. A fresh local
+The default output summarizes what happened, event timings and what remains
+unknown, with per-file coverage and source lines. Calculated-fact labels, scope
+IDs and repeated assessment diagnostics appear only with `--verbose`. A fresh local
 `log-analyzer-evidence-*` directory stores `evidence.json`; its path appears at
 the end. Calculations and evidence references are checked internally before the
-report is published. `--verbose` exposes detailed joins, recognition diagnostics
-and provenance; `--json` retains the full structured contract. Claim verification
-with `evidence --claims` is optional and is not required to obtain analysis.
+report is published. `--verbose` exposes technical findings, detailed joins,
+recognition diagnostics and provenance; `--json` retains the full structured
+contract. Claim verification with `evidence --claims` is optional.
 With `--redact`, an automatically created artifact keeps a safe relative handle
 that can be used from the investigation directory; private parent
 paths, profile fingerprint labels and rule names are omitted. When pagination or

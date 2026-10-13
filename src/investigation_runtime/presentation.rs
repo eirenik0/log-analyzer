@@ -54,7 +54,7 @@ pub(super) struct FindingOverview {
     groups: Vec<(FindingGroup, BTreeSet<String>)>,
 }
 /// Native source errors must remain visible when other findings fill the page.
-fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
+fn source_errors(report: &Value, detailed: bool) -> (String, BTreeSet<String>) {
     let mut output = String::new();
     let mut highlighted = BTreeSet::new();
     let findings = report["findings"]
@@ -100,7 +100,15 @@ fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
         if output.is_empty() {
             output.push_str("\nObserved ERROR/FATAL records (selected parsed population):\n");
         }
-        let _ = write!(output, "- [{scope_id}]");
+        let _ = write!(
+            output,
+            "- [{}]",
+            if detailed {
+                scope_id.to_owned()
+            } else {
+                input_label(report, &scope["id"])
+            }
+        );
         for (finding, unit) in errors
             .counts
             .iter()
@@ -115,7 +123,7 @@ fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
         }
         let _ = writeln!(output, " {count} distinct source messages");
         for finding in &errors.samples {
-            write_evidence(&mut output, finding, 1);
+            write_evidence(&mut output, finding, 1, detailed);
             if let Some(id) = finding["id"].as_str() {
                 highlighted.insert(id.into());
             }
@@ -128,7 +136,26 @@ fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
             );
         }
     }
-    if !output.is_empty() {
+    if !detailed {
+        for finding in findings.iter().filter(|f| {
+            f["id"]
+                .as_str()
+                .is_some_and(|id| id.ends_with("-observed-warnings-count"))
+        }) {
+            if finding["details"]["value"]
+                .as_u64()
+                .is_some_and(|count| count > 0)
+            {
+                let _ = writeln!(
+                    output,
+                    "{}: {} observed WARN records.",
+                    input_label(report, &finding["scope_id"]),
+                    finding["details"]["value"]
+                );
+            }
+        }
+    }
+    if detailed && !output.is_empty() {
         output.push_str("At most 3 distinct message samples per input are shown, independently of the findings page. Source severity does not establish operation failure or cause.\n");
     }
     (output, highlighted)
@@ -233,8 +260,9 @@ pub(super) fn finding_overview(
     report: &Value,
     view: Option<&InvestigationView>,
     redacted: bool,
+    detailed: bool,
 ) -> FindingOverview {
-    let (source_errors, highlighted) = source_errors(report);
+    let (source_errors, highlighted) = source_errors(report, detailed);
     let mut overview = FindingOverview {
         source_errors,
         highlighted,
@@ -292,7 +320,11 @@ pub(super) fn finding_overview(
             let _ = write!(
                 overview.rendered,
                 "- [{}] ",
-                label(&group.representative["scope_id"])
+                if detailed {
+                    label(&group.representative["scope_id"]).to_owned()
+                } else {
+                    input_label(report, &group.representative["scope_id"])
+                }
             );
             for (index, (dimension, value)) in
                 definition.by.iter().zip(&group.dimensions).enumerate()
@@ -347,7 +379,7 @@ pub(super) fn finding_overview(
                 .as_array()
                 .into_iter()
                 .flatten()
-                .take(3)
+                .take(if detailed { 3 } else { 0 })
             {
                 let reference = &excerpt["occurrence"]["evidence_ref"];
                 let _ = writeln!(
@@ -374,18 +406,18 @@ pub(super) fn finding_overview(
             groups.into_iter().map(|group| group.key).collect(),
         ));
     }
-    if !overview.rendered.is_empty() {
+    if detailed && !overview.rendered.is_empty() {
         overview.rendered.push_str("Groups may overlap. Counts are findings, not unique resources, records or failures. Measured summaries use only matching reported values; missing data stays unknown. Individual findings and citations remain in retained evidence.\n");
     }
     overview
 }
-fn write_evidence(output: &mut String, finding: &Value, max: usize) {
+fn write_evidence(output: &mut String, finding: &Value, max: usize, detailed: bool) {
     if let Some(excerpts) = finding["evidence"].as_array() {
         for excerpt in excerpts.iter().take(max) {
             let reference = &excerpt["occurrence"]["evidence_ref"];
             let _ = writeln!(
                 output,
-                "  Input {}, line {}{} [{}]: {}",
+                "  Input {}, line {}{}{}: {}",
                 excerpt["occurrence"]["input_ordinal"]
                     .as_u64()
                     .map_or_else(|| "unknown".into(), |ordinal| (ordinal + 1).to_string()),
@@ -396,7 +428,14 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
                         ", row {}",
                         escape_controls(path)
                     )),
-                reference["reference_id"].as_str().unwrap_or("source"),
+                if detailed {
+                    format!(
+                        " [{}]",
+                        reference["reference_id"].as_str().unwrap_or("source")
+                    )
+                } else {
+                    String::new()
+                },
                 escape_controls(label(&excerpt["text"]))
             );
         }
@@ -416,58 +455,86 @@ fn source_location(occurrence: &Value) -> String {
     )
 }
 
-fn readable_chain(output: &mut String, chain: &Value) {
-    let identity = chain["identity"]
+fn input_label(report: &Value, scope_id: &Value) -> String {
+    let ordinals = report["scopes"]
         .as_array()
         .into_iter()
         .flatten()
-        .map(|v| {
-            format!(
-                "{}={}",
-                escape_controls(label(&v["field"])),
-                escape_controls(
-                    &v["value"]
-                        .as_str()
-                        .map_or_else(|| v["value"].to_string(), str::to_owned)
-                )
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
+        .find(|scope| scope["id"] == *scope_id)
+        .and_then(|scope| scope["input_ordinals"].as_array());
+    let inputs = ordinals
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_u64)
+        .map(|ordinal| (ordinal + 1).to_string())
+        .collect::<Vec<_>>();
+    format!(
+        "Input {}",
+        if inputs.is_empty() {
+            "unknown".into()
+        } else {
+            inputs.join(", ")
+        }
+    )
+}
+
+fn readable_chain(output: &mut String, chain: &Value) {
     let _ = writeln!(
         output,
-        "- {} ({identity}); {}",
+        "- {} ({}):",
         escape_controls(label(&chain["root_event_name"])),
         source_location(&chain["root"])
     );
-    if chain["ambiguity"] != "none" || chain["completeness"] != "complete" {
-        let _ = writeln!(
-            output,
-            "  Coverage: {}; ambiguity: {}",
-            label(&chain["completeness"]),
-            label(&chain["ambiguity"])
-        );
+    if chain["ambiguity"] != "none" {
+        output.push_str("  Unknown: event identity is ambiguous; no reliable timing.\n");
     }
+    if chain["completeness"] != "complete" {
+        output.push_str("  Coverage is partial; additional events may be missing.\n");
+    }
+    let mut missing = Vec::new();
     for step in chain["steps"].as_array().into_iter().flatten() {
-        let _ = writeln!(
-            output,
-            "  {}: {} observed, {} linked; {} (count {})",
-            escape_controls(label(&step["label"])),
-            step["observed_count"],
-            step["linked_count"],
-            label(&step["status"]).replace('_', " "),
-            label(&step["count_completeness"])
-        );
+        let name = escape_controls(label(&step["label"])).replace('_', " ");
+        if step["status"] == "not_observed" && step["count_completeness"] == "complete" {
+            missing.push(name);
+            continue;
+        }
+        if step["linked_count"] != 1 || step["count_completeness"] != "complete" {
+            let count = step["observed_count"]
+                .as_u64()
+                .map_or_else(|| "unknown".into(), |n| n.to_string());
+            let _ = writeln!(
+                output,
+                "  {name}: {count} observed; {}{}",
+                label(&step["status"]).replace('_', " "),
+                if step["count_completeness"] != "complete" {
+                    "; count incomplete"
+                } else {
+                    ""
+                }
+            );
+        }
         for sample in step["join_samples"].as_array().into_iter().flatten() {
             let interval = &sample["endpoint_interval"];
             let elapsed = if interval["status"] == "measured" {
                 format!("{} {}", interval["value"], label(&interval["unit"]))
             } else {
-                format!("unknown ({})", escape_controls(label(&interval["reason"])))
+                format!(
+                    "unknown ({})",
+                    escape_controls(label(&interval["reason"])).replace('_', " ")
+                )
             };
+            if sample["source"] == chain["root"] && interval["status"] == "measured" {
+                let _ = writeln!(
+                    output,
+                    "  {}: +{elapsed} ({})",
+                    escape_controls(label(&interval["end_operation"])),
+                    source_location(&sample["target"])
+                );
+                continue;
+            }
             let _ = writeln!(
                 output,
-                "    {} -> {}: {elapsed}; {} -> {}",
+                "  {} -> {}: {elapsed}; {} -> {}",
                 escape_controls(label(&interval["start_operation"])),
                 escape_controls(label(&interval["end_operation"])),
                 source_location(&sample["source"]),
@@ -477,7 +544,7 @@ fn readable_chain(output: &mut String, chain: &Value) {
         for outcome in step["outcomes"].as_array().into_iter().flatten() {
             let _ = writeln!(
                 output,
-                "    Outcome [{}]: {} = {}",
+                "  {} outcome: {} = {}",
                 escape_controls(label(&outcome["level"])),
                 escape_controls(label(&outcome["field"])),
                 escape_controls(&outcome["value"].to_string())
@@ -486,17 +553,13 @@ fn readable_chain(output: &mut String, chain: &Value) {
         if step["omitted_occurrences"].as_u64().unwrap_or(0) > 0 {
             let _ = writeln!(
                 output,
-                "    {} occurrences omitted; details retained in evidence.",
+                "  {} {name} occurrences not shown.",
                 step["omitted_occurrences"]
             );
         }
     }
-    if chain["later_activity_observed_count"].as_u64().unwrap_or(0) > 0 {
-        let _ = writeln!(
-            output,
-            "  Later same-context records: {} ({} samples omitted); not proof of this subject's completion.",
-            chain["later_activity_observed_count"], chain["omitted_later_activity"]
-        );
+    if !missing.is_empty() {
+        let _ = writeln!(output, "  Unknown / not observed: {}.", missing.join(", "));
     }
 }
 
@@ -512,13 +575,17 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
     });
     let _ = writeln!(
         output,
-        "Investigation: {} (processing {})",
+        "Investigation: {}{}",
         if incomplete {
             "partial"
         } else {
             label(&report["processing"]["status"])
         },
-        label(&report["processing"]["status"])
+        if detailed || incomplete {
+            format!(" (processing {})", label(&report["processing"]["status"]))
+        } else {
+            String::new()
+        }
     );
     if !report["processing"]["stop"].is_null() {
         let stop = &report["processing"]["stop"];
@@ -530,15 +597,17 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
             label(&stop["limit_name"])
         );
     }
-    let _ = writeln!(
-        output,
-        "Profile: {}",
-        escape_controls(label(&report["report_metadata"]["active_profile"]))
-    );
-    if let Some(selection) =
-        report.pointer("/report_metadata/evidence/query/execution/profile_selection")
-    {
-        let _ = writeln!(output, "Profile selection: {}", label(&selection["status"]));
+    if detailed {
+        let _ = writeln!(
+            output,
+            "Profile: {}",
+            escape_controls(label(&report["report_metadata"]["active_profile"]))
+        );
+        if let Some(selection) =
+            report.pointer("/report_metadata/evidence/query/execution/profile_selection")
+        {
+            let _ = writeln!(output, "Profile selection: {}", label(&selection["status"]));
+        }
     }
     if let Some(inputs) = report["processing"]["inputs"].as_array() {
         for input in inputs {
@@ -546,7 +615,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
             let coverage = &report["report_metadata"]["evidence"]["inputs"][ordinal];
             let _ = writeln!(
                 output,
-                "Input {}: {} — {} bytes, {} parsed records ({})",
+                "Input {}: {} — {}{} parsed records ({})",
                 ordinal + 1,
                 escape_controls(
                     coverage["file"]
@@ -558,7 +627,11 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                             .and_then(Value::as_str))
                         .unwrap_or("unavailable source path")
                 ),
-                input["consumed_bytes"],
+                if detailed {
+                    format!("{} bytes, ", input["consumed_bytes"])
+                } else {
+                    String::new()
+                },
                 coverage["coverage"]["parsed_entries"],
                 label(&input["capture"])
             );
@@ -586,11 +659,15 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
     }
     output.push_str(&overview.source_errors);
     output.push_str(&overview.rendered);
-    output.push_str("\nObserved findings (individual findings page):\n");
+    output.push_str(if detailed {
+        "\nObserved findings (individual findings page):\n"
+    } else {
+        "\nWhat happened (times from each starting event):\n"
+    });
+    let summary_start = output.len();
     if let Some(findings) = report["findings"].as_array() {
         let mut grouped = 0usize;
         let mut highlighted = 0usize;
-        let mut diagnostics = BTreeSet::new();
         for finding in findings {
             if finding["id"]
                 .as_str()
@@ -610,40 +687,30 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                     readable_chain(&mut output, chain);
                     continue;
                 }
-                let is_diagnostic = finding["kind"] == "unknown"
+                if finding["kind"] == "unknown"
                     || finding["id"].as_str().is_some_and(|id| {
                         id.starts_with(&format!("{}-unmatched-", label(&finding["scope_id"])))
-                    });
-                if is_diagnostic {
-                    let key = (label(&finding["scope_id"]), label(&finding["claim"]));
-                    if !diagnostics.insert(key) {
-                        continue;
-                    }
-                    let count = findings
-                        .iter()
-                        .filter(|f| {
-                            f["scope_id"] == finding["scope_id"] && f["claim"] == finding["claim"]
-                        })
-                        .count();
-                    let _ = writeln!(
-                        output,
-                        "- [{}] {}: {} ({} finding{} on this page)",
-                        key.0,
-                        label(&finding["kind"]),
-                        escape_controls(key.1),
-                        count,
-                        if count == 1 { "" } else { "s" }
-                    );
+                    })
+                    || (finding["kind"] == "calculated_fact"
+                        && finding["details"]["unit"] == "records")
+                {
                     continue;
                 }
+                let _ = writeln!(
+                    output,
+                    "- {}: {}",
+                    input_label(report, &finding["scope_id"]),
+                    escape_controls(label(&finding["claim"]))
+                );
+            } else {
+                let _ = writeln!(
+                    output,
+                    "- [{}] {}: {}",
+                    label(&finding["scope_id"]),
+                    label(&finding["kind"]),
+                    escape_controls(label(&finding["claim"]))
+                );
             }
-            let _ = writeln!(
-                output,
-                "- [{}] {}: {}",
-                label(&finding["scope_id"]),
-                label(&finding["kind"]),
-                escape_controls(label(&finding["claim"]))
-            );
             if !finding["details"]["value"].is_null() {
                 let _ = writeln!(
                     output,
@@ -701,7 +768,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                             escape_controls(&outcome["value"].to_string())
                         );
                     }
-                    write_evidence(&mut output, step, 4);
+                    write_evidence(&mut output, step, 4, detailed);
                     if step["omitted_occurrences"].as_u64().unwrap_or(0) > 0 {
                         let _ = writeln!(
                             output,
@@ -719,18 +786,18 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                     chain["omitted_later_activity"],
                     label(&chain["evidence_policy"])
                 );
-                write_evidence(&mut output, finding, usize::MAX);
+                write_evidence(&mut output, finding, usize::MAX, detailed);
             } else {
-                write_evidence(&mut output, finding, 2);
+                write_evidence(&mut output, finding, 2, detailed);
             }
         }
-        if grouped > 0 {
+        if detailed && grouped > 0 {
             let _ = writeln!(
                 output,
                 "{grouped} individual findings on this page are represented in the grouped overview above."
             );
         }
-        if highlighted > 0 {
+        if detailed && highlighted > 0 {
             let _ = writeln!(
                 output,
                 "{highlighted} individual findings on this page are represented in the source error overview above."
@@ -742,23 +809,57 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
             );
         }
     }
-    output.push_str("\nAssessment limits:\n");
-    if let Some(assessments) = report["assessments"].as_array() {
-        for assessment in assessments
-            .iter()
-            .filter(|assessment| assessment["status"] != "supported")
+    if !detailed && output.len() == summary_start {
+        output.push_str("No recognized operations or measured timings on this page.\n");
+    }
+    if detailed {
+        output.push_str("\nAssessment limits:\n");
+        if let Some(assessments) = report["assessments"].as_array() {
+            for assessment in assessments
+                .iter()
+                .filter(|assessment| assessment["status"] != "supported")
+            {
+                let _ = writeln!(
+                    output,
+                    "- {} / {}: {}. {}",
+                    label(&assessment["scope_id"]),
+                    label(&assessment["goal"]),
+                    label(&assessment["status"]),
+                    label(&assessment["reason"])
+                );
+            }
+        }
+        output.push_str("No causal root cause is inferred from counts or resource fingerprints.\n");
+    } else {
+        let mut unknowns: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for assessment in report["assessments"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|a| a["status"] != "supported")
         {
-            let _ = writeln!(
-                output,
-                "- {} / {}: {}. {}",
-                label(&assessment["scope_id"]),
-                label(&assessment["goal"]),
-                label(&assessment["status"]),
-                label(&assessment["reason"])
-            );
+            let goal = match label(&assessment["goal"]) {
+                "failures" => "operation failures",
+                "slow_operations" => "slow operations",
+                "incomplete_lifecycles" => "incomplete operations",
+                other => other,
+            };
+            unknowns
+                .entry(input_label(report, &assessment["scope_id"]))
+                .or_default()
+                .push(goal.replace('_', " "));
+        }
+        if !unknowns.is_empty() {
+            output.push_str("\nUnknown:\n");
+            for (input, goals) in unknowns {
+                let _ = writeln!(
+                    output,
+                    "- {input}: cannot assess {} from the available evidence and profile.",
+                    goals.join(", ")
+                );
+            }
         }
     }
-    output.push_str("No causal root cause is inferred from counts or resource fingerprints.\n");
     if report["presentation"]["omitted_findings"]
         .as_u64()
         .unwrap_or(0)
@@ -797,9 +898,11 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                     .map_or_else(String::new, |cursor| format!(" --report-cursor {cursor}"))
             );
         }
-        output.push_str(
-            "Details: --verbose or --json. Claim verification is optional (evidence --claims).\n",
-        );
+        output.push_str(if detailed {
+            "Details: --verbose or --json. Claim verification is optional (evidence --claims).\n"
+        } else {
+            "Details: --verbose or --json.\n"
+        });
     } else {
         output.push_str(
             "Evidence artifact unavailable; retrieval cannot recover omitted findings.\n",

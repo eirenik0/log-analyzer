@@ -2554,7 +2554,12 @@ fn readable_default_creates_fresh_artifacts_and_reports_observed_errors() {
         assert!(text.starts_with("Investigation: complete"), "{text}");
         assert!(!text.contains("Next action:"), "{text}");
         assert!(text.contains("renderer failed"), "{text}");
-        assert!(text.contains("failures: unsupported"), "{text}");
+        assert!(text.contains("1 observed WARN records"), "{text}");
+        assert!(
+            !text.contains("scope-0") && !text.contains("calculated_fact"),
+            "{text}"
+        );
+        assert!(text.contains("cannot assess operation failures"), "{text}");
         assert!(text.contains("2 parsed records (complete)"), "{text}");
         assert!(!text.contains("--report-cursor"), "{text}");
         let path = text
@@ -2583,6 +2588,7 @@ fn readable_next_command_continues_after_displayed_findings() {
     )
     .unwrap();
     let output = run(&[
+        "--verbose",
         "investigate",
         source.to_str().unwrap(),
         "--artifact",
@@ -2951,10 +2957,10 @@ fn readable_resource_overview_groups_all_captures_and_viewports_without_changing
     );
     let text = String::from_utf8(output.stdout).unwrap();
     for row in [
-        "[scope-0] Viewport: 1280x720, Fingerprint: synthetic reference image — 30 findings",
-        "[scope-0] Viewport: 1920x1080, Fingerprint: synthetic reference image — 7 findings",
-        "[scope-0] Viewport: unknown, Fingerprint: synthetic reference image — 2 findings",
-        "[scope-1] Viewport: 1280x720, Fingerprint: synthetic reference image — 5 findings",
+        "[Input 1] Viewport: 1280x720, Fingerprint: synthetic reference image — 30 findings",
+        "[Input 1] Viewport: 1920x1080, Fingerprint: synthetic reference image — 7 findings",
+        "[Input 1] Viewport: unknown, Fingerprint: synthetic reference image — 2 findings",
+        "[Input 2] Viewport: 1280x720, Fingerprint: synthetic reference image — 5 findings",
     ] {
         assert!(text.contains(row), "missing {row}: {text}");
     }
@@ -2964,11 +2970,7 @@ fn readable_resource_overview_groups_all_captures_and_viewports_without_changing
             .count(),
         4
     );
-    assert!(
-        text.contains(
-            "20 individual findings on this page are represented in the grouped overview"
-        )
-    );
+    assert!(!text.contains("individual findings on this page are represented"));
     let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
     assert_eq!(
         retained["findings"]
@@ -2979,7 +2981,7 @@ fn readable_resource_overview_groups_all_captures_and_viewports_without_changing
             .count(),
         44
     );
-    assert!(text.contains("Counts are findings, not unique resources, records or failures"));
+    assert!(!text.contains("Counts are findings, not unique resources, records or failures"));
 
     let json_artifact = temp.path().join("json-evidence.json");
     let report = success(&[
@@ -3063,12 +3065,12 @@ fn readable_resource_overview_bounds_groups_and_keeps_distinct_fingerprints_sepa
     let text = String::from_utf8(output.stdout).unwrap();
     assert!(
         text.contains(
-            "[scope-0] Viewport: 100x100, Fingerprint: synthetic reference image — 4 findings"
+            "[Input 1] Viewport: 100x100, Fingerprint: synthetic reference image — 4 findings"
         ),
         "{text}"
     );
     assert!(
-        text.contains("[scope-0] Viewport: 100x100, Fingerprint: another reference — 1 findings"),
+        text.contains("[Input 1] Viewport: 100x100, Fingerprint: another reference — 1 findings"),
         "{text}"
     );
     assert_eq!(
@@ -3373,7 +3375,7 @@ fn readable_source_errors_cover_every_input_before_individual_pagination() {
         );
     }
     assert!(
-        text.contains("[scope-0] 5 physical records; 5 distinct source messages"),
+        text.contains("[Input 1] 5 physical records; 5 distinct source messages"),
         "{text}"
     );
     assert!(
@@ -3407,7 +3409,7 @@ fn readable_source_errors_cover_every_input_before_individual_pagination() {
             .unwrap();
         let reference = &finding["evidence"][0]["occurrence"]["evidence_ref"];
         assert!(
-            text.contains(reference["reference_id"].as_str().unwrap()),
+            !text.contains(reference["reference_id"].as_str().unwrap()),
             "{text}"
         );
         assert!(
@@ -4947,8 +4949,7 @@ fn connected_chains_separate_poll_sends_acceptance_completion_and_outcome_levels
     );
     let text = String::from_utf8(readable.stdout).unwrap();
     assert!(text.contains("polls sent: 321 observed"), "{text}");
-    assert!(text.contains("responses observed: 0 observed"));
-    assert!(text.contains("capture completion: 0 observed, 0 linked; not observed"));
+    assert!(text.contains("Unknown / not observed: responses observed, capture completion"));
     let retrieved = success(&[
         "evidence",
         artifact.to_str().unwrap(),
@@ -7098,15 +7099,18 @@ fn readable_chains_show_intervals_and_unknowns_without_helpers() {
                 String::from_utf8_lossy(&result.stderr)
             );
             let text = String::from_utf8(result.stdout).unwrap();
-            assert!(
-                text.contains("item-a") && text.contains("item-b") && text.contains("run-a"),
-                "{text}"
-            );
-            assert!(
-                text.contains("capture completion: 0 observed, 0 linked; not observed"),
-                "{text}"
-            );
             if detailed {
+                for internal in [
+                    "item-a",
+                    "item-b",
+                    "run-a",
+                    "calculated_fact",
+                    "scope-0",
+                    "Assessment limits:",
+                ] {
+                    assert!(text.contains(internal), "{internal}: {text}");
+                }
+                assert!(text.contains("capture completion: 0 observed, 0 linked; not observed"));
                 assert!(
                     text.contains("Recognition:") && text.contains("SHA-256:"),
                     "{text}"
@@ -7118,6 +7122,9 @@ fn readable_chains_show_intervals_and_unknowns_without_helpers() {
             } else {
                 assert!(text.starts_with("Investigation:"), "{text}");
                 for internal in [
+                    "calculated_fact",
+                    "scope-0",
+                    "Assessment limits:",
                     "Next action:",
                     "Join:",
                     "reference_id",
@@ -7127,13 +7134,17 @@ fn readable_chains_show_intervals_and_unknowns_without_helpers() {
                 ] {
                     assert!(!text.contains(internal), "{internal}: {text}");
                 }
-                assert!(text.contains("Claim verification is optional"));
+                assert!(text.contains("Unknown / not observed:"));
+                assert!(text.contains("capture completion"));
+                assert!(text.contains("input 1, line 1") && text.contains("input 1, line 2"));
+                assert!(text.contains("cannot assess operation failures"));
+                assert!(text.lines().count() <= 30, "summary grew too long: {text}");
                 if ambiguous {
-                    assert!(text.contains("reused_root_identity"), "{text}");
+                    assert!(text.contains("event identity is ambiguous"), "{text}");
                     assert!(!text.contains("50.0 ms"), "{text}");
                 } else {
                     assert!(
-                        text.contains("50.0 ms; input 1, line 1 -> input 1, line 3"),
+                        text.contains("capture_end: +50.0 ms (input 1, line 3)"),
                         "{text}"
                     );
                 }

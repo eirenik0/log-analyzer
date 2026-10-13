@@ -266,7 +266,7 @@ pub struct Cli {
     #[arg(long, value_enum, default_value_t = ColorMode::Auto, global = true, env = "LOG_ANALYZER_COLOR")]
     pub color: ColorMode,
 
-    /// Show detailed diagnostics, including investigation joins and provenance
+    /// Show technical findings, scope identities, joins and evidence diagnostics
     #[arg(short, long, action = clap::ArgAction::Count, global = true, env = "LOG_ANALYZER_VERBOSE")]
     pub verbose: u8,
 
