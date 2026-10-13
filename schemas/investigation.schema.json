@@ -2599,7 +2599,7 @@
           ]
         },
         "action_summary": {
-          "type": "object"
+          "$ref": "#/$defs/action_summary"
         }
       },
       "required": [
@@ -2752,7 +2752,7 @@
           "additionalProperties": false
         },
         "action_summary": {
-          "type": "object"
+          "$ref": "#/$defs/action_summary"
         }
       },
       "required": [
@@ -2765,7 +2765,8 @@
         "findings",
         "artifact",
         "presentation",
-        "retrieval"
+        "retrieval",
+        "action_summary"
       ],
       "additionalProperties": false
     },
@@ -3259,6 +3260,194 @@
         "evidence_policy",
         "later_activity_observed_count",
         "omitted_later_activity"
+      ],
+      "additionalProperties": false
+    },
+    "action_summary": {
+      "type": "object",
+      "properties": {
+        "processing": {
+          "enum": [
+            "complete",
+            "partial",
+            "failed"
+          ]
+        },
+        "coverage": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "properties": {
+              "input_ordinal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "capture": {
+                "enum": [
+                  "complete",
+                  "prefix",
+                  "unread"
+                ]
+              },
+              "consumed_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "remaining_bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "selected_entries": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "coverage": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "nonempty_lines": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "parsed_entries": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "rejected_candidates": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "normalization_diagnostic_count": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "structural_diagnostic_count": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "nonempty_lines",
+                  "parsed_entries",
+                  "rejected_candidates",
+                  "normalization_diagnostic_count",
+                  "structural_diagnostic_count"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "input_ordinal",
+              "capture",
+              "consumed_bytes",
+              "remaining_bytes",
+              "selected_entries",
+              "coverage"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "omitted_inputs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "upstream_completeness": {
+          "const": "unknown"
+        },
+        "verification": {
+          "enum": [
+            "not_checked",
+            "verified",
+            "verified_with_unknowns",
+            "needs_revision"
+          ]
+        },
+        "unresolved_questions": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "unresolved_question_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "omitted_question_ids": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "next_command": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_step": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "artifact_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "completion_rule": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "processing",
+        "coverage",
+        "omitted_inputs",
+        "upstream_completeness",
+        "verification",
+        "unresolved_questions",
+        "unresolved_question_count",
+        "omitted_question_ids",
+        "next_command",
+        "next_step",
+        "artifact_sha256",
+        "completion_rule"
       ],
       "additionalProperties": false
     }

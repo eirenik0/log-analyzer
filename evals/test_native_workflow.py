@@ -3,12 +3,41 @@ import unittest
 from native_workflow import fixture, score, metrics, final_json, ANSWER_SCHEMA
 
 
+class NativeVariantMetadataTests(unittest.TestCase):
+    def test_report_hashes_match_each_selected_variants_answer_schema(self):
+        import contextlib, hashlib, io, json, tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from native_workflow import main, ANSWER_SCHEMA_JSON
+        from verification_required import REQUIRED_SCHEMA
+        expected = {'natural-use': hashlib.sha256(ANSWER_SCHEMA_JSON.encode()).hexdigest(),
+                    'verification-required': hashlib.sha256(json.dumps(REQUIRED_SCHEMA, sort_keys=True).encode()).hexdigest()}
+        self.assertNotEqual(*expected.values())
+        def record(root, version, case, model, repeat, limits, variant):
+            return dict(variant=variant, version=version, case=case, model_alias=model, repeat=repeat,
+                        answer_schema_sha256=expected[variant], execution='complete', elapsed_ms=0,
+                        api_equivalent_cost_usd=0, score={}, chain_bundle_commands=0, claim_verification_commands=0)
+        for variants in [['natural-use'], ['verification-required'], list(expected)]:
+            with self.subTest(variants=variants), tempfile.TemporaryDirectory() as folder:
+                argv = ['native_workflow', '--frozen-root', folder, '--run', '--case', 'development', '--models', 'haiku']
+                for variant in variants:
+                    argv.extend(['--variant', variant])
+                with patch('sys.argv', argv), patch('native_workflow.subprocess.check_output', return_value='mock runtime'), \
+                     patch('native_workflow.trial', side_effect=record), contextlib.redirect_stdout(io.StringIO()):
+                    main()
+                report = json.loads((Path(folder) / 'results.json').read_text(encoding='utf-8'))
+                self.assertNotIn('answer_schema_sha256', report)
+                self.assertEqual(report['answer_schema_sha256_by_variant'], {v: expected[v] for v in variants})
+                for row in report['records']:
+                    self.assertEqual(row['answer_schema_sha256'], report['answer_schema_sha256_by_variant'][row['variant']])
+
+
 class NativeWorkflowTests(unittest.TestCase):
     def test_final_tool_burst_cannot_bypass_trial_limit(self):
         import io, json, tempfile
         from pathlib import Path
         from unittest.mock import Mock, patch
-        from native_workflow import prepare_inputs, trial
+        from native_workflow import prepare_inputs, trial, answer_schema_hashes
         answer, _ = self.answer()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -32,6 +61,7 @@ class NativeWorkflowTests(unittest.TestCase):
                      patch('native_workflow.time.monotonic', side_effect=[0, 1, 1]):
                     result = trial(root, 'candidate', 'development', 'haiku', count, limits)
                 sleep.assert_not_called()
+                self.assertEqual(result['answer_schema_sha256'], answer_schema_hashes(['natural-use'])['natural-use'])
                 self.assertEqual(result['tool_calls'], count)
                 self.assertEqual(result['execution'], stop or 'complete')
                 self.assertEqual(result['score']['status'], 'unavailable' if stop else 'passed')

@@ -98,8 +98,6 @@ def candidates(draft, artifact):
     if artifact.get('processing', {}).get('status') is not None:
         draft['claims'].append({'id': 'input-processing', 'kind': 'fact', 'pointer': '/processing/status',
                                 'equals': artifact['processing']['status']})
-    if len(draft['claims']) > 100:
-        raise ValueError('More than 100 candidates; use a targeted --finding-id and new draft path')
     return draft
 
 

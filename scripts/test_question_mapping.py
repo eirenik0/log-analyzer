@@ -61,6 +61,28 @@ class QuestionMappingTests(unittest.TestCase):
         proposed = mapping.candidates(self.draft, artifact)
         self.assertFalse(any('operation' in c for c in proposed['claims']))
 
+    def test_large_inventory_limits_selected_claims_not_candidates(self):
+        artifact = copy.deepcopy(self.artifact)
+        artifact['question_checklist'] = {'required_relationship': ['selected']}
+        artifact['records'] = [
+            {'occurrence': {'line': i + 1}, 'fields': {'classification': {
+                'status': 'event', 'semantics': {'kind': 'event', 'name': f'op-{i:03d}'}}}}
+            for i in range(150)]
+        proposed = mapping.candidates(self.draft, artifact)
+        self.assertEqual(len(proposed['claims']), 152)
+        self.assertEqual(len(mapping.inventory(proposed, artifact)['supported_options']), 152)
+        self.assertEqual(mapping.prepare_plan(artifact)['questions'], [{'id': 'selected'}])
+        chosen = proposed['claims'][-1]
+        plan = {'questions': [{'id': 'selected', 'claim_id': chosen['id'],
+                              'population': {'pointer': '/records', 'operation': chosen['operation']}}],
+                'reviewed_checks': mapping.CHECKS}
+        result = mapping.compile_plan(proposed, artifact, plan)
+        self.assertEqual(len(result['claims']), 1)
+        self.assertEqual(result['claims'][0]['operation']['name'], 'op-149')
+        plan['supporting_claim_ids'] = [c['id'] for c in proposed['claims'][:100]]
+        with self.assertRaisesRegex(ValueError, 'At most 100 claims'):
+            mapping.compile_plan(proposed, artifact, plan)
+
     def test_mappings_preserve_all_ids_and_explicit_unknowns(self):
         self.positive()
         for mutate in [lambda p: p['questions'].pop(),

@@ -67,7 +67,8 @@ log-analyzer investigate captures/*.log
 ```
 
 The default output summarizes what happened, event timings and what remains
-unknown, with per-file coverage and source lines. Calculated-fact labels, scope
+unknown, with per-file coverage and source lines. Standalone analysis gaps remain
+visible even when lifecycle assessments are supported. Calculated-fact labels, scope
 IDs and repeated assessment diagnostics appear only with `--verbose`. A fresh local
 `log-analyzer-evidence-*` directory stores `evidence.json`; its path appears at
 the end. Calculations and evidence references are checked internally before the
@@ -2212,7 +2213,8 @@ for crate ownership, licensing, and the one-time crates.io configuration.
 
 Investigation JSON and evidence output starts with `action_summary`: bounded coverage,
 unresolved question IDs, verification status and one literal `next_command` argv
-before findings. Omitted inputs/IDs stay explicit; upstream completeness stays unknown.
+before findings. Full and brief report schemas require this typed summary.
+Omitted inputs/IDs stay explicit; upstream completeness stays unknown.
 
 For optional claim verification, give each question a stable ID with repeatable
 `investigate --question TEXT` and `--required-relationship ID`. Supply at least

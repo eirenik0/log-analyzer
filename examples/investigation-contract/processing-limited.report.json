@@ -509,5 +509,34 @@
       }
     ],
     "reason": null
+  },
+  "action_summary": {
+    "processing": "partial",
+    "coverage": [
+      {
+        "input_ordinal": 0,
+        "capture": "prefix",
+        "consumed_bytes": 392,
+        "remaining_bytes": null,
+        "selected_entries": 2,
+        "coverage": {
+          "nonempty_lines": 2,
+          "parsed_entries": 2,
+          "rejected_candidates": 0,
+          "normalization_diagnostic_count": 0,
+          "structural_diagnostic_count": null
+        }
+      }
+    ],
+    "omitted_inputs": 0,
+    "upstream_completeness": "unknown",
+    "verification": "not_checked",
+    "unresolved_questions": [],
+    "unresolved_question_count": 0,
+    "omitted_question_ids": 0,
+    "next_command": null,
+    "next_step": null,
+    "artifact_sha256": "23e268a17b26a6e8ef5bb57ea28b6a462938a7a4c28e5e3713a23a44d60def39",
+    "completion_rule": "Every requested question needs a verified claim or an explicit evidence-backed unknown; verification does not validate arbitrary prose."
   }
 }

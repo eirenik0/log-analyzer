@@ -300,7 +300,7 @@ def trial(root, version, case, model, repeat, limits, variant="natural-use"):
     answer,result=final_json(events, structured=True)
     usage=result.get('usage')
     tokens = sum(usage.get(k,0) for k in ['input_tokens','output_tokens','cache_creation_input_tokens','cache_read_input_tokens']) if isinstance(usage,dict) else None
-    return {'variant':'natural-use','version':version,'case':case,'model_alias':model,'repeat':repeat,
+    return {'variant':'natural-use','answer_schema_sha256':hashlib.sha256(ANSWER_SCHEMA_JSON.encode()).hexdigest(),'version':version,'case':case,'model_alias':model,'repeat':repeat,
             'runtime_error':result.get('result') if result.get('is_error') else None,
             'execution':stop or ('complete' if process.returncode == 0 and not result.get('is_error') else 'failed'),
             'elapsed_ms':round((time.monotonic()-started)*1000,3),'tokens':tokens,'exit_code':process.returncode,
@@ -308,6 +308,13 @@ def trial(root, version, case, model, repeat, limits, variant="natural-use"):
             'prompt_sha256':digest(directory/'prompt.txt'),'input_sha256':digest(capture),
             'profile_sha256':digest(selected),'skill_sha256':digest(skill),'binary_sha256':digest(binary),
             'limits':limits,'answer':answer,'score':score(answer if not stop else None,expected),**measured}
+
+
+def answer_schema_hashes(variants):
+    from verification_required import REQUIRED_SCHEMA
+    schemas = {'natural-use': ANSWER_SCHEMA_JSON,
+               'verification-required': json.dumps(REQUIRED_SCHEMA, sort_keys=True)}
+    return {variant: hashlib.sha256(schemas[variant].encode()).hexdigest() for variant in variants}
 
 
 def main():
@@ -331,7 +338,7 @@ def main():
     report={'kind':'matched_native_workflow_trials','runtime':subprocess.check_output(['claude','--version'],text=True).strip(),
             'effort_override':None,'harness_sha256':digest(__file__),'limits':limits,'records':records,
             'answer_transport':'native_structured_output','variants':args.variant or ['natural-use'],
-            'answer_schema_sha256':hashlib.sha256(ANSWER_SCHEMA_JSON.encode()).hexdigest(),
+            'answer_schema_sha256_by_variant':answer_schema_hashes(args.variant or ['natural-use']),
             'limitations':['Native tool access is trusted, not sandboxed. Only public synthetic inputs are supplied.',
                            'Typed findings, source line witnesses and typed summary are checked. Unrestricted explanation prose requires independent review.',
                            'Natural-use and verification-required are separate experiments; required correction/prose-review costs share the trial budget.',

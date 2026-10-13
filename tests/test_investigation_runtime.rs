@@ -7152,3 +7152,97 @@ fn readable_chains_show_intervals_and_unknowns_without_helpers() {
         }
     }
 }
+
+#[test]
+fn readable_summary_preserves_standalone_unknowns_beyond_the_findings_page() {
+    let temp = tempfile::tempdir().unwrap();
+    let resource_rule = RESOURCE_PROFILE
+        .split("[investigation_view]")
+        .next()
+        .unwrap()
+        .split_once("[[resource_observations]]")
+        .unwrap()
+        .1;
+    let profile = temp.path().join("profile.toml");
+    fs::write(
+        &profile,
+        format!(
+            "{}\n[[resource_observations]]{}\n[[resource_observations]]{}",
+            include_str!("../examples/investigations/profile.toml"),
+            resource_rule,
+            resource_rule.replace("id = \"assets\"", "id = \"other-assets\"")
+        ),
+    )
+    .unwrap();
+    let input = temp.path().join("events.jsonl");
+    fs::write(
+        &input,
+        include_str!("../examples/investigations/failure.jsonl"),
+    )
+    .unwrap();
+    let unknown = "No configured resource observation could be established";
+    for (paged, detailed) in [(false, false), (false, true), (true, false)] {
+        if paged {
+            let mut data = include_str!("../examples/investigations/failure.jsonl").to_owned();
+            for index in 0..30 {
+                data.push_str(&format!("{}\n", json!({"timestamp":"2025-01-01T00:00:00Z", "level":"ERROR", "message":format!("synthetic error {index}")})));
+            }
+            fs::write(&input, data).unwrap();
+        }
+        let artifact = temp
+            .path()
+            .join(format!("evidence-{paged}-{detailed}.json"));
+        let mut command = binary();
+        command.current_dir(temp.path()).args([
+            "--profile",
+            profile.to_str().unwrap(),
+            "investigate",
+            input.to_str().unwrap(),
+            "--format",
+            "text",
+            "--artifact",
+            artifact.to_str().unwrap(),
+        ]);
+        if detailed {
+            command.arg("--verbose");
+        }
+        let result = command.output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let text = String::from_utf8(result.stdout).unwrap();
+        let stored: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+        assert!(
+            stored["assessments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|a| a["status"] == "supported"),
+            "{}",
+            stored["assessments"]
+        );
+        assert!(
+            stored["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|f| f["claim"].as_str().is_some_and(|s| s.contains(unknown)))
+                .unwrap()
+                >= if paged { 20 } else { 1 }
+        );
+        assert_eq!(
+            text.matches(unknown).count(),
+            if detailed { 2 } else { 1 },
+            "{text}"
+        );
+        if !detailed {
+            assert!(text.contains("Unknown:"), "{text}");
+            assert!(
+                !text.contains("calculated_fact") && !text.contains("scope-0"),
+                "{text}"
+            );
+        }
+    }
+}

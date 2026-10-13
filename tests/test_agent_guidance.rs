@@ -527,3 +527,74 @@ fn action_summary_precedes_findings_and_keeps_one_executable_next_command() {
     assert!(text.starts_with("{\"action_summary\":"));
     assert!(text.find("\"action_summary\":").unwrap() < text.find("\"findings\":").unwrap());
 }
+
+#[test]
+fn action_summary_schema_requires_the_published_fields_and_types() {
+    let temp = fixture();
+    let full: Value =
+        serde_json::from_str(include_str!("../schemas/investigation.schema.json")).unwrap();
+    let brief: Value =
+        serde_json::from_str(include_str!("../schemas/investigation-brief.schema.json")).unwrap();
+    assert_eq!(
+        full["$defs"]["action_summary"],
+        brief["$defs"]["action_summary"]
+    );
+    for (index, (format, schema)) in [("--json", &full), ("--brief", &brief)]
+        .into_iter()
+        .enumerate()
+    {
+        let report = run(
+            temp.path(),
+            &[
+                "investigate",
+                "captures/input.jsonl",
+                format,
+                "--artifact",
+                &format!("artifact-{index}.json"),
+            ],
+        );
+        let validator = jsonschema::validator_for(schema).unwrap();
+        assert!(validator.is_valid(&report));
+        let mut missing = report.clone();
+        missing.as_object_mut().unwrap().remove("action_summary");
+        assert!(!validator.is_valid(&missing));
+        missing["action_summary"] = serde_json::json!({});
+        assert!(!validator.is_valid(&missing));
+        for field in full["$defs"]["action_summary"]["required"]
+            .as_array()
+            .unwrap()
+        {
+            let mut invalid = report.clone();
+            invalid["action_summary"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field.as_str().unwrap());
+            assert!(!validator.is_valid(&invalid), "missing field {field}");
+        }
+        for (pointer, value) in [
+            ("/processing", serde_json::json!(0)),
+            (
+                "/coverage/0/coverage/parsed_entries",
+                serde_json::json!("8"),
+            ),
+            ("/unresolved_questions", serde_json::json!([{}])),
+            ("/next_command", serde_json::json!("log-analyzer evidence")),
+            ("/artifact_sha256", serde_json::json!("not-a-sha256")),
+            ("/omitted_inputs", serde_json::json!(-1)),
+        ] {
+            let mut invalid = report.clone();
+            *invalid["action_summary"].pointer_mut(pointer).unwrap() = value;
+            assert!(!validator.is_valid(&invalid), "invalid field {pointer}");
+        }
+        let mut unavailable = report.clone();
+        for pointer in [
+            "/next_command",
+            "/next_step",
+            "/artifact_sha256",
+            "/coverage/0/coverage",
+        ] {
+            *unavailable["action_summary"].pointer_mut(pointer).unwrap() = Value::Null;
+        }
+        assert!(validator.is_valid(&unavailable));
+    }
+}

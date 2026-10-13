@@ -47,6 +47,8 @@ class RequiredRunnerControls(unittest.TestCase):
                 result = trial_required(root, 'candidate', 'development', 'haiku', 0, self.limits())
             self.assertEqual(result['execution'], 'complete')
             self.assertEqual(result['variant'], 'verification-required')
+            from native_workflow import answer_schema_hashes
+            self.assertEqual(result['answer_schema_sha256'], answer_schema_hashes(['verification-required'])['verification-required'])
             self.assertEqual(result['correction_attempts'], 1)
             self.assertEqual(result['runner_verification_calls'], 2)
             self.assertAlmostEqual(result['api_equivalent_cost_usd'], .3)

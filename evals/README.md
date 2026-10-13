@@ -382,7 +382,9 @@ does not prove that prose review is accurate.
 Up to two corrections follow specific feedback. Answer attempts, native rechecks
 and prose review share the original wall/tool/output/API-equivalent budget; no
 effort override is added. Records retain acceptance failures, correction attempts,
-review outcomes, phase traces, tokens and total cost. Missing usage stays unknown.
+review outcomes, phase traces, tokens and total cost. `answer_schema_sha256_by_variant`
+records each selected variant's schema hash; trial records carry their own hash.
+Missing usage stays unknown.
 The native tool boundary is trusted, not an OS sandbox. The gate is tailored to
 the public JSON-lines incident and its disclosed domain semantics.
 

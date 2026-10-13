@@ -207,5 +207,34 @@
     "next_cursor": null,
     "targets": [],
     "reason": null
+  },
+  "action_summary": {
+    "processing": "complete",
+    "coverage": [
+      {
+        "input_ordinal": 0,
+        "capture": "complete",
+        "consumed_bytes": 35,
+        "remaining_bytes": 0,
+        "selected_entries": 0,
+        "coverage": {
+          "nonempty_lines": 1,
+          "parsed_entries": 0,
+          "rejected_candidates": 1,
+          "normalization_diagnostic_count": 0,
+          "structural_diagnostic_count": null
+        }
+      }
+    ],
+    "omitted_inputs": 0,
+    "upstream_completeness": "unknown",
+    "verification": "not_checked",
+    "unresolved_questions": [],
+    "unresolved_question_count": 0,
+    "omitted_question_ids": 0,
+    "next_command": null,
+    "next_step": null,
+    "artifact_sha256": "f0fd92349889bd7d4facda308b0ed36bbe54d3ae45e1681db2745095fdfcec5f",
+    "completion_rule": "Every requested question needs a verified claim or an explicit evidence-backed unknown; verification does not validate arbitrary prose."
   }
 }

@@ -14,7 +14,8 @@ python3 -I SKILL_DIR/scripts/map_questions.py --artifact /absolute/evidence.json
 ```
 
 Read the draft inventory and original evidence before selecting claims. Use every
-initial question ID, with exact draft selectors for supported answers and scoped
+initial question ID and select at most 100 claims (the candidate inventory may be larger),
+with exact draft selectors for supported answers and scoped
 finding anchors for unknowns. For example:
 
 ```json

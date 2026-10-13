@@ -49,6 +49,7 @@ use crate::investigation_view::{Aggregate, FindingGroup, InvestigationView, Meas
 
 pub(super) struct FindingOverview {
     source_errors: String,
+    unknowns: BTreeSet<(String, String)>,
     highlighted: BTreeSet<String>,
     rendered: String,
     groups: Vec<(FindingGroup, BTreeSet<String>)>,
@@ -265,6 +266,40 @@ pub(super) fn finding_overview(
     let (source_errors, highlighted) = source_errors(report, detailed);
     let mut overview = FindingOverview {
         source_errors,
+        unknowns: report["findings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|finding| finding["kind"] == "unknown")
+            .filter(|finding| {
+                let scope = &finding["scope_id"];
+                let suffix = label(&finding["id"])
+                    .strip_prefix(label(scope))
+                    .unwrap_or("");
+                let goal = match suffix {
+                    "-lifecycle-unavailable" | "-starts-unavailable" | "-ends-unavailable" => {
+                        "incomplete_lifecycles"
+                    }
+                    "-failures-unavailable" | "-successes-unavailable" => "failures",
+                    _ => return true,
+                };
+                !report["assessments"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|assessment| {
+                        assessment["scope_id"] == *scope
+                            && assessment["goal"] == goal
+                            && assessment["status"] != "supported"
+                    })
+            })
+            .map(|finding| {
+                (
+                    input_label(report, &finding["scope_id"]),
+                    escape_controls(label(&finding["claim"])),
+                )
+            })
+            .collect(),
         highlighted,
         rendered: String::new(),
         groups: Vec::new(),
@@ -849,7 +884,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                 .or_default()
                 .push(goal.replace('_', " "));
         }
-        if !unknowns.is_empty() {
+        if !unknowns.is_empty() || !overview.unknowns.is_empty() {
             output.push_str("\nUnknown:\n");
             for (input, goals) in unknowns {
                 let _ = writeln!(
@@ -857,6 +892,9 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                     "- {input}: cannot assess {} from the available evidence and profile.",
                     goals.join(", ")
                 );
+            }
+            for (input, claim) in &overview.unknowns {
+                let _ = writeln!(output, "- {input}: {claim}");
             }
         }
     }
