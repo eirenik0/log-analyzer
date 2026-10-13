@@ -215,3 +215,9 @@ counts visit one record at a time with an on-disk identity index. Draft generati
 and workflow summaries scan findings incrementally; they retain bounded candidate
 assertions and gap samples with exact omission counts. No claim path reconstructs
 the complete artifact tree.
+
+The recorded retrieval sweep used 1,000 / 5,000 / 20,000 selected records in
+approximately 5 / 25 / 100 MiB artifacts. Across complete-record delivery, exact
+measurement lookup and operation-filtered claim counts, peak RSS stayed between
+8.5 and 11.2 MiB. The largest requests took 140 seconds or less on this run;
+validation time still grows with artifact size.
