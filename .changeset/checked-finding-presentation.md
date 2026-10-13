@@ -28,3 +28,5 @@ subjects and limits explicitly, preserving independent scope boundaries.
 Validate complete replayed chain step results and join samples, rejecting invented
 completion and hidden populations. Explicitly defer completeness after processing
 cutoffs when the artifact does not retain calculation-stage history.
+Bind replayed chain identity, context, scope, root name and ambiguity to retained
+subjects so valid links cannot be relabeled as a different correlation subject.

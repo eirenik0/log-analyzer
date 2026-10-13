@@ -51,6 +51,9 @@ are parsed under raised limits, with only ten selected chain records retained.
 rejects mutually consistent report/artifact edits that invent a completion, remove
 steps or joins, or change counts, ambiguity and completeness. Processing cutoffs
 explicitly defer completeness when calculation-stage history is unavailable.
+[[tests/test_checked_presentation.rs#replay_binds_chain_identity_and_context_to_retained_subjects]]
+rejects coordinated report/artifact changes to chain identities, context identities,
+scope fields, root event names and root ambiguity, even when checked projections agree.
 [[tests/unit/grouped_assurance.rs#grouped_assurance_covers_every_member_and_preserves_scope_boundaries]]
 checks mixed assurance in both representative orders, explicit representative-only
 details and separation of matching dimensions across independent scopes. Configured

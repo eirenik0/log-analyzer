@@ -1312,3 +1312,62 @@ fn replay_rejects_invented_completion_and_incomplete_step_results() {
             .any(|r| r == "chain_completeness_requires_processing_stage_history")
     );
 }
+
+#[test]
+fn replay_binds_chain_identity_and_context_to_retained_subjects() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "identity",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let bytes = fs::read(temp.path().join("identity")).unwrap();
+    let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+    log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+    let id = chain(&report["findings"], "alpha")["id"].clone();
+    for (field, replacement) in [
+        (
+            "identity",
+            json!([{"field":"capture_id","value":"neighbor"},{"field":"session_id","value":"demo"}]),
+        ),
+        (
+            "context_identity",
+            json!([{"field":"session_id","value":"neighbor"}]),
+        ),
+        ("scope_fields", json!(["capture_id"])),
+        ("root_event_name", json!("neighbor")),
+        ("ambiguity", json!("reused_root_identity")),
+    ] {
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        for document in [&mut altered, &mut saved] {
+            let finding = document["findings"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|finding| finding["id"] == id)
+                .unwrap();
+            finding["details"]["event_chain"][field] = replacement.clone();
+            if field == "identity" && finding["checked"].is_object() {
+                finding["checked"]["identity"] = replacement.clone();
+            }
+        }
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        altered["presentation"]["serialized_bytes"] = Value::Null;
+        altered["presentation"]["serialized_characters"] = Value::Null;
+        shape(&altered, false);
+        log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(
+            error
+                .reason
+                .contains(&format!("chain {field} differs from retained population")),
+            "{error}"
+        );
+    }
+}

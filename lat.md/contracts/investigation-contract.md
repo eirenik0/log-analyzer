@@ -168,6 +168,8 @@ Replay allowances cover retained processing limits and usage, including expanded
 rows parsed before selection, so raised investigation limits also apply to validation.
 Replay also checks the complete configured step list, statuses, counts, ambiguity,
 recognition, evidence/outcome samples and join samples against retained records.
+Chain identities, context identities, scope fields, root event names and root
+ambiguity must also match replay, binding links to their retained correlation subject.
 Completeness is checked against replayed parse coverage when processing completed.
 After a cutoff, missing stage history explicitly defers completeness comparisons;
 step counts, statuses and populations remain checked.

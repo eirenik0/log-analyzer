@@ -167,6 +167,17 @@ pub(crate) fn validate(
             if chain["root_occurrences"] != replay["root_occurrences"] {
                 return Err("chain root cardinality differs from retained population".into());
             }
+            for field in [
+                "identity",
+                "context_identity",
+                "scope_fields",
+                "root_event_name",
+                "ambiguity",
+            ] {
+                if chain[field] != replay[field] {
+                    return Err(format!("chain {field} differs from retained population"));
+                }
+            }
             if completeness_available && chain["completeness"] != replay["completeness"] {
                 return Err("chain completeness differs from retained population".into());
             }
