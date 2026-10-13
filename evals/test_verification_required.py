@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from native_workflow import fixture, prepare_inputs, metrics
+from native_workflow import DOMAIN_SEMANTICS, fixture, prepare_inputs, metrics
 from verification_required import Budget, REQUIRED_SCHEMA, PROSE_SCHEMA, trial_required
 from schema import validate, InvalidValue
 
@@ -54,7 +54,8 @@ class RequiredRunnerControls(unittest.TestCase):
 
     def gate(self, accepted, issues=None):
         return {'accepted': accepted, 'issues': issues or [], 'tool_calls': 1,
-                'output_bytes': 100, 'verified_facts': {'status': 'verified'}}
+                'output_bytes': 100, 'verified_facts': {'status': 'verified'},
+                'verified_profile': {'investigation': {'roles': []}}}
 
     def test_missing_verification_feedback_allows_correction_in_shared_budget(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -71,6 +72,14 @@ class RequiredRunnerControls(unittest.TestCase):
             self.assertAlmostEqual(result['api_equivalent_cost_usd'], .3)
             self.assertIn('verification report missing', phases.call_args_list[1].args[2])
             self.assertEqual(phases.call_args_list[-1].kwargs, {'tools': False})
+            review_prompt = phases.call_args_list[-1].args[2]
+            import json
+            review_context = json.loads(review_prompt.split('\n', 1)[1])
+            self.assertEqual(review_context['domain_semantics'], DOMAIN_SEMANTICS)
+            self.assertEqual(review_context['requested_subjects']['capture'], ['Checkpoint alpha', 'zone-a'])
+            self.assertIn('Passed independent', review_context['profile_validation'])
+            self.assertEqual(review_context['verified_profile'], {'investigation': {'roles': []}})
+            self.assertIn('task semantics as authoritative', review_prompt)
 
     def test_verified_claims_do_not_bypass_separate_prose_review(self):
         with tempfile.TemporaryDirectory() as directory:

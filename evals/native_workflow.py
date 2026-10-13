@@ -28,6 +28,13 @@ arrays must contain those exact subject strings without annotations. The summary
 must agree with detailed findings. Do not include prose outside JSON.'''
 
 
+DOMAIN_SEMANTICS = '''Independent domain semantics: checkpoint is a capture start; capture_end and result
+are capture endings regardless of success/failure. close_start and close_end are a
+separate close operation. cached_failure is a cached result, not a network send or
+cause. poll_send and poll_response are distinct physical-record operation types.
+Identity uses session_id plus capture_id. Do not join across sessions or reconstruct
+completion from missing records. Similar operation names may describe different IDs.'''
+
 # The already disclosed answer contract, with no fixture truth or exact identities.
 SUBJECT_ANSWER_SCHEMA = {
     'type': 'object', 'additionalProperties': False,
@@ -240,12 +247,7 @@ Review relevant evidence within {limits['tool_calls']} tool calls and
 {limits['wall_seconds']} seconds; default five-item output pages. Retain exact source
 addresses. Custom scripts require a specific recorded remaining gap.
 
-Independent domain semantics: checkpoint is a capture start; capture_end and result
-are capture endings regardless of success/failure. close_start and close_end are a
-separate close operation. cached_failure is a cached result, not a network send or
-cause. poll_send and poll_response are distinct physical-record operation types.
-Identity uses session_id plus capture_id. Do not join across sessions or reconstruct
-completion from missing records. Similar operation names may describe different IDs.
+{DOMAIN_SEMANTICS}
 
 Question: Did "{expected['capture']['subject']}" and "{expected['other']['subject']}"
 complete in session "{expected['capture']['scope']}"? Measure each supported interval.

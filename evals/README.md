@@ -409,3 +409,5 @@ This check is runner-owned and counts toward the same tool/time/output budget;
 reserve two native calls before prose review. No additional answer fields are needed.
 Versions lacking the required checklist/drafting protocol are marked ineligible
 before model calls, rather than counted as model failures or given a compatibility shim.
+Prose review receives the same disclosed domain semantics and the checked profile,
+so task-provided facts are not mistaken for unsupported model inferences.
