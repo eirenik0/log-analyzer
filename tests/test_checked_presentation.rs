@@ -1977,10 +1977,28 @@ fn replay_checks_source_bindings_without_chain_policy() {
             .position(|f| !f["evidence"].as_array().unwrap().is_empty())
             .unwrap();
         let occurrence = report["findings"][index]["evidence"][0]["occurrence"].clone();
-        for case in ["classification", "display-fields", "stored-fields"] {
+        for case in [
+            "classification",
+            "display-fields",
+            "stored-fields",
+            "record-fields",
+            "record-message",
+        ] {
             let mut altered = report.clone();
             let mut saved = artifact.clone();
-            if case == "classification" {
+            if case.starts_with("record-") {
+                let record = saved["records"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|r| r["occurrence"] == occurrence)
+                    .unwrap();
+                if case == "record-fields" {
+                    record["fields"]["structured_fields"]["capture_id"] = json!("neighbor");
+                } else {
+                    record["message"] = json!("fabricated completion");
+                }
+            } else if case == "classification" {
                 let record = saved["records"]
                     .as_array_mut()
                     .unwrap()
@@ -2014,6 +2032,8 @@ fn replay_checks_source_bindings_without_chain_policy() {
                 .unwrap_err();
             let expected = match case {
                 "classification" => "retained classification differs",
+                "record-fields" => "retained fields differs from parsed record",
+                "record-message" => "retained message differs from parsed record",
                 "display-fields" => "invalid excerpt projection",
                 "stored-fields" => "finding evidence differs from replayed source",
                 _ => unreachable!(),

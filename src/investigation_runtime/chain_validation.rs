@@ -279,6 +279,15 @@ pub(crate) fn validate(
                     "retained classification differs from captured source and profile".into(),
                 );
             }
+            if query["command"].get("Investigate").is_some() {
+                let replay =
+                    source_findings::record(entry, &evidence::Context::default(), &Value::Null);
+                for field in ["entity", "raw_text", "message", "fields"] {
+                    if record[field] != replay[field] {
+                        return Err(format!("retained {field} differs from parsed record"));
+                    }
+                }
+            }
         }
         let mut context = evidence::Context::for_investigation_replay(&config);
         context.observe(&parsed.coverage, &parsed.entries);

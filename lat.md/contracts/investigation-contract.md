@@ -163,7 +163,8 @@ those semantics and keeps its source-verification limitation explicit.
 replays retained sources for every profile, independently of chain policy. It uses
 the parser and, when configured, the chain engine on retained captures and rules to check
 root/source/target counts. Fresh classifications, timestamps and year/offset provenance must equal retained
-record metadata before interval availability or duration is trusted.
+record metadata before interval availability or duration is trusted. Current CLI
+artifacts also bind record entity, raw text, message and decoded fields to parser output.
 Stored filters and exact selectors reconstruct each unaffected input's complete
 selected record population; missing retained records are rejected. It reads no live
 input files. Missing profiles or captures defer this relation explicitly; exhausted
