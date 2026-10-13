@@ -1,8 +1,10 @@
 //! Checks explicit snapshot assertions, never free-text conclusions or causes.
 use super::Result;
+mod view;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::Path};
+use view::Evidence;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -154,7 +156,7 @@ fn review_final(
     json!({"status":if issues.is_empty() && unresolved.is_empty(){"declared_checks_passed"}else if issues.is_empty(){"declared_checks_passed_with_unknowns"}else{"needs_revision"},"issues":issues,"summary_claim_ids":review.summary_claim_ids,"finding_claim_ids":review.finding_claim_ids,"unresolved_question_ids":review.unresolved_question_ids,"acknowledged_prose_checks":review.checks,"limitations":["Claim mappings are checked deterministically; prose checks are caller acknowledgments, not validated prose or causal proof. Unknown facts must be reported explicitly outside the verified observation/measurement claim list."]})
 }
 
-#[derive(Clone, Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, serde::Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct CountOperation {
     kind: crate::config::OperationKind,
@@ -216,11 +218,28 @@ fn complete_occurrence(value: &Value) -> bool {
 }
 
 /// Editable proposals only: never infer missing endings or acknowledge caller review.
-pub(super) fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value> {
+#[cfg(test)]
+fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value> {
+    draft_projection(retained, selected_id, false)
+}
+fn push_draft(claims: &mut Vec<Value>, bytes: &mut u64, claim: Value) -> Result<()> {
+    *bytes += view::check_size(&claim)?;
+    if *bytes > view::LIMIT || claims.len() == 100 {
+        return Err("More than 100 draft assertions or 8 MiB; select one finding with --id".into());
+    }
+    claims.push(claim);
+    Ok(())
+}
+fn draft_projection(
+    retained: &Value,
+    selected_id: Option<&str>,
+    allow_empty: bool,
+) -> Result<Value> {
     if retained["content"] == "redacted" {
         return Err("Source-bound claim drafts require unredacted occurrence identity".into());
     }
     let mut claims = Vec::new();
+    let mut claim_bytes = 0;
     for (fi, finding) in retained["findings"]
         .as_array()
         .into_iter()
@@ -257,7 +276,11 @@ pub(super) fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value
                 if chain["root_event_name"].is_string() {
                     subject["event_name"] = chain["root_event_name"].clone();
                 }
-                claims.push(json!({"id":format!("{id}-link"),"label":format!("Candidate {} -> {} link; confirm requested subject",chain["root_event_name"],step["id"]),"kind":"link","finding_id":finding["id"],"step_id":step["id"],"subject":subject}));
+                push_draft(
+                    &mut claims,
+                    &mut claim_bytes,
+                    json!({"id":format!("{id}-link"),"label":format!("Candidate {} -> {} link; confirm requested subject",chain["root_event_name"],step["id"]),"kind":"link","finding_id":finding["id"],"step_id":step["id"],"subject":subject}),
+                )?;
                 let interval = &join["endpoint_interval"];
                 if interval["status"] == "measured"
                     && interval["unit"] == "ms"
@@ -266,7 +289,11 @@ pub(super) fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value
                     && interval["start_operation"].is_string()
                     && interval["end_operation"].is_string()
                 {
-                    claims.push(json!({"id":format!("{id}-interval"),"label":"Candidate endpoint interval; independently confirm operation meaning", "kind":"interval","pointer":format!("{pointer}/join_samples/{ji}/endpoint_interval"),"expected_ms":interval["value"],"subject":{"snapshot_id":interval["source"]["snapshot_id"],"input_ordinal":interval["source"]["input_ordinal"],"source":interval["source"],"target":interval["target"],"start_operation":interval["start_operation"],"end_operation":interval["end_operation"]}}));
+                    push_draft(
+                        &mut claims,
+                        &mut claim_bytes,
+                        json!({"id":format!("{id}-interval"),"label":"Candidate endpoint interval; independently confirm operation meaning", "kind":"interval","pointer":format!("{pointer}/join_samples/{ji}/endpoint_interval"),"expected_ms":interval["value"],"subject":{"snapshot_id":interval["source"]["snapshot_id"],"input_ordinal":interval["source"]["input_ordinal"],"source":interval["source"],"target":interval["target"],"start_operation":interval["start_operation"],"end_operation":interval["end_operation"]}}),
+                    )?;
                 }
             }
             let evidence = step["evidence"].as_array();
@@ -280,20 +307,24 @@ pub(super) fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value
                     .flatten()
                     .map(|e| e["occurrence"].to_string())
                     .collect();
-                claims.push(json!({"id":format!("{}-{}-count",finding["id"].as_str().unwrap_or("finding"),step["id"].as_str().unwrap_or("step")),"label":"Candidate distinct scoped endpoint records; not total attempts","kind":"distinct_records","pointer":format!("{pointer}/evidence"),"expected":unique.len()}));
+                push_draft(
+                    &mut claims,
+                    &mut claim_bytes,
+                    json!({"id":format!("{}-{}-count",finding["id"].as_str().unwrap_or("finding"),step["id"].as_str().unwrap_or("step")),"label":"Candidate distinct scoped endpoint records; not total attempts","kind":"distinct_records","pointer":format!("{pointer}/evidence"),"expected":unique.len()}),
+                )?;
             }
             if claims.len() > 100 {
                 return Err("More than 100 draft assertions; select one finding with --id".into());
             }
         }
     }
-    if claims.is_empty() {
+    if claims.is_empty() && !allow_empty {
         return Err(
             "No complete supported subject witnesses to draft; retrieve gaps and preserve unknowns"
                 .into(),
         );
     }
-    let checklist = super::artifact::checklist(retained);
+    let checklist = super::artifact::checklist(retained.metadata());
     let mut required = checklist["required_relationship"]
         .as_array()
         .cloned()
@@ -304,6 +335,70 @@ pub(super) fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value
     Ok(
         json!({"version":1,"questions":checklist["question"].as_array().cloned().unwrap_or_default(),"required_claim_ids":required,"claims":claims,"requirements":[],"unresolved":[],"final_review":{"summary_claim_ids":[],"finding_claim_ids":[],"unresolved_question_ids":[],"checks":[]}}),
     )
+}
+
+pub(super) fn draft_indexed(
+    indexed: &super::indexed_artifact::IndexedArtifact,
+    selected_id: Option<&str>,
+) -> Result<Value> {
+    let mut output = draft_projection(&indexed.base, None, true)?;
+    let mut claims = Vec::new();
+    let mut bytes = 0;
+    for (ordinal, node) in indexed
+        .root
+        .field("findings")?
+        .ok_or("missing findings")?
+        .children()
+        .enumerate()
+    {
+        indexed.checkpoint()?;
+        let node = node?;
+        if let Some(id) = selected_id
+            && node.field("id")?.ok_or("missing finding id")?.read(65536)? != id
+        {
+            continue;
+        }
+        if node.pointer("/details/event_chain")?.is_none() {
+            continue;
+        }
+        let mut part = indexed.base.clone();
+        part["findings"] = json!([node.read(indexed.limits.item_bytes.min(view::LIMIT))?]);
+        let mut draft = draft_projection(&part, None, true)?;
+        for mut claim in draft["claims"]
+            .as_array_mut()
+            .ok_or("missing draft claims")?
+            .drain(..)
+        {
+            if let Some(pointer) = claim["pointer"]
+                .as_str()
+                .and_then(|p| p.strip_prefix("/findings/0/"))
+            {
+                claim["pointer"] = json!(format!("/findings/{ordinal}/{pointer}"));
+            }
+            bytes += view::check_size(&claim)?;
+            if bytes > view::LIMIT || claims.len() == 100 {
+                return Err(
+                    "Claim draft exceeds bounded allowance; select one finding with --id".into(),
+                );
+            }
+            claims.push(claim);
+        }
+    }
+    if claims.is_empty() {
+        return Err(
+            "No complete supported subject witnesses to draft; retrieve gaps and preserve unknowns"
+                .into(),
+        );
+    }
+    if output["required_claim_ids"]
+        .as_array()
+        .is_some_and(Vec::is_empty)
+    {
+        output["required_claim_ids"] = json!(claims.iter().map(|c| &c["id"]).collect::<Vec<_>>());
+    }
+    output["claims"] = json!(claims);
+    view::check_size(&output)?;
+    Ok(output)
 }
 
 fn compare_identity(expected: &Value, observed: &Value, keys: &[&str]) -> (Option<bool>, String) {
@@ -357,7 +452,7 @@ fn compare_identity(expected: &Value, observed: &Value, keys: &[&str]) -> (Optio
 }
 
 fn subject_check(
-    retained: &Value,
+    retained: &impl Evidence,
     assertion: &Assertion,
 ) -> Option<(Option<bool>, Value, Value, String)> {
     let (subject, mut observed, mut keys) = match assertion {
@@ -366,9 +461,7 @@ fn subject_check(
             step_id,
             subject: Some(subject),
         } => {
-            let finding = retained["findings"]
-                .as_array()
-                .and_then(|items| items.iter().find(|f| f["id"] == *finding_id));
+            let finding = retained.finding(finding_id).map(|(_, finding)| finding);
             let chain = finding
                 .map(|f| &f["details"]["event_chain"])
                 .unwrap_or(&Value::Null);
@@ -481,14 +574,14 @@ fn subject_check(
             keys.push(key);
         }
     }
-    if retained["content"] == "redacted" {
+    if retained.metadata()["content"] == "redacted" {
         observed = Value::Null;
     }
     let (result, reason) = compare_identity(&expected, &observed, &keys);
     Some((result, expected, observed, reason))
 }
 
-fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'static str) {
+fn check(retained: &impl Evidence, assertion: &Assertion) -> (Option<bool>, Value, &'static str) {
     match assertion {
         Assertion::Fact { pointer, equals } => {
             let observed = retained.pointer(pointer);
@@ -528,9 +621,9 @@ fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'sta
             finding_id,
             step_id,
         } => {
-            let chain = retained["findings"]
-                .as_array()
-                .and_then(|items| items.iter().find(|f| f["id"] == *finding_id))
+            let chain = retained
+                .finding(finding_id)
+                .map(|(_, finding)| finding)
                 .map(|f| &f["details"]["event_chain"]);
             let step = chain
                 .and_then(|c| c["steps"].as_array())
@@ -567,31 +660,7 @@ fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'sta
             expected,
             operation,
         } => {
-            let operation_kind = operation.as_ref().map(|o| json!(o.kind));
-            let count = retained
-                .pointer(pointer)
-                .and_then(Value::as_array)
-                .and_then(|items| {
-                    let mut identities = BTreeSet::new();
-                    for item in items {
-                        if let Some(operation) = operation {
-                            let classification = &item["fields"]["classification"];
-                            if classification["status"] != "event" {
-                                return None;
-                            }
-                            let semantics = &classification["semantics"];
-                            if semantics["kind"] != *operation_kind.as_ref().unwrap()
-                                || semantics["name"] != operation.name
-                            {
-                                continue;
-                            }
-                        }
-                        let occurrence = item.get("occurrence")?;
-                        occurrence.get("evidence_ref")?;
-                        identities.insert(occurrence.to_string());
-                    }
-                    Some(identities.len())
-                });
+            let count = retained.count(pointer, operation.as_ref());
             (
                 count.map(|n| n == *expected),
                 json!(count),
@@ -601,7 +670,7 @@ fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'sta
     }
 }
 fn check_requirements(
-    retained: &Value,
+    retained: &impl Evidence,
     assertions: &Assertions,
     checks: &[Value],
 ) -> Result<(Vec<Value>, BTreeSet<String>)> {
@@ -691,12 +760,10 @@ fn check_requirements(
         }
     }
     for spec in &assertions.requirements {
-        let finding = retained["findings"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .enumerate()
-            .find(|(_, f)| spec.finding_id.as_ref().is_some_and(|id| f["id"] == *id));
+        let finding = spec
+            .finding_id
+            .as_deref()
+            .and_then(|id| retained.finding(id));
         let chain = finding.map(|(_, f)| &f["details"]["event_chain"]);
         let root_matches = chain.is_some_and(|c| {
             complete_occurrence(&c["root"])
@@ -707,7 +774,7 @@ fn check_requirements(
                         .is_none_or(|name| c["root_event_name"] == *name))
         });
         let (ok, reason) = if unknowns.contains(&spec.id) {
-            let redacted_anchor = retained["content"] == "redacted"
+            let redacted_anchor = retained.metadata()["content"] == "redacted"
                 && chain.is_some_and(|c| {
                     occurrence_anchor(&c["root"])
                         && c["root"]["evidence_ref"]["location_redacted"] == true
@@ -817,10 +884,7 @@ fn check_requirements(
                     .0
                     .is_some();
                     (
-                        root_matches
-                            && retained
-                                .pointer(&population.pointer)
-                                .is_some_and(Value::is_array),
+                        root_matches && retained.array_exists(&population.pointer),
                         measurable,
                         "requested_count_available_cannot_declare_unknown",
                     )
@@ -829,7 +893,7 @@ fn check_requirements(
                     root_matches,
                     spec.field
                         .as_ref()
-                        .is_some_and(|f| retained.pointer(&f.pointer).is_some()),
+                        .is_some_and(|f| retained.exists(&f.pointer)),
                     "requested_field_available_cannot_declare_unknown",
                 ),
                 _ => unreachable!(),
@@ -856,7 +920,7 @@ fn check_requirements(
             let bound = match &claim.assertion {
                 Assertion::Interval { pointer, .. } => {
                     chain.is_some_and(|c| complete_occurrence(&c["root"]))
-                        && retained["content"] != "redacted"
+                        && retained.metadata()["content"] != "redacted"
                         && spec.pointer.as_ref() == Some(pointer)
                         && finding.is_some_and(|(index, _)| {
                             pointer.starts_with(&format!(
@@ -877,7 +941,7 @@ fn check_requirements(
                     step_id,
                     ..
                 } => {
-                    retained["content"] != "redacted"
+                    retained.metadata()["content"] != "redacted"
                         && spec.finding_id.as_ref() == Some(finding_id)
                         && spec.step_id.as_ref() == Some(step_id)
                         && finding.is_some_and(|(fi, _)| {
@@ -919,7 +983,7 @@ fn check_requirements(
     Ok((results, unknowns))
 }
 
-pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
+fn read_assertions(path: &Path) -> Result<Assertions> {
     let file = fs::File::open(path)?;
     if file.metadata()?.len() > 1_048_576 {
         return Err("Claims file exceeds 1 MiB".into());
@@ -930,9 +994,25 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
     if bytes.len() > 1_048_576 {
         return Err("Claims file exceeds 1 MiB".into());
     }
-    let mut assertions: Assertions = serde_json::from_slice(&bytes)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+#[cfg(test)]
+pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
+    verify_assertions(retained, read_assertions(path)?)
+}
+pub(super) fn verify_indexed(
+    indexed: &super::indexed_artifact::IndexedArtifact,
+    path: &Path,
+) -> Result<Value> {
+    let assertions = read_assertions(path)?;
+    let view = view::IndexedView::new(indexed, &assertions)?;
+    let result = verify_assertions(&view, assertions)?;
+    view::check_size(&result)?;
+    Ok(result)
+}
+fn verify_assertions(retained: &impl Evidence, mut assertions: Assertions) -> Result<Value> {
     // The initial checklist cannot be silently dropped by a later claims file.
-    let checklist = super::artifact::checklist(retained);
+    let checklist = super::artifact::checklist(retained.metadata());
     for id in checklist["required_relationship"]
         .as_array()
         .into_iter()
@@ -974,6 +1054,7 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
     }
     let mut ids = BTreeSet::new();
     let mut checks = Vec::new();
+    let mut check_bytes = 0;
     for claim in &assertions.claims {
         if claim.id.is_empty() || !ids.insert(claim.id.as_str()) {
             return Err("Claim IDs must be nonempty and unique".into());
@@ -1012,7 +1093,12 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
             Value::Null
         };
         checks.push(json!({"id":claim.id,"label":claim.label,"status":match result {Some(true)=>"verified",Some(false)=>"contradicted",None=>"unavailable"},"assurance":assurance,"identity":identity,"source_citations":citations,"observed":observed,"reason":reason}));
+        check_bytes += view::check_size(checks.last().unwrap())?;
+        if check_bytes > view::LIMIT {
+            return Err("Claim observations exceed 8 MiB".into());
+        }
     }
+    view::check_size(&json!(checks))?;
     let (requirement_results, unresolved_ids) = check_requirements(retained, &assertions, &checks)?;
     let missing: Vec<_> = assertions
         .required_claim_ids

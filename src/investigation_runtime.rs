@@ -3,22 +3,31 @@ mod artifact;
 mod auto_profile;
 pub(crate) mod chains;
 mod claims;
+mod construction;
+mod finding_store;
 mod findings;
+mod grouped;
 mod guidance;
+mod indexed_artifact;
 pub(crate) mod policy;
 mod presentation;
+mod report_checks;
+mod report_stream;
 mod resource_observations;
+mod scope_state;
 mod selection;
+mod source_store;
+
 use crate::{
     cli::{Cli, Commands, InvestigateArgs},
     config, evidence, parser,
     processing::{Budget, Limits},
+    streaming::Capture,
 };
 use serde::Deserialize;
 use serde_json::json;
 use std::{
-    fs::File,
-    io::{Read, Write},
+    io::{Seek, SeekFrom},
     path::Path,
 };
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -75,48 +84,8 @@ pub(super) fn selected(
             .any(|selector| selector.matches(entry, config))
 }
 
-struct Capture {
-    data: Vec<u8>,
-    complete: bool,
-}
 fn capture(path: &Path, budget: &mut Budget) -> Result<Capture> {
-    let mut file = File::open(path)?;
-    let mut data = Vec::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        if !budget.checkpoint("capture", 1) {
-            break;
-        }
-        let remaining = budget.limits.input_bytes.saturating_sub(budget.input_bytes);
-        if remaining == 0 {
-            budget.stop("capture", "input_limit", Some("input_bytes"));
-            break;
-        }
-        let capacity = buffer.len().min(remaining.min(usize::MAX as u64) as usize);
-        // Reservation covers captured storage, JSON escaping and artifact/report copies.
-        if !budget.reserve("capture", (capacity as u64) * 16) {
-            break;
-        }
-        let count = match file.read(&mut buffer[..capacity]) {
-            Ok(count) => count,
-            Err(_) => {
-                budget.stop("capture", "io_error", None);
-                break;
-            }
-        };
-        if count == 0 {
-            return Ok(Capture {
-                data,
-                complete: true,
-            });
-        }
-        budget.input_bytes += count as u64;
-        data.extend_from_slice(&buffer[..count]);
-    }
-    Ok(Capture {
-        data,
-        complete: false,
-    })
+    Ok(Capture::read(path, budget)?)
 }
 
 pub(crate) fn run(cli: &Cli) -> Result<()> {
@@ -129,6 +98,50 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
         result.map_err(|_|"Investigation failed before delivery; inspect local inputs, profile and destinations".into())
     } else {
         result
+    }
+}
+
+use source_store::{Correlated, Entries};
+fn correlate(
+    entries: &Entries,
+    config: &config::AnalyzerConfig,
+    args: &InvestigateArgs,
+    budget: &mut Budget,
+) -> Result<Option<Correlated>> {
+    use crate::correlation_stream::{CorrelationStream, Limits};
+    let mut stream = CorrelationStream::new(
+        config.clone(),
+        Limits {
+            index_bytes: args.correlation_max_index_bytes,
+            disk_bytes: args.correlation_max_disk_bytes,
+            record_bytes: (budget.limits.record_bytes as u64)
+                .saturating_mul(64)
+                .max(65536),
+        },
+    )?;
+    for entry in entries.iter()? {
+        if !budget.checkpoint("correlation", 1) {
+            return Ok(None);
+        }
+        stream.push(entry?)?;
+    }
+    let mut result = Correlated::new(entries)?;
+    let finished = stream.finish(
+        || budget.checkpoint("correlation", 1),
+        |decision| {
+            if let Some(operation) = decision.operation {
+                result.operations.push(&operation)?;
+            }
+            if let Some(unmatched) = decision.unmatched {
+                result.unmatched_events.push(&unmatched)?;
+            }
+            Ok(())
+        },
+    );
+    match finished {
+        Ok(()) => Ok(Some(result)),
+        Err(_) if budget.halted => Ok(None),
+        Err(error) => Err(error),
     }
 }
 
@@ -340,17 +353,25 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut context = evidence::Context::new(cli, &config)?;
     let mut progress = Vec::new();
     let mut captures = Vec::new();
+    let mut spooled = Vec::new();
     let mut processed_ordinals = std::collections::BTreeSet::new();
     let mut parsed_records = 0usize;
     let mut parse_calls = 0usize;
     let snapshot = json!("pending-snapshot");
     let profile_digest = context.metadata(&json!({}), false, &[])["profile_sha256"].clone();
-    let mut records = Vec::new();
+    let construction_item_bytes = (budget.limits.record_bytes as u64)
+        .saturating_mul(64)
+        .max(8 * 1024 * 1024);
+    let construction_disk = construction::Disk::new(args.construction_max_disk_bytes);
+    let mut records = construction::Rows::new(construction_disk.clone(), construction_item_bytes)?;
     let mut scopes = Vec::new();
-    let mut findings = Vec::new();
+    let mut findings =
+        finding_store::Findings::new(construction_disk.clone(), construction_item_bytes)?;
     let mut populations = Vec::new();
-    let mut memberships = Vec::new();
-    let mut sequences = Vec::new();
+    let mut memberships =
+        construction::Memberships::new(construction_disk.clone(), construction_item_bytes)?;
+    let mut sequences =
+        construction::Sequences::new(construction_disk.clone(), construction_item_bytes)?;
     let mut assessments = Vec::new();
     let mut correlation_calls = 0usize;
 
@@ -359,6 +380,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         if budget.stop.is_some() && (!automatic || cached[ordinal].is_none()) {
             budget.affected_scopes.insert(ordinal);
             progress.push(json!({"input_ordinal":ordinal,"capture":"unread","consumed_bytes":0,"consumed_sha256":null,"remaining_bytes":null}));
+            spooled.push(None);
             captures.push(json!({"input_ordinal":ordinal,"capture":"unread","encoding":"utf8","data":null,"data_omitted":true,"original_consumed_sha256":null,"stored_sha256":null}));
             continue;
         }
@@ -374,12 +396,13 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             Err(_) => {
                 budget.stop("capture", "io_error", None);
                 progress.push(json!({"input_ordinal":ordinal,"capture":"unread","consumed_bytes":0,"consumed_sha256":null,"remaining_bytes":null}));
+                spooled.push(None);
                 captures.push(json!({"input_ordinal":ordinal,"capture":"unread","encoding":"utf8","data":null,"data_omitted":true,"original_consumed_sha256":null,"stored_sha256":null}));
                 continue;
             }
         };
-        let hash = evidence::digest(&capture.data);
-        progress.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"consumed_bytes":capture.data.len(),"consumed_sha256":hash,"remaining_bytes":if capture.complete {Some(0)} else {None}}));
+        let hash = capture.sha256.clone();
+        progress.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"consumed_bytes":capture.bytes,"consumed_sha256":hash,"remaining_bytes":if capture.complete {Some(0)} else {None}}));
         let working_memory_start = budget.memory_bytes;
         let collection_start = [
             records.len(),
@@ -390,83 +413,94 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         ];
         budget.begin_stage();
         parse_calls += 1;
-        let mut parsed = match parser::parse_capture(
-            path,
-            &capture.data,
-            capture.complete,
-            &config,
-            &mut budget,
-        ) {
-            Ok(parsed) => parsed,
+        let mut entries = Entries::new(
+            construction_disk.clone(),
+            construction_item_bytes,
+            args.construction_max_disk_bytes,
+        )?;
+        let mut selected_count = 0usize;
+        let coverage = if capture.parseable_utf8 {
+            parser::visit_capture_reader(
+                path,
+                std::io::BufReader::with_capacity(
+                    crate::streaming::CHUNK_BYTES,
+                    capture.file.reopen()?,
+                ),
+                capture.complete,
+                &config,
+                &mut budget,
+                |mut entry| {
+                    entry.source_input_ordinal = Some(ordinal);
+                    if filter.matches(&entry) {
+                        selected_count += usize::from(selected(&entry, &selectors, &config));
+                        entries.push(&entry).map_err(|error| {
+                            parser::ParseError::InvalidLogFormat(error.to_string())
+                        })?;
+                    }
+                    // The callback persists the record; the parser can release its allowance.
+                    Ok(false)
+                },
+            )
+        } else {
+            Err(parser::ParseError::InvalidLogFormat(
+                "capture is not UTF-8".into(),
+            ))
+        };
+        let coverage = match coverage {
+            Ok(mut coverage) => {
+                coverage.input_bytes = capture.bytes;
+                coverage.snapshot_sha256 = hash.clone();
+                coverage
+            }
             Err(_) => {
                 budget.stop("parse", "unsupported", None);
                 let mut parsed = parser::parse_capture(path, b"", false, &config, &mut budget)
                     .map_err(|e| format!("{e:?}"))?;
-                parsed.coverage.nonempty_lines = usize::from(!capture.data.is_empty());
-                parsed.coverage.input_bytes = capture.data.len() as u64;
+                parsed.coverage.nonempty_lines = usize::from(capture.bytes != 0);
+                parsed.coverage.input_bytes = capture.bytes;
                 parsed.coverage.snapshot_sha256 = hash.clone();
-                parsed
+                parsed.coverage
             }
         };
-        for entry in &mut parsed.entries {
-            entry.source_input_ordinal = Some(ordinal);
-        }
-        context.observe_selected(&parsed.coverage, &parsed.entries, |entry| {
-            selected(entry, &selectors, &config)
-        });
-        let mut retained_capture_extra = 0u64;
-        let (encoding, data) = match String::from_utf8(capture.data) {
-            Ok(text) => ("utf8", json!(text)),
-            Err(error) => {
-                let bytes = error.into_bytes();
-                if budget.reserve("artifact_write", (bytes.len() as u64).saturating_mul(64)) {
-                    retained_capture_extra = (bytes.len() as u64).saturating_mul(64);
-                    ("bytes", json!(bytes))
-                } else {
-                    ("omitted_bytes", serde_json::Value::Null)
-                }
-            }
-        };
-        captures.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"encoding":if encoding=="omitted_bytes"{"bytes"}else{encoding},"data":data,"data_omitted":encoding=="omitted_bytes","original_consumed_sha256":hash,"stored_sha256":if encoding=="omitted_bytes"{None}else{Some(hash.clone())}}));
+        entries.seal()?;
+        context.observe_selected_count(&coverage, selected_count);
+        let capture_complete = capture.complete;
+        captures.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"encoding":if capture.utf8 {"utf8"}else{"bytes"},"data":null,"data_omitted":false,"original_consumed_sha256":hash,"stored_sha256":hash}));
+        spooled.push(Some(capture));
         processed_ordinals.insert(ordinal);
-        parsed_records += parsed.entries.len();
+        parsed_records += coverage.parsed_entries;
         budget.active_scope = ordinal;
         budget.begin_stage();
-        let mut entries = Vec::new();
-        for entry in parsed.entries.iter().filter(|entry| filter.matches(entry)) {
+        for entry in entries.iter()? {
+            let entry = entry?;
             if !budget.checkpoint("calculation", 1) {
                 break;
             }
-            if selected(entry, &selectors, &config) {
-                records.push(findings::record(entry, &context, &snapshot));
+            if selected(&entry, &selectors, &config) {
+                records.push(&findings::record(&entry, &context, &snapshot))?;
             }
-            entries.push(entry.clone());
         }
         budget.begin_stage();
         correlation_calls += 1;
-        let perf = crate::perf_analyzer::analyze_performance_checked(
-            &entries,
-            &crate::comparator::LogFilter::new(),
-            None,
-            &config,
-            |work| budget.checkpoint("correlation", work),
-        );
+        let perf = match correlate(&entries, &config, args, &mut budget) {
+            Ok(perf) => perf,
+            Err(error) => {
+                let reason =
+                    if error.to_string().contains("limit") || error.to_string().contains("full") {
+                        "storage_limit"
+                    } else {
+                        "io_error"
+                    };
+                budget.stop("correlation", reason, Some("correlation_state"));
+                None
+            }
+        };
         budget.begin_stage();
-        let scope_aliases = crate::profile_validation::scope_adequacy(&entries, &config, |work| {
-            budget.checkpoint("calculation", work)
-        });
-        budget.begin_stage();
-        let view = selection::View::new(&entries, &selectors, &config, perf.as_ref(), &mut budget);
-        let scope_aliases = scope_aliases.map(|aliases| {
-            aliases
-                .into_iter()
-                .filter(|alias| view.intersects_alias(alias))
-                .collect::<Vec<_>>()
-        });
+        let view = selection::View::new(&entries, &selectors, &config, perf.as_ref(), &mut budget)?;
         let scope_id = format!("scope-{ordinal}");
-        let structural_loss = parsed.coverage.rejected_candidates > 0
-            || !parsed.coverage.normalization_diagnostics.is_empty()
-            || parsed.coverage.is_unparsed();
+        let structural_loss = coverage.rejected_candidates > 0
+            || !coverage.normalization_diagnostics.is_empty()
+            || coverage.is_unparsed();
         let semantic_status = if config.event_classifier().is_none() {
             "unsupported"
         } else if perf.is_some() {
@@ -486,9 +520,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         };
         let coverage = perf.as_ref().map(|_| &view);
         scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":if structural_loss{"partial"}else{"complete"},"analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
-        let severity_complete = capture.complete && !structural_loss && budget.stop.is_none();
+        let severity_complete = capture_complete && !structural_loss && budget.stop.is_none();
         budget.begin_stage();
-        findings::observed_levels(
+        findings::streamed_observed_levels(
             &view.entries,
             &scope_id,
             &context,
@@ -498,9 +532,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             &mut findings,
             &mut populations,
             &mut memberships,
-        );
+        )?;
         for declaration in &config.resource_observations {
-            resource_observations::analyze(
+            resource_observations::analyze_stream(
                 &view.entries,
                 &scope_id,
                 &context,
@@ -508,7 +542,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 declaration,
                 &mut budget,
                 &mut findings,
-            );
+            )?;
         }
         findings::build(
             &entries,
@@ -528,10 +562,10 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             &mut populations,
             &mut memberships,
             &mut sequences,
-        );
+        )?;
         budget.begin_stage();
         if let Some(policy) = &config.investigation {
-            chains::calculate(
+            chains::calculate_stream(
                 policy,
                 &config,
                 &entries,
@@ -542,9 +576,8 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 !structural_loss && budget.stop.is_none(),
                 &mut budget,
                 &mut findings,
-                None,
-            );
-            policy::calculate(
+            )?;
+            policy::calculate_stream(
                 policy,
                 &config,
                 &entries,
@@ -556,25 +589,26 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &mut findings,
                 &mut populations,
                 &mut memberships,
-                None,
-            );
+            )?;
         }
-        if let Some(aliases) = &scope_aliases {
-            findings::scope_aliases(
-                aliases,
-                &entries,
-                &scope_id,
-                &context,
-                &snapshot,
-                &mut budget,
-                &mut findings,
-            );
-        }
+        let scope_aliases = scope_state::analyze(
+            &entries,
+            &view,
+            &config,
+            &scope_id,
+            &context,
+            &snapshot,
+            &mut budget,
+            &mut findings,
+        )?;
         if structural_loss {
             for population in populations.iter_mut().filter(|p| p["scope_id"] == scope_id) {
                 population["completeness"] = json!("partial");
             }
-            for sequence in sequences.iter_mut().filter(|s| s["scope_id"] == scope_id) {
+            for sequence in sequences
+                .headers_mut()
+                .filter(|s| s["scope_id"] == scope_id)
+            {
                 sequence["completeness"] = json!("partial");
             }
         }
@@ -599,9 +633,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             || view.unmatched > 0
             || view.excluded_boundaries > 0
             || !view.reliable
-            || scope_aliases
-                .as_ref()
-                .is_none_or(|aliases| !aliases.is_empty())
+            || scope_aliases.as_ref().is_none_or(|aliases| *aliases != 0)
         {
             "insufficient_evidence"
         } else {
@@ -613,25 +645,17 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "slow_operations",
             "incomplete_lifecycles",
         ] {
-            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if structural_loss{"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && view.classification_loss>0{semantic_status}else if goal=="failures" && !view.entries.is_empty() && !view.failures_supported{if view.some_failures_supported{"insufficient_evidence"}else{"unsupported"}}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.unrecognized_boundaries>0 {"The explicit profile cannot establish opposite-boundary recognition for every selected lifecycle; missing boundaries remain unavailable."}else if structural_loss {"Rejected or unparsed source candidates may contain relevant evidence; retained calculations cover only parsed selected records. See per-input coverage diagnostics."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
+            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if structural_loss{"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && view.classification_loss>0{semantic_status}else if goal=="failures" && !view.entries.is_empty() && !view.failures_supported{if view.some_failures_supported{"insufficient_evidence"}else{"unsupported"}}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.unrecognized_boundaries>0 {"The explicit profile cannot establish opposite-boundary recognition for every selected lifecycle; missing boundaries remain unavailable."}else if structural_loss {"Rejected or unparsed source candidates may contain relevant evidence; retained calculations cover only parsed selected records. See per-input coverage diagnostics."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":[]}));
         }
         // Parsed and correlation working sets end here. Keep an allowance for the
         // JSON evidence and coverage metadata that survive this independent input.
-        let retained_bytes = [
-            &records[collection_start[0]..],
-            &findings[collection_start[1]..],
-            &populations[collection_start[2]..],
-            &memberships[collection_start[3]..],
-            &sequences[collection_start[4]..],
-        ]
-        .iter()
-        .try_fold(
+        let retained_bytes = [&populations[collection_start[2]..]].iter().try_fold(
             context.last_input_serialized_bytes()?,
             |sum, values| -> Result<u64> {
                 Ok(sum.saturating_add(serde_json::to_vec(values)?.len() as u64))
             },
         )?;
-        budget.memory_bytes = working_memory_start.saturating_add(retained_capture_extra);
+        budget.memory_bytes = working_memory_start;
         budget.reserve("calculation", retained_bytes.saturating_mul(16));
     }
     // Unread independent inputs retain their own unavailable analysis scopes.
@@ -680,7 +704,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 population["completeness"] = json!("partial");
             }
         }
-        for sequence in &mut sequences {
+        for sequence in sequences.headers_mut() {
             if affected.contains(sequence["scope_id"].as_str().unwrap()) {
                 sequence["completeness"] = json!("partial");
             }
@@ -689,48 +713,73 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut metadata = crate::build_info::metadata(&config.profile_name);
     metadata["evidence"] = context.metadata(&json!({}), cli.redact, &cli.mask_id);
     let snapshot = metadata["evidence"]["snapshot_id"].clone();
-    for values in [
-        &mut records,
-        &mut findings,
-        &mut memberships,
-        &mut sequences,
-    ] {
-        for value in values.iter_mut() {
-            presentation::bind_snapshot(value, &snapshot);
-        }
-    }
-    for (population, membership) in populations.iter_mut().zip(&memberships) {
-        population["membership"]["sha256"] = json!(evidence::digest(
-            serde_json::to_string(&membership["members"])?.as_bytes()
-        ));
+    for (index, population) in populations.iter_mut().enumerate() {
+        population["membership"]["sha256"] =
+            json!(memberships.digest(index, &snapshot, cli.redact)?);
     }
     metadata["profile_selection"] = auto_profile::summary(&detection);
     // Instrumentation belongs to the effective query and its digest, never to evidence text.
-    metadata["evidence"]["query"]["execution"] = json!({"parse_passes":parse_calls + detection_parse_calls,"analysis_parse_passes":parse_calls,"detection_parse_passes":detection_parse_calls,"correlation_passes":correlation_calls,"input_relationship":"independent_runs","record_max_bytes":budget.limits.record_bytes,"planned_input_bytes":planned_bytes,"working_sets":"sequential_independent_inputs","profile_selection":detection,"source_locations":source_locations});
+    metadata["evidence"]["query"]["execution"] = json!({"parse_passes":parse_calls + detection_parse_calls,"analysis_parse_passes":parse_calls,"detection_parse_passes":detection_parse_calls,"correlation_passes":correlation_calls,"input_relationship":"independent_runs","record_max_bytes":budget.limits.record_bytes,"planned_input_bytes":planned_bytes,"working_sets":"sequential_independent_inputs","correlation_state":{"index_bytes":args.correlation_max_index_bytes,"disk_bytes":args.correlation_max_disk_bytes,"backend":"temporary_files_with_threshold_sqlite_index"},"profile_selection":detection,"source_locations":source_locations});
     metadata["evidence"]["query_sha256"] = json!(evidence::digest(
         metadata["evidence"]["query"].to_string().as_bytes()
     ));
     let mut usage = budget.usage_json();
     usage["records"] = json!(parsed_records);
     let processing = json!({"status":if budget.stop.is_none(){"complete"}else{"partial"},"stop":budget.stop,"limits":budget.limits_json(),"usage":usage,"inputs":progress});
-    findings.sort_by_key(|finding| {
-        let id = finding["id"].as_str().unwrap_or("");
-        if finding["details"]["event_chain"].is_object() {
-            return 0;
+    let mut assessment_witnesses = std::collections::BTreeMap::new();
+    for row in findings.iter()? {
+        let row = row?;
+        let kind = row.value["kind"].as_str().unwrap_or("");
+        if !matches!(kind, "observation" | "measurement" | "calculated_fact") {
+            continue;
         }
-        if id.contains("-chain-") && finding["kind"] == "unknown" {
-            return 1;
+        let scope = row.value["scope_id"]
+            .as_str()
+            .ok_or("missing finding scope")?;
+        let id = row.value["id"].as_str().ok_or("missing finding ID")?;
+        for goal in [
+            "inspection",
+            "failures",
+            "slow_operations",
+            "incomplete_lifecycles",
+        ] {
+            let rank = match goal {
+                "inspection" if id.ends_with("-physical-records-count") => 0,
+                "inspection" if id.ends_with("-normalized-records-count") => 1,
+                "failures" if id.ends_with("-failures-count") => 0,
+                "failures" if id.ends_with("-observed-errors-count") => 1,
+                "slow_operations" if kind == "measurement" => 0,
+                "slow_operations" if id.ends_with("-paired-lifecycles-count") => 1,
+                "incomplete_lifecycles"
+                    if id.ends_with("-starts-count") || id.ends_with("-ends-count") =>
+                {
+                    0
+                }
+                "incomplete_lifecycles" if id.ends_with("-paired-lifecycles-count") => 1,
+                _ => 2,
+            };
+            let witness = assessment_witnesses
+                .entry((scope.to_owned(), goal))
+                .or_insert((rank, row.value["id"].clone()));
+            if rank < witness.0 {
+                *witness = (rank, row.value["id"].clone());
+            }
         }
-        match finding["details"]["resource_status"].as_str() {
-            Some("fingerprint_match") => 1,
-            _ if id.contains("observed-errors") => 2,
-            Some("different_fingerprint" | "unconfigured_fingerprint") => 3,
-            _ if id.contains("observed-warnings") => 4,
-            Some("unavailable") => 5,
-            Some("empty_manifest") => 7,
-            _ => 6,
+    }
+    for assessment in &mut assessments {
+        let key = (
+            assessment["scope_id"]
+                .as_str()
+                .ok_or("missing assessment scope")?
+                .to_owned(),
+            assessment["goal"]
+                .as_str()
+                .ok_or("missing assessment goal")?,
+        );
+        if let Some((_, id)) = assessment_witnesses.get(&key) {
+            assessment["finding_ids"] = json!([id]);
         }
-    });
+    }
     let retention = json!({"policy":"until_deleted","expires_at":null});
     let mut retained = json!({"contract_version":1,"investigation_contract_version":1,"report_metadata":metadata,"processing":processing,"content":"original","effective_profile":serde_json::to_value(&config)?,"effective_profile_omitted":false,"retention":retention,"verification":findings::verification(false, "available")});
     // Move large collections into the artifact; json! would serialize borrowed
@@ -739,11 +788,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         ("scopes", scopes),
         ("assessments", assessments),
         ("populations", populations),
-        ("findings", findings),
-        ("records", records),
+        ("findings", Vec::new()),
+        ("records", Vec::new()),
         ("captured_inputs", captures),
-        ("memberships", memberships),
-        ("sequences", sequences),
+        ("memberships", Vec::new()),
+        ("sequences", sequences.metadata()),
     ] {
         retained[key] = serde_json::Value::Array(values);
     }
@@ -777,25 +826,54 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "A captured byte stream is not complete UTF-8; source text verification is unavailable.",
         );
     }
-    let bytes = artifact::bounded_serialization(&retained, budget.limits.artifact_bytes)?;
-    let mut report = artifact::report(&retained, &artifact_path, bytes.as_deref());
+    // Validate complete private evidence even when the publication cap prevents reuse.
+    // An unavailable artifact must never bypass deterministic fact verification.
+    if !artifact::write_json(
+        &retained,
+        &artifact::ArtifactRows {
+            captures: &spooled,
+            records: &records,
+            memberships: &memberships,
+            sequences: &sequences,
+            findings: &findings,
+        },
+        temporary.as_file_mut(),
+        construction_disk.remaining(),
+    )? {
+        return Err("construction disk byte limit exceeded while staging checked evidence".into());
+    }
+    let artifact_size = temporary.as_file().metadata()?.len();
+    let _staging_reservation = construction_disk.reserve(artifact_size)?;
+    let private_hash = artifact::file_digest(temporary.as_file_mut())?;
+    let hash = if artifact_size <= budget.limits.artifact_bytes {
+        Some(private_hash.clone())
+    } else {
+        None
+    };
+    let mut report = artifact::report(&retained, &artifact_path, hash.as_deref());
+    drop(retained);
+    let mut indexed = indexed_artifact::IndexedArtifact::open(
+        temporary.as_file().try_clone()?,
+        indexed_artifact::Limits {
+            item_bytes: construction_item_bytes,
+            index_bytes: args.construction_max_disk_bytes,
+            state_bytes: args.construction_max_disk_bytes,
+            elapsed_ms: budget.limits.elapsed_ms.max(180_000),
+            work_units: budget.limits.work_units.max(500_000_000),
+        },
+    )?;
+    indexed.validate()?;
     if cli.redact
-        && bytes.is_some()
+        && hash.is_some()
         && let Some(directory) = &auto_directory
     {
-        // This generated handle contains no caller-controlled parent directories.
         report["artifact"]["location"] = json!(format!(
             "{}/evidence.json",
             directory.path().file_name().unwrap().to_string_lossy()
         ));
     }
-    // Validation reparses the exact stored bytes; release the construction tree first.
-    drop(retained);
-    if let Some(bytes) = bytes {
-        // Validate calculations/cross-references against the exact bytes before publishing.
-        crate::investigation::validate_relations(&report, Some(&bytes))?;
+    if hash.is_some() {
         let saved = (|| -> Result<()> {
-            temporary.write_all(&bytes)?;
             temporary.as_file().sync_all()?;
             temporary.persist_noclobber(&artifact_path)?;
             if let Some(directory) = auto_directory {
@@ -812,36 +890,53 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     } else {
         artifact::unavailable(&mut report, "artifact byte limit exceeded");
     }
-    let overview = (!args.brief
-        && matches!(cli.effective_format(), crate::cli::OutputFormat::Text))
-    .then(|| {
-        presentation::finding_overview(
-            &report,
-            config
-                .investigation_view
-                .as_ref()
-                .filter(|_| report["artifact"]["status"] != "unavailable"),
-            cli.redact,
-        )
-    });
-    artifact::present(&mut report, cli, 0)?;
-    if report["artifact"]["status"] == "unavailable" {
-        artifact::reconcile_unavailable(&mut report, cli)?;
-    }
-    crate::investigation::validate_relations(&report, None)?;
-    let report = if args.brief {
-        guidance::brief(&report, cli)
-    } else {
-        report
-    };
-    let rendered = if args.brief || matches!(cli.effective_format(), crate::cli::OutputFormat::Json)
-    {
-        format!("{}\n", serde_json::to_string(&report)?)
-    } else {
-        presentation::text(&report, overview.as_ref().expect("text overview"))
-    };
+    let page = report_stream::Page::build(
+        report,
+        &findings,
+        cli,
+        report_stream::Options {
+            disk: construction_disk.clone(),
+            item_limit: construction_item_bytes,
+            snapshot: &snapshot,
+            redacted: cli.redact,
+            unverifiable: &captures_unverifiable_inputs,
+        },
+    )?;
+    let overview =
+        if !args.brief && matches!(cli.effective_format(), crate::cli::OutputFormat::Text) {
+            Some(presentation::finding_overview(
+                &page.metadata,
+                config
+                    .investigation_view
+                    .as_ref()
+                    .filter(|_| page.metadata["artifact"]["status"] != "unavailable"),
+                cli.redact,
+                || {
+                    Ok(findings.iter()?.map(|row| {
+                        row.map(|row| {
+                            findings.transformed(
+                                &row,
+                                &snapshot,
+                                cli.redact,
+                                &captures_unverifiable_inputs,
+                            )
+                        })
+                    }))
+                },
+            )?)
+        } else {
+            None
+        };
+    report_checks::validate(
+        &page,
+        &findings,
+        &indexed,
+        &private_hash,
+        &construction_disk,
+    )?;
+    let mut rendered = page.render(&findings, cli, args.brief, overview.as_ref())?;
     if let Some(staged) = staged_report
-        && let Err(error) = staged.save_text(&rendered)
+        && let Err(error) = staged.save_reader(&mut rendered)
     {
         if cli.redact {
             eprintln!("Evidence artifact outcome is reported below; saving the report failed");
@@ -851,6 +946,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             );
         }
     }
-    std::io::stdout().lock().write_all(rendered.as_bytes())?;
+    rendered.seek(SeekFrom::Start(0))?;
+    std::io::copy(&mut rendered, &mut std::io::stdout().lock())?;
     Ok(())
 }

@@ -7063,3 +7063,226 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
     assert!(!verify(&missing_summary_unknown).0);
     assert!(verify(&positive).0);
 }
+
+#[test]
+fn spilled_correlation_preserves_retained_facts_and_disk_exhaustion_is_partial() {
+    let resident = tempfile::tempdir().unwrap();
+    let disk = tempfile::tempdir().unwrap();
+    let (resident_report, resident_path) = investigate(
+        resident.path(),
+        &[
+            "--complete-output",
+            "--correlation-max-index-bytes",
+            "1048576",
+        ],
+    );
+    let (disk_report, disk_path) = investigate(
+        disk.path(),
+        &["--complete-output", "--correlation-max-index-bytes", "0"],
+    );
+    assert_eq!(resident_report["processing"]["status"], "complete");
+    assert_eq!(disk_report["processing"]["status"], "complete");
+    let resident: Value = serde_json::from_slice(&fs::read(resident_path).unwrap()).unwrap();
+    let disk: Value = serde_json::from_slice(&fs::read(disk_path).unwrap()).unwrap();
+    for collection in [
+        "records",
+        "findings",
+        "populations",
+        "memberships",
+        "sequences",
+        "scopes",
+        "assessments",
+    ] {
+        assert_eq!(resident[collection], disk[collection], "{collection}");
+    }
+    let limited = tempfile::tempdir().unwrap();
+    let (report, _) = investigate(
+        limited.path(),
+        &[
+            "--complete-output",
+            "--correlation-max-index-bytes",
+            "0",
+            "--correlation-max-disk-bytes",
+            "1",
+        ],
+    );
+    assert_eq!(report["processing"]["status"], "partial");
+    assert_eq!(report["processing"]["stop"]["stage"], "correlation");
+    assert_eq!(report["processing"]["stop"]["reason"], "storage_limit");
+    assert_eq!(report["scopes"][0]["analysis_completion"], "not_performed");
+    assert!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|f| f["kind"] != "measurement")
+    );
+}
+
+#[test]
+fn evidence_nested_collections_and_complete_delivery_obey_item_bounds() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("selected.jsonl");
+    let artifact = temp.path().join("selected-artifact.json");
+    let records = (0..300).map(|i| json!({"ts":"2026-01-01T00:00:00Z","message":format!("selected record {i} é"),"session":"bounded"}).to_string()).collect::<Vec<_>>().join("\n");
+    fs::write(&source, records).unwrap();
+    let report = success(&[
+        "--config",
+        "examples/investigations/profile.toml",
+        "investigate",
+        source.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+    ]);
+    assert_eq!(report["processing"]["status"], "complete");
+    let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    let hash = report["artifact"]["stored_sha256"].as_str().unwrap();
+    let args = [
+        "investigation-evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        hash,
+        "--artifact-max-item-bytes",
+        "32768",
+    ];
+    let retrieve = |collection: &str| {
+        let mut args = args.to_vec();
+        args.extend(["--collection", collection, "--complete-output"]);
+        success(&args)
+    };
+    let complete = retrieve("/records");
+    assert_eq!(complete["artifact_retrieval"]["items"], retained["records"]);
+    assert_eq!(complete["artifact_retrieval"]["displayed"], 300);
+    let membership = retained["populations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["count"] == 300)
+        .unwrap()["membership"]["collection"]
+        .as_str()
+        .unwrap();
+    let nested = retrieve(membership);
+    assert_eq!(
+        &nested["artifact_retrieval"]["items"],
+        retained.pointer(membership).unwrap()
+    );
+    assert_eq!(nested["artifact_retrieval"]["status"], "complete");
+    let sequences = retrieve("/sequences");
+    assert_eq!(sequences["artifact_retrieval"]["status"], "oversized_item");
+    assert_eq!(sequences["artifact_retrieval"]["displayed"], 0);
+    let events = retrieve("/sequences/0/events");
+    assert_eq!(
+        events["artifact_retrieval"]["items"],
+        retained["sequences"][0]["events"]
+    );
+}
+
+#[test]
+fn evidence_validation_limits_publish_no_page_or_output_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let (_, artifact) = investigate(temp.path(), &[]);
+    let bytes = fs::read(&artifact).unwrap();
+    let hash = log_analyzer::evidence::digest(&bytes);
+    for flag in [
+        "--artifact-max-item-bytes",
+        "--artifact-max-index-bytes",
+        "--artifact-max-state-bytes",
+        "--artifact-max-validation-ms",
+        "--artifact-max-validation-work",
+    ] {
+        let destination = temp.path().join(format!("{flag}.json"));
+        let result = run(&[
+            "investigation-evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            &hash,
+            flag,
+            "0",
+            "--output",
+            destination.to_str().unwrap(),
+        ]);
+        assert!(!result.status.success(), "accepted {flag}");
+        assert!(
+            result.stdout.is_empty(),
+            "published facts before validating: {flag}"
+        );
+        assert!(!destination.exists(), "published output after {flag}");
+        assert_eq!(fs::read(&artifact).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn calculated_sources_follow_actual_members_in_a_multi_input_scope() {
+    let temp = tempfile::tempdir().unwrap();
+    let second = temp.path().join("second.jsonl");
+    fs::copy(root().join("examples/investigations/slow.jsonl"), &second).unwrap();
+    let artifact = temp.path().join("multi.json");
+    let mut report = success(&[
+        "--config",
+        "examples/investigations/profile.toml",
+        "investigate",
+        "examples/investigations/slow.jsonl",
+        second.to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--complete-output",
+    ]);
+    let mut value: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    let first_scope = value["scopes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["input_ordinals"] == json!([0]))
+        .unwrap()["id"]
+        .clone();
+    for scope in value["scopes"].as_array_mut().unwrap() {
+        if scope["id"] == first_scope {
+            scope["input_ordinals"] = json!([0, 1]);
+        }
+    }
+    value["content"] = json!("redacted");
+    value["verification"]["source_and_rules"] = json!("unavailable");
+    value["captured_inputs"][1]["data_omitted"] = json!(true);
+    value["captured_inputs"][1]["data"] = Value::Null;
+    value["captured_inputs"][1]["stored_sha256"] = Value::Null;
+    for record in value["records"].as_array_mut().unwrap() {
+        if record["occurrence"]["input_ordinal"] == 1 {
+            record["verification"]["source_and_rules"] = json!("unavailable");
+        }
+    }
+    for finding in value["findings"].as_array_mut().unwrap() {
+        if finding["scope_id"] != first_scope
+            || finding["details"]["calculation"] != "count"
+            || finding["details"]["value"].as_u64().is_none_or(|n| n == 0)
+        {
+            finding["verification"]["source_and_rules"] = json!("unavailable");
+        }
+        if finding["scope_id"] != first_scope {
+            for excerpt in finding["evidence"].as_array_mut().unwrap() {
+                excerpt["verification"]["source_and_rules"] = json!("unavailable");
+            }
+        }
+    }
+    for key in ["scopes", "findings", "populations", "assessments"] {
+        report[key] = value[key].clone();
+    }
+    report["artifact"]["content"] = json!("redacted");
+    report["artifact"]["verification"] = value["verification"].clone();
+    let bytes = serde_json::to_vec(&value).unwrap();
+    let hash = log_analyzer::evidence::digest(&bytes);
+    report["artifact"]["stored_sha256"] = json!(hash);
+    report["presentation"]["serialized_bytes"] = Value::Null;
+    report["presentation"]["serialized_characters"] = Value::Null;
+    log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+    fs::write(&artifact, bytes).unwrap();
+    let result = success(&[
+        "investigation-evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        &hash,
+        "--collection",
+        "/findings",
+        "--complete-output",
+    ]);
+    assert_eq!(result["artifact_retrieval"]["items"], value["findings"]);
+}

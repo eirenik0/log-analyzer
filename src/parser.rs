@@ -249,10 +249,14 @@ fn finish_candidate(
     format: LogFormat,
     path: &Path,
     config: &AnalyzerConfig,
-    entries: &mut Vec<LogEntry>,
+    emit: &mut dyn FnMut(LogEntry) -> Result<bool, ParseError>,
     coverage: &mut ParseCoverage,
+    diagnostic_limit: usize,
     controls: &mut Option<&mut crate::processing::Budget>,
-) {
+) -> Result<(), ParseError> {
+    let memory_before = controls.as_deref().map_or(0, |budget| budget.memory_bytes);
+    let rejected_before = coverage.rejected_candidates;
+
     if let Some(budget) = controls.as_deref_mut()
         && !budget.record(
             text.len(),
@@ -260,11 +264,14 @@ fn finish_candidate(
             false,
         )
     {
-        return;
+        return Ok(());
     }
     coverage.structural_diagnostics.physical_candidate_blocks += 1;
     if let Some(rules) = &config.normalization {
         let mut first_row = true;
+        let mut emission_error = None;
+        let mut retained_any = false;
+        let row_memory_before = std::cell::Cell::new(0);
         let controls = std::cell::RefCell::new(controls.as_deref_mut());
         crate::normalize::visit_normalized(
             text,
@@ -277,6 +284,7 @@ fn finish_candidate(
                         budget.records -= 1;
                         first_row = false;
                     }
+                    row_memory_before.set(budget.memory_bytes);
                     budget.record(text.len(), rules.fields.len(), rules.expand_rows)
                 })
             },
@@ -302,17 +310,41 @@ fn finish_candidate(
                         entry.source_file = Some(crate::evidence::path_label(path));
                         entry.source_row_path = Some(row_path);
                         entry.raw_logline = text.to_string();
-                        entries.push(entry);
+                        match emit(entry) {
+                            Ok(true) => retained_any = true,
+                            Ok(false) => {
+                                if let Some(budget) = controls.borrow_mut().as_deref_mut() {
+                                    budget.memory_bytes = row_memory_before.get();
+                                }
+                            }
+                            Err(error) => {
+                                emission_error = Some(error);
+                                return false;
+                            }
+                        }
+                        coverage.parsed_entries += 1;
                     }
                     Err(diagnostic) => {
                         coverage.rejected_candidates += 1;
+                        if coverage.normalization_diagnostics.len() >= diagnostic_limit {
+                            emission_error = Some(ParseError::InvalidLogFormat(
+                                "Streaming normalization diagnostic limit (20) exceeded".into(),
+                            ));
+                            return false;
+                        }
                         coverage.normalization_diagnostics.push(diagnostic);
                     }
                 }
                 true
             },
         );
-        return;
+        if !retained_any
+            && coverage.rejected_candidates == rejected_before
+            && let Some(budget) = controls.borrow_mut().as_deref_mut()
+        {
+            budget.memory_bytes = memory_before;
+        }
+        return emission_error.map_or(Ok(()), Err);
     }
     if format != LogFormat::JsonLines && !line_starts_entry(text, format) {
         coverage.rejected_candidates += 1;
@@ -329,7 +361,7 @@ fn finish_candidate(
             "unrecognized_leading_block"
         };
         coverage.structural_diagnostics.reject(line_number, reason);
-        return;
+        return Ok(());
     }
     match parse_log_entry_in_format(text, line_number, config, format) {
         Ok(mut entry) => {
@@ -342,10 +374,15 @@ fn finish_candidate(
                 .as_deref_mut()
                 .is_some_and(|budget| !budget.retain_classification(&entry.classification))
             {
-                return;
+                return Ok(());
             }
             entry.source_file = Some(crate::evidence::path_label(path));
-            entries.push(entry);
+            if !emit(entry)?
+                && let Some(budget) = controls.as_deref_mut()
+            {
+                budget.memory_bytes = memory_before;
+            }
+            coverage.parsed_entries += 1;
         }
         Err(_) => {
             coverage.rejected_candidates += 1;
@@ -354,6 +391,7 @@ fn finish_candidate(
                 .reject(line_number, "invalid_selected_record");
         }
     }
+    Ok(())
 }
 
 /// Coverage is measured before filters or severity selection.
@@ -410,8 +448,33 @@ fn parse_lines<'a>(
     path: &Path,
     config: &AnalyzerConfig,
     physical_eof: bool,
-    mut controls: Option<&mut crate::processing::Budget>,
+    controls: Option<&mut crate::processing::Budget>,
 ) -> Result<ParsedLogFile, ParseError> {
+    let mut entries = Vec::new();
+    let coverage = visit_lines(
+        lines,
+        path,
+        config,
+        physical_eof,
+        controls,
+        None,
+        &mut |entry| {
+            entries.push(entry);
+            Ok(true)
+        },
+    )?;
+    Ok(ParsedLogFile { entries, coverage })
+}
+
+fn visit_lines<'a>(
+    lines: impl Iterator<Item = std::io::Result<std::borrow::Cow<'a, str>>>,
+    path: &Path,
+    config: &AnalyzerConfig,
+    physical_eof: bool,
+    mut controls: Option<&mut crate::processing::Budget>,
+    record_limit: Option<usize>,
+    emit: &mut dyn FnMut(LogEntry) -> Result<bool, ParseError>,
+) -> Result<ParseCoverage, ParseError> {
     let mut lines = lines.enumerate();
     let mut samples = Vec::new();
     let mut sample_indices = Vec::new();
@@ -426,7 +489,13 @@ fn parse_lines<'a>(
     };
     if selection == "automatic_sample" {
         let mut nonempty = 0;
-        while nonempty < 10 {
+        let mut sampled_bytes = 0usize;
+        let sample_limit = record_limit
+            .or_else(|| controls.as_deref().map(|budget| budget.limits.record_bytes))
+            .unwrap_or(usize::MAX);
+        while nonempty < 10
+            && ((controls.is_none() && record_limit.is_none()) || samples.len() < 128)
+        {
             let Some((index, line)) = lines.next() else {
                 break;
             };
@@ -449,8 +518,12 @@ fn parse_lines<'a>(
                 continue;
             }
             nonempty += usize::from(!line.trim().is_empty());
+            sampled_bytes = sampled_bytes.saturating_add(line.len()).saturating_add(1);
             sample_indices.push(index);
             samples.push(line);
+            if sampled_bytes >= sample_limit {
+                break;
+            }
         }
     }
     let format = if config.normalization.is_some() {
@@ -499,12 +572,8 @@ fn parse_lines<'a>(
                 },
             );
         }
-        return Ok(ParsedLogFile {
-            entries: Vec::new(),
-            coverage,
-        });
+        return Ok(coverage);
     }
-    let mut entries = Vec::new();
     let mut current_log: Option<String> = None;
     let mut current_line_number = 0;
 
@@ -554,10 +623,15 @@ fn parse_lines<'a>(
                     format,
                     path,
                     config,
-                    &mut entries,
+                    emit,
                     &mut coverage,
+                    if record_limit.is_some() {
+                        20
+                    } else {
+                        usize::MAX
+                    },
                     &mut controls,
-                );
+                )?;
             }
         } else if line_starts_entry(&line, format)
             || looks_like_entry_candidate(&line)
@@ -570,10 +644,15 @@ fn parse_lines<'a>(
                     format,
                     path,
                     config,
-                    &mut entries,
+                    emit,
                     &mut coverage,
+                    if record_limit.is_some() {
+                        20
+                    } else {
+                        usize::MAX
+                    },
                     &mut controls,
-                );
+                )?;
             }
             if controls.as_deref().is_some_and(|budget| budget.halted) {
                 break;
@@ -581,6 +660,15 @@ fn parse_lines<'a>(
             current_log = Some(line.into_owned());
             current_line_number = index + 1;
         } else if let Some(text) = &mut current_log {
+            if controls.is_none()
+                && record_limit.is_some_and(|limit| {
+                    text.len().saturating_add(1).saturating_add(line.len()) > limit
+                })
+            {
+                return Err(ParseError::InvalidLogFormat(
+                    "Multiline record exceeds streaming record limit".into(),
+                ));
+            }
             coverage.structural_diagnostics.attached_nonempty_lines +=
                 usize::from(!line.trim().is_empty());
             if controls.as_deref_mut().is_some_and(|budget| {
@@ -622,17 +710,80 @@ fn parse_lines<'a>(
             format,
             path,
             config,
-            &mut entries,
+            emit,
             &mut coverage,
+            if record_limit.is_some() {
+                20
+            } else {
+                usize::MAX
+            },
             &mut controls,
-        );
+        )?;
     }
-    coverage.parsed_entries = entries.len();
     coverage.structural_diagnostics.observed_status = coverage
         .structural_diagnostics
         .observed_format_matches
         .status();
-    Ok(ParsedLogFile { entries, coverage })
+    Ok(coverage)
+}
+
+/// Yield each parsed record directly to a fallible consumer. No record collection
+/// is retained by this API. The consumer may stop by returning an error.
+/// Format sampling retains at most 128 physical lines / ten nonempty lines,
+/// stopping once accumulated text reaches the record cap (at most two caps).
+/// Physical and multiline records are limited by `record_max_bytes`. More than
+/// twenty normalization diagnostics returns an error to bound retained coverage.
+/// Consumer-owned state is outside these limits.
+pub fn visit_log_file(
+    path: impl AsRef<Path>,
+    config: &AnalyzerConfig,
+    record_max_bytes: usize,
+    mut emit: impl FnMut(LogEntry) -> Result<(), ParseError>,
+) -> Result<ParseCoverage, ParseError> {
+    config
+        .validate_event_rules()
+        .map_err(ParseError::InvalidLogFormat)?;
+    let path = path.as_ref();
+    let source = crate::evidence::SnapshotReader::new(File::open(path)?);
+    let mut reader = BufReader::with_capacity(crate::streaming::CHUNK_BYTES, source);
+    let lines = crate::streaming::Lines::new(&mut reader, record_max_bytes, true, false);
+    let mut coverage = visit_lines(
+        lines,
+        path,
+        config,
+        true,
+        None,
+        Some(record_max_bytes),
+        &mut |entry| emit(entry).map(|()| true),
+    )?;
+    let (hash, bytes) = reader.into_inner().finish();
+    coverage.snapshot_sha256 = hash;
+    coverage.input_bytes = bytes;
+    Ok(coverage)
+}
+
+pub(crate) fn visit_capture_reader(
+    path: &Path,
+    reader: impl BufRead,
+    physical_eof: bool,
+    config: &AnalyzerConfig,
+    budget: &mut crate::processing::Budget,
+    mut emit: impl FnMut(LogEntry) -> Result<bool, ParseError>,
+) -> Result<ParseCoverage, ParseError> {
+    config
+        .validate_event_rules()
+        .map_err(ParseError::InvalidLogFormat)?;
+    let lines =
+        crate::streaming::Lines::new(reader, budget.limits.record_bytes, physical_eof, true);
+    visit_lines(
+        lines,
+        path,
+        config,
+        physical_eof,
+        Some(budget),
+        None,
+        &mut emit,
+    )
 }
 
 /// Parse the retained capture once. A cutoff never closes a pending physical record.

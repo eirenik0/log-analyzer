@@ -424,3 +424,56 @@ pub(super) fn workflow(
         "gaps":gaps,"omitted_gaps":gap_count.saturating_sub(gaps.len()),"next_action":next,
         "limitations":["Questions and required relationships are caller-declared; no automatic question interpretation.","Delivery does not establish review or understanding. No observed recognized event is not proof of absence. Recognition gaps require independent source inspection; the analyzer cannot infer unsupported source semantics."]})
 }
+
+/// Fixed-size workflow samples with exact counts across a streamed page.
+#[derive(Clone, Default)]
+pub(super) struct WorkflowSummary {
+    chain_ids: Vec<Value>,
+    chain_count: usize,
+    root_gaps: Vec<Value>,
+    step_gaps: Vec<Value>,
+    gap_count: usize,
+}
+impl WorkflowSummary {
+    pub fn observe(&mut self, report: &Value, finding: &Value) {
+        let chain = finding["details"].get("event_chain").is_some();
+        if chain {
+            self.chain_count += 1;
+            if self.chain_ids.len() < 5 {
+                self.chain_ids.push(finding["id"].clone());
+            }
+        }
+        if !chain && finding["details"].get("gap_classification").is_none() {
+            return;
+        }
+        let part = json!({"findings":[finding],"processing":report["processing"],"retrieval":report["retrieval"]});
+        let sample = workflow(&part, &[], &[], &[]);
+        let gaps = sample["gaps"].as_array().unwrap();
+        self.gap_count += gaps.len() + sample["omitted_gaps"].as_u64().unwrap_or(0) as usize;
+        for gap in gaps {
+            let selected = if gap["step_id"] == "$root" {
+                &mut self.root_gaps
+            } else {
+                &mut self.step_gaps
+            };
+            if selected.len() < 5 {
+                selected.push(gap.clone());
+            }
+        }
+    }
+    pub fn apply(&self, guidance: &mut Value) {
+        let mut gaps = self.root_gaps.clone();
+        gaps.extend(
+            self.step_gaps
+                .iter()
+                .take(5usize.saturating_sub(gaps.len()))
+                .cloned(),
+        );
+        let workflow = &mut guidance["workflow"];
+        workflow["chain_finding_ids"] = json!(self.chain_ids);
+        workflow["omitted_chain_finding_ids"] =
+            json!(self.chain_count.saturating_sub(self.chain_ids.len()));
+        workflow["omitted_gaps"] = json!(self.gap_count.saturating_sub(gaps.len()));
+        workflow["gaps"] = json!(gaps);
+    }
+}

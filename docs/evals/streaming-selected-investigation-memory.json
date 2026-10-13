@@ -1,0 +1,74 @@
+{
+  "scope": "end-to-end CLI: capture, parse, select, correlate, construct, validate, publish artifact and deliver report; every record selected; every start precedes all completions",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "96ddd5ac3e912ae747d7302b9a031e4faaee1aede2cef0fa563e2d8956961cd0",
+  "baseline": false,
+  "record_bytes": 262144,
+  "correlation_index_bytes": 1048576,
+  "processing_memory_bytes": 4294967296,
+  "processing_records": 1000000,
+  "rss_ceiling_bytes": 100663296,
+  "rss_growth_tolerance_bytes": 25165824,
+  "measurements": [
+    {
+      "selected_records": 1000,
+      "paired_measurements": 500,
+      "delivery": "default_page",
+      "source_bytes": 181280,
+      "source_sha256": "9e0b84a48ac12bc4e0c9779525132596cadc806b1e4c1ec3f308a6269f9fb078",
+      "artifact_bytes": 5183063,
+      "peak_rss_bytes": 16023552,
+      "elapsed_seconds": 5.1835
+    },
+    {
+      "selected_records": 5000,
+      "paired_measurements": 2500,
+      "delivery": "default_page",
+      "source_bytes": 910280,
+      "source_sha256": "b068f206d3ef535812782ff111d5ef03028cf0c28bffcb80fe11b71ab4ac08ee",
+      "artifact_bytes": 25899081,
+      "peak_rss_bytes": 16728064,
+      "elapsed_seconds": 26.0917
+    },
+    {
+      "selected_records": 20000,
+      "paired_measurements": 10000,
+      "delivery": "default_page",
+      "source_bytes": 3647780,
+      "source_sha256": "2b061dcbf807370b0e114ca09ce6fb6496568a790d6402a8d47f5797795924d2",
+      "artifact_bytes": 103704125,
+      "peak_rss_bytes": 18219008,
+      "elapsed_seconds": 89.6182
+    },
+    {
+      "selected_records": 1000,
+      "paired_measurements": 500,
+      "delivery": "complete",
+      "source_bytes": 181280,
+      "source_sha256": "9e0b84a48ac12bc4e0c9779525132596cadc806b1e4c1ec3f308a6269f9fb078",
+      "artifact_bytes": 5183063,
+      "peak_rss_bytes": 16891904,
+      "elapsed_seconds": 4.6403
+    },
+    {
+      "selected_records": 5000,
+      "paired_measurements": 2500,
+      "delivery": "complete",
+      "source_bytes": 910280,
+      "source_sha256": "b068f206d3ef535812782ff111d5ef03028cf0c28bffcb80fe11b71ab4ac08ee",
+      "artifact_bytes": 25899081,
+      "peak_rss_bytes": 16826368,
+      "elapsed_seconds": 24.7691
+    },
+    {
+      "selected_records": 20000,
+      "paired_measurements": 10000,
+      "delivery": "complete",
+      "source_bytes": 3647780,
+      "source_sha256": "2b061dcbf807370b0e114ca09ce6fb6496568a790d6402a8d47f5797795924d2",
+      "artifact_bytes": 103704125,
+      "peak_rss_bytes": 21397504,
+      "elapsed_seconds": 102.2331
+    }
+  ]
+}

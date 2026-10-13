@@ -1,18 +1,14 @@
 //! Exact selected view of already-correlated occurrences; never pairs again.
-use super::{Selector, selected};
+use super::{Result, Selector, selected, source_store::Entries};
+use crate::disk_index::DiskIndex;
 use crate::event_rules::{Adapter, EventRule, EventSemantics, Outcome, Phase, ValueMapping};
 use crate::{
-    config::AnalyzerConfig,
-    event_rules::ClassifiedRecord,
-    parser::LogEntry,
-    perf_analyzer::{PerfAnalysisResults, SourceLocation},
-    processing::Budget,
+    config::AnalyzerConfig, event_rules::ClassifiedRecord, parser::LogEntry,
+    perf_analyzer::SourceLocation, processing::Budget,
 };
-use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
-pub(super) struct View<'a> {
-    pub entries: Vec<&'a LogEntry>,
-    sources: BTreeSet<(usize, Option<&'a str>)>,
+use std::collections::BTreeMap;
+pub(super) struct View {
+    pub entries: Entries,
     pub relevant: usize,
     pub classified: usize,
     pub boundaries: usize,
@@ -33,20 +29,18 @@ pub(super) struct View<'a> {
     pub pair_supported: bool,
     pub boundary_requirements: usize,
     pub unrecognized_boundaries: usize,
-    recognizable_starts: BTreeSet<(usize, Option<&'a str>)>,
-    recognizable_ends: BTreeSet<(usize, Option<&'a str>)>,
+    recognizable: DiskIndex,
 }
-impl<'a> View<'a> {
+impl View {
     pub fn new(
-        entries: &'a [LogEntry],
+        entries: &Entries,
         selectors: &[Selector],
         config: &AnalyzerConfig,
-        perf: Option<&PerfAnalysisResults>,
+        perf: Option<&super::Correlated>,
         budget: &mut Budget,
-    ) -> Self {
+    ) -> Result<Self> {
         let mut view = Self {
-            entries: Vec::new(),
-            sources: BTreeSet::new(),
+            entries: entries.empty_like()?,
             relevant: 0,
             classified: 0,
             boundaries: 0,
@@ -67,19 +61,20 @@ impl<'a> View<'a> {
             pair_supported: true,
             boundary_requirements: 0,
             unrecognized_boundaries: 0,
-            recognizable_starts: BTreeSet::new(),
-            recognizable_ends: BTreeSet::new(),
+            recognizable: DiskIndex::new(entries.len() as u64, entries.state_bytes)?,
         };
-        for entry in entries {
+        for entry in entries.iter()? {
+            let entry = entry?;
             if !budget.checkpoint("calculation", 1) {
                 break;
             }
-            if !selected(entry, selectors, config) {
+            if !selected(&entry, selectors, config) {
                 continue;
             }
-            view.entries.push(entry);
-            view.sources
-                .insert((entry.source_line_number, entry.source_row_path.as_deref()));
+            view.entries.push(&entry)?;
+            if matches!(entry.classification, Some(ClassifiedRecord::Event { .. })) {
+                view.reliable &= !entry.timestamp_year_inferred && entry.source_timestamp.is_some();
+            }
             match &entry.classification {
                 Some(ClassifiedRecord::Event { semantics, .. }) => {
                     view.classified += 1;
@@ -102,27 +97,25 @@ impl<'a> View<'a> {
                 _ => {}
             }
         }
-        let mut observed = BTreeMap::new();
-        for entry in &view.entries {
+        view.entries.seal()?;
+        let mut observed = DiskIndex::new(view.entries.len() as u64, entries.state_bytes)?;
+        for entry in view.entries.iter()? {
+            let entry = entry?;
             if !budget.checkpoint("calculation", 1) {
                 break;
             }
             if let Some(ClassifiedRecord::Event { semantics, .. }) = &entry.classification {
-                let caps: &mut Capabilities = observed
-                    .entry((
-                        semantics.kind.label(),
-                        semantics.name.as_str(),
-                        &semantics.scope,
-                        &semantics.correlation_id,
-                    ))
-                    .or_default();
+                let key = capability_key(semantics)?;
+                let mut caps = Capabilities::decode(observed.get(&key)?.unwrap_or(0));
                 caps.start |= semantics.phase == Some(Phase::Start);
                 caps.end |= semantics.phase == Some(Phase::End);
                 caps.success |= semantics.outcome == Some(Outcome::Success);
                 caps.failure |= semantics.outcome == Some(Outcome::Failure);
+                observed.replace(&key, caps.encode())?;
             }
         }
-        'capabilities: for entry in &view.entries {
+        'capabilities: for entry in view.entries.iter()? {
+            let entry = entry?;
             if !budget.checkpoint("calculation", 1) {
                 break;
             }
@@ -134,15 +127,8 @@ impl<'a> View<'a> {
             else {
                 continue;
             };
-            let mut caps = observed
-                .get(&(
-                    semantics.kind.label(),
-                    semantics.name.as_str(),
-                    &semantics.scope,
-                    &semantics.correlation_id,
-                ))
-                .copied()
-                .unwrap_or_default();
+            let mut caps =
+                Capabilities::decode(observed.get(&capability_key(semantics)?)?.unwrap_or(0));
             if let Some(classifier) = config.event_classifier() {
                 if !budget.checkpoint(
                     "calculation",
@@ -185,13 +171,13 @@ impl<'a> View<'a> {
             view.starts_supported &= caps.start;
             view.ends_supported &= caps.end;
             view.pair_supported &= caps.start && caps.end;
-            let source = (entry.source_line_number, entry.source_row_path.as_deref());
-            if caps.start {
-                view.recognizable_starts.insert(source);
-            }
-            if caps.end {
-                view.recognizable_ends.insert(source);
-            }
+            view.recognizable.insert(
+                &super::source_store::address(
+                    entry.source_line_number,
+                    entry.source_row_path.as_deref(),
+                )?,
+                caps.encode(),
+            )?;
             let required = match semantics.phase {
                 Some(Phase::Start) if semantics.end_expected => Some(caps.end),
                 Some(Phase::End) => Some(caps.start),
@@ -210,23 +196,25 @@ impl<'a> View<'a> {
             view.ends_supported = false;
         }
         if let Some(perf) = perf {
-            for operation in &perf.operations {
+            for operation in perf.operations.iter()? {
+                let operation = operation?;
                 if !budget.checkpoint("calculation", 1) {
                     break;
                 }
-                let start = view.source_selected(&operation.start_source);
-                let end = view.source_selected(&operation.end_source);
+                let start = view.source_selected(&operation.start_source)?;
+                let end = view.source_selected(&operation.end_source)?;
                 if start && end {
                     view.pairs += 1;
                 } else if start || end {
                     view.excluded_boundaries += 1;
                 }
             }
-            for event in &perf.unmatched_events {
+            for event in perf.unmatched_events.iter()? {
+                let event = event?;
                 if !budget.checkpoint("calculation", 1) {
                     break;
                 }
-                if !view.source_selected(&event.source) {
+                if !view.source_selected(&event.source)? {
                     continue;
                 }
                 view.unmatched += 1;
@@ -250,42 +238,42 @@ impl<'a> View<'a> {
                 }
             }
         }
-        // Only selected lifecycle evidence affects chronology support.
-        view.reliable = view
-            .entries
-            .iter()
-            .filter(|entry| matches!(entry.classification, Some(ClassifiedRecord::Event { .. })))
-            .all(|entry| !entry.timestamp_year_inferred && entry.source_timestamp.is_some());
-        view
+        Ok(view)
     }
-    pub fn boundary_supported(&self, entry: &LogEntry, phase: Phase) -> bool {
+    pub fn boundary_supported(&self, entry: &LogEntry, phase: Phase) -> Result<bool> {
         if self.classification_loss > 0 {
-            return false;
+            return Ok(false);
         }
-        let source = (entry.source_line_number, entry.source_row_path.as_deref());
-        match phase {
-            Phase::Start => self.recognizable_starts.contains(&source),
-            Phase::End => self.recognizable_ends.contains(&source),
-        }
-    }
-    fn source_selected(&self, source: &SourceLocation) -> bool {
-        self.sources
-            .contains(&(source.line, source.row_path.as_deref()))
-    }
-    pub fn contains(&self, entry: &LogEntry) -> bool {
-        self.sources
-            .contains(&(entry.source_line_number, entry.source_row_path.as_deref()))
-    }
-    pub fn intersects_alias(&self, alias: &Value) -> bool {
-        alias["witnesses"].as_array().is_some_and(|witnesses| {
-            witnesses.iter().any(|source| {
-                source["line"].as_u64().is_some_and(|line| {
-                    self.sources
-                        .contains(&(line as usize, source["row_path"].as_str()))
-                })
-            })
+        let caps = Capabilities::decode(
+            self.recognizable
+                .get(&super::source_store::address(
+                    entry.source_line_number,
+                    entry.source_row_path.as_deref(),
+                )?)?
+                .unwrap_or(0),
+        );
+        Ok(match phase {
+            Phase::Start => caps.start,
+            Phase::End => caps.end,
         })
     }
+    fn source_selected(&self, source: &SourceLocation) -> Result<bool> {
+        Ok(self
+            .entries
+            .ordinal(source.line, source.row_path.as_deref())?
+            .is_some())
+    }
+    pub fn contains(&self, entry: &LogEntry) -> Result<bool> {
+        self.entries.contains(entry)
+    }
+}
+fn capability_key(semantics: &EventSemantics) -> Result<Vec<u8>> {
+    Ok(serde_json::to_vec(&(
+        semantics.kind.label(),
+        &semantics.name,
+        &semantics.scope,
+        &semantics.correlation_id,
+    ))?)
 }
 
 #[derive(Default, Clone, Copy)]
@@ -294,6 +282,22 @@ struct Capabilities {
     end: bool,
     success: bool,
     failure: bool,
+}
+impl Capabilities {
+    fn encode(self) -> u64 {
+        u64::from(self.start)
+            | (u64::from(self.end) << 1)
+            | (u64::from(self.success) << 2)
+            | (u64::from(self.failure) << 3)
+    }
+    fn decode(bits: u64) -> Self {
+        Self {
+            start: bits & 1 != 0,
+            end: bits & 2 != 0,
+            success: bits & 4 != 0,
+            failure: bits & 8 != 0,
+        }
+    }
 }
 fn maps(mapping: Option<&ValueMapping>, target: &str, adapter: &Adapter) -> bool {
     match mapping {

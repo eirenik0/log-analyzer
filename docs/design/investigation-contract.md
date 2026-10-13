@@ -196,6 +196,17 @@ revalidates inputs, configuration and analysis contracts rather than reusing sta
 facts. Redacted artifacts cannot reconstruct discarded original bytes or grant a
 less restrictive output view.
 
+The streaming implementation preserves version-1 JSON rather than migrating retained
+artifacts to SQLite. Retrieval hashes a private immutable copy, builds temporary
+file offset/reference indexes, and validates bounded projections plus global
+membership/order/arithmetic invariants before publishing any page. Exact finding-ID
+lookup uses the verified offset index. A full verification scan still runs per
+request; no original log parsing or correlation is repeated. Item, index, scratch,
+work and cooperative time limits fail explicitly. Complete pages are spooled to an
+atomic staging destination, and temporary validation state is removed on success
+or failure. See [the streaming pipeline](streaming-pipeline.md) for limits, disk
+accounting, compatibility tradeoffs and selected-record RSS measurements.
+
 ## Validation and compatibility
 
 Validate JSON shape against the installed schema, then call Rust

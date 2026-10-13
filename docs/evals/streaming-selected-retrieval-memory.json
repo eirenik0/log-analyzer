@@ -1,0 +1,102 @@
+{
+  "scope": "artifact retrieval only; every source record selected, all starts precede completions; compares every retrieved record and targeted measurement exactly, and verifies operation-filtered distinct-record claims; generation RSS excluded",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "77747469a0edbd27ca9f5b9c49e2211cff6055c3a40251d429bff0a3ddfeac6f",
+  "item_bytes": 8388608,
+  "index_bytes": 2147483648,
+  "state_bytes": 2147483648,
+  "rss_ceiling_bytes": 67108864,
+  "rss_growth_tolerance_bytes": 25165824,
+  "measurements": [
+    {
+      "mode": "records",
+      "selected_records": 1000,
+      "paired_measurements": 500,
+      "artifact_bytes": 5230183,
+      "artifact_sha256": "525f7580d899b0af800b5f431413ed2d1bd57a94b3fd28fcb138c36cde4c9746",
+      "peak_rss_bytes": 11763712,
+      "elapsed_seconds": 4.6941,
+      "retrieved_items": 1000
+    },
+    {
+      "mode": "finding",
+      "selected_records": 1000,
+      "paired_measurements": 500,
+      "artifact_bytes": 5230183,
+      "artifact_sha256": "525f7580d899b0af800b5f431413ed2d1bd57a94b3fd28fcb138c36cde4c9746",
+      "peak_rss_bytes": 9879552,
+      "elapsed_seconds": 6.1983,
+      "retrieved_items": 1
+    },
+    {
+      "mode": "count",
+      "selected_records": 1000,
+      "paired_measurements": 500,
+      "artifact_bytes": 5230183,
+      "artifact_sha256": "525f7580d899b0af800b5f431413ed2d1bd57a94b3fd28fcb138c36cde4c9746",
+      "peak_rss_bytes": 10305536,
+      "elapsed_seconds": 9.1873,
+      "retrieved_items": 1
+    },
+    {
+      "mode": "records",
+      "selected_records": 5000,
+      "paired_measurements": 2500,
+      "artifact_bytes": 26136202,
+      "artifact_sha256": "c625c7c0f735eb472309f0bbd9fdac5fbffbcd8446ecb88b968029115badde56",
+      "peak_rss_bytes": 9961472,
+      "elapsed_seconds": 34.1833,
+      "retrieved_items": 5000
+    },
+    {
+      "mode": "finding",
+      "selected_records": 5000,
+      "paired_measurements": 2500,
+      "artifact_bytes": 26136202,
+      "artifact_sha256": "c625c7c0f735eb472309f0bbd9fdac5fbffbcd8446ecb88b968029115badde56",
+      "peak_rss_bytes": 9977856,
+      "elapsed_seconds": 32.4687,
+      "retrieved_items": 1
+    },
+    {
+      "mode": "count",
+      "selected_records": 5000,
+      "paired_measurements": 2500,
+      "artifact_bytes": 26136202,
+      "artifact_sha256": "c625c7c0f735eb472309f0bbd9fdac5fbffbcd8446ecb88b968029115badde56",
+      "peak_rss_bytes": 9945088,
+      "elapsed_seconds": 24.0207,
+      "retrieved_items": 1
+    },
+    {
+      "mode": "records",
+      "selected_records": 20000,
+      "paired_measurements": 10000,
+      "artifact_bytes": 104661248,
+      "artifact_sha256": "8f7fc913116f5ba092bc7c96d705cce400d274b22c934aac3cfbb74ccf2d47ac",
+      "peak_rss_bytes": 9797632,
+      "elapsed_seconds": 104.1524,
+      "retrieved_items": 20000
+    },
+    {
+      "mode": "finding",
+      "selected_records": 20000,
+      "paired_measurements": 10000,
+      "artifact_bytes": 104661248,
+      "artifact_sha256": "8f7fc913116f5ba092bc7c96d705cce400d274b22c934aac3cfbb74ccf2d47ac",
+      "peak_rss_bytes": 8863744,
+      "elapsed_seconds": 140.4052,
+      "retrieved_items": 1
+    },
+    {
+      "mode": "count",
+      "selected_records": 20000,
+      "paired_measurements": 10000,
+      "artifact_bytes": 104661248,
+      "artifact_sha256": "8f7fc913116f5ba092bc7c96d705cce400d274b22c934aac3cfbb74ccf2d47ac",
+      "peak_rss_bytes": 8962048,
+      "elapsed_seconds": 119.562,
+      "retrieved_items": 1
+    }
+  ]
+}

@@ -460,3 +460,421 @@ pub(crate) fn calculate(
         }
     }
 }
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn calculate_stream(
+    policy: &InvestigationPolicy,
+    config: &AnalyzerConfig,
+    entries: &super::source_store::Entries,
+    selectors: &[Selector],
+    scope: &str,
+    context: &evidence::Context,
+    snapshot: &Value,
+    input_complete: bool,
+    budget: &mut Budget,
+    findings: &mut dyn super::finding_store::FindingSink,
+) -> super::Result<()> {
+    let result = calculate_stream_inner(
+        policy,
+        config,
+        entries,
+        selectors,
+        scope,
+        context,
+        snapshot,
+        input_complete,
+        budget,
+        findings,
+    );
+    if budget.halted { Ok(()) } else { result }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn calculate_stream_inner(
+    policy: &InvestigationPolicy,
+    config: &AnalyzerConfig,
+    entries: &super::source_store::Entries,
+    selectors: &[Selector],
+    scope: &str,
+    context: &evidence::Context,
+    snapshot: &Value,
+    input_complete: bool,
+    budget: &mut Budget,
+    findings: &mut dyn super::finding_store::FindingSink,
+) -> super::Result<()> {
+    use super::grouped::Groups;
+    if policy.chains.is_empty() {
+        return Ok(());
+    }
+    let matchers: BTreeMap<_, _> = policy
+        .roles
+        .iter()
+        .map(|r| (r.id.as_str(), Matcher::new(r)))
+        .collect();
+    let mut roles = Groups::new(entries)?;
+    let mut role_counts: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut diagnostics: BTreeMap<&str, Vec<usize>> = policy
+        .roles
+        .iter()
+        .map(|role| (role.id.as_str(), vec![0; role.select.len() + 3]))
+        .collect();
+    let mut unresolved = false;
+    for (ordinal, entry) in entries.iter()?.enumerate() {
+        let entry = entry?;
+        if !budget.checkpoint(
+            "calculation",
+            policy.roles.len() as u64 + entry.message.len() as u64,
+        ) {
+            return Ok(());
+        }
+        if !selected(&entry, selectors, config) {
+            continue;
+        }
+        unresolved |= matches!(
+            entry.classification,
+            Some(ClassifiedRecord::Conflict { .. } | ClassifiedRecord::Invalid { .. })
+        );
+        if !matches!(entry.classification, Some(ClassifiedRecord::Event { .. })) {
+            continue;
+        }
+        for (id, matcher) in &matchers {
+            let counts = diagnostics.get_mut(id).unwrap();
+            counts[0] += 1;
+            if rules(&entry)
+                .iter()
+                .any(|rule| matcher.role.rule_ids.contains(rule))
+            {
+                counts[1] += 1;
+                for (index, condition) in matcher.role.select.iter().enumerate() {
+                    if field(&entry, &condition.field).as_ref() != Some(&condition.equals) {
+                        counts[index + 2] += 1;
+                    }
+                }
+                if matcher
+                    .pattern
+                    .as_ref()
+                    .is_some_and(|pattern| !pattern.is_match(&entry.message))
+                {
+                    counts[matcher.role.select.len() + 2] += 1;
+                }
+            }
+            if matcher.matches(&entry) {
+                roles.insert(id, &[], ordinal)?;
+                *role_counts.entry(id).or_default() += 1;
+            }
+        }
+    }
+    for (chain_index, chain) in policy.chains.iter().enumerate() {
+        if role_counts
+            .get(chain.root_role.as_str())
+            .copied()
+            .unwrap_or(0)
+            == 0
+        {
+            let matcher = &matchers[chain.root_role.as_str()];
+            let counts = &diagnostics[chain.root_role.as_str()];
+            let failed: Vec<_> = matcher
+                .role
+                .select
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    format!(
+                        "{} equals {}: {} rule-matched records failed",
+                        c.field,
+                        c.equals,
+                        counts[i + 2]
+                    )
+                })
+                .collect();
+            findings.push(fact(format!("{scope}-chain-{chain_index}-unrecognized"),scope,"unknown","Configured chain found no matching roots; complete parsing does not establish relationship coverage.",Vec::new(),json!({"supporting_occurrences":[],"gap_classification":"recognition_unresolved","reason":format!("Chain {}; root role {}; {} selected classified events, {} matched rule IDs {:?}; selectors [{}]; message_pattern {:?}: {} rule-matched records failed; processed coverage {}. Counts are independent selector failures, not disjoint populations.",chain.id,chain.root_role,counts[0],counts[1],matcher.role.rule_ids,failed.join("; "),matcher.role.message_pattern,counts[matcher.role.select.len()+2],if input_complete{"complete"}else{"partial"})})))?;
+        }
+        let root_fields: Vec<_> = chain
+            .identity_fields
+            .iter()
+            .chain(&chain.scope_fields)
+            .cloned()
+            .collect();
+        let mut roots = Groups::new(entries)?;
+        let mut missing_roots = 0usize;
+        let mut missing_sample = None;
+        let mut missing_fields = vec![0usize; root_fields.len()];
+        for root in roles.entries(entries, &chain.root_role, &[]) {
+            let (ordinal, root) = root?;
+            if !budget.checkpoint("calculation", root_fields.len() as u64) {
+                return Ok(());
+            }
+            if let Some(k) = key(&root, &root_fields) {
+                roots.insert("roots", &k, ordinal)?;
+            } else {
+                missing_roots += 1;
+                for (i, f) in root_fields.iter().enumerate() {
+                    if key(&root, std::slice::from_ref(f)).is_none() {
+                        missing_fields[i] += 1;
+                    }
+                }
+                if missing_sample.is_none() {
+                    missing_sample = Some(root);
+                }
+            }
+        }
+        let mut indices = Groups::new(entries)?;
+        let mut step_indices = Vec::new();
+        for (step_index, step) in chain.steps.iter().enumerate() {
+            let fields: Vec<_> = step
+                .join_fields
+                .iter()
+                .chain(&chain.scope_fields)
+                .cloned()
+                .collect();
+            let collection = format!("step-{step_index}");
+            let mut missing = 0usize;
+            for target in roles.entries(entries, &step.role, &[]) {
+                let (ordinal, target) = target?;
+                if !budget.checkpoint("calculation", fields.len() as u64) {
+                    return Ok(());
+                }
+                if let Some(k) = key(&target, &fields) {
+                    indices.insert(&collection, &k, ordinal)?;
+                } else {
+                    missing += 1;
+                }
+            }
+            step_indices.push((fields, collection, missing));
+        }
+        for (ordinal, entry) in entries.iter()?.enumerate() {
+            let entry = entry?;
+            if !selected(&entry, selectors, config) {
+                continue;
+            }
+            if !budget.checkpoint("calculation", chain.context_fields.len() as u64) {
+                return Ok(());
+            }
+            if let Some(k) = key(&entry, &chain.context_fields) {
+                indices.insert_ranked("later", &k, ordinal)?;
+            }
+        }
+        for (root_index, root_key) in roots.keys("roots", true).enumerate() {
+            if !budget.checkpoint("calculation", 1) {
+                return Ok(());
+            }
+            let root_key = root_key?;
+            let root_count = roots.count("roots", &root_key, budget)?;
+            let root_ordinal = roots
+                .ordinals("roots", &root_key)
+                .next()
+                .transpose()?
+                .ok_or("empty root population")?;
+            let root = entries.get(root_ordinal)?;
+            let mut bundle = Vec::new();
+            let mut nodes = Groups::new(entries)?;
+            let mut root_last = root_ordinal;
+            for ordinal in roots.ordinals("roots", &root_key) {
+                super::grouped::check(budget)?;
+                let ordinal = ordinal?;
+                nodes.node("$root", ordinal)?;
+                root_last = ordinal;
+            }
+            bundle.push(excerpt(&root, context, snapshot));
+            if root_last != root_ordinal {
+                bundle.push(excerpt(&entries.get(root_last)?, context, snapshot));
+            }
+            let context_key = key(&root, &chain.context_fields);
+            let complete = input_complete
+                && !unresolved
+                && missing_roots == 0
+                && root_count == 1
+                && context_key.is_some();
+            let mut completeness = BTreeMap::from([("$root", complete)]);
+            let mut node_counts = BTreeMap::from([("$root", root_count)]);
+            let mut steps = Vec::new();
+            let mut last_order = root_last;
+            for (step, (fields, collection, missing)) in chain.steps.iter().zip(&step_indices) {
+                let mut source_keys = Groups::new(entries)?;
+                let mut missing_source = 0usize;
+                for ordinal in nodes.node_ordinals(&step.from) {
+                    let ordinal = ordinal?;
+                    let source = entries.get(ordinal)?;
+                    if !budget.checkpoint("calculation", fields.len() as u64) {
+                        return Ok(());
+                    }
+                    if let Some(k) = key(&source, fields) {
+                        source_keys.insert("sources", &k, ordinal)?;
+                    } else {
+                        missing_source += 1;
+                    }
+                }
+                let mut has_source_key = false;
+                let mut target_count = 0usize;
+                let mut ambiguous = 0usize;
+                let mut ambiguous_samples = Vec::new();
+                for k in source_keys.keys("sources", false) {
+                    super::grouped::check(budget)?;
+                    let k = k?;
+                    has_source_key = true;
+                    let from = source_keys.count("sources", &k, budget)?;
+                    let to = indices.count(collection, &k, budget)?;
+                    if to == 0 {
+                        continue;
+                    }
+                    let mut supported = cardinality_supported(step.cardinality, from, to);
+                    if supported {
+                        // Ordinals identify the same physical/expanded occurrence across replays.
+                        let mut source_rows = source_keys.ordinals("sources", &k);
+                        let mut source = source_rows.next().transpose()?;
+                        for target in indices.ordinals(collection, &k) {
+                            super::grouped::check(budget)?;
+                            let target = target?;
+                            while source.is_some_and(|ordinal| ordinal < target) {
+                                super::grouped::check(budget)?;
+                                source = source_rows.next().transpose()?;
+                            }
+                            if source == Some(target) {
+                                supported = false;
+                                break;
+                            }
+                        }
+                    }
+                    if !supported {
+                        ambiguous += to;
+                        let first = indices.ordinals(collection, &k).next().transpose()?;
+                        let last = super::grouped::last(indices.ordinals(collection, &k), budget)?;
+                        for ordinal in first
+                            .into_iter()
+                            .chain(last.filter(|last| Some(*last) != first))
+                        {
+                            if ambiguous_samples.len() < 2 {
+                                ambiguous_samples.push(excerpt(
+                                    &entries.get(ordinal)?,
+                                    context,
+                                    snapshot,
+                                ));
+                            }
+                        }
+                        continue;
+                    }
+                    if !budget.checkpoint("calculation", to as u64) {
+                        return Ok(());
+                    }
+                    let first_source = source_keys
+                        .ordinals("sources", &k)
+                        .next()
+                        .transpose()?
+                        .ok_or("empty chain source group")?;
+                    for ordinal in indices.ordinals(collection, &k) {
+                        super::grouped::check(budget)?;
+                        let ordinal = ordinal?;
+                        nodes.node(&step.id, ordinal)?;
+                        nodes.put(
+                            &format!("{}:joins", step.id),
+                            &ordinal.to_string(),
+                            &(first_source, from, to),
+                        )?;
+                        target_count += 1;
+                        last_order = last_order.max(ordinal);
+                    }
+                }
+                let mut sampled = Vec::<(usize, LogEntry)>::new();
+                let first = nodes.node_ordinals(&step.id).next().transpose()?;
+                let last = super::grouped::last(nodes.node_ordinals(&step.id), budget)?;
+                for ordinal in first
+                    .into_iter()
+                    .chain(last.filter(|last| Some(*last) != first))
+                {
+                    sampled.push((ordinal, entries.get(ordinal)?));
+                }
+                if let Some(selector) = &step.outcome_field {
+                    let mut values: BTreeSet<_> = sampled
+                        .iter()
+                        .map(|(_, e)| field(e, selector).map(|v| v.to_string()))
+                        .collect();
+                    for ordinal in nodes.node_ordinals(&step.id) {
+                        super::grouped::check(budget)?;
+                        if sampled.len() >= 4 {
+                            break;
+                        }
+                        let ordinal = ordinal?;
+                        let entry = entries.get(ordinal)?;
+                        if values.insert(field(&entry, selector).map(|v| v.to_string())) {
+                            sampled.push((ordinal, entry));
+                        }
+                    }
+                }
+                let mut joins = Vec::new();
+                for (ordinal, target) in &sampled {
+                    let (source_ordinal, source_count, target_count): (usize, usize, usize) = nodes
+                        .get(&format!("{}:joins", step.id), &ordinal.to_string())?
+                        .ok_or("missing chain join")?;
+                    let source = entries.get(source_ordinal)?;
+                    let mut interval = endpoint_interval(
+                        &source,
+                        target,
+                        source_count == 1 && target_count == 1 && root_count == 1,
+                    );
+                    interval["source"] = occurrence(&source, context, snapshot);
+                    interval["target"] = occurrence(target, context, snapshot);
+                    joins.push(json!({"source":occurrence(&source,context,snapshot),"target":occurrence(target,context,snapshot),"identity":identities(&source,fields),"source_count":source_count,"target_count":target_count,"endpoint_interval":interval}));
+                }
+                let witnesses: Vec<_> = sampled
+                    .iter()
+                    .map(|(_, e)| excerpt(e, context, snapshot))
+                    .collect();
+                bundle.extend(witnesses.clone());
+                bundle.extend(ambiguous_samples.clone());
+                let outcomes:Vec<_>=step.outcome_field.as_ref().map(|f|sampled.iter().map(|(_,e)|json!({"level":step.outcome_level,"field":f,"value":field(e,f),"occurrence":occurrence(e,context,snapshot)})).collect()).unwrap_or_default();
+                let sources = node_counts[step.from.as_str()];
+                let step_complete = completeness[step.from.as_str()]
+                    && *missing == 0
+                    && missing_source == 0
+                    && ambiguous == 0
+                    && sources > 0;
+                let role = matchers[step.role.as_str()].role;
+                let counts = &diagnostics[step.role.as_str()];
+                let recognition = json!({"role":step.role,"rule_ids":role.rule_ids,"rule_matched_records":counts[1],"role_matched_records":role_counts.get(step.role.as_str()).copied().unwrap_or(0),"population":"selected_classified_records_in_this_input","failed_selectors":role.select.iter().enumerate().map(|(i,c)|json!({"field":c.field,"equals":c.equals,"failed_records":counts[i+2]})).collect::<Vec<_>>(),"message_pattern_failed_records":counts[role.select.len()+2]});
+                steps.push(json!({"recognition":recognition,"id":step.id,"label":step.label,"event_type":step.event_type,"from":step.from,"observed_count":target_count+ambiguous,"linked_count":target_count,"status":if ambiguous>0{"ambiguous"}else if sources==0||!has_source_key&&missing_source>0{"unavailable"}else if target_count==0{"not_observed"}else{"observed"},"count_completeness":if step_complete{"complete"}else{"partial"},"join_fields":fields,"cardinality":step.cardinality,"join_samples":joins,"ambiguity":{"excluded_target_occurrences":ambiguous,"role_occurrences_missing_identity":missing,"source_occurrences_missing_identity":missing_source},"evidence":witnesses,"ambiguous_evidence":ambiguous_samples,"omitted_occurrences":target_count.saturating_sub(sampled.len()),"outcomes":outcomes,"omitted_outcomes":if step.outcome_field.is_some(){target_count.saturating_sub(sampled.len())}else{0}}));
+                completeness.insert(&step.id, step_complete);
+                node_counts.insert(&step.id, target_count);
+            }
+            super::grouped::check(budget)?;
+            let suffix = context_key
+                .map(|key| indices.suffix("later", &key, last_order))
+                .transpose()?
+                .flatten();
+            let activity_count = suffix.as_ref().map(|(count, _)| *count);
+            let later: Vec<_> = suffix
+                .into_iter()
+                .flat_map(|(_, tail)| tail)
+                .map(|ordinal| {
+                    entries
+                        .get(ordinal)
+                        .map(|entry| excerpt(&entry, context, snapshot))
+                })
+                .collect::<super::Result<_>>()?;
+            bundle.extend(later.clone());
+            let mut seen = BTreeSet::new();
+            bundle.retain(|e| seen.insert(e["occurrence"].to_string()));
+            let support: Vec<_> = bundle
+                .iter()
+                .map(|e| e["occurrence"].clone())
+                .chain(steps.iter().flat_map(|step| {
+                    step["join_samples"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .flat_map(|j| [j["source"].clone(), j["target"].clone()])
+                }))
+                .collect();
+            let details = json!({"supporting_occurrences":support,"event_chain":{"id":chain.id,"title":chain.title,"root":occurrence(&root,context,snapshot),"root_event_name":field(&root,"event.name"),"identity":identities(&root,&root_fields),"scope_fields":chain.scope_fields,"context_identity":identities(&root,&chain.context_fields),"root_occurrences":root_count,"ambiguity":if root_count>1{"reused_root_identity"}else{"none"},"steps":steps,"later_activity":later,"later_activity_observed_count":activity_count,"omitted_later_activity":activity_count.map(|n|n.saturating_sub(later.len())),"completeness":if complete&&completeness.values().all(|v|*v){"complete"}else{"partial"},"evidence_policy":"First and last occurrence per role, up to two additional distinct outcomes and two ambiguous candidates, plus last three selected same-context records after the last linked event. Terminal and contrary roles must be explicitly configured; absence is not proof of failure. Outcomes at different levels are independent; source order implies no causality."}});
+            findings.push(fact(format!("{scope}-chain-{chain_index}-{root_index}"),scope,"observation","Connected event chain from explicit profile roles and exact identity/scope joins; outcome levels remain independent.",bundle,details))?;
+        }
+        if let Some(root) = missing_sample {
+            let failed: Vec<_> = root_fields
+                .iter()
+                .zip(missing_fields)
+                .map(|(field, count)| format!("{field}: {count} roots missing a usable key"))
+                .collect();
+            findings.push(fact(format!("{scope}-chain-{chain_index}-missing"),scope,"unknown","Some chain roots lack declared identity or scope; no relationship is guessed.",vec![excerpt(&root,context,snapshot)],json!({"gap_classification":"identity_or_scope_unavailable","reason":format!("{missing_roots} root occurrences excluded; selectors [{}]",failed.join("; ")),"supporting_occurrences":[occurrence(&root,context,snapshot)]})))?;
+        }
+    }
+    Ok(())
+}

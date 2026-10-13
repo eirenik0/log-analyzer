@@ -1,0 +1,30 @@
+{
+  "scope": "yielding parser with a non-retaining consumer; excludes investigation correlation and artifact retrieval",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "88eac93a85fb12b657b7c6d6934e337d1b2f74d96c92d06dc6162c827033e504",
+  "record_max_bytes": 262144,
+  "processing_memory_bytes": null,
+  "measurements": [
+    {
+      "records": 1000,
+      "input_bytes": 66000,
+      "peak_rss_bytes": 9273344,
+      "elapsed_seconds": 0.0131,
+      "sha256": "29fb79e0ace13ff78d6247e02c4055847003853190ed48c649840d8627aa86d4"
+    },
+    {
+      "records": 100000,
+      "input_bytes": 6600000,
+      "peak_rss_bytes": 9371648,
+      "elapsed_seconds": 0.148,
+      "sha256": "3c11219c681e80569c9a65bf865ab1983908ebf2b94778d6eaca91bd4ab254b3"
+    },
+    {
+      "records": 1000000,
+      "input_bytes": 66000000,
+      "peak_rss_bytes": 9633792,
+      "elapsed_seconds": 1.5846,
+      "sha256": "238284dbd2b755ce9ea50be86d4581ca71cd625b6e81c46d4959112dcfae4cb5"
+    }
+  ]
+}

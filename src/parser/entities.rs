@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Direction of an event (emitted or received)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EventDirection {
     Unknown,
     Emit,
@@ -12,7 +12,7 @@ pub enum EventDirection {
 }
 
 /// Direction of a request (sending or receiving a response)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum RequestDirection {
     Unknown,
     Send,
@@ -40,7 +40,7 @@ impl fmt::Display for RequestDirection {
 }
 
 /// Different types of log entries based on their purpose
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum LogEntryKind {
     /// An event emission or reception
     Event {
@@ -79,7 +79,7 @@ pub enum LogEntryKind {
 }
 
 /// Main log entry structure with integrated base fields
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LogEntry {
     pub classification: Option<crate::event_rules::ClassifiedRecord>,
     /// Component that generated the log (e.g., "core-universal", "socket", "driver")

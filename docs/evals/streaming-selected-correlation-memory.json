@@ -1,0 +1,40 @@
+{
+  "scope": "yielding parser and spilling correlator; every record selected; all starts precede every completion; excludes investigation evidence construction and retrieval",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "c8796467c759f842ab4a2b8843a6c7996fcc62efd3e92a499a8eb178c4f08115",
+  "index_bytes": 1048576,
+  "sqlite_cache_bytes_per_store": 2097152,
+  "record_max_bytes": 262144,
+  "disk_max_bytes": 4294967296,
+  "rss_ceiling_bytes": 67108864,
+  "rss_growth_tolerance_bytes": 25165824,
+  "measurements": [
+    {
+      "selected_records": 2000,
+      "pairs": 1000,
+      "input_bytes": 312780,
+      "peak_rss_bytes": 13959168,
+      "elapsed_seconds": 0.5594,
+      "spilled": true,
+      "sha256": "9192b9e7592f4d8a05223ca749cd2adfa89756f5e01b733311ff41d2e772fe4c"
+    },
+    {
+      "selected_records": 20000,
+      "pairs": 10000,
+      "input_bytes": 3147780,
+      "peak_rss_bytes": 16351232,
+      "elapsed_seconds": 3.8534,
+      "spilled": true,
+      "sha256": "9d6d3d67ec48402c1f5b9d0a6a0b7bdb834f144b2002d69f152b3b2be78a4401"
+    },
+    {
+      "selected_records": 200000,
+      "pairs": 100000,
+      "input_bytes": 31677780,
+      "peak_rss_bytes": 15335424,
+      "elapsed_seconds": 53.5615,
+      "spilled": true,
+      "sha256": "ed7f3b4cec44935fe8416cc38e678a7d2d77a2e181145cb309e899ddbd77495f"
+    }
+  ]
+}

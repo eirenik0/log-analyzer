@@ -88,11 +88,100 @@ pub fn validate_relations(
     report: &Value,
     artifact_bytes: Option<&[u8]>,
 ) -> Result<ValidationSummary, ContractError> {
+    let artifact = artifact_bytes
+        .map(serde_json::from_slice)
+        .transpose()
+        .map_err(|e| error("/artifact", e.to_string()))?;
+    if let Some(bytes) = artifact_bytes {
+        require(
+            report["artifact"]["stored_sha256"] == digest(bytes),
+            "/artifact/stored_sha256",
+            "stored artifact digest mismatch",
+        )?;
+    }
+    validate_retained(report, artifact.as_ref())
+}
+
+/// Validate logical retained evidence without serializing and reparsing its tree.
+pub(crate) fn validate_retained(
+    report: &Value,
+    artifact: Option<&Value>,
+) -> Result<ValidationSummary, ContractError> {
+    validate_sources(report, artifact, &[])
+}
+
+#[derive(Default)]
+pub(crate) struct ValidationSession {
+    captures: BTreeMap<std::path::PathBuf, (String, u64)>,
+    cursors: BTreeMap<u64, SourceCursor>,
+    verified_records: Option<crate::disk_index::DiskIndex>,
+    pub(crate) deadline: Option<std::time::Instant>,
+}
+impl ValidationSession {
+    /// All capture paths used by a session must refer to its private immutable
+    /// snapshots. Only raw-source checks are cached, never fact validation.
+    pub(crate) fn bounded(records: u64, disk_bytes: u64) -> Result<Self, ContractError> {
+        Ok(Self {
+            verified_records: Some(
+                crate::disk_index::DiskIndex::new(records, disk_bytes)
+                    .map_err(|e| error("/artifact/validation_state", e.to_string()))?,
+            ),
+            ..Self::default()
+        })
+    }
+    fn capture(&mut self, path: &std::path::Path) -> Result<(String, u64), ContractError> {
+        if let Some(identity) = self.captures.get(path) {
+            return Ok(identity.clone());
+        }
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut source = std::fs::File::open(path)
+            .map_err(|e| error("/artifact/captured_inputs", e.to_string()))?;
+        let mut hash = Sha256::new();
+        let mut count = 0;
+        let mut buffer = [0; crate::streaming::CHUNK_BYTES];
+        loop {
+            if self
+                .deadline
+                .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+            {
+                return Err(error(
+                    "/artifact/captured_inputs",
+                    "artifact validation time limit exceeded",
+                ));
+            }
+            let read = source
+                .read(&mut buffer)
+                .map_err(|e| error("/artifact/captured_inputs", e.to_string()))?;
+            if read == 0 {
+                break;
+            }
+            hash.update(&buffer[..read]);
+            count += read as u64;
+        }
+        let identity = (format!("{:x}", hash.finalize()), count);
+        self.captures.insert(path.to_path_buf(), identity.clone());
+        Ok(identity)
+    }
+}
+fn validate_sources(
+    report: &Value,
+    artifact: Option<&Value>,
+    sources: &[Option<std::path::PathBuf>],
+) -> Result<ValidationSummary, ContractError> {
+    validate_session(report, artifact, sources, &mut ValidationSession::default())
+}
+pub(crate) fn validate_session(
+    report: &Value,
+    artifact: Option<&Value>,
+    sources: &[Option<std::path::PathBuf>],
+    session: &mut ValidationSession,
+) -> Result<ValidationSummary, ContractError> {
     let mut summary = ValidationSummary {
-        artifact_checked: artifact_bytes.is_some(),
+        artifact_checked: artifact.is_some(),
         deferred_relations: Vec::new(),
     };
-    if artifact_bytes.is_none() {
+    if artifact.is_none() {
         summary
             .deferred_relations
             .push("retained_membership_and_source_verification".into());
@@ -442,23 +531,15 @@ pub fn validate_relations(
         }
     }
     let mut findings = index(list(report, "/findings")?, "/findings")?;
-    let artifact: Option<Value> = artifact_bytes
-        .map(serde_json::from_slice)
-        .transpose()
-        .map_err(|e| error("/artifact", e.to_string()))?;
     let mut retained = BTreeMap::new();
     let mut population_samples: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-    let mut original_captures: BTreeMap<u64, Vec<u8>> = BTreeMap::new();
-    if let (Some(bytes), Some(artifact)) = (artifact_bytes, artifact.as_ref()) {
+    let mut original_captures: BTreeMap<u64, std::borrow::Cow<'_, [u8]>> = BTreeMap::new();
+    let mut spooled_captures = BTreeMap::new();
+    if let Some(artifact) = artifact {
         require(
             number(artifact, "/contract_version")? == u64::from(ARTIFACT_VERSION),
             "/artifact/contract_version",
             "unsupported artifact version",
-        )?;
-        require(
-            report["artifact"]["stored_sha256"] == digest(bytes),
-            "/artifact/stored_sha256",
-            "stored artifact digest mismatch",
         )?;
         for key in [
             "report_metadata",
@@ -520,24 +601,39 @@ pub fn validate_relations(
                 )?;
             }
             if capture["data_omitted"] == false {
+                if let Some(Some(path)) = sources.get(ordinal) {
+                    let (hash, count) = session.capture(path)?;
+                    require(
+                        capture["stored_sha256"] == hash
+                            && capture["original_consumed_sha256"] == hash
+                            && count == number(&progress[ordinal], "/consumed_bytes")?,
+                        "/artifact/captured_inputs",
+                        "spooled source identity differs",
+                    )?;
+                    spooled_captures.insert(ordinal as u64, path);
+                    continue;
+                }
                 let bytes = match text(capture, "/encoding")? {
-                    "utf8" => get(capture, "/data")?
-                        .as_str()
-                        .ok_or_else(|| {
-                            error("/artifact/captured_inputs/data", "expected UTF-8 text")
-                        })?
-                        .as_bytes()
-                        .to_vec(),
-                    "bytes" => list(capture, "/data")?
-                        .iter()
-                        .map(|v| {
-                            v.as_u64()
-                                .and_then(|v| u8::try_from(v).ok())
-                                .ok_or_else(|| {
-                                    error("/artifact/captured_inputs/data", "expected byte")
-                                })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
+                    "utf8" => std::borrow::Cow::Borrowed(
+                        get(capture, "/data")?
+                            .as_str()
+                            .ok_or_else(|| {
+                                error("/artifact/captured_inputs/data", "expected UTF-8 text")
+                            })?
+                            .as_bytes(),
+                    ),
+                    "bytes" => std::borrow::Cow::Owned(
+                        list(capture, "/data")?
+                            .iter()
+                            .map(|v| {
+                                v.as_u64()
+                                    .and_then(|v| u8::try_from(v).ok())
+                                    .ok_or_else(|| {
+                                        error("/artifact/captured_inputs/data", "expected byte")
+                                    })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    ),
                     _ => {
                         return Err(error(
                             "/artifact/captured_inputs/encoding",
@@ -956,16 +1052,17 @@ pub fn validate_relations(
     if let Some(artifact) = artifact.as_ref() {
         let profile_available = artifact["effective_profile_omitted"] == false;
         let mut indexed_sources: BTreeMap<u64, Vec<&str>> = BTreeMap::new();
-        for record in retained.values() {
+        let mut ordered: Vec<_> = retained.values().copied().collect();
+        ordered.sort_by_key(|record| {
+            (
+                record["occurrence"]["input_ordinal"].as_u64(),
+                record["occurrence"]["evidence_ref"]["line"].as_u64(),
+            )
+        });
+        for record in ordered {
             if record["verification"]["source_and_rules"] == "available" {
                 let source = get(record, "/occurrence")?;
                 let ordinal = number(source, "/input_ordinal")?;
-                let bytes = original_captures.get(&ordinal).ok_or_else(|| {
-                    error(
-                        "/artifact/records/verification",
-                        "original source bytes not retained",
-                    )
-                })?;
                 require(
                     profile_available
                         && source["evidence_ref"]["location_redacted"] != true
@@ -973,28 +1070,75 @@ pub fn validate_relations(
                     "/artifact/records/verification",
                     "source or rule verification prerequisites lost",
                 )?;
+                require(
+                    original_captures.contains_key(&ordinal)
+                        || spooled_captures.contains_key(&ordinal),
+                    "/artifact/records/verification",
+                    "original source bytes not retained",
+                )?;
+                let record_key = session
+                    .verified_records
+                    .as_ref()
+                    .map(|_| digest(record.to_string().as_bytes()));
+                if let (Some(cache), Some(key)) = (&session.verified_records, &record_key)
+                    && cache
+                        .get(key.as_bytes())
+                        .map_err(|e| error("/artifact/validation_state", e.to_string()))?
+                        .is_some()
+                {
+                    continue;
+                }
                 let raw = text(record, "/raw_text")?;
-                let source_lines = match indexed_sources.entry(ordinal) {
-                    std::collections::btree_map::Entry::Vacant(entry) => {
-                        let source_text = std::str::from_utf8(bytes)
-                            .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?;
-                        entry.insert(source_text.lines().collect())
-                    }
-                    std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
-                };
                 let line = usize::try_from(number(source, "/evidence_ref/line")?)
                     .map_err(|_| error("/artifact/records/raw_text", "line too large"))?;
+                let matches = if let Some(path) = spooled_captures.get(&ordinal) {
+                    if let std::collections::btree_map::Entry::Vacant(entry) =
+                        session.cursors.entry(ordinal)
+                    {
+                        let mut cursor = SourceCursor::open(path)
+                            .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?;
+                        cursor.deadline = session.deadline;
+                        entry.insert(cursor);
+                    }
+                    session
+                        .cursors
+                        .get_mut(&ordinal)
+                        .expect("opened source")
+                        .matches(line, raw)
+                        .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?
+                } else {
+                    let bytes = original_captures.get(&ordinal).ok_or_else(|| {
+                        error(
+                            "/artifact/records/verification",
+                            "original source bytes not retained",
+                        )
+                    })?;
+                    let source_lines = match indexed_sources.entry(ordinal) {
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            let source_text = std::str::from_utf8(bytes)
+                                .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?;
+                            entry.insert(source_text.lines().collect())
+                        }
+                        std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                    };
+                    raw_lines_match(source_lines, line, raw)
+                };
                 require(
-                    raw_lines_match(source_lines, line, raw),
+                    matches,
                     "/artifact/records/raw_text",
                     "raw record differs from retained input",
                 )?;
+                if let (Some(cache), Some(key)) = (&mut session.verified_records, record_key) {
+                    cache
+                        .insert(key.as_bytes(), 1)
+                        .map_err(|e| error("/artifact/validation_state", e.to_string()))?;
+                }
             }
         }
         if artifact["verification"]["source_and_rules"] == "available" {
             require(
                 profile_available
-                    && original_captures.len() == inputs.len()
+                    && original_captures.len() + spooled_captures.len() == inputs.len()
                     && retained
                         .values()
                         .all(|r| r["verification"]["source_and_rules"] == "available"),
@@ -1060,7 +1204,8 @@ pub fn validate_relations(
                 for source in &dependencies {
                     let id = occurrence(source)?;
                     require(
-                        original_captures.contains_key(&id.input_ordinal)
+                        (original_captures.contains_key(&id.input_ordinal)
+                            || spooled_captures.contains_key(&id.input_ordinal))
                             && retained.get(&id).is_some_and(|record| {
                                 record["verification"]["source_and_rules"] == "available"
                             }),
@@ -1071,9 +1216,10 @@ pub fn validate_relations(
                 if dependencies.is_empty() {
                     require(
                         list(scope, "/input_ordinals")?.iter().all(|ordinal| {
-                            ordinal
-                                .as_u64()
-                                .is_some_and(|id| original_captures.contains_key(&id))
+                            ordinal.as_u64().is_some_and(|id| {
+                                original_captures.contains_key(&id)
+                                    || spooled_captures.contains_key(&id)
+                            })
                         }),
                         "/findings/verification",
                         "absence claim lacks retained scoped captures",
@@ -1950,5 +2096,94 @@ mod tests {
             1,
             &raw.replace("started", "invented")
         ));
+    }
+}
+
+/// Ordered witnesses share a sequential cursor; normalized rows can revisit the
+/// same bounded physical record without retaining an index of every source line.
+struct SourceCursor {
+    reader: std::io::BufReader<std::fs::File>,
+    line: usize,
+    deadline: Option<std::time::Instant>,
+}
+impl SourceCursor {
+    fn open(path: &std::path::Path) -> std::io::Result<Self> {
+        Ok(Self {
+            reader: std::io::BufReader::new(std::fs::File::open(path)?),
+            line: 1,
+            deadline: None,
+        })
+    }
+    fn matches(&mut self, line: usize, raw: &str) -> std::io::Result<bool> {
+        use std::io::{BufRead, Read, Seek, SeekFrom};
+        if line < self.line {
+            self.reader.seek(SeekFrom::Start(0))?;
+            self.line = 1;
+        }
+        while self.line < line {
+            loop {
+                if self
+                    .deadline
+                    .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+                {
+                    return Err(std::io::Error::other(
+                        "artifact validation time limit exceeded",
+                    ));
+                }
+                let buffer = self.reader.fill_buf()?;
+                if buffer.is_empty() {
+                    return Ok(false);
+                }
+                let newline = buffer.iter().position(|b| *b == b'\n');
+                let count = newline.map_or(buffer.len(), |n| n + 1);
+                self.reader.consume(count);
+                if newline.is_some() {
+                    break;
+                }
+            }
+            self.line += 1;
+        }
+        let position = self.reader.stream_position()?;
+        let mut matches = true;
+        for expected in raw.lines() {
+            let mut bytes = Vec::new();
+            let count = self
+                .reader
+                .by_ref()
+                .take(expected.len().saturating_add(3) as u64)
+                .read_until(b'\n', &mut bytes)?;
+            if bytes.last() == Some(&b'\n') {
+                bytes.pop();
+                if bytes.last() == Some(&b'\r') {
+                    bytes.pop();
+                }
+            }
+            if count == 0 || bytes != expected.as_bytes() {
+                matches = false;
+                break;
+            }
+        }
+        self.reader.seek(SeekFrom::Start(position))?;
+        Ok(matches)
+    }
+}
+
+#[cfg(test)]
+mod source_cursor_tests {
+    use super::SourceCursor;
+    #[test]
+    fn duplicate_rows_and_multiline_witnesses_share_a_bounded_cursor() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(
+            file.path(),
+            "skipped\r\nfirst\r\n\r\n  continuation é\r\nlast",
+        )
+        .unwrap();
+        let mut cursor = SourceCursor::open(file.path()).unwrap();
+        assert!(cursor.matches(2, "first\n\n  continuation é").unwrap());
+        assert!(cursor.matches(2, "first").unwrap());
+        assert!(!cursor.matches(2, "invented").unwrap());
+        assert!(cursor.matches(5, "last").unwrap());
+        assert!(!cursor.matches(6, "absent").unwrap());
     }
 }

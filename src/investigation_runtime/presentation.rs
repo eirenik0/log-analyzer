@@ -54,21 +54,21 @@ pub(super) struct FindingOverview {
     groups: Vec<(FindingGroup, BTreeSet<String>)>,
 }
 /// Native source errors must remain visible when other findings fill the page.
-fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
+fn source_errors(
+    report: &Value,
+    findings: impl Iterator<Item = super::Result<Value>>,
+) -> super::Result<(String, BTreeSet<String>)> {
     let mut output = String::new();
     let mut highlighted = BTreeSet::new();
-    let findings = report["findings"]
-        .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
     #[derive(Default)]
-    struct Errors<'a> {
-        counts: [Option<&'a Value>; 2],
+    struct Errors {
+        counts: [Option<Value>; 2],
         distinct: usize,
-        samples: Vec<&'a Value>,
+        samples: Vec<Value>,
     }
-    let mut inputs: BTreeMap<&str, Errors<'_>> = BTreeMap::new();
+    let mut inputs: BTreeMap<String, Errors> = BTreeMap::new();
     for finding in findings {
+        let finding = finding?;
         let Some(scope_id) = finding["scope_id"].as_str() else {
             continue;
         };
@@ -79,16 +79,16 @@ fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
         else {
             continue;
         };
-        let errors = inputs.entry(scope_id).or_default();
+        let errors = inputs.entry(scope_id.to_owned()).or_default();
         if finding["kind"] == "observation" {
             errors.distinct += 1;
             if errors.samples.len() < 3 {
-                errors.samples.push(finding);
+                errors.samples.push(finding.clone());
             }
         } else if suffix == "count" {
-            errors.counts[0] = Some(finding);
+            errors.counts[0] = Some(finding.clone());
         } else if suffix == "normalized-count" {
-            errors.counts[1] = Some(finding);
+            errors.counts[1] = Some(finding.clone());
         }
     }
     for scope in report["scopes"].as_array().into_iter().flatten() {
@@ -131,7 +131,7 @@ fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
     if !output.is_empty() {
         output.push_str("At most 3 distinct message samples per input are shown, independently of the findings page. Source severity does not establish operation failure or cause.\n");
     }
-    (output, highlighted)
+    Ok((output, highlighted))
 }
 fn group_key(finding: &Value, definition: &FindingGroup) -> Option<(String, Vec<Value>)> {
     if !definition.select.iter().all(|condition| {
@@ -196,9 +196,9 @@ impl Measured {
         }
     }
 }
-struct Group<'a> {
+struct Group {
     key: String,
-    representative: &'a Value,
+    representative: Value,
     dimensions: Vec<Value>,
     count: usize,
     measurements: Vec<Measured>,
@@ -229,12 +229,16 @@ fn formatted_dimension(value: &Value, template: Option<&str>) -> String {
     escape_controls(&rendered)
 }
 /// Profile-defined views of all processed findings; individual pages stay unchanged.
-pub(super) fn finding_overview(
+pub(super) fn finding_overview<I>(
     report: &Value,
     view: Option<&InvestigationView>,
     redacted: bool,
-) -> FindingOverview {
-    let (source_errors, highlighted) = source_errors(report);
+    mut replay: impl FnMut() -> super::Result<I>,
+) -> super::Result<FindingOverview>
+where
+    I: Iterator<Item = super::Result<Value>>,
+{
+    let (source_errors, highlighted) = source_errors(report, replay()?)?;
     let mut overview = FindingOverview {
         source_errors,
         highlighted,
@@ -243,10 +247,11 @@ pub(super) fn finding_overview(
     };
     let mut displayed = 0;
     for definition in view.into_iter().flat_map(|view| &view.groups) {
-        let mut groups: Vec<Group<'_>> = Vec::new();
+        let mut groups: Vec<Group> = Vec::new();
         let mut omitted = 0;
-        for finding in report["findings"].as_array().into_iter().flatten() {
-            let Some((key, dimensions)) = group_key(finding, definition) else {
+        for finding in replay()? {
+            let finding = finding?;
+            let Some((key, dimensions)) = group_key(&finding, definition) else {
                 continue;
             };
             let group = if let Some(index) = groups.iter().position(|group| group.key == key) {
@@ -256,7 +261,7 @@ pub(super) fn finding_overview(
             {
                 groups.push(Group {
                     key,
-                    representative: finding,
+                    representative: finding.clone(),
                     dimensions,
                     count: 0,
                     measurements: definition
@@ -272,7 +277,7 @@ pub(super) fn finding_overview(
             };
             group.count += 1;
             for (metric, values) in definition.measurements.iter().zip(&mut group.measurements) {
-                values.add(finding, metric);
+                values.add(&finding, metric);
             }
         }
         if groups.is_empty() && omitted == 0 {
@@ -377,9 +382,9 @@ pub(super) fn finding_overview(
     if !overview.rendered.is_empty() {
         overview.rendered.push_str("Groups may overlap. Counts are findings, not unique resources, records or failures. Measured summaries use only matching reported values; missing data stays unknown. Individual findings and citations remain in retained evidence.\n");
     }
-    overview
+    Ok(overview)
 }
-fn write_evidence(output: &mut String, finding: &Value, max: usize) {
+fn write_evidence(output: &mut impl std::fmt::Write, finding: &Value, max: usize) {
     if let Some(excerpts) = finding["evidence"].as_array() {
         for excerpt in excerpts.iter().take(max) {
             let reference = &excerpt["occurrence"]["evidence_ref"];
@@ -402,8 +407,16 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
         }
     }
 }
-pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
-    let mut output = String::new();
+pub(super) fn text(
+    report: &Value,
+    overview: &FindingOverview,
+    findings: impl Iterator<Item = super::Result<Value>>,
+    writer: &mut dyn std::io::Write,
+) -> super::Result<()> {
+    let mut output = TextWriter {
+        writer,
+        error: None,
+    };
     let incomplete = report["scopes"].as_array().is_some_and(|scopes| {
         scopes
             .iter()
@@ -486,10 +499,13 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
     output.push_str(&overview.source_errors);
     output.push_str(&overview.rendered);
     output.push_str("\nObserved findings (individual findings page):\n");
-    if let Some(findings) = report["findings"].as_array() {
+    {
+        let mut seen = 0usize;
         let mut grouped = 0usize;
         let mut highlighted = 0usize;
         for finding in findings {
+            let finding = finding?;
+            seen += 1;
             if finding["id"]
                 .as_str()
                 .is_some_and(|id| overview.highlighted.contains(id))
@@ -498,7 +514,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                 continue;
             }
             if overview.groups.iter().any(|(definition, keys)| {
-                group_key(finding, definition).is_some_and(|(key, _)| keys.contains(&key))
+                group_key(&finding, definition).is_some_and(|(key, _)| keys.contains(&key))
             }) {
                 grouped += 1;
                 continue;
@@ -585,9 +601,9 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                     chain["omitted_later_activity"],
                     label(&chain["evidence_policy"])
                 );
-                write_evidence(&mut output, finding, usize::MAX);
+                write_evidence(&mut output, &finding, usize::MAX);
             } else {
-                write_evidence(&mut output, finding, 2);
+                write_evidence(&mut output, &finding, 2);
             }
         }
         if grouped > 0 {
@@ -602,7 +618,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                 "{highlighted} individual findings on this page are represented in the source error overview above."
             );
         }
-        if findings.is_empty() {
+        if seen == 0 {
             output.push_str(
                 "No findings displayed; check processing coverage and presentation limits.\n",
             );
@@ -657,7 +673,35 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
             "Evidence artifact unavailable; retrieval cannot recover omitted findings.\n",
         );
     }
-    output
+    output.finish()
+}
+
+struct TextWriter<'a> {
+    writer: &'a mut dyn std::io::Write,
+    error: Option<std::io::Error>,
+}
+impl TextWriter<'_> {
+    fn push_str(&mut self, text: &str) {
+        let _ = std::fmt::Write::write_str(self, text);
+    }
+    fn finish(self) -> super::Result<()> {
+        match self.error {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
+        }
+    }
+}
+impl std::fmt::Write for TextWriter<'_> {
+    fn write_str(&mut self, text: &str) -> std::fmt::Result {
+        if self.error.is_some() {
+            return Err(std::fmt::Error);
+        }
+        if let Err(error) = self.writer.write_all(text.as_bytes()) {
+            self.error = Some(error);
+            return Err(std::fmt::Error);
+        }
+        Ok(())
+    }
 }
 
 fn shell_quote(value: &str) -> String {

@@ -26,6 +26,25 @@ profile-selection gap.
 `memory_limit` measures accounted data, not process RSS; measure peak RSS separately
 when investigating RAM consumption.
 
+Investigation sources are captured to temporary files and parsed through a record
+visitor with bounded reads. This avoids retaining complete source buffers, but
+pending correlation state now uses private files with a threshold-triggered SQLite
+index. `--correlation-max-index-bytes` controls the index allowance and
+`--correlation-max-disk-bytes` caps its temporary payload and database pages.
+State exhaustion leaves correlation unavailable, not a measured zero. Selected
+records and evidence are replayed from private row files; report pages and complete
+output are streamed. `--construction-max-disk-bytes` bounds construction rows,
+sort scratch and private artifact staging. Keyed policy, chain, resource and scope state spills only its index.
+Finite item, storage, work and time limits still apply; inspect completion before
+interpreting counts. Evidence retrieval uses temporary
+JSON offset/reference indexes and bounded validation passes, then spools its page.
+It still verifies the entire artifact before returning facts. `--artifact-max-item-bytes`
+bounds atomic items and witness bundles; `--artifact-max-index-bytes` and
+`--artifact-max-state-bytes` bound separate temporary indexes. Validation time/work
+have separate limits. Use nested membership/event pointers when a parent item is
+oversized; never infer absence from an oversized or failed page. SQLite is used
+only for spilled keyed analysis indexes, never retrieval or retained artifact storage.
+
 Retrieve retained collections using `evidence`, the exact artifact
 checksum and snapshot-bound cursor. Check displayed, prior, remaining and total
 counts; append each collection once. A missing displayed item is not a measured
