@@ -173,10 +173,26 @@ pub(crate) fn validate(
                 "scope_fields",
                 "root_event_name",
                 "ambiguity",
+                "later_activity_observed_count",
+                "omitted_later_activity",
             ] {
                 if chain[field] != replay[field] {
                     return Err(format!("chain {field} differs from retained population"));
                 }
+            }
+            let later = |chain: &Value| -> Result<Vec<_>, String> {
+                chain["later_activity"]
+                    .as_array()
+                    .ok_or("missing later activity")?
+                    .iter()
+                    .map(|sample| {
+                        address(&sample["occurrence"])
+                            .ok_or_else(|| "missing later activity address".into())
+                    })
+                    .collect()
+            };
+            if later(chain)? != later(replay)? {
+                return Err("chain later_activity differs from retained population".into());
             }
             if completeness_available && chain["completeness"] != replay["completeness"] {
                 return Err("chain completeness differs from retained population".into());

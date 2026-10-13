@@ -1328,6 +1328,9 @@ fn replay_binds_chain_identity_and_context_to_retained_subjects() {
     let artifact: Value = serde_json::from_slice(&bytes).unwrap();
     log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
     let id = chain(&report["findings"], "alpha")["id"].clone();
+    let mut earlier_samples =
+        chain(&report["findings"], "alpha")["details"]["event_chain"]["later_activity"].clone();
+    earlier_samples[0] = chain(&report["findings"], "alpha")["evidence"][0].clone();
     for (field, replacement) in [
         (
             "identity",
@@ -1340,6 +1343,8 @@ fn replay_binds_chain_identity_and_context_to_retained_subjects() {
         ("scope_fields", json!(["capture_id"])),
         ("root_event_name", json!("neighbor")),
         ("ambiguity", json!("reused_root_identity")),
+        ("later_activity_observed_count", json!(0)),
+        ("later_activity", earlier_samples),
     ] {
         let mut altered = report.clone();
         let mut saved = artifact.clone();
@@ -1353,6 +1358,18 @@ fn replay_binds_chain_identity_and_context_to_retained_subjects() {
             finding["details"]["event_chain"][field] = replacement.clone();
             if field == "identity" && finding["checked"].is_object() {
                 finding["checked"]["identity"] = replacement.clone();
+            }
+            let event_chain = &mut finding["details"]["event_chain"];
+            if field == "later_activity_observed_count" {
+                event_chain["later_activity"] = json!([]);
+                event_chain["omitted_later_activity"] = json!(0);
+            } else if field == "later_activity" {
+                event_chain["omitted_later_activity"] = json!(
+                    event_chain["later_activity_observed_count"]
+                        .as_u64()
+                        .unwrap()
+                        - replacement.as_array().unwrap().len() as u64
+                );
             }
         }
         let bytes = serde_json::to_vec(&saved).unwrap();

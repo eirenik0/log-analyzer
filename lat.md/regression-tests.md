@@ -54,6 +54,7 @@ explicitly defer completeness when calculation-stage history is unavailable.
 [[tests/test_checked_presentation.rs#replay_binds_chain_identity_and_context_to_retained_subjects]]
 rejects coordinated report/artifact changes to chain identities, context identities,
 scope fields, root event names and root ambiguity, even when checked projections agree.
+It also rejects hidden later activity and earlier occurrences mislabeled as later samples.
 [[tests/unit/grouped_assurance.rs#grouped_assurance_covers_every_member_and_preserves_scope_boundaries]]
 checks mixed assurance in both representative orders, explicit representative-only
 details and separation of matching dimensions across independent scopes. Configured

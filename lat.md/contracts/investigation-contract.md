@@ -170,6 +170,8 @@ Replay also checks the complete configured step list, statuses, counts, ambiguit
 recognition, evidence/outcome samples and join samples against retained records.
 Chain identities, context identities, scope fields, root event names and root
 ambiguity must also match replay, binding links to their retained correlation subject.
+Later-activity counts and samples must match the retained same-context population
+after the chain's last linked event.
 Completeness is checked against replayed parse coverage when processing completed.
 After a cutoff, missing stage history explicitly defers completeness comparisons;
 step counts, statuses and populations remain checked.

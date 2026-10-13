@@ -30,3 +30,4 @@ completion and hidden populations. Explicitly defer completeness after processin
 cutoffs when the artifact does not retain calculation-stage history.
 Bind replayed chain identity, context, scope, root name and ambiguity to retained
 subjects so valid links cannot be relabeled as a different correlation subject.
+Check later-activity counts and samples against the retained same-context population.
