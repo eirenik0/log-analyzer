@@ -395,6 +395,54 @@ fn aggregate_subject_verification_preserves_unavailable_prerequisites_when_paged
         if name == "mixed" {
             assert!(unavailable < full["findings"].as_array().unwrap().len());
         }
+        if name != "artifact-limit" {
+            let mut page_options = options.clone();
+            page_options.extend(["--json", "--report-max-items", "0"]);
+            let page_name = format!("{name}-page");
+            let page: Value = serde_json::from_str(&run(
+                temp.path(),
+                &page_name,
+                PROFILE,
+                &inputs,
+                &page_options,
+            ))
+            .unwrap();
+            assert!(page["findings"].as_array().unwrap().is_empty());
+            let artifact = fs::read(temp.path().join(page_name)).unwrap();
+            log_analyzer::investigation::validate_relations(&page, Some(&artifact)).unwrap();
+            for field in [
+                "unknown_findings",
+                "incomplete_chains",
+                "source_binding_unavailable_findings",
+                "subject_verification",
+            ] {
+                let mut altered = page.clone();
+                let value = &mut altered["presentation"]["uncertainty"][field];
+                *value = if field == "subject_verification" {
+                    json!(if expected == "unavailable" {
+                        "not_requested"
+                    } else {
+                        "unavailable"
+                    })
+                } else {
+                    json!(if value == 0 { 1 } else { 0 })
+                };
+                shape(&altered, false);
+                let error =
+                    log_analyzer::investigation::validate_relations(&altered, Some(&artifact))
+                        .unwrap_err();
+                assert!(
+                    error.reason.contains("retained findings"),
+                    "{name}/{field}: {error}"
+                );
+            }
+            let mut legacy = page;
+            legacy["presentation"]
+                .as_object_mut()
+                .unwrap()
+                .remove("uncertainty");
+            log_analyzer::investigation::validate_relations(&legacy, Some(&artifact)).unwrap();
+        }
         let mut summary_options = options.clone();
         summary_options.extend(["--summary", "--report-max-items", "0"]);
         let summary: Value = serde_json::from_str(&run(

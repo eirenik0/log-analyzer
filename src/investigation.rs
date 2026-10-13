@@ -1011,6 +1011,53 @@ pub fn validate_relations(
             )?;
         }
     }
+    if artifact.is_some()
+        && let Some(uncertainty) = report["presentation"].get("uncertainty")
+    {
+        let unavailable = findings
+            .values()
+            .filter(|finding| finding["verification"]["source_and_rules"] != "available")
+            .count();
+        for (field, expected) in [
+            (
+                "unknown_findings",
+                findings.values().filter(|f| f["kind"] == "unknown").count(),
+            ),
+            (
+                "incomplete_chains",
+                findings
+                    .values()
+                    .filter(|f| {
+                        let chain = &f["details"]["event_chain"];
+                        chain.is_object()
+                            && (chain["completeness"] != "complete"
+                                || chain["steps"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .any(|s| s["status"] != "observed"))
+                    })
+                    .count(),
+            ),
+            ("source_binding_unavailable_findings", unavailable),
+        ] {
+            require(
+                uncertainty[field].as_u64() == Some(expected as u64),
+                &format!("/presentation/uncertainty/{field}"),
+                "uncertainty total differs from retained findings",
+            )?;
+        }
+        require(
+            uncertainty["subject_verification"]
+                == if unavailable > 0 {
+                    "unavailable"
+                } else {
+                    "not_requested"
+                },
+            "/presentation/uncertainty/subject_verification",
+            "aggregate subject verification differs from retained findings",
+        )?;
+    }
     for finding in list(report, "/findings")? {
         let scope = scopes
             .get(text(finding, "/scope_id")?)

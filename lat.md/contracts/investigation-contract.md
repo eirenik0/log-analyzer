@@ -143,6 +143,8 @@ text, while ambiguity and completeness remain in ordinary text.
 [[src/investigation.rs#validate_relations|Relation validation]] also checks optional
 checked subjects against retained records, population and scope projections, and
 nested endpoint interval arithmetic, timestamp provenance and cited event names.
+When artifact bytes are supplied, aggregate uncertainty counts and assurance must
+also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.
 
 Presentation retains all-finding uncertainty counts even when findings are omitted.

@@ -25,6 +25,8 @@ below also exercise the checked publication boundary.
 [[tests/test_checked_presentation.rs#aggregate_subject_verification_preserves_unavailable_prerequisites_when_paged]]
 keeps aggregate assurance unavailable for redaction, artifact limits and mixed
 UTF-8/non-UTF-8 input, including pages with no displayed findings.
+It rejects independently mutated uncertainty counts and assurance against retained
+artifacts while accepting older reports that omit the optional aggregate.
 
 ## Missing join identity
 
