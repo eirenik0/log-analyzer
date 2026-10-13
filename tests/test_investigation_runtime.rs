@@ -2551,8 +2551,8 @@ fn readable_default_creates_fresh_artifacts_and_reports_observed_errors() {
             String::from_utf8_lossy(&output.stderr)
         );
         let text = String::from_utf8(output.stdout).unwrap();
-        assert!(text.starts_with("Next action: "), "{text}");
-        assert!(text.contains("\nInvestigation: complete"), "{text}");
+        assert!(text.starts_with("Investigation: complete"), "{text}");
+        assert!(!text.contains("Next action:"), "{text}");
         assert!(text.contains("renderer failed"), "{text}");
         assert!(text.contains("failures: unsupported"), "{text}");
         assert!(text.contains("2 parsed records (complete)"), "{text}");
@@ -3951,8 +3951,8 @@ fn summary_and_readable_redacted_file_outputs_follow_requested_format() {
     ]);
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.starts_with("Next action: "));
-    assert!(text.contains("\nInvestigation: complete"));
+    assert!(text.starts_with("Investigation: complete"));
+    assert!(!text.contains("Next action:"));
     assert!(!text.contains("private-message"));
     assert!(!text.contains("private-source.log"));
     assert_eq!(fs::read_to_string(destination).unwrap(), text);
@@ -4109,6 +4109,7 @@ fn redacted_resource_labels_ids_and_automatic_artifacts_remain_private_and_retri
         });
         let mut command = binary();
         command.current_dir(temp.path()).args([
+            "--verbose",
             "--profile",
             profile.to_str().unwrap(),
             "investigate",
@@ -4614,6 +4615,7 @@ fn readable_paths_escape_controls_and_next_command_preserves_the_artifact_path()
     )
     .unwrap();
     let output = run(&[
+        "--verbose",
         "--preset",
         "base",
         "investigate",
@@ -7064,4 +7066,78 @@ fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
     missing_summary_unknown["final_review"]["unresolved_question_ids"] = json!([]);
     assert!(!verify(&missing_summary_unknown).0);
     assert!(verify(&positive).0);
+}
+
+#[test]
+fn readable_chains_show_intervals_and_unknowns_without_helpers() {
+    let start = chain_event("checkpoint", "run-a", "item-a", 0);
+    let other = chain_event("checkpoint", "run-a", "item-b", 0);
+    let mut end = chain_event("capture_end", "run-a", "item-a", 0);
+    end["timestamp"] = json!("2026-01-01T00:00:00.050Z");
+    for ambiguous in [false, true] {
+        let mut events = vec![start.clone(), other.clone(), end.clone()];
+        if ambiguous {
+            events.push(start.clone());
+        }
+        let (temp, _, _) = chain_fixture(&events, None);
+        for detailed in [false, true] {
+            let mut command = binary();
+            command.current_dir(temp.path()).args([
+                "--profile",
+                "profile.toml",
+                "investigate",
+                "events.jsonl",
+            ]);
+            if detailed {
+                command.arg("--verbose");
+            }
+            let result = command.output().unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            let text = String::from_utf8(result.stdout).unwrap();
+            assert!(
+                text.contains("item-a") && text.contains("item-b") && text.contains("run-a"),
+                "{text}"
+            );
+            assert!(
+                text.contains("capture completion: 0 observed, 0 linked; not observed"),
+                "{text}"
+            );
+            if detailed {
+                assert!(
+                    text.contains("Recognition:") && text.contains("SHA-256:"),
+                    "{text}"
+                );
+                assert!(text.contains("Join:"), "{text}");
+                if !ambiguous {
+                    assert!(text.contains("reference_id"), "{text}");
+                }
+            } else {
+                assert!(text.starts_with("Investigation:"), "{text}");
+                for internal in [
+                    "Next action:",
+                    "Join:",
+                    "reference_id",
+                    "snapshot_id",
+                    "SHA-256:",
+                    "map_questions.py",
+                ] {
+                    assert!(!text.contains(internal), "{internal}: {text}");
+                }
+                assert!(text.contains("Claim verification is optional"));
+                if ambiguous {
+                    assert!(text.contains("reused_root_identity"), "{text}");
+                    assert!(!text.contains("50.0 ms"), "{text}");
+                } else {
+                    assert!(
+                        text.contains("50.0 ms; input 1, line 1 -> input 1, line 3"),
+                        "{text}"
+                    );
+                }
+            }
+        }
+    }
 }

@@ -33,9 +33,9 @@ log-analyzer --version
 ## Choose a command
 
 Start with `investigate` for failures, timing, or an unfamiliar capture. It detects
-profiles and reports coverage, supported goals, and the next evidence to retrieve.
+profiles and reports coverage, findings, timings and assessment limits.
 A profile is either built in or loaded from TOML; select either with `--profile`.
-No agent skill is required to navigate the CLI.
+No helper scripts, question plans or claim files are required for ordinary analysis.
 
 ```text
 investigate   Investigate logs with automatic profile detection
@@ -68,11 +68,16 @@ log-analyzer investigate captures/*.log
 
 The default output explains processing completion, per-file coverage, observed
 ERROR/WARN records, supported measurements and assessment limits. A fresh local
-`log-analyzer-evidence-*` directory stores `evidence.json`; its path and SHA-256
-appear at the end. With `--redact`, an automatically created artifact keeps a safe
-relative handle that can be used from the investigation directory; private parent
-paths, profile fingerprint labels and rule names are omitted. The printed `Next`
-command quotes artifact paths for a POSIX shell and includes the continuation cursor.
+`log-analyzer-evidence-*` directory stores `evidence.json`; its path appears at
+the end. Calculations and evidence references are checked internally before the
+report is published. `--verbose` exposes detailed joins, recognition diagnostics
+and provenance; `--json` retains the full structured contract. Claim verification
+with `evidence --claims` is optional and is not required to obtain analysis.
+With `--redact`, an automatically created artifact keeps a safe relative handle
+that can be used from the investigation directory; private parent
+paths, profile fingerprint labels and rule names are omitted. When pagination or
+`--verbose` needs a `Next` command, it quotes artifact paths for a POSIX shell and
+includes the continuation cursor.
 Severity evidence is retained within processing budgets: unavailable parsing does
 not establish zero errors or warnings, and interrupted counts are partial.
 Profile fingerprint matches appear before source warnings and
@@ -1135,8 +1140,9 @@ commands; compatibility shortcuts remain callable but hidden from primary help.
 
 ## Output for models and people
 
-Command results default to JSON. Use `--summary` for concise JSON without losing
-coverage, uncertainty, provenance, or recovery instructions:
+`investigate` defaults to readable text; other commands default to JSON. Use
+`--json` for structured investigation output or `--summary` for concise JSON
+without losing coverage, uncertainty, provenance, or recovery instructions:
 
 ```bash
 log-analyzer investigate capture.jsonl --artifact evidence.json --summary
@@ -2203,17 +2209,18 @@ for crate ownership, licensing, and the one-time crates.io configuration.
 
 ## Subject-bound evidence and workflow status
 
-Investigation and evidence output starts with `action_summary`: bounded coverage,
+Investigation JSON and evidence output starts with `action_summary`: bounded coverage,
 unresolved question IDs, verification status and one literal `next_command` argv
 before findings. Omitted inputs/IDs stay explicit; upstream completeness stays unknown.
 
-Give each question a stable ID with repeatable `investigate --question TEXT` and
-`--required-relationship ID`. Supply at least one required ID per question; extra
+For optional claim verification, give each question a stable ID with repeatable
+`investigate --question TEXT` and `--required-relationship ID`. Supply at least
+one required ID per question; extra
 IDs may cover its subparts. Follow `guidance.workflow.next_action.argv` for
 checksum-bound evidence retrieval. Workflow status separates processing, delivery
 and verification; delivery does not establish review.
 
-The skill helper prepares a blank question plan, lists scoped event candidates
+The optional skill helper prepares a blank question plan, lists scoped event candidates
 and proposed operation-count/coverage claims, then compiles and runs verification:
 
 ```sh

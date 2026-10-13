@@ -838,7 +838,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     {
         format!("{}\n", serde_json::to_string(&report)?)
     } else {
-        presentation::text(&report, overview.as_ref().expect("text overview"))
+        presentation::text(
+            &report,
+            overview.as_ref().expect("text overview"),
+            cli.verbose > 0,
+        )
     };
     if let Some(staged) = staged_report
         && let Err(error) = staged.save_text(&rendered)

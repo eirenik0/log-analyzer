@@ -402,8 +402,109 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
         }
     }
 }
-pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
-    let mut output = format!("Next action: {}\n", report["action_summary"]);
+fn source_location(occurrence: &Value) -> String {
+    let reference = &occurrence["evidence_ref"];
+    format!(
+        "input {}, line {}{}",
+        occurrence["input_ordinal"]
+            .as_u64()
+            .map_or_else(|| "unknown".into(), |n| (n + 1).to_string()),
+        reference["line"],
+        reference["row_path"]
+            .as_str()
+            .map_or_else(String::new, |p| format!(", row {}", escape_controls(p)))
+    )
+}
+
+fn readable_chain(output: &mut String, chain: &Value) {
+    let identity = chain["identity"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|v| {
+            format!(
+                "{}={}",
+                escape_controls(label(&v["field"])),
+                escape_controls(
+                    &v["value"]
+                        .as_str()
+                        .map_or_else(|| v["value"].to_string(), str::to_owned)
+                )
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let _ = writeln!(
+        output,
+        "- {} ({identity}); {}",
+        escape_controls(label(&chain["root_event_name"])),
+        source_location(&chain["root"])
+    );
+    if chain["ambiguity"] != "none" || chain["completeness"] != "complete" {
+        let _ = writeln!(
+            output,
+            "  Coverage: {}; ambiguity: {}",
+            label(&chain["completeness"]),
+            label(&chain["ambiguity"])
+        );
+    }
+    for step in chain["steps"].as_array().into_iter().flatten() {
+        let _ = writeln!(
+            output,
+            "  {}: {} observed, {} linked; {} (count {})",
+            escape_controls(label(&step["label"])),
+            step["observed_count"],
+            step["linked_count"],
+            label(&step["status"]).replace('_', " "),
+            label(&step["count_completeness"])
+        );
+        for sample in step["join_samples"].as_array().into_iter().flatten() {
+            let interval = &sample["endpoint_interval"];
+            let elapsed = if interval["status"] == "measured" {
+                format!("{} {}", interval["value"], label(&interval["unit"]))
+            } else {
+                format!("unknown ({})", escape_controls(label(&interval["reason"])))
+            };
+            let _ = writeln!(
+                output,
+                "    {} -> {}: {elapsed}; {} -> {}",
+                escape_controls(label(&interval["start_operation"])),
+                escape_controls(label(&interval["end_operation"])),
+                source_location(&sample["source"]),
+                source_location(&sample["target"])
+            );
+        }
+        for outcome in step["outcomes"].as_array().into_iter().flatten() {
+            let _ = writeln!(
+                output,
+                "    Outcome [{}]: {} = {}",
+                escape_controls(label(&outcome["level"])),
+                escape_controls(label(&outcome["field"])),
+                escape_controls(&outcome["value"].to_string())
+            );
+        }
+        if step["omitted_occurrences"].as_u64().unwrap_or(0) > 0 {
+            let _ = writeln!(
+                output,
+                "    {} occurrences omitted; details retained in evidence.",
+                step["omitted_occurrences"]
+            );
+        }
+    }
+    if chain["later_activity_observed_count"].as_u64().unwrap_or(0) > 0 {
+        let _ = writeln!(
+            output,
+            "  Later same-context records: {} ({} samples omitted); not proof of this subject's completion.",
+            chain["later_activity_observed_count"], chain["omitted_later_activity"]
+        );
+    }
+}
+
+pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -> String {
+    let mut output = String::new();
+    if detailed {
+        let _ = writeln!(output, "Next action: {}", report["action_summary"]);
+    }
     let incomplete = report["scopes"].as_array().is_some_and(|scopes| {
         scopes
             .iter()
@@ -489,6 +590,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
     if let Some(findings) = report["findings"].as_array() {
         let mut grouped = 0usize;
         let mut highlighted = 0usize;
+        let mut diagnostics = BTreeSet::new();
         for finding in findings {
             if finding["id"]
                 .as_str()
@@ -502,6 +604,38 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
             }) {
                 grouped += 1;
                 continue;
+            }
+            if !detailed {
+                if let Some(chain) = finding["details"].get("event_chain") {
+                    readable_chain(&mut output, chain);
+                    continue;
+                }
+                let is_diagnostic = finding["kind"] == "unknown"
+                    || finding["id"].as_str().is_some_and(|id| {
+                        id.starts_with(&format!("{}-unmatched-", label(&finding["scope_id"])))
+                    });
+                if is_diagnostic {
+                    let key = (label(&finding["scope_id"]), label(&finding["claim"]));
+                    if !diagnostics.insert(key) {
+                        continue;
+                    }
+                    let count = findings
+                        .iter()
+                        .filter(|f| {
+                            f["scope_id"] == finding["scope_id"] && f["claim"] == finding["claim"]
+                        })
+                        .count();
+                    let _ = writeln!(
+                        output,
+                        "- [{}] {}: {} ({} finding{} on this page)",
+                        key.0,
+                        label(&finding["kind"]),
+                        escape_controls(key.1),
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    );
+                    continue;
+                }
             }
             let _ = writeln!(
                 output,
@@ -639,18 +773,32 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
     if report["artifact"]["status"] != "unavailable" {
         let _ = writeln!(
             output,
-            "\nEvidence: {}\nSHA-256: {}",
-            escape_controls(label(&report["artifact"]["location"])),
-            label(&report["artifact"]["stored_sha256"])
+            "\nEvidence: {}",
+            escape_controls(label(&report["artifact"]["location"]))
         );
-        let _ = writeln!(
-            output,
-            "Next: log-analyzer evidence {} --expected-sha256 {} --collection /findings{}",
-            shell_quote(label(&report["artifact"]["location"])),
-            label(&report["artifact"]["stored_sha256"]),
-            report["retrieval"]["next_cursor"]
-                .as_str()
-                .map_or_else(String::new, |cursor| format!(" --report-cursor {cursor}"))
+        if detailed
+            || report["presentation"]["omitted_findings"]
+                .as_u64()
+                .unwrap_or(0)
+                > 0
+        {
+            let _ = writeln!(
+                output,
+                "SHA-256: {}",
+                label(&report["artifact"]["stored_sha256"])
+            );
+            let _ = writeln!(
+                output,
+                "Next: log-analyzer evidence {} --expected-sha256 {} --collection /findings{}",
+                shell_quote(label(&report["artifact"]["location"])),
+                label(&report["artifact"]["stored_sha256"]),
+                report["retrieval"]["next_cursor"]
+                    .as_str()
+                    .map_or_else(String::new, |cursor| format!(" --report-cursor {cursor}"))
+            );
+        }
+        output.push_str(
+            "Details: --verbose or --json. Claim verification is optional (evidence --claims).\n",
         );
     } else {
         output.push_str(
