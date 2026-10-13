@@ -111,6 +111,43 @@ are atomic. Tiny budgets retain mandatory metadata with an explicit exception;
 oversized bundles do not silently lose their required witnesses. See
 [bounded reports](bounded-reports.md) for the unchanged legacy interface.
 
+## Checked presentation
+
+[[src/investigation_runtime/checked.rs#CheckedResult|Checked results]] publish the same scoped facts to text and JSON after existing relation and source-binding checks. They do not verify intended question meaning.
+
+New reports add optional `checked` metadata to each displayed finding: input scope,
+source-addressed event subjects, population definition and membership reference,
+identity rule, and assurance. The existing version-1 fields and retained artifact
+remain unchanged; older artifacts without this presentation metadata remain valid.
+Consumers validating new reports must use the updated version-1 schema. Retrieval
+continues to return the original retained finding shape.
+
+Assurance separates available source binding from intended-subject verification.
+`link_exists` describes retained links; `source_bound` describes other source-bound
+facts; `relations_only` discloses unavailable source checking. None implies
+`subject_verified`. Independent expected subjects remain the responsibility of the
+existing claim verifier. Intended-subject verification is `not_requested` when
+source checking ran and `unavailable` when its prerequisites are missing.
+
+[[src/investigation_runtime/presentation.rs#text|Text presentation]] places coverage
+and material uncertainty before findings. Each fact retains its limits. Intervals
+name endpoints, offsets and units; missing endpoints have no measurement. Operation
+and session outcomes keep their own levels and citations. Chain counts preserve
+separate role populations and occurrence identity; no logical-attempt or network
+failure deduplication is inferred. Recognition and join samples require verbose
+text, while ambiguity and completeness remain in ordinary text.
+
+[[src/investigation.rs#validate_relations|Relation validation]] also checks optional
+checked subjects against retained records, population and scope projections, and
+nested endpoint interval arithmetic, timestamp provenance and cited event names.
+Renderers copy measurements; they do not recalculate them.
+
+Presentation retains all-finding uncertainty counts even when findings are omitted.
+The decision brief keeps this metadata and explicit omitted-finding counts. See the
+[[examples/investigations/checked/README.md|maintained bounded example]] and
+[[regression-tests#Evidence regressions#Checked finding presentation]]. These tests
+establish deterministic CLI behavior, not improved model accuracy or verifier adoption.
+
 ## Facts and support
 
 Every finding has an ID, author, scope, material limitations, verification guarantees,

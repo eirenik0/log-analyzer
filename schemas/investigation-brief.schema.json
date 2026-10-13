@@ -307,6 +307,10 @@
           "items": {
             "type": "object"
           }
+        },
+        "omitted": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
@@ -437,6 +441,40 @@
         "serialized_characters": {
           "type": "integer",
           "minimum": 0
+        },
+        "uncertainty": {
+          "type": "object",
+          "properties": {
+            "unknown_findings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "incomplete_chains": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_binding_unavailable_findings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "subject_verification": {
+              "const": "not_requested"
+            },
+            "limits": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "unknown_findings",
+            "incomplete_chains",
+            "source_binding_unavailable_findings",
+            "subject_verification",
+            "limits"
+          ]
         }
       },
       "required": [

@@ -2,6 +2,7 @@
 mod artifact;
 mod auto_profile;
 pub(crate) mod chains;
+mod checked;
 mod claims;
 mod findings;
 mod guidance;
@@ -790,11 +791,12 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             directory.path().file_name().unwrap().to_string_lossy()
         ));
     }
-    // Validation reparses the exact stored bytes; release the construction tree first.
-    drop(retained);
+    if bytes.is_none() {
+        artifact::unavailable(&mut report, "artifact byte limit exceeded");
+    }
+    let mut report =
+        checked::CheckedResult::build(report, retained, bytes.as_deref())?.into_report();
     if let Some(bytes) = bytes {
-        // Validate calculations/cross-references against the exact bytes before publishing.
-        crate::investigation::validate_relations(&report, Some(&bytes))?;
         let saved = (|| -> Result<()> {
             temporary.write_all(&bytes)?;
             temporary.as_file().sync_all()?;
@@ -810,8 +812,6 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 "Artifact write failed; no reusable evidence artifact was published",
             );
         }
-    } else {
-        artifact::unavailable(&mut report, "artifact byte limit exceeded");
     }
     let overview = (!args.brief
         && matches!(cli.effective_format(), crate::cli::OutputFormat::Text))
@@ -829,17 +829,20 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     if report["artifact"]["status"] == "unavailable" {
         artifact::reconcile_unavailable(&mut report, cli)?;
     }
-    crate::investigation::validate_relations(&report, None)?;
-    let report = if args.brief {
-        guidance::brief(&report, cli)
+    let checked = checked::CheckedResult::page(report)?;
+    let rendered = if args.brief {
+        format!(
+            "{}\n",
+            serde_json::to_string(&guidance::brief(checked.report(), cli))?
+        )
+    } else if matches!(cli.effective_format(), crate::cli::OutputFormat::Json) {
+        format!("{}\n", serde_json::to_string(checked.report())?)
     } else {
-        report
-    };
-    let rendered = if args.brief || matches!(cli.effective_format(), crate::cli::OutputFormat::Json)
-    {
-        format!("{}\n", serde_json::to_string(&report)?)
-    } else {
-        presentation::text(&report, overview.as_ref().expect("text overview"))
+        presentation::text(
+            &checked,
+            overview.as_ref().expect("text overview"),
+            cli.verbose > 0,
+        )
     };
     if let Some(staged) = staged_report
         && let Err(error) = staged.save_text(&rendered)

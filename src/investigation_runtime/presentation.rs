@@ -114,7 +114,11 @@ fn source_errors(report: &Value) -> (String, BTreeSet<String>) {
             }
         }
         let _ = writeln!(output, " {count} distinct source messages");
+        for finding in errors.counts.iter().flatten() {
+            write_checked(&mut output, finding);
+        }
         for finding in &errors.samples {
+            write_checked(&mut output, finding);
             write_evidence(&mut output, finding, 1);
             if let Some(id) = finding["id"].as_str() {
                 highlighted.insert(id.into());
@@ -289,6 +293,7 @@ pub(super) fn finding_overview(
             escape_controls(title)
         );
         for group in &groups {
+            write_checked(&mut overview.rendered, group.representative);
             let _ = write!(
                 overview.rendered,
                 "- [{}] ",
@@ -402,8 +407,164 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
         }
     }
 }
+
+fn citation(occurrence: &Value) -> String {
+    format!(
+        "Input {}, line {} [{}]",
+        occurrence["input_ordinal"]
+            .as_u64()
+            .map_or_else(|| "unknown".into(), |n| (n + 1).to_string()),
+        occurrence["evidence_ref"]["line"],
+        escape_controls(label(&occurrence["evidence_ref"]["reference_id"]))
+    )
+}
+
+fn write_checked(output: &mut String, finding: &Value) {
+    let checked = &finding["checked"];
+    let scope = &checked["scope"];
+    let assurance = &checked["assurance"];
+    let _ = writeln!(
+        output,
+        "  Assurance: {}; source binding {}; intended subject {} (subject_verified requires independent expected subjects).",
+        label(&assurance["level"]),
+        label(&assurance["source_binding"]),
+        label(&assurance["subject_verification"])
+    );
+    let _ = writeln!(
+        output,
+        "  Scope: {}; inputs {} (zero-based); capture {}; analysis {}; extent {}; upstream completeness unknown.",
+        label(&scope["id"]),
+        scope["input_ordinals"],
+        label(&scope["completeness"]),
+        label(&scope["analysis_completion"]),
+        label(&scope["extent"])
+    );
+    for subject in checked["subjects"].as_array().into_iter().flatten() {
+        let _ = writeln!(
+            output,
+            "  Subject: {}; event {}",
+            citation(&subject["occurrence"]),
+            escape_controls(&subject["event"].to_string())
+        );
+    }
+    if checked["population"].is_object() {
+        let population = &checked["population"];
+        let _ = writeln!(
+            output,
+            "  Population {}: {}; entity {}; identity fields {}; completeness {} for {}. Membership: {} ({} members).",
+            label(&population["id"]),
+            escape_controls(label(&population["definition"])),
+            label(&population["entity"]),
+            escape_controls(&population["identity_fields"].to_string()),
+            label(&population["completeness"]),
+            label(&population["basis"]),
+            label(&population["membership"]["collection"]),
+            population["membership"]["count"]
+        );
+        let _ = writeln!(
+            output,
+            "  Identity rule: distinct declared population members; source occurrences use (snapshot_id, input_ordinal, reference_id). Exclusions: {}",
+            escape_controls(&population["exclusions"].to_string())
+        );
+    }
+    let details = &finding["details"];
+    if finding["kind"] == "measurement" {
+        for side in ["start", "end"] {
+            let boundary = &details["boundaries"][side];
+            let _ = writeln!(
+                output,
+                "  {side}: {} at {}; {}",
+                escape_controls(label(&boundary["event"])),
+                label(&boundary["timestamp"]),
+                citation(&boundary["occurrence"])
+            );
+        }
+        let _ = writeln!(
+            output,
+            "  Interval semantics: {}; clock relationship {}.",
+            label(&details["semantics"]),
+            label(&details["clock_relationship"])
+        );
+    }
+    if let Some(reason) = details["reason"].as_str() {
+        let _ = writeln!(output, "  Unavailable: {}", escape_controls(reason));
+    }
+    for limit in finding["limitations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .chain(
+            finding["verification"]["losses"]
+                .as_array()
+                .into_iter()
+                .flatten(),
+        )
+    {
+        let _ = writeln!(output, "  Limit: {}", escape_controls(label(limit)));
+    }
+}
+
+fn write_step(output: &mut String, finding: &Value, step: &Value) {
+    let _ = writeln!(
+        output,
+        "       Population {} / {}: distinct source occurrences (snapshot_id, input_ordinal, reference_id); join fields {}; completeness {}. Observed and linked counts are separate; no request deduplication is inferred.",
+        label(&finding["id"]),
+        label(&step["id"]),
+        escape_controls(&step["join_fields"].to_string()),
+        label(&step["count_completeness"])
+    );
+    let _ = writeln!(
+        output,
+        "       Event type: {}; scope is the named input and chain identity. Ambiguity: {}",
+        label(&step["event_type"]),
+        step["ambiguity"]
+    );
+    if step["status"] == "not_observed" {
+        let _ = writeln!(
+            output,
+            "       {} not observed within this input; endpoint interval unavailable. Capture limit: {} / {}. No stall, cancellation or failure is established.",
+            escape_controls(label(&step["label"])),
+            label(&finding["checked"]["scope"]["extent"]),
+            label(&finding["checked"]["scope"]["completeness"])
+        );
+    }
+    for join in step["join_samples"].as_array().into_iter().flatten() {
+        let interval = &join["endpoint_interval"];
+        let _ = writeln!(
+            output,
+            "       Interval {} -> {}: {} {}; {} -> {}; {} -> {}; {}.",
+            escape_controls(label(&interval["start_operation"])),
+            escape_controls(label(&interval["end_operation"])),
+            if interval["status"] == "measured" {
+                interval["value"].to_string()
+            } else {
+                "unavailable".into()
+            },
+            label(&interval["unit"]),
+            label(&interval["start_timestamp"]),
+            label(&interval["end_timestamp"]),
+            citation(&join["source"]),
+            citation(&join["target"]),
+            interval["reason"]
+                .as_str()
+                .unwrap_or("selected endpoints only; clock synchronization and causality unknown")
+        );
+    }
+    if step["omitted_outcomes"].as_u64().unwrap_or(0) > 0 {
+        let _ = writeln!(
+            output,
+            "       {} outcome occurrences omitted from this bundle.",
+            step["omitted_outcomes"]
+        );
+    }
+}
 // @lat: [[usability#Usability#NFR-005 One-command initial analysis]]
-pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
+pub(super) fn text(
+    checked: &super::checked::CheckedResult,
+    overview: &FindingOverview,
+    verbose: bool,
+) -> String {
+    let report = checked.report();
     let mut output = String::new();
     let incomplete = report["scopes"].as_array().is_some_and(|scopes| {
         scopes
@@ -484,6 +645,33 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
             }
         }
     }
+    let uncertainty = &report["presentation"]["uncertainty"];
+    let _ = writeln!(
+        output,
+        "\nMaterial limits across all findings: {} unknown findings; {} chains with missing or uncertain steps; {} findings with unavailable source binding. Intended subject verification: {}.",
+        uncertainty["unknown_findings"],
+        uncertainty["incomplete_chains"],
+        uncertainty["source_binding_unavailable_findings"],
+        label(&uncertainty["subject_verification"])
+    );
+    output.push_str("Omitted details may include outcomes and uncertainty; a page is not a complete conclusion.\n");
+    output.push_str("\nAssessment limits:\n");
+    if let Some(assessments) = report["assessments"].as_array() {
+        for assessment in assessments
+            .iter()
+            .filter(|assessment| assessment["status"] != "supported")
+        {
+            let _ = writeln!(
+                output,
+                "- {} / {}: {}. {}",
+                label(&assessment["scope_id"]),
+                label(&assessment["goal"]),
+                label(&assessment["status"]),
+                label(&assessment["reason"])
+            );
+        }
+    }
+    output.push_str("No causal root cause is inferred from counts or resource fingerprints.\n");
     output.push_str(&overview.source_errors);
     output.push_str(&overview.rendered);
     output.push_str("\nObserved findings (individual findings page):\n");
@@ -511,6 +699,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                 label(&finding["kind"]),
                 escape_controls(label(&finding["claim"]))
             );
+            write_checked(&mut output, finding);
             if !finding["details"]["value"].is_null() {
                 let _ = writeln!(
                     output,
@@ -544,7 +733,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                         label(&step["count_completeness"]),
                         escape_controls(label(&step["from"]))
                     );
-                    if let Some(recognition) = step.get("recognition") {
+                    if verbose && let Some(recognition) = step.get("recognition") {
                         let _ = writeln!(
                             output,
                             "       Recognition: {} role matches in this selected input; {} rule matches; failed selectors: {}",
@@ -553,19 +742,23 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                             escape_controls(&recognition["failed_selectors"].to_string())
                         );
                     }
-                    let _ = writeln!(
-                        output,
-                        "       Join: {}; ambiguity: {}",
-                        escape_controls(&step["join_samples"].to_string()),
-                        step["ambiguity"]
-                    );
+                    if verbose {
+                        let _ = writeln!(
+                            output,
+                            "       Join: {}; ambiguity: {}",
+                            escape_controls(&step["join_samples"].to_string()),
+                            step["ambiguity"]
+                        );
+                    }
+                    write_step(&mut output, finding, step);
                     for outcome in step["outcomes"].as_array().into_iter().flatten() {
                         let _ = writeln!(
                             output,
-                            "       Outcome [{}]: {} = {}",
+                            "       Outcome [{}]: {} = {}; {}",
                             escape_controls(label(&outcome["level"])),
                             escape_controls(label(&outcome["field"])),
-                            escape_controls(&outcome["value"].to_string())
+                            escape_controls(&outcome["value"].to_string()),
+                            citation(&outcome["occurrence"])
                         );
                     }
                     write_evidence(&mut output, step, 4);
@@ -588,7 +781,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
                 );
                 write_evidence(&mut output, finding, usize::MAX);
             } else {
-                write_evidence(&mut output, finding, 2);
+                write_evidence(&mut output, finding, usize::MAX);
             }
         }
         if grouped > 0 {
@@ -609,23 +802,6 @@ pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
             );
         }
     }
-    output.push_str("\nAssessment limits:\n");
-    if let Some(assessments) = report["assessments"].as_array() {
-        for assessment in assessments
-            .iter()
-            .filter(|assessment| assessment["status"] != "supported")
-        {
-            let _ = writeln!(
-                output,
-                "- {} / {}: {}. {}",
-                label(&assessment["scope_id"]),
-                label(&assessment["goal"]),
-                label(&assessment["status"]),
-                label(&assessment["reason"])
-            );
-        }
-    }
-    output.push_str("No causal root cause is inferred from counts or resource fingerprints.\n");
     if report["presentation"]["omitted_findings"]
         .as_u64()
         .unwrap_or(0)

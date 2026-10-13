@@ -19,6 +19,11 @@ log-analyzer investigate application.log
 See the [installation guide](lat.md/usage.md#installation) for the release installer.
 Use `log-analyzer --help` and subcommand help for supported syntax.
 
+Investigation findings show their scope, source assurance, citations and limits.
+Use `--verbose` for recognition and join diagnostics, or `--summary` for bounded
+JSON with coverage and explicit omissions. An existing link does not verify the
+intended subject. See the [synthetic checked findings example](examples/investigations/checked/README.md).
+
 ## Documentation
 
 Project documentation lives in the [Lat knowledge graph](lat.md/lat.md).

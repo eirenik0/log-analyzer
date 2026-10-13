@@ -12,6 +12,13 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const CONTRACT_VERSION: u32 = 1;
 pub const ARTIFACT_VERSION: u32 = 1;
 
+pub(crate) fn endpoint_milliseconds(interval: &Value) -> Option<f64> {
+    let start = DateTime::parse_from_rfc3339(interval["start_timestamp"].as_str()?).ok()?;
+    let end = DateTime::parse_from_rfc3339(interval["end_timestamp"].as_str()?).ok()?;
+    let nanos = end.signed_duration_since(start).num_nanoseconds()?;
+    (nanos >= 0).then_some(nanos as f64 / 1_000_000.0)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationSummary {
     pub artifact_checked: bool,
@@ -1004,6 +1011,70 @@ pub fn validate_relations(
             )?;
         }
     }
+    for finding in list(report, "/findings")? {
+        let scope = scopes
+            .get(text(finding, "/scope_id")?)
+            .ok_or_else(|| error("/findings/scope_id", "unknown scope"))?;
+        if let Some(checked) = finding.get("checked") {
+            require(
+                checked["scope"] == **scope,
+                "/findings/checked/scope",
+                "checked scope differs",
+            )?;
+            let population = finding["details"]["population_id"]
+                .as_str()
+                .and_then(|id| populations.get(id))
+                .copied()
+                .unwrap_or(&Value::Null);
+            require(
+                checked["population"] == *population,
+                "/findings/checked/population",
+                "checked population differs",
+            )?;
+            require(
+                checked["identity"] == finding["details"]["event_chain"]["identity"],
+                "/findings/checked/identity",
+                "checked identity differs",
+            )?;
+            require(
+                checked["assurance"]["subject_verification"]
+                    == if checked["assurance"]["source_binding"] == "validated" {
+                        "not_requested"
+                    } else {
+                        "unavailable"
+                    },
+                "/findings/checked/assurance",
+                "presentation cannot assert intended subject verification",
+            )?;
+            if checked["assurance"]["source_binding"] == "validated" {
+                require(
+                    finding["verification"]["source_and_rules"] == "available",
+                    "/findings/checked/assurance",
+                    "source binding unavailable",
+                )?;
+            }
+            for subject in list(checked, "/subjects")? {
+                let source = get(subject, "/occurrence")?;
+                require(
+                    list(finding, "/evidence")?
+                        .iter()
+                        .any(|e| e["occurrence"] == *source),
+                    "/findings/checked/subjects",
+                    "subject has no finding witness",
+                )?;
+                if artifact.is_some() {
+                    let record = retained.get(&occurrence(source)?).ok_or_else(|| {
+                        error("/findings/checked/subjects", "subject source absent")
+                    })?;
+                    require(
+                        subject["event"] == record["fields"]["classification"]["semantics"],
+                        "/findings/checked/subjects",
+                        "subject differs from retained event",
+                    )?;
+                }
+            }
+        }
+    }
     for finding in findings.values() {
         if report["artifact"]["status"] == "unavailable" {
             require(
@@ -1404,6 +1475,71 @@ pub fn validate_relations(
                                 "/findings/details/event_chain/steps/join_samples",
                                 "self join",
                             )?;
+                            if let Some(interval) = join.get("endpoint_interval") {
+                                let path = "/findings/details/event_chain/steps/join_samples/endpoint_interval";
+                                // Older artifacts lack explicit interval occurrences.
+                                for side in ["source", "target"] {
+                                    if let Some(source) = interval.get(side) {
+                                        require(
+                                            *source == join[side],
+                                            path,
+                                            "interval citation differs from joined endpoint",
+                                        )?;
+                                    }
+                                }
+                                if interval["status"] == "measured" {
+                                    require(
+                                        interval["unit"] == "ms"
+                                            && endpoint_milliseconds(interval).is_some_and(
+                                                |value| interval["value"].as_f64() == Some(value),
+                                            ),
+                                        path,
+                                        "invalid endpoint interval arithmetic",
+                                    )?;
+                                    require(
+                                        join["source_count"] == 1
+                                            && join["target_count"] == 1
+                                            && chain["root_occurrences"] == 1,
+                                        path,
+                                        "ambiguous endpoints cannot establish an interval",
+                                    )?;
+                                    for (side, timestamp, operation) in [
+                                        ("source", "start_timestamp", "start_operation"),
+                                        ("target", "end_timestamp", "end_operation"),
+                                    ] {
+                                        if let Some(record) =
+                                            retained.get(&occurrence(&join[side])?)
+                                        {
+                                            require(
+                                                interval[timestamp] == record["timestamp"]
+                                                    && record["timestamp_year_source"] == "source"
+                                                    && record["timestamp_offset_source"]
+                                                        == "source",
+                                                path,
+                                                "interval timestamp differs from source",
+                                            )?;
+                                            if finding["verification"]["source_and_rules"]
+                                                == "available"
+                                            {
+                                                require(
+                                                    interval[operation]
+                                                        == record["fields"]["classification"]["semantics"]
+                                                            ["name"],
+                                                    path,
+                                                    "interval operation differs from source",
+                                                )?;
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    require(
+                                        interval["status"] == "unavailable"
+                                            && interval["value"].is_null(),
+                                        path,
+                                        "unavailable interval must not have a value",
+                                    )?;
+                                }
+                            }
                         }
                         for outcome in list(step, "/outcomes")? {
                             check_source(get(outcome, "/occurrence")?)?;

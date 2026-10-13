@@ -76,6 +76,16 @@ over unchanged diagnostics or mechanically execute every suggestion.
 The summary displays up to five findings; its retrieval action resumes `/findings`
 after the displayed items. If retention fails, available partial findings remain
 inline with displayed/total counts.
+
+Each displayed finding includes `checked` scope, subjects, population and assurance.
+`link_exists` is weaker than `subject_verified`; investigation leaves intended-subject
+verification `not_requested` or `unavailable`. Keep these limits beside the answer's facts. Text
+shows endpoint names, outcomes and population rules; `--verbose` adds recognition
+and join diagnostics. `presentation.uncertainty` covers all processed findings,
+including omitted detail; summary `findings.omitted` makes the missing detail explicit.
+Use the [maintained synthetic example](https://github.com/eirenik0/log-analyzer/blob/main/examples/investigations/checked/README.md)
+instead of truncating JSON with `head -c`. This presentation change does not enforce
+claim verification or demonstrate model accuracy.
 Full-report guidance resumes omitted findings. Record retrieval starts independently
 at zero. Continue each collection with its own checksum-bound cursor. Redaction
 preserves safe instructions but withholds executable arguments containing paths.

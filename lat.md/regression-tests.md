@@ -12,6 +12,17 @@ Changing the expected snapshot, scope, identity, root or endpoints must contradi
 
 Covered by [[tests/test_investigation_runtime.rs#subject_bound_links_reject_adjacent_names_scopes_ids_and_endpoints]].
 
+## Checked finding presentation
+
+Synthetic CLI fixtures preserve separate outcomes, counts, endpoint intervals, assurance and missing evidence in text, full JSON and bounded summaries.
+
+[[tests/test_checked_presentation.rs#maintained_example_agrees_in_text_json_and_bounded_summary]]
+checks independently specified facts in [[examples/investigations/checked/README.md]].
+The same test suite covers failed ends, missing ends, ambiguous starts, renamed
+identities, independent inputs, redaction, tiny budgets and rejection of mutated
+arithmetic, source citations and event subjects. Existing coverage and zero tests
+below also exercise the checked publication boundary.
+
 ## Missing join identity
 
 A missing join key leaves chain counts partial; adjacent events cannot supply the missing relationship.
