@@ -542,7 +542,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &scope_id,
                 &context,
                 &snapshot,
-                !structural_loss && budget.stop.is_none(),
+                !structural_loss && !budget.affected_scopes.contains(&ordinal),
                 &mut budget,
                 &mut findings,
                 None,

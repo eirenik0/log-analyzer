@@ -31,3 +31,5 @@ cutoffs when the artifact does not retain calculation-stage history.
 Bind replayed chain identity, context, scope, root name and ambiguity to retained
 subjects so valid links cannot be relabeled as a different correlation subject.
 Check later-activity counts and samples against the retained same-context population.
+Require every replayed chain in unaffected scopes to remain retained, and scope
+completeness deferral to affected inputs rather than the whole investigation.

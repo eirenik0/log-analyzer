@@ -30,22 +30,27 @@ pub(crate) fn validate(
         .iter()
         .filter(|f| f["details"]["event_chain"].is_object())
         .collect();
-    if chain_findings.is_empty() {
-        return Ok(Vec::new());
-    }
     if artifact["effective_profile_omitted"] == true {
-        return Ok(vec![
-            "chain_cardinalities_require_retained_profile_and_capture",
-        ]);
+        return Ok(if chain_findings.is_empty() {
+            Vec::new()
+        } else {
+            vec!["chain_cardinalities_require_retained_profile_and_capture"]
+        });
     }
     let config: AnalyzerConfig =
         serde_json::from_value(artifact["effective_profile"].clone()).map_err(|e| e.to_string())?;
     config.validate_event_rules()?;
-    let policy = config
-        .investigation
-        .as_ref()
-        .ok_or("chain findings lack effective policy")?;
-    let ordinals: BTreeSet<_> = chain_findings
+    let Some(policy) = config.investigation.as_ref() else {
+        return if chain_findings.is_empty() {
+            Ok(Vec::new())
+        } else {
+            Err("chain findings lack effective policy".into())
+        };
+    };
+    if policy.chains.is_empty() && chain_findings.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut ordinals: BTreeSet<_> = chain_findings
         .iter()
         .map(|f| {
             f["details"]["event_chain"]["root"]["input_ordinal"]
@@ -53,10 +58,31 @@ pub(crate) fn validate(
                 .ok_or("missing chain input")
         })
         .collect::<Result<_, _>>()?;
+    for record in artifact["records"].as_array().ok_or("missing records")? {
+        ordinals.insert(
+            record["occurrence"]["input_ordinal"]
+                .as_u64()
+                .ok_or("missing record input")?,
+        );
+    }
     let mut complete = true;
     // Cutoff metadata does not record whether chain calculation had already completed.
-    let completeness_available = artifact["processing"]["stop"].is_null();
+    let mut completeness_deferred = false;
     for ordinal in ordinals {
+        let scope = artifact["scopes"]
+            .as_array()
+            .ok_or("missing scopes")?
+            .iter()
+            .find(|scope| {
+                scope["input_ordinals"]
+                    .as_array()
+                    .is_some_and(|inputs| inputs.iter().any(|input| *input == ordinal))
+            })
+            .ok_or("missing chain input scope")?;
+        let completeness_available = !artifact["processing"]["stop"]["scope_ids"]
+            .as_array()
+            .is_some_and(|scopes| scopes.contains(&scope["id"]));
+        completeness_deferred |= !completeness_available;
         let Some(bytes) = captures.get(&ordinal) else {
             complete = false;
             continue;
@@ -152,6 +178,22 @@ pub(crate) fn validate(
                 Some(((chain["id"].as_str()?, address(&chain["root"])?), chain))
             })
             .collect();
+        if completeness_available {
+            let retained_roots: BTreeSet<_> = chain_findings
+                .iter()
+                .filter(|f| f["details"]["event_chain"]["root"]["input_ordinal"] == ordinal)
+                .map(|finding| {
+                    let chain = &finding["details"]["event_chain"];
+                    Ok((
+                        chain["id"].as_str().ok_or("missing chain ID")?,
+                        address(&chain["root"]).ok_or("missing chain root")?,
+                    ))
+                })
+                .collect::<Result<_, String>>()?;
+            if retained_roots != expected.keys().cloned().collect() {
+                return Err("retained chain findings differ from replayed population".into());
+            }
+        }
         for finding in chain_findings
             .iter()
             .filter(|f| f["details"]["event_chain"]["root"]["input_ordinal"] == ordinal)
@@ -302,7 +344,7 @@ pub(crate) fn validate(
     if !complete {
         deferred.push("chain_cardinalities_require_retained_profile_and_capture");
     }
-    if !completeness_available {
+    if completeness_deferred {
         deferred.push("chain_completeness_requires_processing_stage_history");
     }
     Ok(deferred)

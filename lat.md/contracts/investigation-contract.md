@@ -173,8 +173,10 @@ ambiguity must also match replay, binding links to their retained correlation su
 Later-activity counts and samples must match the retained same-context population
 after the chain's last linked event.
 Completeness is checked against replayed parse coverage when processing completed.
-After a cutoff, missing stage history explicitly defers completeness comparisons;
-step counts, statuses and populations remain checked.
+For unaffected scopes, retained chain roots must equal the replayed set, including
+when no chain findings remain. After a cutoff, missing stage history defers
+completeness only for affected scopes; other inputs remain checked independently.
+Step counts, statuses and populations remain checked for retained partial chains.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.
