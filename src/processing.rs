@@ -17,6 +17,7 @@ pub(crate) struct Limits {
     pub cancel_file: Option<PathBuf>,
 }
 
+// @lat: [[performance-efficiency#Performance efficiency#NFR-003 Bounded processing and delivery]]
 pub(crate) struct Budget {
     pub limits: Limits,
     pub input_bytes: u64,

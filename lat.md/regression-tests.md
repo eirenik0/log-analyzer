@@ -4,7 +4,7 @@ lat:
 ---
 # Evidence regressions
 
-These existing tests anchor important invariants in [[domain]] and [[design-decisions]]. Lat checks the references; executing the tests checks the behavior.
+These existing tests anchor important invariants in [[domain]] and [[architecture-decisions]]. Lat checks the references; executing the tests checks the behavior.
 
 ## Subject binding
 

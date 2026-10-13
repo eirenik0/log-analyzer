@@ -432,7 +432,7 @@ impl CompiledEventRules {
         Ok(Self(Arc::new(CompiledProfile { schema, rules })))
     }
 
-    // @lat: [[design-decisions#Implemented design decisions#Classify once and share semantics]]
+    // @lat: [[adr-001-shared-event-semantics#ADR 001: Shared event semantics#Decision]]
     pub fn classify_owned(&self, profile: &str, input: RecordInput<'_>) -> ClassifiedRecord {
         let mut result = self.classify(profile, input).into_owned(profile);
         if let ClassifiedRecord::Conflict {

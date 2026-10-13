@@ -16,6 +16,9 @@ flowchart TD
     Artifact --> Retrieval[Evidence retrieval and optional claim checks]
 ```
 
+Architectural commitments live in [[architecture-decisions]]; their measurable
+quality targets and verification scope live in [[non-functional-requirements]].
+
 ## Command routing
 
 [[src/lib.rs#run]] selects the execution path. [[src/cli.rs]] owns argument parsing and output defaults; [[src/main.rs#main]] reports runtime errors.

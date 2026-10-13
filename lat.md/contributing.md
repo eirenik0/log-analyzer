@@ -52,6 +52,14 @@ Keep customer logs, identifying session details, and secrets out of public files
 Update the canonical Lat guides and command help for user-facing changes and add a `.changeset/` entry for
 releasable changes. Update the analysis skill when its user workflow changes.
 
+## Architecture and quality records
+
+Use [[architecture-decisions]] for costly architectural choices and [[non-functional-requirements]] for measurable quality targets. Follow their lifecycle rules and keep implementation and regression links current.
+
+Update the corresponding indexes, use `@lat:` source backlinks, and run `lat check`.
+A documentation check validates structure and links; execute the referenced tests
+or measurements before claiming a requirement is met.
+
 ## Review
 
 The hosted Codex reviewer follows the `Code Review Rules` in `AGENTS.md`.

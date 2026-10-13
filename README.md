@@ -23,7 +23,7 @@ Use `log-analyzer --help` and subcommand help for supported syntax.
 
 Project documentation lives in the [Lat knowledge graph](lat.md/lat.md).
 
-- [Architecture](lat.md/architecture.md), [domain concepts](lat.md/domain.md) and [design decisions](lat.md/design-decisions.md)
+- [Architecture](lat.md/architecture.md), [domain concepts](lat.md/domain.md) and [ADRs](lat.md/architecture-decisions/architecture-decisions.md) and [quality requirements](lat.md/non-functional-requirements/non-functional-requirements.md)
 - [Investigation guide](lat.md/usage.md) and [worked workflows](lat.md/investigation-workflow.md)
 - [CLI reference](lat.md/cli-reference.md) and [profiles](lat.md/profiles.md)
 - [Agent integration](lat.md/agents.md)

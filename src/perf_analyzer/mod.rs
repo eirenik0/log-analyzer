@@ -78,7 +78,7 @@ pub fn analyze_performance_with_config(
 }
 
 /// One shared correlation pass. Interrupted work publishes no tentative group outcomes.
-// @lat: [[design-decisions#Implemented design decisions#Preserve uncertainty at boundaries]]
+// @lat: [[adr-001-shared-event-semantics#ADR 001: Shared event semantics#Scope of applicability]]
 pub(crate) fn analyze_performance_checked(
     logs: &[LogEntry],
     filter: &LogFilter,

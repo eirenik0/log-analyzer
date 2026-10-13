@@ -4,7 +4,8 @@ This [Lat](https://www.lat.md/) graph is the canonical project documentation. It
 
 - [[architecture]] — implemented modules and execution paths.
 - [[domain]] — records, events, identities, findings and artifacts.
-- [[design-decisions]] — implemented choices and their rationale.
+- [[architecture-decisions]] — numbered decisions, tradeoffs and review triggers.
+- [[non-functional-requirements]] — measurable quality targets and validation scope.
 - [[regression-tests]] — key invariants linked to executable tests.
 - [[usage]] — installation, investigations, evidence retrieval and limits.
 - [[investigation-workflow]] — worked failure and performance investigations.

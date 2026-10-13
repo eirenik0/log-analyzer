@@ -170,6 +170,7 @@ pub(super) fn checklist(artifact: &Value) -> &Value {
         .get("question_checklist")
         .unwrap_or(&artifact["report_metadata"]["evidence"]["query"]["command"]["Investigate"])
 }
+// @lat: [[security#Evidence privacy#NFR-004 Redacted artifact retention]]
 pub(super) fn redact(artifact: &mut Value) {
     let original = checklist(artifact);
     let questions: Vec<_> = original["question"]
@@ -720,7 +721,8 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
     Ok(())
 }
 
-// @lat: [[design-decisions#Implemented design decisions#Retain evidence separately from presentation]]
+// @lat: [[adr-002-snapshot-bound-evidence#ADR 002: Snapshot-bound evidence and bounded reports#Decision]]
+// @lat: [[reliability#Reliability#NFR-002 Historical retrieval]]
 pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()> {
     if args.compact && (args.collection != "/chain-bundles" || args.id.is_none()) {
         return Err("--compact requires --collection /chain-bundles and --id".into());
