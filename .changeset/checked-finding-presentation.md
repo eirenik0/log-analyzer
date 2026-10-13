@@ -19,3 +19,5 @@ Derive interval availability and its reason from endpoint evidence, rejecting
 hidden measurements and omitted known timestamps.
 Preserve endpoint-name consistency with retained classification semantics even
 when independent source verification is unavailable.
+Check endpoint cardinalities against retained chain populations through the shared
+chain engine before accepting measurements; disclose unavailable replay prerequisites.

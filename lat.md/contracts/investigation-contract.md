@@ -156,6 +156,11 @@ to turn a retained measurement into an unavailable interval.
 Retained classification semantics still constrain endpoint names when source
 verification is unavailable. Redaction may omit
 those semantics and keeps its source-verification limitation explicit.
+[[src/investigation_runtime/chain_validation.rs#validate|Chain cardinality validation]]
+reuses the parser and chain engine on retained captures, selected record addresses
+and retained classifications to check root/source/target counts. It reads no live
+input files. Missing profiles or captures defer this relation explicitly; exhausted
+validation work, time or memory allowances return an error rather than accepting counts.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.

@@ -41,6 +41,9 @@ interval controls also check exact reasons for ambiguity, negative time and miss
 [[tests/test_checked_presentation.rs#retained_endpoint_names_are_checked_when_source_verification_is_unavailable]]
 rejects changed or removed names for measured and unavailable intervals when stored
 source verification is unavailable, while accepting redacted reports with omitted semantics.
+[[tests/test_checked_presentation.rs#interval_cardinalities_are_checked_against_retained_chain_populations]]
+rejects forged singleton root/source/target counts that would turn ambiguous joins
+into measured intervals, and checks explicit deferral when redaction prevents replay.
 
 ## Missing join identity
 

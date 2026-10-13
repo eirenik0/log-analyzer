@@ -1,6 +1,7 @@
 //! Runtime orchestration; the public contract validator remains independent.
 mod artifact;
 mod auto_profile;
+pub(crate) mod chain_validation;
 pub(crate) mod chains;
 mod checked;
 mod claims;

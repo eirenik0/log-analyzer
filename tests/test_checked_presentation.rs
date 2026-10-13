@@ -1016,3 +1016,120 @@ fn retained_endpoint_names_are_checked_when_source_verification_is_unavailable()
         assert_eq!(statuses, ["measured", "unavailable"].into_iter().collect());
     }
 }
+
+#[test]
+fn interval_cardinalities_are_checked_against_retained_chain_populations() {
+    let temp = tempfile::tempdir().unwrap();
+    for (name, step_id) in [
+        ("root", "session-end"),
+        ("source", "responses"),
+        ("target", "polls"),
+    ] {
+        let input = temp.path().join(format!("{name}.jsonl"));
+        let mut contents = fs::read_to_string(INPUT).unwrap();
+        if name == "root" {
+            contents.push_str(fs::read_to_string(INPUT).unwrap().lines().next().unwrap());
+            contents.push('\n');
+        }
+        fs::write(&input, contents).unwrap();
+        let profile = temp.path().join(format!("{name}.toml"));
+        let mut policy = fs::read_to_string(PROFILE).unwrap();
+        if name == "source" {
+            policy = policy.replace(
+                "join_fields = [\"capture_id\", \"poll_id\"]\ncardinality = \"one_to_one\"",
+                "join_fields = [\"capture_id\"]\ncardinality = \"many_to_one\"",
+            );
+        }
+        fs::write(&profile, policy).unwrap();
+        let report: Value = serde_json::from_str(&run(
+            temp.path(),
+            name,
+            profile.to_str().unwrap(),
+            &[input.to_str().unwrap()],
+            &["--json", "--complete-output"],
+        ))
+        .unwrap();
+        let artifact_bytes = fs::read(temp.path().join(name)).unwrap();
+        let artifact: Value = serde_json::from_slice(&artifact_bytes).unwrap();
+        log_analyzer::investigation::validate_relations(&report, Some(&artifact_bytes)).unwrap();
+        let finding = chain(&report["findings"], "alpha");
+        let index = report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|f| f["id"] == finding["id"])
+            .unwrap();
+        let saved_index = artifact["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|f| f["id"] == finding["id"])
+            .unwrap();
+        let step_index = finding["details"]["event_chain"]["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|s| s["id"] == step_id)
+            .unwrap();
+        let join_path = format!("/details/event_chain/steps/{step_index}/join_samples/0");
+        let join = finding.pointer(&join_path).unwrap();
+        assert_eq!(join["endpoint_interval"]["status"], "unavailable");
+        assert_eq!(
+            join["endpoint_interval"]["reason"],
+            "ambiguous_endpoint_population"
+        );
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        for finding in [
+            &mut altered["findings"][index],
+            &mut saved["findings"][saved_index],
+        ] {
+            finding["details"]["event_chain"]["root_occurrences"] = json!(1);
+            let join = finding.pointer_mut(&join_path).unwrap();
+            join["source_count"] = json!(1);
+            join["target_count"] = json!(1);
+            let interval = &mut join["endpoint_interval"];
+            let start =
+                chrono::DateTime::parse_from_rfc3339(interval["start_timestamp"].as_str().unwrap())
+                    .unwrap();
+            let end =
+                chrono::DateTime::parse_from_rfc3339(interval["end_timestamp"].as_str().unwrap())
+                    .unwrap();
+            interval["status"] = json!("measured");
+            interval["value"] = json!(
+                end.signed_duration_since(start).num_nanoseconds().unwrap() as f64 / 1_000_000.0
+            );
+            interval["reason"] = Value::Null;
+        }
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        shape(&altered, false);
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(
+            error
+                .reason
+                .contains("cardinality differs from retained population"),
+            "{name}: {error}"
+        );
+    }
+    let redacted: Value = serde_json::from_str(&run(
+        temp.path(),
+        "redacted",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output", "--redact"],
+    ))
+    .unwrap();
+    let summary = log_analyzer::investigation::validate_relations(
+        &redacted,
+        Some(&fs::read(temp.path().join("redacted")).unwrap()),
+    )
+    .unwrap();
+    assert!(
+        summary
+            .deferred_relations
+            .iter()
+            .any(|r| r == "chain_cardinalities_require_retained_profile_and_capture")
+    );
+}
