@@ -191,10 +191,43 @@ def answer_issues(answer, artifact, assertions, verification, requested, source_
     return issues
 
 
+def profile_expectations(answer, artifact, assertions, source_records):
+    """Derive witnesses from disclosed source semantics, not candidate link output."""
+    address = lambda line: {'input': 0, 'line': line, 'row_path': None}
+    records = [{'source': address(line), 'checks': {
+        '/status': 'event', '/semantics/name': row['operation_name'],
+        '/semantics/correlation_id': row['capture_id'], '/semantics/scope': [row['session_id']]}}
+        for line, row in enumerate(source_records, 1)]
+    claims = {c['id']: c for c in assertions['claims']}
+    requirements = {r['id']: r for r in assertions['requirements']}
+    links = []
+    for key in ['capture', 'other', 'close']:
+        if answer[key]['completion'] is not True:
+            continue
+        claim = claims[key]
+        finding = next(f for f in artifact['findings'] if f['id'] == requirements[key]['finding_id'])
+        chain = finding['details']['event_chain']
+        step = chain['steps'][int(claim['pointer'].split('/')[6])]
+        end = record_fields(artifact, claim['subject']['target'], source_records)
+        start_role = 'close_start' if key == 'close' else 'checkpoint'
+        for ri, root in enumerate(source_records, 1):
+            if root['event_type'] != start_role:
+                continue
+            for ti, target in enumerate(source_records, 1):
+                if target['event_type'] != end['event_type']:
+                    continue
+                linked = (root['session_id'], root['capture_id']) == (target['session_id'], target['capture_id'])
+                linked = linked and source_interval_ms(root, target) is not None
+                links.append({'chain': chain['id'], 'step': step['id'], 'root': address(ri),
+                              'source': address(ri), 'target': address(ti), 'linked': linked})
+    return {'version': 1, 'records': records, 'links': links}
+
+
 def acceptance_gate(answer, directory, binary, capture, requested, attempt, remaining_seconds, remaining_tools, capture_sha256=None):
     if not isinstance(answer, dict):
         return {'accepted': False, 'issues': ['Return the required structured answer with verification files and claim IDs.'], 'tool_calls': 0}
     calls, output_bytes = 0, 0
+    deadline = time.monotonic() + remaining_seconds
     try:
         if capture_sha256 is not None and digest(capture) != capture_sha256:
             raise ValueError('immutable trial capture changed')
@@ -229,7 +262,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
         calls = 1
         executed = subprocess.run([str(binary), 'evidence', str(path), '--expected-sha256', sha,
                                    '--claims', str(claims), '--output', str(verified)],
-                                  capture_output=True, timeout=remaining_seconds, check=False)
+                                  capture_output=True, timeout=max(.001, deadline - time.monotonic()), check=False)
         output_bytes = len(executed.stdout) + len(executed.stderr)
         current, _, _ = read_local(directory, verified)
         cv = current.get('artifact_retrieval', {}).get('claim_verification', {})
@@ -237,6 +270,8 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
         if executed.returncode or cv.get('status') not in ('verified', 'verified_with_unknowns'):
             issues += [f"{r.get('id')}: {r.get('reason')}" for r in cv.get('requirement_results', []) if r.get('status') != 'verified' and r.get('status') != 'declared_unknown']
             issues += [f"{c.get('id')}: {c.get('status')} ({c.get('reason')})" for c in cv.get('checks', []) if c.get('status') != 'verified']
+            issues += [f'Missing required claim: {cid}' for cid in cv.get('missing_required_claim_ids', [])]
+            issues += (cv.get('final_review') or {}).get('issues', [])
             if not issues: issues.append('Verification failed or remains unavailable; inspect the saved report.')
         if cv != saved.get('artifact_retrieval', {}).get('claim_verification'):
             issues.append('Saved verification differs from an independent recheck of the current claims/artifact.')
@@ -246,8 +281,37 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
             issues.append('Verification omitted a registered question ID.')
         if not issues:
             issues = answer_issues(answer, artifact, assertions, cv, requested, source_records)
+        profile_report = None
+        if not issues:
+            if remaining_tools < 2 or time.monotonic() >= deadline:
+                raise ValueError('Reserve two tool calls and time for claim and independent profile checks.')
+            selection = artifact['report_metadata']['evidence']['query']['execution']['profile_selection']
+            configs = [o['config'] for o in selection['origins'] if 'config' in o]
+            if len(configs) != 1:
+                raise ValueError('Retain one explicit local profile for independent validation.')
+            selected = Path(configs[0])
+            selected = (directory / selected).resolve() if not selected.is_absolute() else selected.resolve()
+            if not selected.is_relative_to(directory.resolve()):
+                raise ValueError('Validated profile must stay in this trial directory.')
+            expectations = directory / f'runner-expectations-{attempt}.json'
+            expectations.write_text(json.dumps(profile_expectations(answer, artifact, assertions, source_records)), encoding='utf-8')
+            profile_report = directory / f'runner-profile-validation-{attempt}.json'
+            calls += 1
+            checked = subprocess.run([str(binary), '--profile', str(selected), 'profile', 'validate', str(capture),
+                                      '--kind', 'event', '--purpose', 'recognition', '--expected', str(expectations),
+                                      '--complete-output', '--output', str(profile_report)],
+                                     capture_output=True, timeout=max(.001, deadline - time.monotonic()), check=False)
+            output_bytes += len(checked.stdout) + len(checked.stderr)
+            validation, _, _ = read_local(directory, profile_report)
+            support = validation['profile_validation']
+            if (checked.returncode or support['expected_facts']['status'] != 'passed'
+                    or support['relationships']['status'] != 'passed_on_asserted_links'):
+                issues.append('Profile failed independent source-role and positive/wrong-identity link checks; correct the rules and rerun investigation.')
+            if validation['report_metadata']['evidence']['profile_sha256'] != artifact['report_metadata']['evidence']['profile_sha256']:
+                issues.append('Profile changed since investigation; regenerate the artifact and claims.')
         return {'accepted': not issues, 'issues': issues[:20], 'tool_calls': calls, 'output_bytes': output_bytes, 'artifact_sha256': sha,
-                'verification_report': str(verified), 'verified_facts': cv if not issues else None}
+                'verification_report': str(verified), 'profile_validation_report': str(profile_report) if profile_report else None,
+                'verified_facts': cv if not issues else None}
     except (InvalidValue, KeyError, IndexError, TypeError, ValueError, OSError, subprocess.TimeoutExpired) as error:
         return {'accepted': False, 'issues': [f'Prepare and verify the current question plan: {error}'], 'tool_calls': calls, 'output_bytes': output_bytes}
 
@@ -315,12 +379,26 @@ def run_phase(directory, model, prompt, schema, budget, phase, tools=True):
 
 def trial_required(root, version, case, model, repeat, limits):
     directory, binary, capture, artifact, skill, selected, expected, prompt = setup_trial(root, version, case, model, repeat, limits, 'verification-required')
+    preflight_started = time.monotonic()
+    missing = []
+    for command, option in [('investigate', '--required-relationship'), ('evidence', '--draft-claims')]:
+        help_text = subprocess.check_output([str(binary), command, '--help'], text=True, encoding='utf-8', timeout=10)
+        if option not in help_text:
+            missing.append(option)
+    if missing:
+        return {'variant': 'verification-required', 'version': version, 'case': case, 'model_alias': model,
+                'repeat': repeat, 'execution': 'ineligible', 'elapsed_ms': round((time.monotonic() - preflight_started) * 1000, 3), 'tokens': 0,
+                'api_equivalent_cost_usd': 0, 'limits': limits, 'answer': None,
+                'eligibility': {'status': 'ineligible', 'reason': 'Binary lacks required protocol: ' + ', '.join(missing)},
+                'score': score(None, expected), 'binary_sha256': digest(binary), 'skill_sha256': digest(skill),
+                'answer_schema_sha256': hashlib.sha256(json.dumps(REQUIRED_SCHEMA, sort_keys=True).encode()).hexdigest(),
+                'effort_override': None, **metrics([])}
     requested = {key: (expected[key]['subject'], expected[key]['scope']) for key in ['capture', 'other', 'close']}
     prompt += '\nVerification-required experiment: register these --required-relationship IDs: ' + ', '.join(QUESTION_IDS)
-    prompt += '\nBefore answering, run the helper and retain verification.artifact, verification.claims, verification.report paths. '
+    prompt += '\nBefore answering, select subject-bound claims and retain verification.artifact, verification.claims, verification.report paths. Use the optional question-plan helper if available. '
     prompt += 'Reference checked IDs in claim_ids for each substantive field and explanation. Include exact coverage; upstream completeness is unknown. '
-    prompt += 'Reserve a tool slot and time/cost for final checking and tool-free prose review. '
-    prompt += 'A separate runner will recheck the current artifact/claims and review prose. Correct feedback within the same remaining budget.'
+    prompt += 'Reserve two tool slots and time/cost for final checking and tool-free prose review. '
+    prompt += 'The runner rechecks claims and independently validates the selected profile against source roles and positive/wrong-identity links, then reviews prose. Correct feedback within the same remaining budget.'
     (directory / 'prompt.txt').write_text(prompt, encoding='utf-8')
     capture_sha256 = digest(capture)
     budget = Budget(limits); phases, gates = [], []

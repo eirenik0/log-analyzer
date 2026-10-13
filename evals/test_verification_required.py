@@ -10,6 +10,23 @@ from schema import validate, InvalidValue
 
 
 class RequiredRunnerControls(unittest.TestCase):
+    def setUp(self):
+        probe = patch('verification_required.subprocess.check_output', return_value='--required-relationship --draft-claims')
+        probe.start()
+        self.addCleanup(probe.stop)
+
+    def test_unsupported_baseline_is_ineligible_without_model_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); self.setup(root)
+            with patch('verification_required.subprocess.check_output', return_value='older help'), \
+                 patch('verification_required.run_phase') as phase:
+                result = trial_required(root, 'candidate', 'development', 'haiku', 0, self.limits())
+            phase.assert_not_called()
+            self.assertEqual(result['execution'], 'ineligible')
+            self.assertIn('--required-relationship', result['eligibility']['reason'])
+            self.assertEqual(result['api_equivalent_cost_usd'], 0)
+            self.assertEqual(result['tool_calls'], 0)
+
     def setup(self, root):
         prepare_inputs(root, ['development'])
         skill = root / 'candidate/.agents/skills/analyze-logs/SKILL.md'

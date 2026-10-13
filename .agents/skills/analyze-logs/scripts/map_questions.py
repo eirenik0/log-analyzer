@@ -79,22 +79,20 @@ def requirement(claim, artifact):
 def candidates(draft, artifact):
     """Propose mechanically retained facts; never choose a question's subject."""
     draft = copy.deepcopy(draft)
-    rows = artifact.get('records', [])
-    if rows and all(r.get('fields', {}).get('classification', {}).get('status') == 'event'
-                    and r['fields']['classification'].get('semantics', {}).get('kind') in ('command', 'request', 'event')
-                    and isinstance(r['fields']['classification']['semantics'].get('name'), str)
-                    and r['fields']['classification']['semantics']['name'] for r in rows):
-        operations = sorted({(r['fields']['classification']['semantics']['kind'],
-                              r['fields']['classification']['semantics']['name']) for r in rows})
-        for kind, name in operations:
-            if kind not in ('command', 'request', 'event') or not name:
-                continue
-            selected = [r for r in rows if r['fields']['classification']['semantics']['kind'] == kind
-                        and r['fields']['classification']['semantics']['name'] == name]
-            expected = len({json.dumps(r['occurrence'], sort_keys=True) for r in selected})
-            cid = 'operation-' + hashlib.sha256(json.dumps([kind, name]).encode()).hexdigest()[:16]
-            draft['claims'].append({'id': cid, 'kind': 'distinct_records', 'pointer': '/records',
-                                    'operation': {'kind': kind, 'name': name}, 'expected': expected})
+    operations = {}
+    for row in artifact.get('records', []):
+        classification = row.get('fields', {}).get('classification', {})
+        semantics = classification.get('semantics', {})
+        kind, name = semantics.get('kind'), semantics.get('name')
+        if (classification.get('status') != 'event' or kind not in ('command', 'request', 'event')
+                or not isinstance(name, str) or not name):
+            operations.clear()
+            break
+        operations.setdefault((kind, name), set()).add(json.dumps(row['occurrence'], sort_keys=True))
+    for (kind, name), occurrences in sorted(operations.items()):
+        cid = 'operation-' + hashlib.sha256(json.dumps([kind, name]).encode()).hexdigest()[:16]
+        draft['claims'].append({'id': cid, 'kind': 'distinct_records', 'pointer': '/records',
+                               'operation': {'kind': kind, 'name': name}, 'expected': len(occurrences)})
     if artifact.get('processing', {}).get('status') is not None:
         draft['claims'].append({'id': 'input-processing', 'kind': 'fact', 'pointer': '/processing/status',
                                 'equals': artifact['processing']['status']})

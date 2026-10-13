@@ -83,6 +83,22 @@ class QuestionMappingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'At most 100 claims'):
             mapping.compile_plan(proposed, artifact, plan)
 
+    def test_operation_candidates_group_distinct_occurrences_in_one_pass(self):
+        class Rows(list):
+            def __iter__(self):
+                self.passes = getattr(self, 'passes', 0) + 1
+                return super().__iter__()
+        rows = Rows({'occurrence': {'line': i + 1}, 'fields': {'classification': {
+            'status': 'event', 'semantics': {'kind': 'event', 'name': f'op-{i:04d}'}}}}
+                    for i in range(1000))
+        rows.append(copy.deepcopy(rows[0]))
+        rows.append({**rows[0], 'occurrence': {'line': 1001}})
+        result = mapping.candidates({'claims': []}, {'records': rows})
+        self.assertEqual(rows.passes, 1)
+        self.assertEqual(len(result['claims']), 1000)
+        self.assertEqual(result['claims'][0]['expected'], 2)
+        self.assertTrue(all(c['expected'] == 1 for c in result['claims'][1:]))
+
     def test_mappings_preserve_all_ids_and_explicit_unknowns(self):
         self.positive()
         for mutate in [lambda p: p['questions'].pop(),

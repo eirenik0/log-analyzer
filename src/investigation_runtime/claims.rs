@@ -298,12 +298,15 @@ pub(super) fn draft(retained: &Value, selected_id: Option<&str>) -> Result<Value
         .as_array()
         .cloned()
         .unwrap_or_default();
-    if required.is_empty() {
+    let question_review = !required.is_empty();
+    if !question_review {
         required = claims.iter().map(|c| c["id"].clone()).collect();
     }
-    Ok(
-        json!({"version":1,"questions":checklist["question"].as_array().cloned().unwrap_or_default(),"required_claim_ids":required,"claims":claims,"requirements":[],"unresolved":[],"final_review":{"summary_claim_ids":[],"finding_claim_ids":[],"unresolved_question_ids":[],"checks":[]}}),
-    )
+    let mut draft = json!({"version":1,"questions":checklist["question"].as_array().cloned().unwrap_or_default(),"required_claim_ids":required,"claims":claims,"requirements":[],"unresolved":[]});
+    if question_review {
+        draft["final_review"] = json!({"summary_claim_ids":[],"finding_claim_ids":[],"unresolved_question_ids":[],"checks":[]});
+    }
+    Ok(draft)
 }
 
 fn compare_identity(expected: &Value, observed: &Value, keys: &[&str]) -> (Option<bool>, String) {
@@ -1074,6 +1077,13 @@ mod tests {
             .unwrap()
             .validate(&positive)
             .unwrap();
+        assert!(positive.get("final_review").is_none());
+        retained["question_checklist"] =
+            json!({"question":["Did the event finish?"],"required_relationship":["ending"]});
+        let required = draft(&retained, None).unwrap();
+        assert_eq!(required["required_claim_ids"], json!(["ending"]));
+        assert_eq!(required["final_review"]["checks"], json!([]));
+        assert_eq!(required["requirements"], json!([]));
     }
     #[test]
     fn intervals_recalculate_offsets_and_reject_unavailable() {

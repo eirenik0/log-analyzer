@@ -111,7 +111,25 @@ def controls(binary, repository):
             for index, (name, proposed, accepted) in enumerate(cases):
                 result = acceptance_gate(proposed, directory, binary, capture, requested, index, 10, 30)
                 assert result['accepted'] == accepted, (name, result)
+                if accepted:
+                    assert result['tool_calls'] == 2
+                    validation = json.loads(Path(result['profile_validation_report']).read_text(encoding='utf-8'))
+                    assert validation['profile_validation']['expected_facts']['status'] == 'passed'
+                    expectations = json.loads((directory / f'runner-expectations-{index}.json').read_text(encoding='utf-8'))
+                    assert any(link['linked'] is False for link in expectations['links'])
                 results.append({'case': directory.name, 'control': name, 'status': 'passed', 'accepted': result['accepted']})
+            selected = directory / 'profile.toml'; original_profile = selected.read_text(encoding='utf-8')
+            for index, (name, replacement, issue) in enumerate([
+                    ('stale-profile', original_profile.replace('native-workflow-fixture', 'changed-profile'), 'Profile changed'),
+                    ('wrong-profile-join', original_profile.replace('join_fields = ["capture_id"]', 'join_fields = ["session_id"]'), 'Profile failed')], 30):
+                selected.write_text(replacement, encoding='utf-8')
+                result = acceptance_gate(answer, directory, binary, capture, requested, index, 10, 30)
+                assert not result['accepted'] and any(issue in item for item in result['issues']), (name, result)
+                results.append({'case': directory.name, 'control': name, 'status': 'passed', 'accepted': False})
+            selected.write_text(original_profile, encoding='utf-8')
+            result = acceptance_gate(answer, directory, binary, capture, requested, 32, 10, 1)
+            assert not result['accepted'] and result['tool_calls'] == 1
+            results.append({'case': directory.name, 'control': 'profile-check-budget', 'status': 'passed', 'accepted': False})
             artifact.write_bytes(original + b'\n')
             stale = acceptance_gate(answer, directory, binary, capture, requested, 20, 10, 30)
             assert not stale['accepted'] and any('stale' in issue for issue in stale['issues'])

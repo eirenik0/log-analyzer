@@ -317,6 +317,14 @@ def answer_schema_hashes(variants):
     return {variant: hashlib.sha256(schemas[variant].encode()).hexdigest() for variant in variants}
 
 
+def harness_hashes(variants):
+    modules = {'natural-use': ['native_workflow.py'],
+               'verification-required': ['native_workflow.py', 'verification_required.py', 'schema.py']}
+    return {variant: hashlib.sha256(json.dumps({name: digest(Path(__file__).with_name(name))
+                                               for name in modules[variant]}, sort_keys=True).encode()).hexdigest()
+            for variant in variants}
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--frozen-root',type=Path,required=True)
@@ -335,8 +343,10 @@ def main():
     if (root/'results.json').exists(): parser.error('results already exist; preserve them before a separate run')
     prepare_inputs(root, args.case or ['development', 'held-out'])
     records=[]
+    hashes = harness_hashes(args.variant or ['natural-use'])
     report={'kind':'matched_native_workflow_trials','runtime':subprocess.check_output(['claude','--version'],text=True).strip(),
-            'effort_override':None,'harness_sha256':digest(__file__),'limits':limits,'records':records,
+            'effort_override':None,'harness_sha256':hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest(),
+            'harness_sha256_by_variant':hashes,'limits':limits,'records':records,
             'answer_transport':'native_structured_output','variants':args.variant or ['natural-use'],
             'answer_schema_sha256_by_variant':answer_schema_hashes(args.variant or ['natural-use']),
             'limitations':['Native tool access is trusted, not sandboxed. Only public synthetic inputs are supplied.',

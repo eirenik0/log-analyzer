@@ -384,6 +384,8 @@ and prose review share the original wall/tool/output/API-equivalent budget; no
 effort override is added. Records retain acceptance failures, correction attempts,
 review outcomes, phase traces, tokens and total cost. `answer_schema_sha256_by_variant`
 records each selected variant's schema hash; trial records carry their own hash.
+`harness_sha256_by_variant` covers every active runner module, including the required
+gate and schema validator; `harness_sha256` combines the selected variants.
 Missing usage stays unknown.
 The native tool boundary is trusted, not an OS sandbox. The gate is tailored to
 the public JSON-lines incident and its disclosed domain semantics.
@@ -400,3 +402,10 @@ python3 -m unittest discover -s evals -p 'test_verification_required.py'
 These controls establish acceptance mechanics and bounded correction behavior,
 not model compliance or correctness/cost improvement. Paid matched trials remain
 explicitly opt-in through `--run`; report variants separately.
+
+The required gate also runs native profile validation against independently derived
+source roles and positive/wrong-identity links, bound to the artifact's profile hash.
+This check is runner-owned and counts toward the same tool/time/output budget;
+reserve two native calls before prose review. No additional answer fields are needed.
+Versions lacking the required checklist/drafting protocol are marked ineligible
+before model calls, rather than counted as model failures or given a compatibility shim.

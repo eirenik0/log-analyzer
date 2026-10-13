@@ -4,11 +4,23 @@ from native_workflow import fixture, score, metrics, final_json, ANSWER_SCHEMA
 
 
 class NativeVariantMetadataTests(unittest.TestCase):
+    def test_required_harness_hash_includes_gate_and_schema_modules(self):
+        from unittest.mock import patch
+        from native_workflow import harness_hashes
+        variants = ['natural-use', 'verification-required']
+        with patch('native_workflow.digest', side_effect=lambda p: p.name):
+            original = harness_hashes(variants)
+        for changed in ['verification_required.py', 'schema.py']:
+            with patch('native_workflow.digest', side_effect=lambda p: p.name + ('changed' if p.name == changed else '')):
+                updated = harness_hashes(variants)
+            self.assertEqual(original['natural-use'], updated['natural-use'])
+            self.assertNotEqual(original['verification-required'], updated['verification-required'])
+
     def test_report_hashes_match_each_selected_variants_answer_schema(self):
         import contextlib, hashlib, io, json, tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from native_workflow import main, ANSWER_SCHEMA_JSON
+        from native_workflow import main, ANSWER_SCHEMA_JSON, harness_hashes
         from verification_required import REQUIRED_SCHEMA
         expected = {'natural-use': hashlib.sha256(ANSWER_SCHEMA_JSON.encode()).hexdigest(),
                     'verification-required': hashlib.sha256(json.dumps(REQUIRED_SCHEMA, sort_keys=True).encode()).hexdigest()}
@@ -28,6 +40,8 @@ class NativeVariantMetadataTests(unittest.TestCase):
                 report = json.loads((Path(folder) / 'results.json').read_text(encoding='utf-8'))
                 self.assertNotIn('answer_schema_sha256', report)
                 self.assertEqual(report['answer_schema_sha256_by_variant'], {v: expected[v] for v in variants})
+                self.assertEqual(report['harness_sha256_by_variant'], harness_hashes(variants))
+                self.assertEqual(report['harness_sha256'], hashlib.sha256(json.dumps(harness_hashes(variants), sort_keys=True).encode()).hexdigest())
                 for row in report['records']:
                     self.assertEqual(row['answer_schema_sha256'], report['answer_schema_sha256_by_variant'][row['variant']])
 

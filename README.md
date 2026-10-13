@@ -2245,6 +2245,8 @@ log-analyzer evidence /absolute/evidence.json --expected-sha256 EXACT_SHA \
 
 Drafts require unredacted identities and propose scoped links, intervals and distinct endpoint counts. Independently
 check source meaning and select the requested subjects before verification.
+Without registered question IDs, drafts check retained evidence without opting into
+final-review bookkeeping. Registered checklists still require typed question mappings.
 `evidence --claims FILE` reports expected/observed identity, citations and assurance;
 `subject_verified` binds the assertion to its snapshot, input and exact endpoints.
 Legacy claims remain accepted with weaker `link_exists`/`retained_interval` assurance.
@@ -2274,5 +2276,6 @@ and negative witnesses, then investigate into a fresh artifact and verify its cl
 
 The evaluation runner keeps natural use as the default and offers a separate
 [verification-required variant](evals/README.md#verification-required-workflow-experiment).
-It rechecks delivered answers against current claims and the original public capture,
-then reviews prose separately; corrections share the original trial budget.
+It rechecks delivered answers and independently validates the selected profile against
+source-derived roles and positive/negative links, then reviews prose separately;
+corrections and both native checks share the original trial budget.

@@ -39,8 +39,8 @@ When the user requests an auditable claim report or an execution framework
 requires one, register question IDs during investigation, select subject-bound
 claims and run native `evidence --claims`. The [question-plan helper](examples/question-review.md)
 can automate assembly for this advanced workflow; it does not choose subjects.
-Inspect failures and preserve unknowns. Successful claim checks do not validate
-arbitrary prose, profile meaning or causality; review the delivered wording separately.
+Resolve failed checks or state the gap. Evidence-only drafts imply no final review.
+Successful checks do not validate prose, profile meaning or causality.
 
 For specialized syntax or examples, read [reference](reference.md),
 [failure](examples/debug-failure.md), [performance](examples/performance.md), or

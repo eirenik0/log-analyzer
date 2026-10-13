@@ -5993,7 +5993,7 @@ fn subject_link(finding: &Value, step_id: &str) -> Value {
 }
 
 #[test]
-fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
+fn claim_drafts_verify_endpoints_without_opting_into_final_review() {
     let events = [
         chain_event("checkpoint", "run-a", "capture-a", 0),
         chain_event("capture_end", "run-a", "capture-a", 20),
@@ -6066,8 +6066,9 @@ fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
         )
     };
     let (ok, v) = verify(&draft);
-    assert!(!ok);
-    assert_eq!(v["final_review"]["status"], "needs_revision");
+    assert!(ok);
+    assert_eq!(v["status"], "verified");
+    assert!(v["final_review"].is_null());
     assert!(
         v["checks"]
             .as_array()
