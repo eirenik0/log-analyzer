@@ -51,7 +51,11 @@ fn chunked_records_keep_offsets_hash_and_source_locations() {
     for (index, entry) in records.iter().enumerate() {
         assert_eq!(entry.source_line_number, index + 1);
         assert_eq!(entry.raw_logline, old.entries[index].raw_logline);
-        assert_eq!(entry.timestamp.offset().local_minus_utc(), 3600);
+        let source_timestamp = entry.source_timestamp.expect("explicit source timestamp");
+        assert_eq!(source_timestamp.offset().local_minus_utc(), 3600);
+        assert_eq!(source_timestamp.to_rfc3339(), "2026-01-01T01:00:00+01:00");
+        assert_eq!(entry.timestamp.timestamp(), source_timestamp.timestamp());
+        assert_eq!(entry.source_timestamp, old.entries[index].source_timestamp);
     }
 }
 

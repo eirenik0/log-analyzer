@@ -5,6 +5,7 @@ use crate::{
     resource_observations::ResourceObservationRules,
 };
 use serde_json::{Value, json};
+#[cfg(test)]
 use std::{
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
@@ -82,11 +83,13 @@ pub(super) fn matches_sample(
                     })
             })
 }
+#[cfg(test)]
 struct Resource<'a> {
     hash: &'a str,
     owner: Option<Rc<str>>,
     source: &'a LogEntry,
 }
+#[cfg(test)]
 impl Resource<'_> {
     fn matches_owner(&self, owner: &str) -> bool {
         self.owner
@@ -94,6 +97,7 @@ impl Resource<'_> {
             .is_none_or(|resource_owner| resource_owner == owner)
     }
 }
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn analyze(
     entries: &[&LogEntry],
@@ -342,4 +346,273 @@ pub(super) fn analyze(
     if index == 0 {
         findings.push(fact(format!("{scope}-resource-observation-{rule_key}-unavailable"), scope, "unknown", "No configured resource observation could be established in the selected processed records.", Vec::new(), json!({"reason":"Unobserved manifest data does not establish absent content.","supporting_occurrences":[]})));
     }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ResourceRow {
+    hash: String,
+    owner: Option<String>,
+    ordinal: usize,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn analyze_stream(
+    entries: &super::source_store::Entries,
+    scope: &str,
+    context: &Context,
+    snapshot: &Value,
+    rule: &ResourceObservationRules,
+    budget: &mut Budget,
+    findings: &mut dyn super::finding_store::FindingSink,
+) -> super::Result<()> {
+    use super::grouped::Groups;
+    let rule_key = crate::evidence::digest(rule.id.as_bytes());
+    let mut groups = Groups::new(entries)?;
+    let mut resources = entries.rows::<ResourceRow>()?;
+    for (ordinal, entry) in entries.iter()?.enumerate() {
+        let entry = entry?;
+        if !budget.checkpoint("calculation", 1) {
+            return Ok(());
+        }
+        let Some(namespace) = identity(&entry, rule, &rule.namespace_prefix) else {
+            continue;
+        };
+        let owner = identity(&entry, rule, &rule.owner_prefix);
+        if entry.message.contains(&rule.manifest_marker)
+            && owner.is_some()
+            && let Some(urls) = entry.payload().and_then(Value::as_array)
+        {
+            for url in urls
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|url| url.contains(&rule.url_contains))
+            {
+                if !budget.checkpoint("calculation", 1) {
+                    return Ok(());
+                }
+                let key = serde_json::to_string(&(&namespace, url))?;
+                let owner = owner.as_ref().unwrap();
+                match groups.get::<String>("owner", &key)? {
+                    None => groups.put("owner", &key, owner)?,
+                    Some(previous)
+                        if previous != *owner
+                            && groups.get::<bool>("ambiguous-owner", &key)?.is_none() =>
+                    {
+                        groups.put("ambiguous-owner", &key, &true)?
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+        if !rule
+            .resource_markers
+            .iter()
+            .all(|marker| entry.message.contains(marker))
+        {
+            continue;
+        }
+        for render in entry
+            .payload()
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let Some(resource) = payload_field(render, &rule.resources_path) else {
+                continue;
+            };
+            let items: Box<dyn Iterator<Item = (&str, &str)> + '_> =
+                if let Some(items) = resource[&rule.entries_field].as_array() {
+                    Box::new(items.iter().filter_map(|item| {
+                        Some((
+                            item[&rule.url_field].as_str()?,
+                            item[&rule.hash_field].as_str()?,
+                        ))
+                    }))
+                } else if let Some(items) = resource.as_object() {
+                    Box::new(items.iter().filter_map(|(url, item)| {
+                        Some((url.as_str(), item[&rule.hash_field].as_str()?))
+                    }))
+                } else {
+                    continue;
+                };
+            for (url, hash) in items {
+                if !budget.checkpoint("calculation", 1) {
+                    return Ok(());
+                }
+                let resource_index = resources.len();
+                resources.push(&ResourceRow {
+                    hash: hash.into(),
+                    owner: owner.clone(),
+                    ordinal,
+                })?;
+                groups.insert(
+                    "resources",
+                    &[namespace.clone(), url.into()],
+                    resource_index,
+                )?;
+            }
+        }
+    }
+    let mut index = 0usize;
+    let mut viewports = Groups::new(entries)?;
+    for (ordinal, entry) in entries.iter()?.enumerate() {
+        let entry = entry?;
+        if !budget.checkpoint("calculation", 1) {
+            return Ok(());
+        }
+        let Some(namespace) = identity(&entry, rule, &rule.namespace_prefix) else {
+            continue;
+        };
+        let Some(owner) = identity(&entry, rule, &rule.owner_prefix) else {
+            continue;
+        };
+        let viewport_key = serde_json::to_string(&(&namespace, &owner))?;
+        if entry.message.starts_with(&rule.viewport_reset_marker) {
+            viewports.put("viewport", &viewport_key, &Option::<usize>::None)?;
+        }
+        if entry.message.starts_with(&rule.viewport_marker)
+            && entry.payload().is_some_and(|value| {
+                value[&rule.width_field].is_number() && value[&rule.height_field].is_number()
+            })
+        {
+            viewports.put("viewport", &viewport_key, &Some(ordinal))?;
+        }
+        if !entry.message.contains(&rule.manifest_marker) {
+            continue;
+        }
+        let Some(urls) = entry.payload().and_then(Value::as_array) else {
+            continue;
+        };
+        if urls.is_empty() {
+            findings.push(fact(format!("{scope}-resource-observation-{rule_key}-{index}"),scope,"observation","Manifest lists no resources; absent displayed content cannot be established from this list.",vec![excerpt(&entry,context,snapshot)],json!({"resource_status":"empty_manifest","supporting_occurrences":[occurrence(&entry,context,snapshot)]})))?;
+            index += 1;
+        }
+        let viewport = viewports
+            .latest::<Option<usize>>("viewport", &viewport_key)?
+            .flatten()
+            .map(|ordinal| entries.get(ordinal))
+            .transpose()?;
+        for url in urls
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|url| url.contains(&rule.url_contains))
+        {
+            if !budget.checkpoint("calculation", 1) {
+                return Ok(());
+            }
+            let key = [namespace.clone(), url.into()];
+            let owner_key = serde_json::to_string(&(&namespace, url))?;
+            let unique_owner = groups.get::<String>("owner", &owner_key)?.is_some()
+                && groups.get::<bool>("ambiguous-owner", &owner_key)?.is_none();
+            let mut hash = None;
+            let mut conflicting_hash = false;
+            let mut invalid_hash = false;
+            if unique_owner {
+                for resource_index in groups.ordinals("resources", &key) {
+                    let resource = resources.get(resource_index?)?;
+                    if !budget.checkpoint("calculation", 1) {
+                        return Ok(());
+                    }
+                    if resource
+                        .owner
+                        .as_ref()
+                        .is_some_and(|resource_owner| *resource_owner != owner)
+                    {
+                        continue;
+                    }
+                    if resource.hash.len() != 64
+                        || !resource.hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    {
+                        invalid_hash = true;
+                    } else {
+                        let value = resource.hash.to_ascii_lowercase();
+                        conflicting_hash |= hash.as_ref().is_some_and(|hash| *hash != value);
+                        hash = Some(value);
+                    }
+                }
+            }
+            let unique_hash = !invalid_hash && !conflicting_hash && hash.is_some();
+            let fingerprint = unique_hash
+                .then(|| {
+                    rule.fingerprints.iter().find(|fingerprint| {
+                        Some(fingerprint.sha256.to_ascii_lowercase()).as_ref() == hash.as_ref()
+                    })
+                })
+                .flatten();
+            let resource_status = if !unique_hash {
+                "unavailable"
+            } else if fingerprint.is_some() {
+                "fingerprint_match"
+            } else if rule.fingerprints.is_empty() {
+                "unconfigured_fingerprint"
+            } else {
+                "different_fingerprint"
+            };
+            let status = if !unique_hash {
+                "Resource bytes unavailable or ambiguous: no unique scoped hash is established."
+                    .to_owned()
+            } else if let Some(fingerprint) = fingerprint {
+                format!(
+                    "Resource matches profile-declared fingerprint: {}.",
+                    fingerprint.label
+                )
+            } else if rule.fingerprints.is_empty() {
+                "Resource reports a unique scoped hash; no reference fingerprints are configured. Its content is unknown.".into()
+            } else {
+                "Resource reports different bytes from the profile-declared fingerprints; its content is unknown.".into()
+            };
+            let mut support = vec![occurrence(&entry, context, snapshot)];
+            let mut excerpts = vec![excerpt(&entry, context, snapshot)];
+            if let Some(source) = &viewport {
+                support.push(occurrence(source, context, snapshot));
+                excerpts.push(excerpt(source, context, snapshot));
+            }
+            let mut bytes = 0u64;
+            let mut previous_source = None;
+            if unique_owner {
+                for resource_index in groups.ordinals("resources", &key) {
+                    let resource = resources.get(resource_index?)?;
+                    if !budget.checkpoint("calculation", 1) {
+                        return Ok(());
+                    }
+                    if resource
+                        .owner
+                        .as_ref()
+                        .is_some_and(|resource_owner| *resource_owner != owner)
+                        || previous_source == Some(resource.ordinal)
+                    {
+                        continue;
+                    }
+                    previous_source = Some(resource.ordinal);
+                    let source = entries.get(resource.ordinal)?;
+                    let witness = excerpt(&source, context, snapshot);
+                    let citation = occurrence(&source, context, snapshot);
+                    bytes = bytes.saturating_add(
+                        serde_json::to_vec(&witness)?.len() as u64
+                            + serde_json::to_vec(&citation)?.len() as u64
+                            + 256,
+                    );
+                    if bytes > entries.item_bytes.min(8 * 1024 * 1024) {
+                        return Err("resource observation item byte limit exceeded".into());
+                    }
+                    support.push(citation);
+                    excerpts.push(witness);
+                }
+            }
+            let dimensions = viewport.as_ref().and_then(LogEntry::payload);
+            let claim = format!(
+                "{status} Observed dimensions: {}. Matching requires exact input, namespace and URL with a unique originating owner. Neither name nor hash establishes displayed content or failure cause.",
+                dimensions.map_or_else(
+                    || "unknown".into(),
+                    |value| format!("{}x{}", value[&rule.width_field], value[&rule.height_field])
+                )
+            );
+            findings.push(fact(format!("{scope}-resource-observation-{rule_key}-{index}"),scope,"observation",&claim,excerpts,json!({"resource_status":resource_status,"rule_id":rule.id,"viewport":dimensions.map(|value|json!({"width":value[&rule.width_field],"height":value[&rule.height_field]})),"fingerprint":fingerprint.map(|fingerprint|json!({"sha256":fingerprint.sha256.to_ascii_lowercase(),"label":fingerprint.label})),"supporting_occurrences":support})))?;
+            index += 1;
+        }
+    }
+    if index == 0 {
+        findings.push(fact(format!("{scope}-resource-observation-{rule_key}-unavailable"),scope,"unknown","No configured resource observation could be established in the selected processed records.",Vec::new(),json!({"reason":"Unobserved manifest data does not establish absent content.","supporting_occurrences":[]})))?;
+    }
+    Ok(())
 }

@@ -451,7 +451,7 @@ pub(crate) fn analyze(
             let mut direct_policy = policy.clone();
             direct_policy.populations.clear();
             direct_policy.chains.clear();
-            crate::investigation_runtime::policy::calculate(
+            if crate::investigation_runtime::policy::calculate(
                 &direct_policy,
                 config,
                 &selected,
@@ -464,7 +464,11 @@ pub(crate) fn analyze(
                 &mut Vec::new(),
                 &mut Vec::new(),
                 Some(&mut checker),
-            );
+            )
+            .is_err()
+            {
+                budget.stop("calculation", "io_error", None);
+            }
             if budget.stop.is_some() {
                 break;
             }

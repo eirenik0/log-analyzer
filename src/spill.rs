@@ -240,6 +240,50 @@ impl Spool {
                 .map(|row| row.row.clone()))
         }
     }
+    pub fn find_last(&self, collection: &str, identity: &str) -> Result<Option<Row>> {
+        if let Some(database) = &self.database {
+            Ok(database.query_row("SELECT ordinal,sort_key,identity,offset,length FROM state WHERE collection=?1 AND identity=?2 ORDER BY ordinal DESC LIMIT 1", params![collection,identity], sql_row).optional()?)
+        } else {
+            Ok(self
+                .rows
+                .iter()
+                .rev()
+                .find(|row| row.collection == collection && row.row.identity == identity)
+                .map(|row| row.row.clone()))
+        }
+    }
+    pub fn last_before_key(&self, collection: &str, key: &[u8]) -> Result<Option<Row>> {
+        if let Some(database) = &self.database {
+            Ok(database.query_row("SELECT ordinal,sort_key,identity,offset,length FROM state WHERE collection=?1 AND sort_key<=?2 ORDER BY sort_key DESC,ordinal DESC LIMIT 1",params![collection,key],sql_row).optional()?)
+        } else {
+            Ok(self
+                .rows
+                .iter()
+                .filter(|row| row.collection == collection && row.row.key.as_slice() <= key)
+                .max_by(|a, b| (&a.row.key, a.row.ordinal).cmp(&(&b.row.key, b.row.ordinal)))
+                .map(|row| row.row.clone()))
+        }
+    }
+    pub fn tail_after_key(&self, collection: &str, key: &[u8], limit: usize) -> Result<Vec<Row>> {
+        if limit > PAGE {
+            return Err("spill tail page limit exceeded".into());
+        }
+        if let Some(database) = &self.database {
+            let mut statement=database.prepare("SELECT ordinal,sort_key,identity,offset,length FROM state WHERE collection=?1 AND sort_key>?2 ORDER BY sort_key DESC,ordinal DESC LIMIT ?3")?;
+            Ok(statement
+                .query_map(params![collection, key, limit as u64], sql_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?)
+        } else {
+            let mut rows: Vec<_> = self
+                .rows
+                .iter()
+                .filter(|row| row.collection == collection && row.row.key.as_slice() > key)
+                .map(|row| &row.row)
+                .collect();
+            rows.sort_by(|a, b| (&b.key, b.ordinal).cmp(&(&a.key, a.ordinal)));
+            Ok(rows.into_iter().take(limit).cloned().collect())
+        }
+    }
     pub fn page(&self, collection: &str, order: Order, after: Option<&Row>) -> Result<Vec<Row>> {
         if let Some(database) = &self.database {
             let (query, key) = match order {
@@ -291,6 +335,35 @@ impl Spool {
             }
             let rows = rows.into_iter().take(PAGE).cloned().collect();
             Ok(rows)
+        }
+    }
+    /// Replay a single keyed population without materializing all its members.
+    pub fn group_page(
+        &self,
+        collection: &str,
+        key: &[u8],
+        after: Option<&Row>,
+    ) -> Result<Vec<Row>> {
+        if let Some(database) = &self.database {
+            let mut statement = database.prepare("SELECT ordinal,sort_key,identity,offset,length FROM state WHERE collection=?1 AND sort_key=?2 AND ordinal>?3 ORDER BY ordinal LIMIT 128")?;
+            Ok(statement
+                .query_map(
+                    params![collection, key, after.map_or(-1, |row| row.ordinal as i64)],
+                    sql_row,
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()?)
+        } else {
+            Ok(self
+                .rows
+                .iter()
+                .filter(|row| {
+                    row.collection == collection
+                        && row.row.key == key
+                        && after.is_none_or(|after| row.row.ordinal > after.ordinal)
+                })
+                .take(PAGE)
+                .map(|row| row.row.clone())
+                .collect())
         }
     }
     pub fn visit(
@@ -388,6 +461,54 @@ mod tests {
     }
 
     #[test]
+    fn keyed_pages_preserve_all_occurrences_across_resident_and_spilled_state() {
+        for memory in [0, 1024 * 1024] {
+            let mut state = Spool::new(memory, 8 * 1024 * 1024, 1024).unwrap();
+            for ordinal in 0..600usize {
+                state
+                    .append("sources", &[u8::from(ordinal % 3 == 0)], "", &ordinal)
+                    .unwrap();
+            }
+            let mut after = None;
+            let mut values = Vec::new();
+            loop {
+                let page = state.group_page("sources", &[0], after.as_ref()).unwrap();
+                assert!(page.len() <= 128);
+                if page.is_empty() {
+                    break;
+                }
+                for row in &page {
+                    values.push(state.read::<usize>(row).unwrap());
+                }
+                after = page.last().cloned();
+            }
+            assert_eq!(
+                values,
+                (0..600)
+                    .filter(|ordinal| ordinal % 3 != 0)
+                    .collect::<Vec<_>>()
+            );
+            assert!(state.group_page("missing", &[0], None).unwrap().is_empty());
+            assert!(state.group_page("sources", &[7], None).unwrap().is_empty());
+            state.append("latest", b"", "shared", &1usize).unwrap();
+            state.append("latest", b"", "shared", &2usize).unwrap();
+            assert_eq!(
+                state
+                    .read::<usize>(&state.find("latest", "shared").unwrap().unwrap())
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                state
+                    .read::<usize>(&state.find_last("latest", "shared").unwrap().unwrap())
+                    .unwrap(),
+                2
+            );
+            assert!(state.find_last("latest", "missing").unwrap().is_none());
+        }
+    }
+
+    #[test]
     fn limits_fail_explicitly_and_temporary_files_are_removed() {
         let mut spool = Spool::new(0, 1024 * 1024, 100).unwrap();
         let directory = spool.directory.path().to_owned();
@@ -405,7 +526,7 @@ mod tests {
 
     #[test]
     fn ordered_strings_preserve_prefix_nul_and_unicode_order() {
-        let mut values = vec![
+        let mut values = [
             vec![],
             vec!["".into()],
             vec!["a".into()],

@@ -11,13 +11,14 @@ flowchart TD
     B -->|bounded physical / multiline records| E[Parser visitor]
     D --> E
     E -->|one normalized row at a time| F[Global filter]
-    F --> P[Selected record collection: still resident in CLI]
+    F --> P[Replayable source rows]
     P --> G[Correlation spool with threshold-triggered SQLite indexes]
-    G --> R[Memory-budgeted report collections]
+    G --> R[Replayable findings, members and sequence rows]
     B -->|stream and escape captured bytes| H[Staged JSON artifact]
     R --> H
     H --> I[Digest and source-witness validation]
     I --> J[Atomic no-clobber publication]
+    J --> O[Stream checked report page or complete output]
     J --> K[Private checksum-verified retrieval snapshot]
     K --> L[File offsets and reference indexes]
     L --> M[Bounded semantic validation passes]
@@ -43,16 +44,18 @@ flowchart TD
   row at a time. This is not an incremental parser for an arbitrarily large JSON
   value: `record_max_bytes` remains the envelope limit. Row paths, physical lines,
   offsets and raw witnesses remain attached to every record.
-- Investigation filters emitted records before its analysis collector and moves
-  them into correlation without the previous second parsed-record clone. Discarded
-  records release their reservations immediately, including expanded rows. Counts
+- Investigation filters emitted records before writing replayable source rows.
+  Correlation consumes those rows one at a time. Selected and discarded records
+  release parser reservations immediately, including expanded rows. Counts
   still describe parsing before filters. Correlation state survives all read chunks;
   a chunk ending never establishes completion or absence.
 - Artifact capture data is written directly from snapshots through bounded JSON
   escaping (or a bounded byte-array writer for non-UTF-8 captures). The retained
-  logical tree contains capture metadata, not complete capture strings. The writer
-  enforces the artifact byte cap. A staged file is published only after source,
-  identity and relational validation; failures preserve explicit unavailable status.
+  metadata contains no complete capture strings. Private staging is bounded by
+  the construction disk allowance; publication additionally obeys the artifact
+  byte cap. Full source, identity and relational validation precedes publication
+  and inline delivery. Actual staging failures fail closed. An artifact publication
+  cap reports explicit unavailable status without skipping fact verification.
 - Construction-time raw-witness verification walks snapshot files in source order
   with a bounded line cursor. Multiple normalized rows can revisit the same physical
   record. It does not construct an index of every line in each input.
@@ -62,14 +65,31 @@ flowchart TD
   uniqueness, ordering and calculation checks. Version-1 JSON and its existing
   cursors remain compatible.
 
-## Remaining state boundary
+## Analysis and report state
 
-The investigation consumer still retains selected `LogEntry` values and calculated
-report collections under its existing conservative memory budget. It emits a
-partial outcome if that budget is exhausted. Pending correlation indexes now spill,
-but completed results and retained report collections do not. Retrieval now avoids
-whole-tree materialization. The report-construction stage still lacks constant RSS,
-so this PR does not close issue #86's end-to-end out-of-core requirements.
+Selected source rows and completed correlations are stored in plain temporary files
+with fixed-width on-disk ordinal indexes. Selection and capability checks replay
+records and use bounded file indexes; they do not retain a whole source vector.
+Policy, chain, resource and scope-identity joins keep a small resident key index and
+spill only that index when necessary. Single atomic witness bundles remain capped;
+large scope-identity witness groups produce bounded context findings with exact
+witness counts. No chunk boundary establishes completeness or causality.
+
+Membership rows, sequence events and stable-priority finding buckets are replayed
+into the v1 artifact. Distribution sample IDs stream separately, and exact samples
+and event order use external radix sorts. Final snapshot binding and redaction are
+applied per item; membership digests cover the exact final serialized array.
+The staged artifact undergoes the bounded semantic validator before publication.
+Report pages and complete text/JSON are staged and streamed; presentation budgets
+count exact UTF-8 bytes and Unicode scalars. Compact assessment references retain
+checked evidence even when a page displays zero findings.
+
+The shared construction row/sort/private-artifact allowance defaults to 4 GiB. Key
+indexes and artifact validation have separate finite storage/work allowances. Validation uses
+at least 180 seconds and 500 million work units to permit checked partial reports
+after analysis runs out of budget. These are finite resource limits, not a promise
+that arbitrary inputs can complete. No full-input proof is inferred from partial
+coverage, unsupported semantics, or ambiguous identity.
 
 Pending correlation records and per-key summaries use append-only temporary payload
 files. The resident index spills to SQLite at a fixed allowance; SQLite stores
@@ -85,8 +105,8 @@ pairs. The second holds one pending boundary and emits zero, one or two source
 records per decision. Records require unique input/line/row addresses; duplicate
 addresses and inconsistent input-to-file mappings fail explicitly. A single
 correlation stream owns its effective profile and is consumed by finalization.
-The CLI uses this correlator, but collects its completed operations and unmatched
-records for the existing report builder. The library consumer can remain bounded.
+The CLI consumes decisions into replayable completed-operation and unmatched-event
+rows. Library consumers may process decisions directly.
 
 ## Measurement
 
@@ -143,8 +163,8 @@ The recorded 2,000 / 20,000 / 200,000 selected-record sweep used 13.3 / 15.6 /
 Results are in [`../evals/streaming-selected-correlation-memory.json`](../evals/streaming-selected-correlation-memory.json).
 It measures the yielding parser plus real growing correlation state. It does not
 measure full CLI evidence construction or retrieval. Retrieval has a separate
-selected-record sweep below; report construction still prevents an end-to-end
-bounded-memory claim.
+selected-record sweep below; the end-to-end investigation sweep includes report
+construction and complete delivery.
 
 ## Bounded artifact retrieval
 
@@ -223,7 +243,7 @@ measurement lookup and operation-filtered claim counts, peak RSS stayed between
 validation time still grows with artifact size.
 
 
-## End-to-end selected investigation baseline
+## End-to-end selected investigation memory
 
 Run the complete investigation process (including artifact construction,
 validation, publication, and report delivery) with all source records selected:
@@ -232,9 +252,9 @@ validation, publication, and report delivery) with all source records selected:
 python3 scripts/measure-selected-investigation-memory.py target/release/log-analyzer
 ```
 
-This benchmark currently **fails** its 96 MiB RSS ceiling and 24 MiB growth
-allowance. Those fixed thresholds are acceptance criteria for the remaining CLI
-construction refactor, not a guarantee of the current implementation. Use
+The benchmark enforces a 96 MiB RSS ceiling and 24 MiB growth allowance under
+fixed processing budgets. These are regression thresholds, not a cross-platform
+OS memory guarantee. Use
 `--baseline` only to record the existing failure without enforcing RSS thresholds;
 all evidence and completion assertions still run.
 
@@ -250,5 +270,47 @@ The harness checks exact physical record order and contents, input and artifact
 hashes, exact start/end pairing, source timestamp offsets, measured durations,
 distribution sample counts, and complete-output finding equality. Results:
 [`../evals/streaming-selected-investigation-memory-baseline.json`](../evals/streaming-selected-investigation-memory-baseline.json).
-The CLI still retains selected records and its report tree; issue #86 remains
-incomplete until this end-to-end benchmark passes without partial processing.
+Acceptance requires passing without partial processing, with all selected evidence
+and complete-output findings preserved.
+
+The completed pipeline passes the same sweep and thresholds. Default-page RSS is
+15.3 / 16.0 / 17.4 MiB; complete-output RSS is 16.1 / 16.0 / 20.4 MiB. Every run
+completes with all selected evidence intact. Raw results, platform and executable
+hash are in
+[`../evals/streaming-selected-investigation-memory.json`](../evals/streaming-selected-investigation-memory.json).
+
+This memory reduction has a material latency cost. Default pages take 5.2 / 26.1 /
+89.6 seconds, compared with 0.3 / 2.0 / 14.1 seconds in the baseline. Complete
+output takes 4.6 / 24.8 / 102.2 seconds, compared with 0.3 / 2.7 / 15.0 seconds.
+Both sweeps use the same selected corpus and configured processing budgets; the
+new implementation performs more temporary I/O and bounded validation passes.
+These are single-run synthetic measurements, not a latency distribution or a
+real-agent cost estimate. Model-token cost and arbitrary prose accuracy are not
+measured by this probe.
+
+### Selected chain and relationship construction
+
+```sh
+python3 scripts/measure-chain-construction-memory.py target/release/log-analyzer
+```
+
+This additional end-to-end probe grows 100 / 500 / 2,000 chain roots, with three
+selected source records per root and complete output. Two interleaved sessions
+reuse IDs. The fixture declares the intended joins; independent assertions bind
+every link to its expected source lines, scope and exact 1,000 ms interval. The
+probe also checks every retained record, source timestamp offsets, population
+membership, later-activity counts, omission counts and complete finding equality.
+An endpoint interval explicitly does not establish causality or operation duration.
+
+Each size runs in a fresh child with fixed record, correlation, construction and
+processing allowances. Expected report trees are loaded only after the measured
+child exits. The same 96 MiB absolute RSS and 24 MiB growth thresholds apply. This
+is a synthetic deterministic regression, not a real-agent evaluation or evidence
+that a generated profile can validate its own semantics.
+
+The recorded sweep passes at 18.2 / 18.6 / 19.6 MiB peak RSS and 3.0 / 10.9 /
+53.0 seconds. The largest run verifies 6,000 selected records, 4,000 exact chain
+links and 2,000 scoped relationships, with all population memberships and complete
+findings retained. Raw measurements and the same executable hash as the selected
+correlation/report sweep are in
+[`../evals/streaming-chain-construction-memory.json`](../evals/streaming-chain-construction-memory.json).

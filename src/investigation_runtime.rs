@@ -3,13 +3,20 @@ mod artifact;
 mod auto_profile;
 pub(crate) mod chains;
 mod claims;
+mod construction;
+mod finding_store;
 mod findings;
+mod grouped;
 mod guidance;
 mod indexed_artifact;
 pub(crate) mod policy;
 mod presentation;
+mod report_checks;
+mod report_stream;
 mod resource_observations;
+mod scope_state;
 mod selection;
+mod source_store;
 
 use crate::{
     cli::{Cli, Commands, InvestigateArgs},
@@ -19,7 +26,10 @@ use crate::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::{io::Write, path::Path};
+use std::{
+    io::{Seek, SeekFrom},
+    path::Path,
+};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug, Deserialize)]
@@ -91,14 +101,9 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
     }
 }
 
-/// The report builder currently needs completed result vectors, while the
-/// correlation engine keeps its pending records and key summaries out of them.
-pub(super) struct Correlated {
-    operations: Vec<crate::perf_analyzer::TimedOperation>,
-    unmatched_events: Vec<crate::perf_analyzer::UnmatchedEvent>,
-}
+use source_store::{Correlated, Entries};
 fn correlate(
-    entries: &[parser::LogEntry],
+    entries: &Entries,
     config: &config::AnalyzerConfig,
     args: &InvestigateArgs,
     budget: &mut Budget,
@@ -114,24 +119,21 @@ fn correlate(
                 .max(65536),
         },
     )?;
-    for entry in entries {
+    for entry in entries.iter()? {
         if !budget.checkpoint("correlation", 1) {
             return Ok(None);
         }
-        stream.push(entry.clone())?;
+        stream.push(entry?)?;
     }
-    let mut result = Correlated {
-        operations: Vec::new(),
-        unmatched_events: Vec::new(),
-    };
+    let mut result = Correlated::new(entries)?;
     let finished = stream.finish(
         || budget.checkpoint("correlation", 1),
         |decision| {
             if let Some(operation) = decision.operation {
-                result.operations.push(operation);
+                result.operations.push(&operation)?;
             }
             if let Some(unmatched) = decision.unmatched {
-                result.unmatched_events.push(unmatched);
+                result.unmatched_events.push(&unmatched)?;
             }
             Ok(())
         },
@@ -357,12 +359,19 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut parse_calls = 0usize;
     let snapshot = json!("pending-snapshot");
     let profile_digest = context.metadata(&json!({}), false, &[])["profile_sha256"].clone();
-    let mut records = Vec::new();
+    let construction_item_bytes = (budget.limits.record_bytes as u64)
+        .saturating_mul(64)
+        .max(8 * 1024 * 1024);
+    let construction_disk = construction::Disk::new(args.construction_max_disk_bytes);
+    let mut records = construction::Rows::new(construction_disk.clone(), construction_item_bytes)?;
     let mut scopes = Vec::new();
-    let mut findings = Vec::new();
+    let mut findings =
+        finding_store::Findings::new(construction_disk.clone(), construction_item_bytes)?;
     let mut populations = Vec::new();
-    let mut memberships = Vec::new();
-    let mut sequences = Vec::new();
+    let mut memberships =
+        construction::Memberships::new(construction_disk.clone(), construction_item_bytes)?;
+    let mut sequences =
+        construction::Sequences::new(construction_disk.clone(), construction_item_bytes)?;
     let mut assessments = Vec::new();
     let mut correlation_calls = 0usize;
 
@@ -404,7 +413,12 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         ];
         budget.begin_stage();
         parse_calls += 1;
-        let mut yielded = Vec::new();
+        let mut entries = Entries::new(
+            construction_disk.clone(),
+            construction_item_bytes,
+            args.construction_max_disk_bytes,
+        )?;
+        let mut selected_count = 0usize;
         let coverage = if capture.parseable_utf8 {
             parser::visit_capture_reader(
                 path,
@@ -417,11 +431,14 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &mut budget,
                 |mut entry| {
                     entry.source_input_ordinal = Some(ordinal);
-                    let retain = filter.matches(&entry);
-                    if retain {
-                        yielded.push(entry);
+                    if filter.matches(&entry) {
+                        selected_count += usize::from(selected(&entry, &selectors, &config));
+                        entries.push(&entry).map_err(|error| {
+                            parser::ParseError::InvalidLogFormat(error.to_string())
+                        })?;
                     }
-                    Ok(retain)
+                    // The callback persists the record; the parser can release its allowance.
+                    Ok(false)
                 },
             )
         } else {
@@ -429,14 +446,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 "capture is not UTF-8".into(),
             ))
         };
-        let parsed = match coverage {
+        let coverage = match coverage {
             Ok(mut coverage) => {
                 coverage.input_bytes = capture.bytes;
                 coverage.snapshot_sha256 = hash.clone();
-                parser::ParsedLogFile {
-                    entries: yielded,
-                    coverage,
-                }
+                coverage
             }
             Err(_) => {
                 budget.stop("parse", "unsupported", None);
@@ -445,28 +459,26 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 parsed.coverage.nonempty_lines = usize::from(capture.bytes != 0);
                 parsed.coverage.input_bytes = capture.bytes;
                 parsed.coverage.snapshot_sha256 = hash.clone();
-                parsed
+                parsed.coverage
             }
         };
-        context.observe_selected(&parsed.coverage, &parsed.entries, |entry| {
-            selected(entry, &selectors, &config)
-        });
+        entries.seal()?;
+        context.observe_selected_count(&coverage, selected_count);
         let capture_complete = capture.complete;
         captures.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"encoding":if capture.utf8 {"utf8"}else{"bytes"},"data":null,"data_omitted":false,"original_consumed_sha256":hash,"stored_sha256":hash}));
         spooled.push(Some(capture));
         processed_ordinals.insert(ordinal);
-        parsed_records += parsed.coverage.parsed_entries;
+        parsed_records += coverage.parsed_entries;
         budget.active_scope = ordinal;
         budget.begin_stage();
-        let mut entries = Vec::new();
-        for entry in parsed.entries {
+        for entry in entries.iter()? {
+            let entry = entry?;
             if !budget.checkpoint("calculation", 1) {
                 break;
             }
             if selected(&entry, &selectors, &config) {
-                records.push(findings::record(&entry, &context, &snapshot));
+                records.push(&findings::record(&entry, &context, &snapshot))?;
             }
-            entries.push(entry);
         }
         budget.begin_stage();
         correlation_calls += 1;
@@ -484,21 +496,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             }
         };
         budget.begin_stage();
-        let scope_aliases = crate::profile_validation::scope_adequacy(&entries, &config, |work| {
-            budget.checkpoint("calculation", work)
-        });
-        budget.begin_stage();
-        let view = selection::View::new(&entries, &selectors, &config, perf.as_ref(), &mut budget);
-        let scope_aliases = scope_aliases.map(|aliases| {
-            aliases
-                .into_iter()
-                .filter(|alias| view.intersects_alias(alias))
-                .collect::<Vec<_>>()
-        });
+        let view = selection::View::new(&entries, &selectors, &config, perf.as_ref(), &mut budget)?;
         let scope_id = format!("scope-{ordinal}");
-        let structural_loss = parsed.coverage.rejected_candidates > 0
-            || !parsed.coverage.normalization_diagnostics.is_empty()
-            || parsed.coverage.is_unparsed();
+        let structural_loss = coverage.rejected_candidates > 0
+            || !coverage.normalization_diagnostics.is_empty()
+            || coverage.is_unparsed();
         let semantic_status = if config.event_classifier().is_none() {
             "unsupported"
         } else if perf.is_some() {
@@ -520,7 +522,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":if structural_loss{"partial"}else{"complete"},"analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
         let severity_complete = capture_complete && !structural_loss && budget.stop.is_none();
         budget.begin_stage();
-        findings::observed_levels(
+        findings::streamed_observed_levels(
             &view.entries,
             &scope_id,
             &context,
@@ -530,9 +532,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             &mut findings,
             &mut populations,
             &mut memberships,
-        );
+        )?;
         for declaration in &config.resource_observations {
-            resource_observations::analyze(
+            resource_observations::analyze_stream(
                 &view.entries,
                 &scope_id,
                 &context,
@@ -540,7 +542,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 declaration,
                 &mut budget,
                 &mut findings,
-            );
+            )?;
         }
         findings::build(
             &entries,
@@ -560,10 +562,10 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             &mut populations,
             &mut memberships,
             &mut sequences,
-        );
+        )?;
         budget.begin_stage();
         if let Some(policy) = &config.investigation {
-            chains::calculate(
+            chains::calculate_stream(
                 policy,
                 &config,
                 &entries,
@@ -574,9 +576,8 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 !structural_loss && budget.stop.is_none(),
                 &mut budget,
                 &mut findings,
-                None,
-            );
-            policy::calculate(
+            )?;
+            policy::calculate_stream(
                 policy,
                 &config,
                 &entries,
@@ -588,25 +589,26 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &mut findings,
                 &mut populations,
                 &mut memberships,
-                None,
-            );
+            )?;
         }
-        if let Some(aliases) = &scope_aliases {
-            findings::scope_aliases(
-                aliases,
-                &entries,
-                &scope_id,
-                &context,
-                &snapshot,
-                &mut budget,
-                &mut findings,
-            );
-        }
+        let scope_aliases = scope_state::analyze(
+            &entries,
+            &view,
+            &config,
+            &scope_id,
+            &context,
+            &snapshot,
+            &mut budget,
+            &mut findings,
+        )?;
         if structural_loss {
             for population in populations.iter_mut().filter(|p| p["scope_id"] == scope_id) {
                 population["completeness"] = json!("partial");
             }
-            for sequence in sequences.iter_mut().filter(|s| s["scope_id"] == scope_id) {
+            for sequence in sequences
+                .headers_mut()
+                .filter(|s| s["scope_id"] == scope_id)
+            {
                 sequence["completeness"] = json!("partial");
             }
         }
@@ -631,9 +633,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             || view.unmatched > 0
             || view.excluded_boundaries > 0
             || !view.reliable
-            || scope_aliases
-                .as_ref()
-                .is_none_or(|aliases| !aliases.is_empty())
+            || scope_aliases.as_ref().is_none_or(|aliases| *aliases != 0)
         {
             "insufficient_evidence"
         } else {
@@ -645,19 +645,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "slow_operations",
             "incomplete_lifecycles",
         ] {
-            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if structural_loss{"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && view.classification_loss>0{semantic_status}else if goal=="failures" && !view.entries.is_empty() && !view.failures_supported{if view.some_failures_supported{"insufficient_evidence"}else{"unsupported"}}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.unrecognized_boundaries>0 {"The explicit profile cannot establish opposite-boundary recognition for every selected lifecycle; missing boundaries remain unavailable."}else if structural_loss {"Rejected or unparsed source candidates may contain relevant evidence; retained calculations cover only parsed selected records. See per-input coverage diagnostics."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":findings.iter().filter(|finding|finding["scope_id"]==scope_id).map(|finding|finding["id"].clone()).collect::<Vec<_>>()}));
+            assessments.push(json!({"goal":goal,"scope_id":scope_id,"status":if goal=="inspection"{if structural_loss{"insufficient_evidence"}else{"supported"}}else if goal=="slow_operations" { timing_status } else if goal=="incomplete_lifecycles"{if lifecycle_status=="not_performed"{"insufficient_evidence"}else{lifecycle_status}}else if goal=="failures" && view.classification_loss>0{semantic_status}else if goal=="failures" && !view.entries.is_empty() && !view.failures_supported{if view.some_failures_supported{"insufficient_evidence"}else{"unsupported"}}else if semantic_status=="not_performed"{"insufficient_evidence"}else{semantic_status},"reason":if goal!="inspection" && view.entries.is_empty(){"Exact selection contains zero processed records; lifecycle support cannot be established from unrelated input."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.unrecognized_boundaries>0 {"The explicit profile cannot establish opposite-boundary recognition for every selected lifecycle; missing boundaries remain unavailable."}else if structural_loss {"Rejected or unparsed source candidates may contain relevant evidence; retained calculations cover only parsed selected records. See per-input coverage diagnostics."}else if matches!(goal,"slow_operations"|"incomplete_lifecycles") && view.identity_only>0 {"Selected identity-only records lack lifecycle boundary semantics; boundary-derived facts do not establish their lifecycle coverage."}else if goal=="inspection" {"Counts and source evidence describe only the selected processed population."}else{"Only explicit profile semantics and observed evidence support this assessment; domain attempts/resources/causal relationships require declared rules."},"finding_ids":[]}));
         }
         // Parsed and correlation working sets end here. Keep an allowance for the
         // JSON evidence and coverage metadata that survive this independent input.
-        let retained_bytes = [
-            &records[collection_start[0]..],
-            &findings[collection_start[1]..],
-            &populations[collection_start[2]..],
-            &memberships[collection_start[3]..],
-            &sequences[collection_start[4]..],
-        ]
-        .iter()
-        .try_fold(
+        let retained_bytes = [&populations[collection_start[2]..]].iter().try_fold(
             context.last_input_serialized_bytes()?,
             |sum, values| -> Result<u64> {
                 Ok(sum.saturating_add(serde_json::to_vec(values)?.len() as u64))
@@ -712,7 +704,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 population["completeness"] = json!("partial");
             }
         }
-        for sequence in &mut sequences {
+        for sequence in sequences.headers_mut() {
             if affected.contains(sequence["scope_id"].as_str().unwrap()) {
                 sequence["completeness"] = json!("partial");
             }
@@ -721,20 +713,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut metadata = crate::build_info::metadata(&config.profile_name);
     metadata["evidence"] = context.metadata(&json!({}), cli.redact, &cli.mask_id);
     let snapshot = metadata["evidence"]["snapshot_id"].clone();
-    for values in [
-        &mut records,
-        &mut findings,
-        &mut memberships,
-        &mut sequences,
-    ] {
-        for value in values.iter_mut() {
-            presentation::bind_snapshot(value, &snapshot);
-        }
-    }
-    for (population, membership) in populations.iter_mut().zip(&memberships) {
-        population["membership"]["sha256"] = json!(evidence::digest(
-            serde_json::to_string(&membership["members"])?.as_bytes()
-        ));
+    for (index, population) in populations.iter_mut().enumerate() {
+        population["membership"]["sha256"] =
+            json!(memberships.digest(index, &snapshot, cli.redact)?);
     }
     metadata["profile_selection"] = auto_profile::summary(&detection);
     // Instrumentation belongs to the effective query and its digest, never to evidence text.
@@ -745,24 +726,60 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut usage = budget.usage_json();
     usage["records"] = json!(parsed_records);
     let processing = json!({"status":if budget.stop.is_none(){"complete"}else{"partial"},"stop":budget.stop,"limits":budget.limits_json(),"usage":usage,"inputs":progress});
-    findings.sort_by_key(|finding| {
-        let id = finding["id"].as_str().unwrap_or("");
-        if finding["details"]["event_chain"].is_object() {
-            return 0;
+    let mut assessment_witnesses = std::collections::BTreeMap::new();
+    for row in findings.iter()? {
+        let row = row?;
+        let kind = row.value["kind"].as_str().unwrap_or("");
+        if !matches!(kind, "observation" | "measurement" | "calculated_fact") {
+            continue;
         }
-        if id.contains("-chain-") && finding["kind"] == "unknown" {
-            return 1;
+        let scope = row.value["scope_id"]
+            .as_str()
+            .ok_or("missing finding scope")?;
+        let id = row.value["id"].as_str().ok_or("missing finding ID")?;
+        for goal in [
+            "inspection",
+            "failures",
+            "slow_operations",
+            "incomplete_lifecycles",
+        ] {
+            let rank = match goal {
+                "inspection" if id.ends_with("-physical-records-count") => 0,
+                "inspection" if id.ends_with("-normalized-records-count") => 1,
+                "failures" if id.ends_with("-failures-count") => 0,
+                "failures" if id.ends_with("-observed-errors-count") => 1,
+                "slow_operations" if kind == "measurement" => 0,
+                "slow_operations" if id.ends_with("-paired-lifecycles-count") => 1,
+                "incomplete_lifecycles"
+                    if id.ends_with("-starts-count") || id.ends_with("-ends-count") =>
+                {
+                    0
+                }
+                "incomplete_lifecycles" if id.ends_with("-paired-lifecycles-count") => 1,
+                _ => 2,
+            };
+            let witness = assessment_witnesses
+                .entry((scope.to_owned(), goal))
+                .or_insert((rank, row.value["id"].clone()));
+            if rank < witness.0 {
+                *witness = (rank, row.value["id"].clone());
+            }
         }
-        match finding["details"]["resource_status"].as_str() {
-            Some("fingerprint_match") => 1,
-            _ if id.contains("observed-errors") => 2,
-            Some("different_fingerprint" | "unconfigured_fingerprint") => 3,
-            _ if id.contains("observed-warnings") => 4,
-            Some("unavailable") => 5,
-            Some("empty_manifest") => 7,
-            _ => 6,
+    }
+    for assessment in &mut assessments {
+        let key = (
+            assessment["scope_id"]
+                .as_str()
+                .ok_or("missing assessment scope")?
+                .to_owned(),
+            assessment["goal"]
+                .as_str()
+                .ok_or("missing assessment goal")?,
+        );
+        if let Some((_, id)) = assessment_witnesses.get(&key) {
+            assessment["finding_ids"] = json!([id]);
         }
-    });
+    }
     let retention = json!({"policy":"until_deleted","expires_at":null});
     let mut retained = json!({"contract_version":1,"investigation_contract_version":1,"report_metadata":metadata,"processing":processing,"content":"original","effective_profile":serde_json::to_value(&config)?,"effective_profile_omitted":false,"retention":retention,"verification":findings::verification(false, "available")});
     // Move large collections into the artifact; json! would serialize borrowed
@@ -771,11 +788,11 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         ("scopes", scopes),
         ("assessments", assessments),
         ("populations", populations),
-        ("findings", findings),
-        ("records", records),
+        ("findings", Vec::new()),
+        ("records", Vec::new()),
         ("captured_inputs", captures),
-        ("memberships", memberships),
-        ("sequences", sequences),
+        ("memberships", Vec::new()),
+        ("sequences", sequences.metadata()),
     ] {
         retained[key] = serde_json::Value::Array(values);
     }
@@ -809,35 +826,43 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "A captured byte stream is not complete UTF-8; source text verification is unavailable.",
         );
     }
-    // Serialize directly into the private staging destination, then validate the
-    // borrowed logical tree. No complete serialized byte buffer is retained.
-    let written = artifact::write_json(
+    // Validate complete private evidence even when the publication cap prevents reuse.
+    // An unavailable artifact must never bypass deterministic fact verification.
+    if !artifact::write_json(
         &retained,
-        &spooled,
+        &artifact::ArtifactRows {
+            captures: &spooled,
+            records: &records,
+            memberships: &memberships,
+            sequences: &sequences,
+            findings: &findings,
+        },
         temporary.as_file_mut(),
-        budget.limits.artifact_bytes,
-    )
-    .map_err(|error| error.to_string());
-    let hash = if matches!(written, Ok(true)) {
-        Some(artifact::file_digest(temporary.as_file_mut())?)
+        construction_disk.remaining(),
+    )? {
+        return Err("construction disk byte limit exceeded while staging checked evidence".into());
+    }
+    let artifact_size = temporary.as_file().metadata()?.len();
+    let _staging_reservation = construction_disk.reserve(artifact_size)?;
+    let private_hash = artifact::file_digest(temporary.as_file_mut())?;
+    let hash = if artifact_size <= budget.limits.artifact_bytes {
+        Some(private_hash.clone())
     } else {
         None
     };
     let mut report = artifact::report(&retained, &artifact_path, hash.as_deref());
-    if hash.is_some() {
-        crate::investigation::validate_spooled(
-            &report,
-            &retained,
-            &spooled
-                .iter()
-                .map(|capture| {
-                    capture
-                        .as_ref()
-                        .map(|capture| capture.file.path().to_path_buf())
-                })
-                .collect::<Vec<_>>(),
-        )?;
-    }
+    drop(retained);
+    let mut indexed = indexed_artifact::IndexedArtifact::open(
+        temporary.as_file().try_clone()?,
+        indexed_artifact::Limits {
+            item_bytes: construction_item_bytes,
+            index_bytes: args.construction_max_disk_bytes,
+            state_bytes: args.construction_max_disk_bytes,
+            elapsed_ms: budget.limits.elapsed_ms.max(180_000),
+            work_units: budget.limits.work_units.max(500_000_000),
+        },
+    )?;
+    indexed.validate()?;
     if cli.redact
         && hash.is_some()
         && let Some(directory) = &auto_directory
@@ -847,7 +872,6 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             directory.path().file_name().unwrap().to_string_lossy()
         ));
     }
-    drop(retained);
     if hash.is_some() {
         let saved = (|| -> Result<()> {
             temporary.as_file().sync_all()?;
@@ -864,45 +888,55 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             );
         }
     } else {
-        let reason = match &written {
-            Ok(false) => "artifact byte limit exceeded".to_owned(),
-            Err(error) if !cli.redact => format!(
-                "Artifact write failed: {error}; no reusable evidence artifact was published"
-            ),
-            _ => "Artifact write failed; no reusable evidence artifact was published".to_owned(),
+        artifact::unavailable(&mut report, "artifact byte limit exceeded");
+    }
+    let page = report_stream::Page::build(
+        report,
+        &findings,
+        cli,
+        report_stream::Options {
+            disk: construction_disk.clone(),
+            item_limit: construction_item_bytes,
+            snapshot: &snapshot,
+            redacted: cli.redact,
+            unverifiable: &captures_unverifiable_inputs,
+        },
+    )?;
+    let overview =
+        if !args.brief && matches!(cli.effective_format(), crate::cli::OutputFormat::Text) {
+            Some(presentation::finding_overview(
+                &page.metadata,
+                config
+                    .investigation_view
+                    .as_ref()
+                    .filter(|_| page.metadata["artifact"]["status"] != "unavailable"),
+                cli.redact,
+                || {
+                    Ok(findings.iter()?.map(|row| {
+                        row.map(|row| {
+                            findings.transformed(
+                                &row,
+                                &snapshot,
+                                cli.redact,
+                                &captures_unverifiable_inputs,
+                            )
+                        })
+                    }))
+                },
+            )?)
+        } else {
+            None
         };
-        artifact::unavailable(&mut report, &reason);
-    }
-    let overview = (!args.brief
-        && matches!(cli.effective_format(), crate::cli::OutputFormat::Text))
-    .then(|| {
-        presentation::finding_overview(
-            &report,
-            config
-                .investigation_view
-                .as_ref()
-                .filter(|_| report["artifact"]["status"] != "unavailable"),
-            cli.redact,
-        )
-    });
-    artifact::present(&mut report, cli, 0)?;
-    if report["artifact"]["status"] == "unavailable" {
-        artifact::reconcile_unavailable(&mut report, cli)?;
-    }
-    crate::investigation::validate_relations(&report, None)?;
-    let report = if args.brief {
-        guidance::brief(&report, cli)
-    } else {
-        report
-    };
-    let rendered = if args.brief || matches!(cli.effective_format(), crate::cli::OutputFormat::Json)
-    {
-        format!("{}\n", serde_json::to_string(&report)?)
-    } else {
-        presentation::text(&report, overview.as_ref().expect("text overview"))
-    };
+    report_checks::validate(
+        &page,
+        &findings,
+        &indexed,
+        &private_hash,
+        &construction_disk,
+    )?;
+    let mut rendered = page.render(&findings, cli, args.brief, overview.as_ref())?;
     if let Some(staged) = staged_report
-        && let Err(error) = staged.save_text(&rendered)
+        && let Err(error) = staged.save_reader(&mut rendered)
     {
         if cli.redact {
             eprintln!("Evidence artifact outcome is reported below; saving the report failed");
@@ -912,6 +946,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             );
         }
     }
-    std::io::stdout().lock().write_all(rendered.as_bytes())?;
+    rendered.seek(SeekFrom::Start(0))?;
+    std::io::copy(&mut rendered, &mut std::io::stdout().lock())?;
     Ok(())
 }

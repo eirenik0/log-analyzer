@@ -19,10 +19,10 @@ temporary files for retrieval state, preserve exact arithmetic and source checks
 and spool complete output pages. Add item, index, validation-state, work and time
 limits, corruption regressions, and selected-record retrieval RSS measurements.
 
-CLI selected-record/report construction still requires the remaining out-of-core
-integration; this does not complete issue #86.
-
-Add an end-to-end selected-input RSS regression harness covering both default
-pages and complete output. Record the current failing construction baseline;
-keep its fixed RSS acceptance thresholds separate from passing correlation and
-retrieval-only measurements.
+Stream CLI source replay, completed correlations, exact distributions, membership
+and sequence evidence, and report construction through disposable row files.
+Use spillable keyed analysis for policy, chains, resource joins and scope ambiguity.
+Preserve deterministic validation, scoped uncertainty and independent evaluation
+oracles. Stream complete text/JSON and saved reports without retaining the output.
+Add a construction disk allowance and selected-input end-to-end RSS regression
+checks covering capture through checked artifact publication and report delivery.

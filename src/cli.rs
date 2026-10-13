@@ -369,6 +369,9 @@ pub struct InvestigateArgs {
     /// Disposable correlation payload and index disk cap (default: 2 GiB)
     #[arg(long, default_value_t = 2147483648)]
     pub correlation_max_disk_bytes: u64,
+    /// Temporary construction rows, sort scratch and checked artifact staging cap (default: 4 GiB)
+    #[arg(long, default_value_t = 4294967296)]
+    pub construction_max_disk_bytes: u64,
     /// Hard retained artifact cap in bytes (default: 1 GiB)
     #[arg(long)]
     pub artifact_max_bytes: Option<u64>,

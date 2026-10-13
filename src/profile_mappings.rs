@@ -341,8 +341,8 @@ impl StagedReport {
             temporary: tempfile::NamedTempFile::new_in(parent)?,
         })
     }
-    pub(crate) fn save_text(mut self, text: &str) -> Result<()> {
-        self.temporary.write_all(text.as_bytes())?;
+    pub(crate) fn save_reader(mut self, reader: &mut impl std::io::Read) -> Result<()> {
+        std::io::copy(reader, &mut self.temporary)?;
         self.temporary.as_file().sync_all()?;
         persist_registry(self.temporary, &self.path)?;
         Ok(())

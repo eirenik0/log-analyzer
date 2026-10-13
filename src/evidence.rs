@@ -283,6 +283,13 @@ impl Context {
         }
         Ok(size.0)
     }
+    /// Record already-counted source coverage without retaining selected records.
+    pub(crate) fn observe_selected_count(&mut self, coverage: &ParseCoverage, selected: usize) {
+        let input_id =
+            digest(&serde_json::to_vec(&json!([coverage.file, coverage.snapshot_sha256])).unwrap());
+        self.inputs.push(json!({"input_id":input_id,"file":coverage.file,"sha256":coverage.snapshot_sha256,"bytes":coverage.input_bytes,"coverage":coverage,"selected_entries":selected}));
+    }
+
     pub(crate) fn observe_selected(
         &mut self,
         coverage: &ParseCoverage,

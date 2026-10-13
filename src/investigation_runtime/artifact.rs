@@ -92,9 +92,16 @@ impl<W: Write> Write for LimitedWriter<W> {
         self.writer.flush()
     }
 }
+pub(super) struct ArtifactRows<'a> {
+    pub captures: &'a [Option<crate::streaming::Capture>],
+    pub records: &'a super::construction::Rows<Value>,
+    pub memberships: &'a super::construction::Memberships,
+    pub sequences: &'a super::construction::Sequences,
+    pub findings: &'a super::finding_store::Findings,
+}
 pub(super) fn write_json(
     value: &Value,
-    captures: &[Option<crate::streaming::Capture>],
+    rows: &ArtifactRows<'_>,
     file: &mut File,
     limit: u64,
 ) -> Result<bool> {
@@ -104,7 +111,7 @@ pub(super) fn write_json(
         limit,
         exceeded: false,
     };
-    let result = write_artifact(value, captures, &mut writer);
+    let result = write_artifact(value, rows, &mut writer);
     match result {
         Ok(()) => {
             writer.flush()?;
@@ -114,11 +121,23 @@ pub(super) fn write_json(
         Err(error) => Err(error),
     }
 }
-fn write_artifact(
-    value: &Value,
-    captures: &[Option<crate::streaming::Capture>],
-    writer: &mut impl Write,
-) -> Result<()> {
+fn write_artifact(value: &Value, rows: &ArtifactRows<'_>, writer: &mut impl Write) -> Result<()> {
+    let ArtifactRows {
+        captures,
+        records,
+        memberships,
+        sequences,
+        findings,
+    } = rows;
+    let snapshot = &value["report_metadata"]["evidence"]["snapshot_id"];
+    let redacted = value["report_metadata"]["evidence"]["redaction"]["applied"] == true;
+    let unverifiable = value["captured_inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|capture| capture["encoding"] == "bytes")
+        .filter_map(|capture| capture["input_ordinal"].as_u64())
+        .collect::<std::collections::BTreeSet<_>>();
     writer.write_all(b"{")?;
     for (index, (key, value)) in value
         .as_object()
@@ -131,6 +150,47 @@ fn write_artifact(
         }
         serde_json::to_writer(&mut *writer, key)?;
         writer.write_all(b":")?;
+        if key == "findings" {
+            findings.write(snapshot, redacted, &unverifiable, writer)?;
+            continue;
+        }
+        if key == "sequences" {
+            sequences.write(snapshot, redacted, writer)?;
+            continue;
+        }
+        if key == "memberships" {
+            memberships.write(snapshot, redacted, writer)?;
+            continue;
+        }
+        if key == "records" {
+            writer.write_all(b"[")?;
+            for (ordinal, record) in records.iter()?.enumerate() {
+                let mut record = record?;
+                super::presentation::bind_snapshot(&mut record, snapshot);
+                if redacted || !unverifiable.is_empty() {
+                    // Reuse the contract's redaction and source-loss transforms on
+                    // one record, never on a retained collection of source payloads.
+                    let mut projection = json!({"records":[record],"findings":[],"populations":[],"memberships":[],"captured_inputs":[],"report_metadata":{"evidence":{"inputs":[]}},"verification":super::findings::verification(false,"available")});
+                    if redacted {
+                        redact(&mut projection);
+                    }
+                    if !unverifiable.is_empty() {
+                        source_verification_unavailable(
+                            &mut projection,
+                            &unverifiable,
+                            "A captured byte stream is not complete UTF-8; source text verification is unavailable.",
+                        );
+                    }
+                    record = projection["records"].as_array_mut().unwrap().remove(0);
+                }
+                if ordinal != 0 {
+                    writer.write_all(b",")?;
+                }
+                serde_json::to_writer(&mut *writer, &record)?;
+            }
+            writer.write_all(b"]")?;
+            continue;
+        }
         if key != "captured_inputs" {
             serde_json::to_writer(&mut *writer, value)?;
             continue;
@@ -627,208 +687,10 @@ pub(super) fn source_verification_unavailable(
         }
     }
 }
-pub(super) fn reconcile_unavailable(report: &mut Value, cli: &Cli) -> Result<()> {
-    let mut ids: std::collections::BTreeSet<_> = report["findings"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|finding| finding["id"].as_str().map(str::to_owned))
-        .collect();
-    report["findings"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|finding| {
-            finding
-                .pointer("/details/measurement_ids")
-                .and_then(Value::as_array)
-                .is_none_or(|measurements| {
-                    measurements
-                        .iter()
-                        .all(|id| id.as_str().is_some_and(|id| ids.contains(id)))
-                })
-        });
-    ids = report["findings"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|finding| finding["id"].as_str().map(str::to_owned))
-        .collect();
-    for assessment in report["assessments"].as_array_mut().unwrap() {
-        assessment["finding_ids"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|id| id.as_str().is_some_and(|id| ids.contains(id)));
-        if assessment["finding_ids"].as_array().unwrap().is_empty()
-            && assessment["status"] == "supported"
-        {
-            assessment["status"] = json!("insufficient_evidence");
-            assessment["reason"] = json!(
-                "Evidence artifact unavailable and bounded presentation retained no supporting findings"
-            );
-        }
-    }
-    let count = report["findings"].as_array().unwrap().len();
-    let total = report["presentation"]["total_findings"].as_u64().unwrap() as usize;
-    report["presentation"]["displayed_findings"] = json!(count);
-    report["presentation"]["omitted_findings"] = json!(total - count);
-    report["presentation"]["collections"][0]["displayed"] = json!(count);
-    report["presentation"]["collections"][0]["remaining"] = json!(total - count);
-    if count == 0 && total > 0 && report["presentation"]["status"] == "page" {
-        report["presentation"]["status"] = json!("oversized_item");
-    }
-    let sizes = size(report, cli)?;
-    if over(cli, sizes) {
-        report["findings"] = json!([]);
-        for assessment in report["assessments"].as_array_mut().unwrap() {
-            assessment["finding_ids"] = json!([]);
-            if assessment["status"] == "supported" {
-                assessment["status"] = json!("insufficient_evidence");
-            }
-        }
-        report["presentation"]["displayed_findings"] = json!(0);
-        report["presentation"]["omitted_findings"] = json!(total);
-        report["presentation"]["collections"][0]["displayed"] = json!(0);
-        report["presentation"]["collections"][0]["remaining"] = json!(total);
-        report["presentation"]["status"] = json!("mandatory_metadata_over_budget");
-        size(report, cli)?;
-    }
-    Ok(())
-}
-fn size(report: &mut Value, cli: &Cli) -> Result<(usize, usize)> {
-    report["guidance"] = super::guidance::build(report, cli);
-    // Size fields themselves count; converge on their exact serialized lengths.
-    for _ in 0..8 {
-        let text = serde_json::to_string(report)?;
-        let sizes = (text.len() + 1, text.chars().count() + 1);
-        if report["presentation"]["serialized_bytes"] == sizes.0
-            && report["presentation"]["serialized_characters"] == sizes.1
-        {
-            return Ok(sizes);
-        }
-        report["presentation"]["serialized_bytes"] = json!(sizes.0);
-        report["presentation"]["serialized_characters"] = json!(sizes.1);
-    }
-    Err("Could not stabilize serialized report size".into())
-}
 fn over(cli: &Cli, sizes: (usize, usize)) -> bool {
     cli.report_max_bytes.is_some_and(|limit| sizes.0 > limit)
         || cli.report_max_chars.is_some_and(|limit| sizes.1 > limit)
 }
-pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()> {
-    let all = std::mem::take(report["findings"].as_array_mut().unwrap());
-    let total = all.len();
-    let max = if cli.complete_output {
-        total
-    } else {
-        cli.report_max_items.unwrap_or(20)
-    };
-    report["presentation"]["budget_bytes"] = json!(cli.report_max_bytes);
-    report["presentation"]["budget_characters"] = json!(cli.report_max_chars);
-    report["presentation"]["budget_items"] = json!(max);
-    let refresh = |report: &mut Value, count: usize, status: &str| {
-        report["presentation"]["status"] = json!(status);
-        report["presentation"]["total_findings"] = json!(total);
-        report["presentation"]["displayed_findings"] = json!(count);
-        report["presentation"]["omitted_findings"] = json!(total - count);
-        report["presentation"]["collections"] = json!([{"path":"/findings","total":total,"prior":prior,"displayed":count,"remaining":total.saturating_sub(prior+count)}]);
-        report["retrieval"]["next_cursor"] =
-            if prior + count < total && report["retrieval"]["status"] == "available" {
-                json!(format!(
-                    "v1:{}:{}",
-                    digest(
-                        json!([report["retrieval"]["binding_sha256"], "/findings", null])
-                            .to_string()
-                            .as_bytes()
-                    ),
-                    prior + count
-                ))
-            } else {
-                Value::Null
-            };
-    };
-    refresh(
-        report,
-        0,
-        if total == 0 {
-            "complete"
-        } else if max == 0 {
-            "item_limit_zero"
-        } else {
-            "oversized_item"
-        },
-    );
-    if over(cli, size(report, cli)?) {
-        refresh(report, 0, "mandatory_metadata_over_budget");
-        size(report, cli)?;
-        return Ok(());
-    }
-    // Serialize the fixed metadata once, and each atomic finding once. Only
-    // the small presentation/cursor fields change as the page grows.
-    let measure = |value: &Value| -> Result<(usize, usize)> {
-        let text = serde_json::to_string(value)?;
-        Ok((text.len(), text.chars().count()))
-    };
-    let header = measure(report)?;
-    let presentation = measure(&report["presentation"])?;
-    let cursor = measure(&report["retrieval"]["next_cursor"])?;
-    let guidance = measure(&report["guidance"])?;
-    let fixed = (
-        header.0 - presentation.0 - cursor.0 - guidance.0 + 1,
-        header.1 - presentation.1 - cursor.1 - guidance.1 + 1,
-    );
-    let exact = |report: &mut Value, payload: (usize, usize)| -> Result<(usize, usize)> {
-        report["guidance"] = super::guidance::build(report, cli);
-        let guidance = measure(&report["guidance"])?;
-        for _ in 0..8 {
-            let presentation = measure(&report["presentation"])?;
-            let cursor = measure(&report["retrieval"]["next_cursor"])?;
-            let sizes = (
-                fixed.0 + presentation.0 + cursor.0 + guidance.0 + payload.0,
-                fixed.1 + presentation.1 + cursor.1 + guidance.1 + payload.1,
-            );
-            if report["presentation"]["serialized_bytes"] == sizes.0
-                && report["presentation"]["serialized_characters"] == sizes.1
-            {
-                return Ok(sizes);
-            }
-            report["presentation"]["serialized_bytes"] = json!(sizes.0);
-            report["presentation"]["serialized_characters"] = json!(sizes.1);
-        }
-        Err("Could not stabilize serialized report size".into())
-    };
-    let mut displayed = Vec::new();
-    let mut payload = (0usize, 0usize);
-    for finding in all.into_iter().skip(prior).take(max) {
-        let item = measure(&finding)?;
-        let comma = usize::from(!displayed.is_empty());
-        let candidate = (payload.0 + item.0 + comma, payload.1 + item.1 + comma);
-        let count = displayed.len() + 1;
-        refresh(
-            report,
-            count,
-            if prior + count == total {
-                "complete"
-            } else {
-                "page"
-            },
-        );
-        if over(cli, exact(report, candidate)?) {
-            refresh(
-                report,
-                count - 1,
-                if count == 1 { "oversized_item" } else { "page" },
-            );
-            exact(report, payload)?;
-            break;
-        }
-        payload = candidate;
-        displayed.push(finding);
-    }
-    report["findings"] = Value::Array(displayed);
-    size(report, cli)?;
-    Ok(())
-}
-
 pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()> {
     use super::indexed_artifact::{IndexedArtifact, Limits};
     use std::io::{Seek, SeekFrom};

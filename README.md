@@ -459,9 +459,8 @@ is 512 times planned input bytes, bounded between 512 MiB and 32 GiB; this is
 accounting, not a RAM allocation or RSS ceiling. Explicit limits override planning.
 Evidence retrieval has a separate 64 MiB default read limit and clones only the
 requested page's items. Larger stored artifacts require an explicit
-`evidence --artifact-max-bytes BYTES` allowance; raise it only on a host with enough
-memory to parse and validate the complete artifact. Output pagination does not
-bound artifact parsing memory.
+`evidence --artifact-max-bytes BYTES` allowance. Validation scans the complete
+artifact through bounded temporary indexes before returning a page.
 Oversized captures can still stop at these finite ceilings; inspect every input's
 capture and scope status. See
 `investigate --help` for overrides. Work accounts for parsing bytes, loop steps
@@ -493,8 +492,9 @@ reports a prefix if physical EOF was not observed.
 
 Investigation source capture uses 64 KiB reads into private temporary files and
 retains only a 64 KiB profile sample per input. Parsing reads those snapshots and
-yields individual records, including normalized rows. Records rejected by global
-filters release their memory reservations immediately. Physical and multiline
+yields individual records, including normalized rows. Selected records are persisted
+to replayable rows; both selected and filtered records release parser reservations
+immediately. Physical and multiline
 records remain bounded by `--record-max-bytes`; chunk boundaries do not finish an
 open lifecycle or a pending multiline record. Captured source strings are escaped
 directly into the staged JSON artifact in bounded chunks. Temporary captures are
@@ -549,30 +549,48 @@ its item allowance reports `oversized_item`; use nested membership or sequence
 collection pointers to retrieve their members/events. Temporary state is removed
 on success or failure. These are allocation/work allowances, not OS RSS limits.
 
-The CLI's report builder still holds selected records and completed result/evidence
-collections under the processing allowance. That remaining stage means the complete
-investigation pipeline does not yet have bounded RSS for growing selected inputs.
-Selected-state and artifact-retrieval memory sweeps are documented in
-[the streaming design](docs/design/streaming-pipeline.md).
+The CLI constructs evidence through replayable temporary rows: selected records,
+completed correlations, population members, sequence events, findings and report
+pages stay on disk. Exact duration and event ordering use fixed-buffer external
+sorts. Capability/source lookups use file indexes; keyed scope, policy, chain and
+resource state spills its index to SQLite after a fixed 1 MiB allowance. SQLite
+stores index state, never the retained evidence payload or report.
 
-The remaining CLI construction memory gap has a reproducible end-to-end probe:
+`--construction-max-disk-bytes` (4 GiB) bounds shared construction rows, sort
+scratch and complete private artifact staging. Keyed analysis and validation
+indexes have separate bounded allowances.
+Source rows remain limited by physical record size; atomic policy/chain witness
+bundles have explicit finite limits. Scope-alias witness groups are delivered in
+bounded context findings; completed processing retains every witness. Storage or
+validation errors fail explicitly; they do not produce a clean zero. The report preserves version-1
+findings, compact assessment references, source citations, checked populations and
+explicit unknowns. Complete JSON and text output stream through a staged file.
+
+Reproduce the end-to-end selected-input RSS check with
 `python3 scripts/measure-selected-investigation-memory.py target/release/log-analyzer`.
-It includes capture through report delivery, verifies all selected records and
-paired measurements, and currently fails its fixed RSS thresholds. The recorded
+It includes capture through report delivery, checks every selected record and pair,
+and enforces fixed 96 MiB absolute and 24 MiB growth thresholds for both default
+pages and complete output. The previous
 [baseline](docs/evals/streaming-selected-investigation-memory-baseline.json)
-rises from about 56 MiB to 834 MiB for 1,000 to 20,000 selected records; bounded
-correlation and retrieval alone do not imply bounded investigation construction.
+grew from about 56 MiB to 834 MiB for 1,000 to 20,000 selected records. The
+[completed pipeline](docs/evals/streaming-selected-investigation-memory.json)
+uses 15.3–20.4 MiB across the same sweep, including complete output. At 20,000
+records, elapsed time increases from 14–15 seconds to 90–102 seconds because of
+additional temporary I/O and validation passes.
+See [the streaming design](docs/design/streaming-pipeline.md) for stage boundaries,
+measurement scope and remaining finite limits.
 
 The memory setting bounds a conservative reservation model for buffered/retained
 source and calculated data, including normalization field-mapping amplification
 and owned classifications. Shared configuration is reserved once; fixed per-record
-metadata is charged separately from source-byte amplification. Artifact collections
-move into their retained document, and construction buffers are released before
-stored-byte validation. Native classic, tracing and syslog records reserve worst-case
-source amplification before parsing, then release unused amplification based on
+metadata is charged separately from source-byte amplification. Construction
+collections are replayed from private files; stored-byte validation uses bounded
+indexes before publication. Native classic, tracing and syslog records reserve
+worst-case source amplification before parsing, then release unused amplification based on
 retained text and structured payload storage. Dense payloads retain the original
-reservation when needed; JSON envelopes and normalization keep their existing
-allowances. Classification and fixed metadata remain separately charged.
+reservation while parsing; JSON envelopes and normalization release their
+allowances after the emitted row is persisted. Classification and fixed metadata
+remain separately charged.
 Retained input coverage, including normalization diagnostics, keeps its reservation
 across independent inputs after parsed and correlation working sets are released.
 Default limits are unchanged. A `memory_limit` stop reports exhaustion of this accounting
@@ -581,9 +599,13 @@ not promise a process RSS ceiling. Profile loading, compiled regexes, fixed repo
 metadata and final partial-outcome delivery are outside that accounting; effective
 profile serialization is capped at 4 MiB. Deadlines are checked between bounded
 operations, not during an individual JSON parse, regex match, sort or filesystem
-call. Artifact writing still finishes a valid partial outcome after cancellation.
-Storage exhaustion reports an unavailable artifact and retained inline facts,
-with omissions explicit; retry with a new artifact destination and suitable limits.
+call. Artifact writing and checked partial-outcome validation have independent
+allowances so exhausted analysis budgets can still report uncertainty. Validation
+uses at least 180 seconds and 500 million work units. Artifact-size exhaustion
+reports an unavailable artifact and retained inline facts,
+with omissions explicit. The complete private evidence is still validated before
+inline delivery; construction-storage or validation failures return an error
+before delivery. Retry with a new artifact destination and suitable limits.
 
 `--report-max-bytes`, `--report-max-chars` and `--report-max-items` bound atomic main
 finding bundles without changing artifact measurements. Mandatory metadata can

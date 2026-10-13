@@ -1,0 +1,50 @@
+{
+  "scope": "end-to-end complete CLI output; every record selected; all declared chain steps and scoped relationships supported; two interleaved sessions reuse IDs; independent source-line and exact interval assertions",
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "binary_sha256": "96ddd5ac3e912ae747d7302b9a031e4faaee1aede2cef0fa563e2d8956961cd0",
+  "record_bytes": 262144,
+  "correlation_index_bytes": 1048576,
+  "processing_memory_bytes": 4294967296,
+  "processing_records": 1000000,
+  "construction_disk_bytes": 4294967296,
+  "rss_ceiling_bytes": 100663296,
+  "rss_growth_tolerance_bytes": 25165824,
+  "measurements": [
+    {
+      "roots": 100,
+      "selected_records": 300,
+      "supported_chain_links": 200,
+      "supported_relationships": 100,
+      "delivery": "complete",
+      "source_bytes": 49240,
+      "source_sha256": "99d97d4da3ef2ace0ea0cb9503a8bb19f1fa30c0c07804e49d70dcdcbdc392f0",
+      "artifact_bytes": 3004933,
+      "peak_rss_bytes": 19038208,
+      "elapsed_seconds": 2.9792
+    },
+    {
+      "roots": 500,
+      "selected_records": 1500,
+      "supported_chain_links": 1000,
+      "supported_relationships": 500,
+      "delivery": "complete",
+      "source_bytes": 247340,
+      "source_sha256": "12cc885653f410168a93a65d823b87c1829250dd5d37515485e0a33d52e0f035",
+      "artifact_bytes": 15049627,
+      "peak_rss_bytes": 19464192,
+      "elapsed_seconds": 10.8712
+    },
+    {
+      "roots": 2000,
+      "selected_records": 6000,
+      "supported_chain_links": 4000,
+      "supported_relationships": 2000,
+      "delivery": "complete",
+      "source_bytes": 991340,
+      "source_sha256": "7c9dfb56f2e7f6023e155a04a2851401aefa04d025ffedfa661a5d33c2bdba45",
+      "artifact_bytes": 60270131,
+      "peak_rss_bytes": 20512768,
+      "elapsed_seconds": 52.9805
+    }
+  ]
+}

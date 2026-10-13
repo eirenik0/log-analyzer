@@ -110,14 +110,6 @@ pub(crate) fn validate_retained(
     validate_sources(report, artifact, &[])
 }
 
-pub(crate) fn validate_spooled(
-    report: &Value,
-    artifact: &Value,
-    sources: &[Option<std::path::PathBuf>],
-) -> Result<ValidationSummary, ContractError> {
-    validate_sources(report, Some(artifact), sources)
-}
-
 #[derive(Default)]
 pub(crate) struct ValidationSession {
     captures: BTreeMap<std::path::PathBuf, (String, u64)>,
