@@ -206,6 +206,7 @@ struct Group<'a> {
     dimensions: Vec<Value>,
     count: usize,
     measurements: Vec<Measured>,
+    assurances: BTreeMap<(&'a str, &'a str, &'a str), usize>,
 }
 fn dimension_text(value: &Value) -> String {
     match value {
@@ -268,6 +269,7 @@ pub(super) fn finding_overview(
                         .iter()
                         .map(|_| Measured::default())
                         .collect(),
+                    assurances: BTreeMap::new(),
                 });
                 groups.last_mut().unwrap()
             } else {
@@ -275,6 +277,15 @@ pub(super) fn finding_overview(
                 continue;
             };
             group.count += 1;
+            let assurance = &finding["checked"]["assurance"];
+            *group
+                .assurances
+                .entry((
+                    label(&assurance["level"]),
+                    label(&assurance["source_binding"]),
+                    label(&assurance["subject_verification"]),
+                ))
+                .or_default() += 1;
             for (metric, values) in definition.measurements.iter().zip(&mut group.measurements) {
                 values.add(finding, metric);
             }
@@ -293,7 +304,6 @@ pub(super) fn finding_overview(
             escape_controls(title)
         );
         for group in &groups {
-            write_checked(&mut overview.rendered, group.representative);
             let _ = write!(
                 overview.rendered,
                 "- [{}] ",
@@ -317,6 +327,12 @@ pub(super) fn finding_overview(
                 );
             }
             let _ = writeln!(overview.rendered, " — {} findings", group.count);
+            for ((level, source, subject), count) in &group.assurances {
+                let _ = writeln!(
+                    overview.rendered,
+                    "  Group assurance ({count} findings): {level}; source binding {source}; intended subject {subject} (subject_verified requires independent expected subjects)."
+                );
+            }
             for (index, (metric, measured)) in definition
                 .measurements
                 .iter()
@@ -348,6 +364,12 @@ pub(super) fn finding_overview(
                     );
                 }
             }
+            let _ = writeln!(
+                overview.rendered,
+                "  Representative finding only: {}. Other members' subjects, populations and limits are omitted from this overview; inspect their individual findings.",
+                escape_controls(label(&group.representative["id"]))
+            );
+            write_checked(&mut overview.rendered, group.representative);
             for excerpt in group.representative["evidence"]
                 .as_array()
                 .into_iter()
@@ -857,3 +879,7 @@ fn shell_quote(value: &str) -> String {
     }
     format!("'{}'", value.replace('\'', "'\\''"))
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/grouped_assurance.rs"]
+mod grouped_assurance_tests;

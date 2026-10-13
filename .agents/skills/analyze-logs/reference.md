@@ -78,6 +78,9 @@ after the displayed items. If retention fails, available partial findings remain
 inline with displayed/total counts.
 
 Each displayed finding includes `checked` scope, subjects, population and assurance.
+Configured text groups count assurance across all members within one scope.
+Representative subjects and limits describe only the named representative; inspect
+individual findings for the other members before using their evidence.
 `link_exists` is weaker than `subject_verified`; investigation leaves intended-subject
 verification `not_requested` or `unavailable`. Keep these limits beside the answer's facts. Text
 shows endpoint names, outcomes and population rules; `--verbose` adds recognition

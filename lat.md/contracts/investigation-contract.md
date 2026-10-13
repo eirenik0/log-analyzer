@@ -131,6 +131,9 @@ source checking ran and `unavailable` when its prerequisites are missing.
 The aggregate is `unavailable` if any processed finding lacks those prerequisites,
 including omitted findings; otherwise it is `not_requested`. The unavailable
 finding count distinguishes mixed input assurance from wholly unavailable checking.
+Configured text groups count every member's assurance combination within its scope.
+Representative subjects, populations and limits are labeled as belonging only to
+that finding; other members' details remain available through individual findings.
 
 [[src/investigation_runtime/presentation.rs#text|Text presentation]] places coverage
 and material uncertainty before findings. Each fact retains its limits. Intervals

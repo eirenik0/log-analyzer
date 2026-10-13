@@ -23,3 +23,5 @@ Check endpoint cardinalities against retained chain populations through the shar
 chain engine before accepting measurements; disclose unavailable replay prerequisites.
 Honor retained processing limits and usage during replay, including expanded rows
 outside the selected chain population.
+Aggregate assurance across every configured group member and label representative
+subjects and limits explicitly, preserving independent scope boundaries.

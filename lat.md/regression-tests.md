@@ -47,6 +47,10 @@ into measured intervals, and checks explicit deferral when redaction prevents re
 [[tests/test_checked_presentation.rs#chain_validation_honors_raised_processing_limits_before_selection]]
 checks publication and artifact validation after more than 100,000 expanded rows
 are parsed under raised limits, with only ten selected chain records retained.
+[[tests/unit/grouped_assurance.rs#grouped_assurance_covers_every_member_and_preserves_scope_boundaries]]
+checks mixed assurance in both representative orders, explicit representative-only
+details and separation of matching dimensions across independent scopes. Configured
+view CLI tests check agreement with per-finding JSON assurance, including redaction.
 
 ## Missing join identity
 

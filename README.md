@@ -23,6 +23,8 @@ Investigation findings show their scope, source assurance, citations and limits.
 Use `--verbose` for recognition and join diagnostics, or `--summary` for bounded
 JSON with coverage and explicit omissions. An existing link does not verify the
 intended subject. See the [synthetic checked findings example](examples/investigations/checked/README.md).
+Configured text groups count assurance across all members and label representative
+subjects and limits separately; independent input scopes remain separate groups.
 
 ## Documentation
 

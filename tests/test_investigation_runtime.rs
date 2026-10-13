@@ -3177,6 +3177,8 @@ by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
         "Unavailable unit: unknown (0 measured, 3 unavailable)",
         "Actor: controller — 1 findings",
         "Actor: worker — 2 findings",
+        "Group assurance (3 findings): source_bound; source binding validated; intended subject not_requested",
+        "Representative finding only:",
     ] {
         assert!(text.contains(expected), "missing {expected}: {text}");
     }
@@ -3198,6 +3200,17 @@ by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
         .filter(|finding| finding["kind"] == "measurement")
         .collect();
     assert_eq!(measurements.len(), 3);
+    for finding in &measurements {
+        assert_eq!(finding["checked"]["assurance"]["level"], "source_bound");
+        assert_eq!(
+            finding["checked"]["assurance"]["source_binding"],
+            "validated"
+        );
+        assert_eq!(
+            finding["checked"]["assurance"]["subject_verification"],
+            "not_requested"
+        );
+    }
     assert!(
         measurements
             .iter()
@@ -3248,6 +3261,7 @@ by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
     assert!(text.contains("Configured findings"), "{text}");
     assert!(!text.contains("private-config"), "{text}");
     assert!(text.contains("configured unit (3 measured"), "{text}");
+    assert!(text.contains("Group assurance (3 findings): relations_only; source binding unavailable; intended subject unavailable"), "{text}");
 }
 
 #[test]
