@@ -60,7 +60,7 @@ rejects empty or replaced aggregate limits, finding assurance limits and populat
 rules in full and empty-page reports, with and without retained artifact bytes.
 [[tests/test_checked_presentation.rs#replay_binds_nested_excerpt_payloads_to_source]]
 rejects altered text, omitted-character counts, displayed fields and verification
-metadata in linked, ambiguous and later-activity excerpts with configured source fields.
+metadata in root, linked, ambiguous and later-activity excerpts with configured source fields.
 [[tests/test_checked_presentation.rs#replay_binds_chain_identity_and_context_to_retained_subjects]]
 rejects coordinated report/artifact changes to chain identities, context identities,
 scope fields, root event names and root ambiguity, even when checked projections agree.

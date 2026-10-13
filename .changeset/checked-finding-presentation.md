@@ -39,3 +39,4 @@ Bind each sampled join identity to its replayed source/target relationship.
 Validate complete nested excerpt payloads and policy labels against retained-source replay.
 Reject removed or replaced canonical uncertainty, assurance and count-population qualifications.
 Check retained timestamps and year/offset provenance against parsed captures before validating intervals.
+Bind top-level chain evidence, including root display fields, to complete replayed payloads.

@@ -284,7 +284,7 @@ pub(crate) fn validate(
             .iter()
             .filter_map(|f| {
                 let chain = &f["details"]["event_chain"];
-                Some(((chain["id"].as_str()?, address(&chain["root"])?), chain))
+                Some(((chain["id"].as_str()?, address(&chain["root"])?), f))
             })
             .collect();
         if completeness_available {
@@ -312,9 +312,15 @@ pub(crate) fn validate(
                 chain["id"].as_str().ok_or("missing chain ID")?,
                 address(&chain["root"]).ok_or("missing chain root")?,
             );
-            let replay = expected
+            let replay_finding = expected
                 .get(&key)
                 .ok_or("chain root absent from retained population")?;
+            if samples(&finding["evidence"], None)?
+                != samples(&replay_finding["evidence"], Some(&selected))?
+            {
+                return Err("chain evidence differs from retained population".into());
+            }
+            let replay = &replay_finding["details"]["event_chain"];
             if chain["root_occurrences"] != replay["root_occurrences"] {
                 return Err("chain root cardinality differs from retained population".into());
             }

@@ -1692,7 +1692,12 @@ fn replay_binds_nested_excerpt_payloads_to_source() {
         format!("{input}{}\n", input.lines().nth(1).unwrap()),
     )
     .unwrap();
-    for collection in ["evidence", "ambiguous_evidence", "later_activity"] {
+    for collection in [
+        "evidence",
+        "ambiguous_evidence",
+        "later_activity",
+        "root_evidence",
+    ] {
         let source = if collection == "ambiguous_evidence" {
             ambiguous.to_str().unwrap()
         } else {
@@ -1713,16 +1718,18 @@ fn replay_binds_nested_excerpt_payloads_to_source() {
             let mut altered = report.clone();
             let mut saved = artifact.clone();
             for document in [&mut altered, &mut saved] {
-                let chain = &mut document["findings"]
+                let finding = &mut document["findings"]
                     .as_array_mut()
                     .unwrap()
                     .iter_mut()
                     .find(|f| f["id"] == id)
-                    .unwrap()["details"]["event_chain"];
-                let sample = if collection == "later_activity" {
-                    &mut chain[collection][0]
+                    .unwrap();
+                let sample = if collection == "root_evidence" {
+                    &mut finding["evidence"][0]
+                } else if collection == "later_activity" {
+                    &mut finding["details"]["event_chain"][collection][0]
                 } else {
-                    &mut chain["steps"]
+                    &mut finding["details"]["event_chain"]["steps"]
                         .as_array_mut()
                         .unwrap()
                         .iter_mut()
@@ -1747,9 +1754,14 @@ fn replay_binds_nested_excerpt_payloads_to_source() {
             let error = log_analyzer::investigation::validate_relations(&altered, Some(&bytes))
                 .unwrap_err();
             assert!(
-                error
-                    .reason
-                    .contains(&format!("{collection} differs from retained population")),
+                error.reason.contains(&format!(
+                    "{} differs from retained population",
+                    if collection == "root_evidence" {
+                        "chain evidence"
+                    } else {
+                        collection
+                    }
+                )),
                 "{collection}/{field}: {error}"
             );
         }

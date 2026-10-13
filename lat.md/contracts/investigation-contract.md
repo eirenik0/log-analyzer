@@ -171,7 +171,7 @@ Replay allowances cover retained processing limits and usage, including expanded
 rows parsed before selection, so raised investigation limits also apply to validation.
 Replay also checks the complete configured step list, statuses, counts, ambiguity,
 recognition, evidence/outcome samples and join samples (including each join identity)
-against retained records. Complete nested excerpt payloads, including text, omitted
+against retained records. Complete top-level and nested excerpt payloads, including text, omitted
 characters, displayed fields and verification metadata, must match replay; only
 replay-specific occurrence identity is normalized. Explicit source-verification losses
 are inherited from the retained source record. Replay uses
