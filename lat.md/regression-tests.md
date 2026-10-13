@@ -35,6 +35,9 @@ and negative intervals, preserving the distinction between endpoints and measure
 [[tests/test_checked_presentation.rs#checked_subjects_require_exact_root_outcome_and_evidence_sets]]
 rejects missing, duplicated or substituted subjects in original and redacted
 reports, while accepting reordered subjects and older reports without the projection.
+[[tests/test_checked_presentation.rs#measured_intervals_cannot_be_hidden_by_unavailable_status_or_missing_timestamps]]
+rejects unavailable-status substitutions and hidden known timestamps. Unavailable
+interval controls also check exact reasons for ambiguity, negative time and missing timestamps.
 
 ## Missing join identity
 

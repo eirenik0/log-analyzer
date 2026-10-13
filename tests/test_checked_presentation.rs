@@ -622,6 +622,7 @@ fn unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact
     for (name, expected_reason) in [
         ("ambiguous", "ambiguous_endpoint_population"),
         ("negative", "negative_or_out_of_range_interval"),
+        ("missing-time", "explicit_source_timestamps_unavailable"),
     ] {
         let mut rows: Vec<Value> = fs::read_to_string(INPUT)
             .unwrap()
@@ -630,8 +631,11 @@ fn unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact
             .collect();
         if name == "ambiguous" {
             rows.push(rows[0].clone());
-        } else {
+        } else if name == "negative" {
             rows[10]["ts"] = json!("2025-12-31T23:59:59+00:00");
+        } else {
+            rows[0]["ts"] = json!("2026-01-01T00:00:00");
+            rows[10]["ts"] = json!("2026-01-01T00:00:10");
         }
         let input = temp.path().join(format!("{name}.jsonl"));
         fs::write(
@@ -679,6 +683,24 @@ fn unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact
         assert_eq!(interval["status"], "unavailable");
         assert_eq!(interval["reason"], expected_reason);
         assert!(interval["value"].is_null());
+        for reason in [Value::Null, json!("arbitrary_reason")] {
+            let mut altered = report.clone();
+            let mut saved = artifact.clone();
+            altered["findings"][finding_index]
+                .pointer_mut(&interval_path)
+                .unwrap()["reason"] = reason.clone();
+            saved["findings"][artifact_index]
+                .pointer_mut(&interval_path)
+                .unwrap()["reason"] = reason;
+            let bytes = serde_json::to_vec(&saved).unwrap();
+            altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+            let error = log_analyzer::investigation::validate_relations(&altered, Some(&bytes))
+                .unwrap_err();
+            assert!(
+                error.reason.contains("status or reason differs"),
+                "{name}: {error}"
+            );
+        }
         for field in [
             "start_timestamp",
             "end_timestamp",
@@ -802,5 +824,76 @@ fn checked_subjects_require_exact_root_outcome_and_evidence_sets() {
             finding.as_object_mut().unwrap().remove("checked");
         }
         log_analyzer::investigation::validate_relations(&legacy, Some(&bytes)).unwrap();
+    }
+}
+
+#[test]
+fn measured_intervals_cannot_be_hidden_by_unavailable_status_or_missing_timestamps() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "measured",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("measured")).unwrap()).unwrap();
+    let finding = chain(&report["findings"], "alpha");
+    let index = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|f| f["id"] == finding["id"])
+        .unwrap();
+    let saved_index = artifact["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|f| f["id"] == finding["id"])
+        .unwrap();
+    let step_index = finding["details"]["event_chain"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|s| s["id"] == "capture-end")
+        .unwrap();
+    let path = format!("/details/event_chain/steps/{step_index}/join_samples/0/endpoint_interval");
+    assert_eq!(finding.pointer(&path).unwrap()["status"], "measured");
+    for (reason, hide_timestamps) in [
+        ("arbitrary_reason", false),
+        ("ambiguous_endpoint_population", false),
+        ("negative_or_out_of_range_interval", false),
+        ("explicit_source_timestamps_unavailable", false),
+        ("explicit_source_timestamps_unavailable", true),
+    ] {
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        for interval in [
+            altered["findings"][index].pointer_mut(&path).unwrap(),
+            saved["findings"][saved_index].pointer_mut(&path).unwrap(),
+        ] {
+            interval["status"] = json!("unavailable");
+            interval["value"] = Value::Null;
+            interval["reason"] = json!(reason);
+            if hide_timestamps {
+                interval["start_timestamp"] = Value::Null;
+                interval["end_timestamp"] = Value::Null;
+            }
+        }
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        shape(&altered, false);
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(
+            error.reason.contains(if hide_timestamps {
+                "timestamp differs from source"
+            } else {
+                "status or reason differs"
+            }),
+            "{reason}: {error}"
+        );
     }
 }

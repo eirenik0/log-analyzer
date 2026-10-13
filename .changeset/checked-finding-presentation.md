@@ -15,3 +15,5 @@ Reject assurance labels that disagree with source binding or retained joins, and
 validate present endpoint metadata even when its interval cannot be measured.
 Require the complete checked subject set, rejecting missing, extra or duplicated
 root, outcome and evidence occurrences.
+Derive interval availability and its reason from endpoint evidence, rejecting
+hidden measurements and omitted known timestamps.

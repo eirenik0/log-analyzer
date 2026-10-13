@@ -1619,20 +1619,21 @@ pub fn validate_relations(
                                     ("target", "end_timestamp", "end_operation"),
                                 ] {
                                     if let Some(record) = retained.get(&occurrence(&join[side])?) {
-                                        if !interval[timestamp].is_null() {
-                                            require(
-                                                interval[timestamp] == record["timestamp"]
-                                                    && record["timestamp_year_source"] == "source"
-                                                    && record["timestamp_offset_source"]
-                                                        == "source",
-                                                path,
-                                                "interval timestamp differs from source",
-                                            )?;
-                                        }
+                                        let expected_timestamp = if record["timestamp_year_source"]
+                                            == "source"
+                                            && record["timestamp_offset_source"] == "source"
+                                        {
+                                            &record["timestamp"]
+                                        } else {
+                                            &Value::Null
+                                        };
+                                        require(
+                                            interval[timestamp] == *expected_timestamp,
+                                            path,
+                                            "interval timestamp differs from source",
+                                        )?;
                                         if finding["verification"]["source_and_rules"]
                                             == "available"
-                                            && (interval["status"] == "measured"
-                                                || !interval[operation].is_null())
                                         {
                                             require(
                                                 interval[operation]
@@ -1644,6 +1645,32 @@ pub fn validate_relations(
                                         }
                                     }
                                 }
+                                let expected_reason = if join["source_count"] != 1
+                                    || join["target_count"] != 1
+                                    || chain["root_occurrences"] != 1
+                                {
+                                    Some("ambiguous_endpoint_population")
+                                } else if interval["start_timestamp"].is_null()
+                                    || interval["end_timestamp"].is_null()
+                                {
+                                    Some("explicit_source_timestamps_unavailable")
+                                } else if endpoint_milliseconds(interval).is_none() {
+                                    Some("negative_or_out_of_range_interval")
+                                } else {
+                                    None
+                                };
+                                require(
+                                    interval["unit"] == "ms"
+                                        && interval["status"]
+                                            == if expected_reason.is_some() {
+                                                "unavailable"
+                                            } else {
+                                                "measured"
+                                            }
+                                        && interval["reason"] == serde_json::json!(expected_reason),
+                                    path,
+                                    "interval status or reason differs from endpoint evidence",
+                                )?;
                             }
                         }
                         for outcome in list(step, "/outcomes")? {

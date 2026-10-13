@@ -150,6 +150,9 @@ derive this set from the retained finding.
 Assurance levels must match source binding and retained joins. Present endpoint
 timestamps and names remain source-bound even when an interval is unavailable
 because its endpoints are ambiguous or their elapsed time is negative.
+Interval availability and its reason must follow endpoint cardinality, explicit
+timestamp provenance and elapsed-time validity; known timestamps cannot be omitted
+to turn a retained measurement into an unavailable interval.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.
