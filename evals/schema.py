@@ -12,9 +12,17 @@ class InvalidValue(AssertionError):
     pass
 
 
+def unique_key(value):
+    if isinstance(value, dict):
+        return ('object', tuple((key, unique_key(item)) for key, item in sorted(value.items())))
+    if isinstance(value, list):
+        return ('array', tuple(map(unique_key, value)))
+    return ('number' if type(value) in {int, float} else type(value).__name__, value)
+
+
 def validate(value, schema, root=None):
     root = root or schema
-    supported = {'$schema', '$defs', 'title', 'type', 'enum', 'const', 'minItems', 'properties', 'items', 'additionalProperties', 'oneOf', '$ref', 'required', 'pattern', 'minimum', 'maximum', 'maxItems', 'minLength', 'anyOf', 'allOf', 'if', 'then', 'else', 'format'}
+    supported = {'$schema', '$defs', 'title', 'type', 'enum', 'const', 'minItems', 'properties', 'items', 'additionalProperties', 'oneOf', '$ref', 'required', 'pattern', 'minimum', 'maximum', 'maxItems', 'minLength', 'anyOf', 'allOf', 'if', 'then', 'else', 'format', 'uniqueItems'}
     if set(schema) - supported:
         raise ValueError('unsupported advertised schema keyword: ' + ', '.join(sorted(set(schema) - supported)))
     def check(condition, message):
@@ -64,6 +72,7 @@ def validate(value, schema, root=None):
         if isinstance(schema.get('additionalProperties'), dict):
             for name in set(value) - set(properties): validate(value[name], schema['additionalProperties'], root)
     if isinstance(value, list):
+        if schema.get('uniqueItems'): check(len(set(map(unique_key, value))) == len(value), 'duplicate contract array item')
         check(len(value) >= schema.get('minItems', 0), 'contract array too short')
         if 'maxItems' in schema: check(len(value) <= schema['maxItems'], 'contract array too long')
         if 'items' in schema:

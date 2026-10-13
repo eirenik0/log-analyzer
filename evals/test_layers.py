@@ -9,6 +9,14 @@ from unified import UnifiedTools
 
 
 class LayeredHarnessTests(unittest.TestCase):
+    def test_unique_items_use_json_equality(self):
+        schema = {'type':'array','uniqueItems':True}
+        for value in [[], ['a','b'], [True,1], [[True],[1]], [{'a':1},{'a':2}]]:
+            validate(value, schema)
+        for value in [['a','a'], [1,1.0], [[1],[1.0]], [{'a':1,'b':2},{'b':2,'a':1}]]:
+            with self.assertRaises(InvalidValue): validate(value, schema)
+        validate(['a','a'], {'uniqueItems':False})
+
     def test_frozen_cases_include_visible_exclusions_and_heldout_variants(self):
         manifest, packets = frozen_cases()
         self.assertEqual(len(manifest['cases']), 19)

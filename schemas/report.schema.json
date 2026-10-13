@@ -3603,6 +3603,46 @@
         },
         "adaptation": {
           "$ref": "#/$defs/profile_adaptation"
+        },
+        "next_action": {
+          "type": "object",
+          "required": [
+            "kind",
+            "argv",
+            "argv_prefix",
+            "required_inputs",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "edit_then_validate_independent_expectations"
+            },
+            "argv": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "argv_prefix": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "required_inputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
         }
       },
       "required": [

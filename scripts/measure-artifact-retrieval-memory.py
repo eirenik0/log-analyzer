@@ -27,7 +27,7 @@ def file_hash(path):
     return digest.hexdigest()
 
 
-def worker(binary, artifact, mode, finding_id):
+def worker(binary, artifact, mode, finding_id, expected_records):
     # This worker launches exactly one child. Artifact generation and Python
     # comparison allocations are excluded from the measured retrieval process.
     digest = file_hash(artifact)
@@ -35,9 +35,15 @@ def worker(binary, artifact, mode, finding_id):
                "--artifact-max-bytes", str(2 * 1024**3), "--artifact-max-index-bytes", str(2 * 1024**3),
                "--artifact-max-state-bytes", str(2 * 1024**3), "--artifact-max-validation-ms", "600000",
                "--collection", "/records" if mode == "records" else "/findings", "--complete-output"]
-    if mode == "finding":
+    if mode != "records":
         command += ["--id", finding_id]
-    with tempfile.TemporaryFile() as output:
+    with tempfile.TemporaryDirectory(prefix="retrieval-claims-") as claims_directory, tempfile.TemporaryFile() as output:
+        if mode == "count":
+            claims_path = Path(claims_directory) / "claims.json"
+            claims_path.write_text(json.dumps({"version": 1, "required_claim_ids": ["selected"],
+                                               "claims": [{"id": "selected", "kind": "distinct_records", "pointer": "/records", "expected": expected_records,
+                                                           "operation": {"kind": "request", "name": "fetch"}}]}), encoding="utf-8")
+            command += ["--claims", str(claims_path)]
         start = time.monotonic()
         result = subprocess.run(command, stdout=output, stderr=subprocess.PIPE, env=environment(), timeout=660)
         elapsed = time.monotonic() - start
@@ -50,6 +56,9 @@ def worker(binary, artifact, mode, finding_id):
     retained = json.loads(artifact.read_text(encoding="utf-8"))
     measurements = [f for f in retained["findings"] if f["kind"] == "measurement"]
     expected = retained["records"] if mode == "records" else [measurements[-1]]
+    if mode == "count":
+        assert retrieved["claim_verification"]["status"] == "verified"
+        assert retrieved["claim_verification"]["checks"][0]["observed"] == expected_records
     assert retrieved["status"] == "complete" and retrieved["remaining"] == 0, retrieved
     assert retrieved["artifact_sha256"] == digest
     assert retrieved["items"] == expected, "selected records/finding changed during bounded retrieval"
@@ -65,14 +74,15 @@ def main():
     parser.add_argument("binary", type=Path)
     parser.add_argument("--records", type=int, nargs="+", default=[1000, 5000, 20000])
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--expected-records", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--finding-id", help=argparse.SUPPRESS)
-    parser.add_argument("--mode", choices=["records", "finding"], default="records", help=argparse.SUPPRESS)
+    parser.add_argument("--mode", choices=["records", "finding", "count"], default="records", help=argparse.SUPPRESS)
     parser.add_argument("--rss-ceiling-mib", type=int, default=64)
     parser.add_argument("--rss-growth-mib", type=int, default=24)
     args = parser.parse_args()
     binary = args.binary.resolve()
     if args.worker:
-        print(json.dumps(worker(binary, args.worker, args.mode, args.finding_id)))
+        print(json.dumps(worker(binary, args.worker, args.mode, args.finding_id, args.expected_records)))
         return
     if any(n <= 0 or n % 2 for n in args.records):
         parser.error("record counts must be positive and even")
@@ -102,16 +112,16 @@ def main():
             retained = json.loads(artifact.read_text(encoding="utf-8"))
             finding_id = [f["id"] for f in retained["findings"] if f["kind"] == "measurement"][-1]
             del retained
-            for mode in ("records", "finding"):
+            for mode in ("records", "finding", "count"):
                 output = subprocess.run([sys.executable, str(Path(__file__).resolve()), str(binary),
-                                         "--worker", str(artifact), "--mode", mode, "--finding-id", finding_id], capture_output=True, check=True, timeout=700)
+                                         "--worker", str(artifact), "--mode", mode, "--finding-id", finding_id, "--expected-records", str(count)], capture_output=True, check=True, timeout=700)
                 result = json.loads(output.stdout)
                 assert result["selected_records"] == count
                 assert result["paired_measurements"] == count // 2
                 results.append(result)
                 print(f"{count} selected, {mode}: {result['peak_rss_bytes']} bytes RSS, {result['elapsed_seconds']}s", file=sys.stderr)
     peaks = [result["peak_rss_bytes"] for result in results]
-    result = {"scope": "artifact retrieval only; every source record selected, all starts precede completions; compares every retrieved record and targeted measurement exactly; generation RSS excluded",
+    result = {"scope": "artifact retrieval only; every source record selected, all starts precede completions; compares every retrieved record and targeted measurement exactly, and verifies operation-filtered distinct-record claims; generation RSS excluded",
               "platform": platform.platform(), "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
               "item_bytes": 8 * 1024**2, "index_bytes": 2 * 1024**3, "state_bytes": 2 * 1024**3,
               "rss_ceiling_bytes": args.rss_ceiling_mib * 1024**2,

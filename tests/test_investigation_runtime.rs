@@ -5941,46 +5941,1127 @@ fn targeted_compact_evidence_checks_required_claims_and_rejects_wrong_values() {
 }
 
 #[test]
-fn profile_recovery_distinguishes_authored_expectations_from_preparation() {
+fn relationship_recognition_gap_requires_inspection_before_profile_recovery() {
     let profile = include_str!("../examples/investigations/chains/profile.toml")
         .replace("equals = \"checkpoint\"", "equals = \"missing-root\"");
-    let (_temp, report, _artifact) = chain_fixture(
-        &[chain_event("checkpoint", "run-1", "capture-1", 0)],
-        Some(&profile),
-    );
-    let actions = report["guidance"]["next_actions"].as_array().unwrap();
-    let kinds: Vec<_> = actions
+    let events = [chain_event("checkpoint", "run-1", "capture-1", 0)];
+    let (_temp, report, _artifact) = chain_fixture(&events, Some(&profile));
+    let kinds: Vec<_> = report["guidance"]["next_actions"]
+        .as_array()
+        .unwrap()
         .iter()
         .map(|a| a["kind"].as_str().unwrap())
         .collect();
-    let source = kinds
+    assert!(kinds.contains(&"inspect_relationship_coverage"));
+    // A rule mismatch is a request for source inspection, not semantic truth.
+    for kind in [
+        "prepare_profile_candidate",
+        "validate_profile_candidate",
+        "rerun_validated_profile",
+    ] {
+        assert!(!kinds.contains(&kind));
+    }
+    assert!(event_chains(&report).is_empty());
+    let root_gap = report["guidance"]["workflow"]["gaps"]
+        .as_array()
+        .unwrap()
         .iter()
-        .position(|k| *k == "author_source_expectations")
+        .find(|g| g["step_id"] == "$root")
         .unwrap();
-    let prepare = kinds
-        .iter()
-        .position(|k| *k == "prepare_profile_candidate")
-        .unwrap();
-    let validate = kinds
-        .iter()
-        .position(|k| *k == "validate_profile_candidate")
-        .unwrap();
-    let rerun = kinds
-        .iter()
-        .position(|k| *k == "rerun_validated_profile")
-        .unwrap();
-    assert!(source < prepare && prepare < validate && validate < rerun);
+    assert_eq!(root_gap["classification"], "recognition_unresolved");
+    let (_temp, positive, _artifact) = chain_fixture(&events, None);
     assert!(
-        !actions[prepare]["required_inputs"]
-            .to_string()
-            .contains("expected")
+        !positive["guidance"]["workflow"]["gaps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|g| g["step_id"] == "$root")
+    );
+    assert_eq!(event_chains(&positive).len(), 1);
+    assert_eq!(event_chains(&positive)[0]["root_event_name"], "checkpoint");
+}
+
+fn subject_link(finding: &Value, step_id: &str) -> Value {
+    let chain = &finding["details"]["event_chain"];
+    let join = &chain_step(chain, step_id)["join_samples"][0];
+    json!({"id":"requested-link","label":"Human checkpoint label is not identity","kind":"link","finding_id":finding["id"],"step_id":step_id,"subject":{"snapshot_id":chain["root"]["snapshot_id"],"input_ordinal":chain["root"]["input_ordinal"],"scope_id":finding["scope_id"],"root":chain["root"],"identity":chain["identity"],"event_name":chain["root_event_name"],"source":join["source"],"target":join["target"]}})
+}
+
+#[test]
+fn claim_drafts_verify_exact_endpoints_but_require_final_review() {
+    let events = [
+        chain_event("checkpoint", "run-a", "capture-a", 0),
+        chain_event("capture_end", "run-a", "capture-a", 20),
+        chain_event("checkpoint", "run-a", "capture-b", 30),
+        chain_event("capture_end", "run-a", "capture-b", 40),
+    ];
+    let (temp, report, artifact) = chain_fixture(&events, None);
+    let path = temp.path().join("draft.json");
+    let argv = [
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--artifact-max-bytes",
+        "100000000",
+        "--draft-claims",
+        "--output",
+        path.to_str().unwrap(),
+    ];
+    let output = run(&argv);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(summary["status"], "draft_requires_review");
+    assert!(
+        summary["next_action"]["argv"]
+            .as_array()
+            .unwrap()
+            .windows(2)
+            .any(|pair| pair == [json!("--artifact-max-bytes"), json!("100000000")])
+    );
+    let mut draft: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let schema: Value =
+        serde_json::from_str(include_str!("../schemas/claim-assertions.schema.json")).unwrap();
+    jsonschema::validator_for(&schema)
+        .unwrap()
+        .validate(&draft)
+        .unwrap();
+    assert!(
+        draft["claims"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["kind"] == "interval")
     );
     assert!(
-        actions[source]["reason"]
+        !draft["claims"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["kind"] == "absence")
+    );
+    let verify = |draft: &Value| {
+        fs::write(&path, draft.to_string()).unwrap();
+        let o = run(&[
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            report["artifact"]["stored_sha256"].as_str().unwrap(),
+            "--claims",
+            path.to_str().unwrap(),
+        ]);
+        let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+        (
+            o.status.success(),
+            v["artifact_retrieval"]["claim_verification"].clone(),
+        )
+    };
+    let (ok, v) = verify(&draft);
+    assert!(!ok);
+    assert_eq!(v["final_review"]["status"], "needs_revision");
+    assert!(
+        v["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["status"] == "verified"),
+        "{v}"
+    );
+    draft["final_review"] = json!({"summary_claim_ids":draft["required_claim_ids"],
+        "finding_claim_ids":draft["required_claim_ids"],
+        "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]});
+    let (ok, unmapped) = verify(&draft);
+    assert!(!ok);
+    assert_eq!(unmapped["final_review"]["status"], "needs_revision");
+    assert!(
+        unmapped["requirement_results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["reason"] == "typed_question_requirement_missing")
+    );
+    // A caller can check a supported subset before acknowledging prose review.
+    draft.as_object_mut().unwrap().remove("final_review");
+    assert!(verify(&draft).0);
+    let positive = draft.clone();
+    draft["claims"][0]["subject"]["event_name"] = json!("adjacent wrong checkpoint");
+    assert_eq!(verify(&draft).1["checks"][0]["status"], "contradicted");
+    assert!(verify(&positive).0);
+    let original = fs::read(&artifact).unwrap();
+    assert!(!run(&argv).status.success());
+    assert_eq!(fs::read(&artifact).unwrap(), original);
+    let selected_id = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"].get("event_chain").is_some())
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+    let page = run(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/chain-bundles",
+        "--id",
+        selected_id,
+        "--compact",
+        "--artifact-max-bytes",
+        "100000000",
+        "--report-max-items",
+        "50",
+    ]);
+    let page: Value = serde_json::from_slice(&page.stdout).unwrap();
+    let next = &page["artifact_retrieval"]["workflow"]["next_action"];
+    assert_eq!(next["kind"], "review_then_draft_claims");
+    let command: Vec<_> = next["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(
+        Command::new(command[0])
+            .args(&command[1..])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    assert!(temp.path().join("claims-draft.json").is_file());
+    assert!(command.windows(2).any(|pair| pair == ["--id", selected_id]));
+    assert!(
+        command
+            .windows(2)
+            .any(|pair| pair == ["--artifact-max-bytes", "100000000"])
+    );
+    assert!(
+        !command
+            .iter()
+            .any(|arg| matches!(*arg, "--collection" | "--report-max-items" | "--compact"))
+    );
+    let selected_draft: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("claims-draft.json")).unwrap()).unwrap();
+    assert!(
+        selected_draft["claims"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["id"].as_str().unwrap().starts_with(selected_id))
+    );
+    let retained: Value = serde_json::from_slice(&original).unwrap();
+    let record_id = retained["records"][0]["occurrence"]["evidence_ref"]["reference_id"]
+        .as_str()
+        .unwrap();
+    let page = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/records",
+        "--id",
+        record_id,
+    ]);
+    let workflow = &page["artifact_retrieval"]["workflow"];
+    assert!(workflow["evidence_delivery"]["finding_id"].is_null());
+    assert_eq!(workflow["next_action"]["kind"], "review_then_draft_claims");
+    let command: Vec<_> = workflow["next_action"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(!command.contains(&"--id"));
+    fs::remove_file(temp.path().join("claims-draft.json")).unwrap();
+    assert!(
+        Command::new(command[0])
+            .args(&command[1..])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+}
+fn verify_subject_claim(
+    temp: &tempfile::TempDir,
+    report: &Value,
+    artifact: &Path,
+    claim: Value,
+) -> Value {
+    let claims = temp.path().join("subject-claims.json");
+    let assertions = json!({"version":1,"questions":["Did the requested checkpoint complete?"],"required_claim_ids":["requested-link"],"claims":[claim]});
+    let schema: Value =
+        serde_json::from_str(include_str!("../schemas/claim-assertions.schema.json")).unwrap();
+    jsonschema::validator_for(&schema)
+        .unwrap()
+        .validate(&assertions)
+        .unwrap();
+    fs::write(&claims, assertions.to_string()).unwrap();
+    let output = run(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/chain-bundles",
+        "--claims",
+        claims.to_str().unwrap(),
+        "--report-max-items",
+        "1",
+    ]);
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let verification = &value["artifact_retrieval"]["claim_verification"];
+    assert_eq!(
+        output.status.success(),
+        verification["status"] == "verified",
+        "{value}"
+    );
+    verification.clone()
+}
+
+#[test]
+fn subject_bound_links_reject_adjacent_names_scopes_ids_and_endpoints() {
+    let events = [
+        chain_event("checkpoint", "run-a", "capture-a", 0),
+        chain_event("capture_end", "run-a", "capture-a", 0),
+        chain_event("checkpoint", "run-a", "capture-b", 0),
+        chain_event("capture_end", "run-a", "capture-b", 0),
+        chain_event("checkpoint", "run-b", "capture-a", 0),
+        chain_event("capture_end", "run-b", "capture-a", 0),
+    ];
+    let (temp, report, artifact) = chain_fixture(&events, None);
+    let findings: Vec<_> = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["details"].get("event_chain").is_some())
+        .collect();
+    let positive = subject_link(findings[0], "capture-end");
+    assert_eq!(positive["subject"]["root"]["evidence_ref"]["line"], 1);
+    assert_eq!(positive["subject"]["target"]["evidence_ref"]["line"], 2);
+    let checked = verify_subject_claim(&temp, &report, &artifact, positive.clone());
+    assert_eq!(checked["checks"][0]["assurance"], "subject_verified");
+    assert_eq!(
+        checked["checks"][0]["source_citations"]["target"],
+        positive["subject"]["target"]
+    );
+    for field in [
+        "snapshot_id",
+        "input_ordinal",
+        "scope_id",
+        "root",
+        "identity",
+        "event_name",
+        "source",
+        "target",
+    ] {
+        let mut wrong = positive.clone();
+        wrong["subject"][field] = match field {
+            "snapshot_id" | "scope_id" | "event_name" => json!("a-different-subject"),
+            "input_ordinal" => json!(1),
+            "identity" => findings[2]["details"]["event_chain"]["identity"].clone(),
+            "root" => findings[1]["details"]["event_chain"]["root"].clone(),
+            "source" | "target" => {
+                subject_link(findings[1], "capture-end")["subject"][field].clone()
+            }
+            _ => unreachable!(),
+        };
+        let result = verify_subject_claim(&temp, &report, &artifact, wrong);
+        assert_eq!(
+            result["checks"][0]["status"], "contradicted",
+            "{field}: {result}"
+        );
+        assert_eq!(result["checks"][0]["assurance"], "subject_unverified");
+        assert!(result["checks"][0]["identity"]["expected"].is_object());
+        // The minimally changed positive control must still pass.
+        assert_eq!(
+            verify_subject_claim(&temp, &report, &artifact, positive.clone())["checks"][0]["assurance"],
+            "subject_verified"
+        );
+    }
+    let mut missing = positive.clone();
+    missing["subject"]
+        .as_object_mut()
+        .unwrap()
+        .remove("identity");
+    assert_eq!(
+        verify_subject_claim(&temp, &report, &artifact, missing)["checks"][0]["status"],
+        "unavailable"
+    );
+    for field in ["root", "source", "target", "identity"] {
+        let mut incomplete = positive.clone();
+        incomplete["subject"][field] = if field == "identity" {
+            json!([])
+        } else {
+            json!({})
+        };
+        assert_eq!(
+            verify_subject_claim(&temp, &report, &artifact, incomplete)["checks"][0]["status"],
+            "unavailable",
+            "{field}"
+        );
+        assert_eq!(
+            verify_subject_claim(&temp, &report, &artifact, positive.clone())["checks"][0]["assurance"],
+            "subject_verified"
+        );
+    }
+    let mut legacy = positive;
+    legacy.as_object_mut().unwrap().remove("subject");
+    let result = verify_subject_claim(&temp, &report, &artifact, legacy);
+    assert_eq!(result["checks"][0]["status"], "verified");
+    assert_eq!(result["checks"][0]["assurance"], "link_exists");
+}
+
+#[test]
+fn subject_bound_intervals_reject_wrong_named_operations_and_ambiguous_endpoints() {
+    for ambiguous in [false, true] {
+        let mut events = vec![
+            chain_event("checkpoint", "run-a", "capture-a", 0),
+            chain_event("capture_end", "run-a", "capture-a", 0),
+        ];
+        events[1]["timestamp"] = json!("2026-01-01T00:00:00.025Z");
+        if ambiguous {
+            events.push(events[1].clone());
+        }
+        let profile = include_str!("../examples/investigations/chains/profile.toml").replace(
+            "cardinality = \"one_to_one\"",
+            "cardinality = \"one_to_many\"",
+        );
+        let (temp, report, artifact) = chain_fixture(&events, Some(&profile));
+        let finding_index = report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|f| f["details"].get("event_chain").is_some())
+            .unwrap();
+        let finding = &report["findings"][finding_index];
+        let step_index = finding["details"]["event_chain"]["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|s| s["id"] == "capture-end")
+            .unwrap();
+        let mut subject = subject_link(finding, "capture-end")["subject"].clone();
+        for key in ["root", "scope_id", "identity", "event_name"] {
+            subject.as_object_mut().unwrap().remove(key);
+        }
+        subject["start_operation"] = json!("checkpoint");
+        subject["end_operation"] = json!("capture_end");
+        let claim = json!({"id":"requested-link","kind":"interval","pointer":format!("/findings/{finding_index}/details/event_chain/steps/{step_index}/join_samples/0/endpoint_interval"),"expected_ms":25,"subject":subject});
+        let positive = verify_subject_claim(&temp, &report, &artifact, claim.clone());
+        assert_eq!(
+            positive["checks"][0]["status"],
+            if ambiguous { "unavailable" } else { "verified" }
+        );
+        let mut wrong = claim.clone();
+        wrong["subject"]["start_operation"] = json!("close");
+        assert_eq!(
+            verify_subject_claim(&temp, &report, &artifact, wrong)["checks"][0]["status"],
+            "contradicted"
+        );
+        let mut wrong = claim;
+        wrong["expected_ms"] = json!(24);
+        assert_eq!(
+            verify_subject_claim(&temp, &report, &artifact, wrong)["checks"][0]["status"],
+            if ambiguous {
+                "unavailable"
+            } else {
+                "contradicted"
+            }
+        );
+    }
+}
+
+#[test]
+fn omitted_subject_endpoint_witness_is_unavailable_until_supported_sample_is_selected() {
+    let events = [
+        chain_event("checkpoint", "run-a", "capture-a", 0),
+        chain_event("check_end", "run-a", "capture-a", 0),
+        chain_event("check_end", "run-a", "capture-a", 0),
+        chain_event("check_end", "run-a", "capture-a", 0),
+    ];
+    let (temp, report, artifact) = chain_fixture(&events, None);
+    let finding = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"].get("event_chain").is_some())
+        .unwrap();
+    let positive = subject_link(finding, "check-end");
+    let mut omitted = positive.clone();
+    let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    omitted["subject"]["target"] = retained["records"][2]["occurrence"].clone();
+    assert_eq!(
+        chain_step(&finding["details"]["event_chain"], "check-end")["omitted_occurrences"],
+        1
+    );
+    assert_eq!(
+        verify_subject_claim(&temp, &report, &artifact, omitted)["checks"][0]["status"],
+        "unavailable"
+    );
+    assert_eq!(
+        verify_subject_claim(&temp, &report, &artifact, positive)["checks"][0]["assurance"],
+        "subject_verified"
+    );
+}
+
+#[test]
+fn workflow_checklist_survives_retrieval_and_cannot_be_dropped_by_claims() {
+    let events = [
+        chain_event("checkpoint", "run-a", "capture-a", 0),
+        chain_event("capture_end", "run-a", "capture-a", 0),
+    ];
+    let (temp, _, _) = chain_fixture(&events, None);
+    let artifact = temp.path().join("checklist.json");
+    let report = success(&[
+        "--config",
+        temp.path().join("profile.toml").to_str().unwrap(),
+        "investigate",
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--question",
+        "Did this checkpoint finish?",
+        "--required-relationship",
+        "requested-link",
+        "--summary",
+    ]);
+    let workflow = &report["guidance"]["workflow"];
+    assert_eq!(workflow["input_processing"], "complete");
+    assert_eq!(workflow["relevant_evidence_review"], "unconfirmed");
+    assert_eq!(workflow["declared_claims"], "not_checked");
+    let argv: Vec<_> = workflow["next_action"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(argv.contains(&"--compact"));
+    let page = success(&argv[1..]);
+    let retrieved = &page["artifact_retrieval"]["workflow"];
+    assert_eq!(
+        retrieved["questions"],
+        json!(["Did this checkpoint finish?"])
+    );
+    assert_eq!(
+        retrieved["required_relationships"],
+        json!(["requested-link"])
+    );
+    assert_eq!(retrieved["relevant_evidence_review"], "unconfirmed");
+    assert_eq!(retrieved["declared_claims"], "not_checked");
+    let claims = temp.path().join("missing-required.json");
+    fs::write(&claims,json!({"version":1,"required_claim_ids":["literal"],"claims":[{"id":"literal","kind":"fact","pointer":"/contract_version","equals":1}]}).to_string()).unwrap();
+    let checked = run(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--claims",
+        claims.to_str().unwrap(),
+    ]);
+    assert!(!checked.status.success());
+    let value: Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["missing_required_claim_ids"],
+        json!(["requested-link"])
+    );
+    let full: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    let finding = full["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"].get("event_chain").is_some())
+        .unwrap();
+    assert_eq!(
+        verify_subject_claim(
+            &temp,
+            &report,
+            &artifact,
+            subject_link(finding, "capture-end")
+        )["status"],
+        "verified"
+    );
+}
+
+#[test]
+fn redacted_checklists_preserve_opaque_required_ids() {
+    let temp = tempfile::tempdir().unwrap();
+    let (report, artifact) = investigate(
+        temp.path(),
+        &[
+            "--redact",
+            "--question",
+            "Private checkpoint question",
+            "--required-relationship",
+            "private-relationship",
+        ],
+    );
+    let required = report["guidance"]["workflow"]["required_relationships"].clone();
+    assert!(required[0].as_str().unwrap().starts_with("opaque-"));
+    let bytes = fs::read_to_string(&artifact).unwrap();
+    assert!(!bytes.contains("Private checkpoint question"));
+    assert!(!bytes.contains("private-relationship"));
+    let retained: Value = serde_json::from_str(&bytes).unwrap();
+    assert_eq!(
+        retained["question_checklist"]["required_relationship"],
+        required
+    );
+    let hash = report["artifact"]["stored_sha256"].as_str().unwrap();
+    let page = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        hash,
+    ]);
+    assert_eq!(
+        page["artifact_retrieval"]["workflow"]["required_relationships"],
+        required
+    );
+    assert_eq!(
+        page["artifact_retrieval"]["workflow"]["questions"],
+        json!(["[REDACTED QUESTION]"])
+    );
+    let claims = temp.path().join("claims.json");
+    let mut assertion = json!({"version":1,"required_claim_ids":["unrelated"],"claims":[{"id":"unrelated","kind":"fact","pointer":"/contract_version","equals":1}]});
+    let verify = |a: &Value| {
+        fs::write(&claims, a.to_string()).unwrap();
+        let result = run(&[
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            hash,
+            "--claims",
+            claims.to_str().unwrap(),
+        ]);
+        let output: Value = serde_json::from_slice(&result.stdout).unwrap();
+        (
+            result.status.success(),
+            output["artifact_retrieval"]["claim_verification"].clone(),
+        )
+    };
+    let (ok, wrong) = verify(&assertion);
+    assert!(!ok);
+    assert_eq!(wrong["missing_required_claim_ids"], required);
+    assertion["required_claim_ids"] = required.clone();
+    assertion["claims"][0]["id"] = required[0].clone();
+    assert!(verify(&assertion).0);
+}
+
+#[test]
+fn redacted_chain_pages_do_not_advertise_claim_drafts() {
+    let (temp, _, _) = chain_fixture(
+        &[
+            chain_event("checkpoint", "run", "capture", 0),
+            chain_event("capture_end", "run", "capture", 10),
+        ],
+        None,
+    );
+    let artifact = temp.path().join("redacted.json");
+    let report = success(&[
+        "--config",
+        temp.path().join("profile.toml").to_str().unwrap(),
+        "--redact",
+        "investigate",
+        temp.path().join("events.jsonl").to_str().unwrap(),
+        "--artifact",
+        artifact.to_str().unwrap(),
+        "--required-relationship",
+        "completion",
+    ]);
+    let page = success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--collection",
+        "/chain-bundles",
+        "--report-max-items",
+        "100",
+    ]);
+    assert!(page["artifact_retrieval"]["displayed"].as_u64().unwrap() > 0);
+    assert!(page["artifact_retrieval"]["next_cursor"].is_null());
+    let action = &page["artifact_retrieval"]["workflow"]["next_action"];
+    assert_eq!(
+        action["kind"],
+        "inspect_delivered_evidence_and_verification"
+    );
+    assert!(action["argv"].is_null());
+    assert!(
+        action["reason"]
             .as_str()
             .unwrap()
-            .contains("not an external truth file")
+            .contains("Redacted evidence")
     );
+    let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    let finding = retained["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["details"]["event_chain"].is_object())
+        .unwrap();
+    let step = finding["details"]["event_chain"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["status"] == "observed")
+        .unwrap();
+    let id = &report["guidance"]["workflow"]["required_relationships"][0];
+    let claims = temp.path().join("redacted-unknown.json");
+    let private = "private-client-identity";
+    fs::write(&claims, json!({"version":1,"questions":[private],"required_claim_ids":[id],
+        "claims":[{"id":private,"label":private,"kind":"fact","pointer":"/content","equals":"redacted"}],
+        "requirements":[{"id":id,"kind":"link","finding_id":finding["id"],"step_id":step["id"]}],
+        "unresolved":[{"id":id,"reason":private}],
+        "final_review":{"summary_claim_ids":[],"finding_claim_ids":[],"unresolved_question_ids":[id],
+            "checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}}).to_string()).unwrap();
+    let saved = temp.path().join("redacted-verification.json");
+    let verified = success(&[
+        "--redact",
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--claims",
+        claims.to_str().unwrap(),
+        "--output",
+        saved.to_str().unwrap(),
+    ]);
+    assert!(!verified.to_string().contains(private));
+    assert!(!fs::read_to_string(&saved).unwrap().contains(private));
+    let verification = &verified["artifact_retrieval"]["claim_verification"];
+    assert_eq!(verification["questions"], json!(["[REDACTED QUESTION]"]));
+    assert_eq!(verification["checks"][0]["label"], Value::Null);
+    assert_eq!(verification["unresolved"][0]["reason"], "[REDACTED REASON]");
+    assert_eq!(verification["unresolved"][0]["id"], *id);
+    assert_eq!(verification["status"], "verified_with_unknowns");
+    assert_eq!(
+        verification["final_review"]["status"],
+        "declared_checks_passed_with_unknowns"
+    );
+    let mut assertions: Value = serde_json::from_slice(&fs::read(&claims).unwrap()).unwrap();
+    assertions["claims"][0] = json!({"id":private,"label":private,"kind":"link",
+        "finding_id":finding["id"],"step_id":step["id"],
+        "subject":{"snapshot_id":private,"input_ordinal":0,"source":{},"target":{},"event_name":private}});
+    assertions["final_review"]["finding_claim_ids"] = json!([private]);
+    assertions["final_review"]["summary_claim_ids"] = json!([private]);
+    fs::write(&claims, assertions.to_string()).unwrap();
+    let failed_saved = temp.path().join("redacted-failed-verification.json");
+    let failed = binary()
+        .args([
+            "--redact",
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            report["artifact"]["stored_sha256"].as_str().unwrap(),
+            "--claims",
+            claims.to_str().unwrap(),
+            "--output",
+            failed_saved.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(!failed.status.success());
+    assert!(!String::from_utf8_lossy(&failed.stdout).contains(private));
+    assert!(!fs::read_to_string(&failed_saved).unwrap().contains(private));
+    let failed: Value = serde_json::from_slice(&failed.stdout).unwrap();
+    let verification = &failed["artifact_retrieval"]["claim_verification"];
+    assert_eq!(verification["status"], "needs_revision");
+    assert!(verification["checks"][0]["identity"]["expected"].is_null());
+    assert!(
+        !verification["final_review"]["issues"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn invalid_checklists_fail_before_artifact_creation() {
+    let temp = tempfile::tempdir().unwrap();
+    let artifact = temp.path().join("invalid.json");
+    for (flag, values) in [
+        ("--question", vec!["".to_string()]),
+        ("--required-relationship", vec!["".to_string()]),
+        ("--required-relationship", vec![" ".to_string()]),
+        ("--required-relationship", vec!["duplicate".to_string(); 2]),
+        (
+            "--question",
+            (0..101).map(|i| format!("question-{i}")).collect(),
+        ),
+        (
+            "--required-relationship",
+            (0..101).map(|i| format!("id-{i}")).collect(),
+        ),
+    ] {
+        let mut command = binary();
+        command.current_dir(root()).args([
+            "investigate",
+            "examples/investigations/slow.jsonl",
+            "--artifact",
+            artifact.to_str().unwrap(),
+        ]);
+        for value in values {
+            command.args([flag, &value]);
+        }
+        let output = command.output().unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Checklist accepts"));
+        assert!(!artifact.exists());
+    }
+    for checklist in [
+        vec!["--question", "Did the first event finish?"],
+        vec![
+            "--question",
+            "Did the first event finish?",
+            "--question",
+            "Did the second finish?",
+            "--required-relationship",
+            "first",
+        ],
+    ] {
+        let output = binary()
+            .args([
+                "investigate",
+                "examples/investigations/slow.jsonl",
+                "--artifact",
+                artifact.to_str().unwrap(),
+            ])
+            .args(checklist)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("at least one ID per question"));
+        assert!(!artifact.exists());
+    }
+    let mut options = Vec::new();
+    for i in 0..100 {
+        options.extend([
+            "--question".to_string(),
+            format!("question-{i}"),
+            "--required-relationship".to_string(),
+            format!("id-{i}"),
+        ]);
+    }
+    let (report, _) = investigate(
+        temp.path(),
+        &options.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        report["guidance"]["workflow"]["required_relationships"]
+            .as_array()
+            .unwrap()
+            .len(),
+        100
+    );
+}
+
+#[test]
+fn identical_ids_in_independent_snapshots_do_not_verify_as_the_same_subject() {
+    let events = [
+        chain_event("checkpoint", "run-a", "capture-a", 0),
+        chain_event("capture_end", "run-a", "capture-a", 0),
+    ];
+    let (temp, report, artifact) = chain_fixture(&events, None);
+    let (_other, other_report, _) = chain_fixture(&events, None);
+    let finding = |report: &Value| {
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["details"].get("event_chain").is_some())
+            .unwrap()
+            .clone()
+    };
+    let positive = subject_link(&finding(&report), "capture-end");
+    let mut wrong = positive.clone();
+    wrong["subject"] = subject_link(&finding(&other_report), "capture-end")["subject"].clone();
+    assert_eq!(
+        verify_subject_claim(&temp, &report, &artifact, wrong)["checks"][0]["status"],
+        "contradicted"
+    );
+    assert_eq!(
+        verify_subject_claim(&temp, &report, &artifact, positive)["checks"][0]["assurance"],
+        "subject_verified"
+    );
+}
+
+#[test]
+fn typed_checklists_keep_unknown_questions_separate_from_verified_claims() {
+    let events = [
+        chain_event("checkpoint", "east", "finished", 0),
+        chain_event("checkpoint", "east", "unfinished", 0),
+        chain_event("capture_end", "east", "finished", 0),
+        chain_event("contrary", "east", "unfinished", 0),
+    ];
+    let (temp, report, artifact) = chain_fixture(&events, None);
+    let draft_path = temp.path().join("draft.json");
+    success(&[
+        "evidence",
+        artifact.to_str().unwrap(),
+        "--expected-sha256",
+        report["artifact"]["stored_sha256"].as_str().unwrap(),
+        "--draft-claims",
+        "--output",
+        draft_path.to_str().unwrap(),
+    ]);
+    let draft: Value = serde_json::from_slice(&fs::read(&draft_path).unwrap()).unwrap();
+    let findings = report["findings"].as_array().unwrap();
+    let finding = |line| {
+        findings
+            .iter()
+            .find(|f| f["details"]["event_chain"]["root"]["evidence_ref"]["line"] == line)
+            .unwrap()
+    };
+    let known = finding(1);
+    let unknown = finding(2);
+    let mut interval = draft["claims"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| {
+            c["kind"] == "interval"
+                && c["subject"]["source"]["evidence_ref"]["line"] == 1
+                && c["subject"]["end_operation"] == "capture_end"
+        })
+        .unwrap()
+        .clone();
+    interval["id"] = json!("finished-duration");
+    let mut contrary = subject_link(unknown, "contrary");
+    contrary["id"] = json!("contrary-link");
+    let mut assertions = json!({"version":1,"required_claim_ids":["finished-duration","unfinished-duration"],
+        "requirements":[
+            {"id":"finished-duration","kind":"interval","finding_id":known["id"],"pointer":interval["pointer"],"start_operation":"checkpoint","end_operation":"capture_end"},
+            {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],"start_operation":"checkpoint","end_operation":"capture_end"}],
+        "claims":[interval,contrary],"unresolved":[{"id":"unfinished-duration","reason":"No capture ending retained for this scoped root; completion and duration remain unknown."}],
+        "final_review":{"summary_claim_ids":["finished-duration"],"finding_claim_ids":["finished-duration","contrary-link"],"unresolved_question_ids":["unfinished-duration"],"checks":["event_subjects","duration_endpoints_and_units","operation_types_and_count_semantics","terminal_later_cached_contrary","summary_consistency","causal_support"]}});
+    let path = temp.path().join("review.json");
+    let verify = |a: &Value| {
+        let schema: Value =
+            serde_json::from_str(include_str!("../schemas/claim-assertions.schema.json")).unwrap();
+        jsonschema::validator_for(&schema)
+            .unwrap()
+            .validate(a)
+            .unwrap();
+        fs::write(&path, a.to_string()).unwrap();
+        let output = run(&[
+            "evidence",
+            artifact.to_str().unwrap(),
+            "--expected-sha256",
+            report["artifact"]["stored_sha256"].as_str().unwrap(),
+            "--claims",
+            path.to_str().unwrap(),
+        ]);
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        (output.status.success(), value)
+    };
+    let (ok, value) = verify(&assertions);
+    assert!(ok, "{value}");
+    let cv = &value["artifact_retrieval"]["claim_verification"];
+    assert_eq!(cv["status"], "verified_with_unknowns");
+    assert_eq!(
+        cv["unresolved_required_claim_ids"],
+        json!(["unfinished-duration"])
+    );
+    assert_eq!(cv["missing_required_claim_ids"], json!([]));
+    assert_eq!(cv["requirement_results"][1]["status"], "declared_unknown");
+    assert_eq!(
+        cv["final_review"]["status"],
+        "declared_checks_passed_with_unknowns"
+    );
+    assert_eq!(
+        value["artifact_retrieval"]["workflow"]["declared_claims"],
+        "verified_with_unknowns"
+    );
+    // The skill compiler produces schema-valid mappings and does not manufacture
+    // proof for an unknown. The retained verifier remains the authority.
+    let proposal_id = draft["claims"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| {
+            c["kind"] == "interval"
+                && c["subject"]["source"]["evidence_ref"]["line"] == 1
+                && c["subject"]["end_operation"] == "capture_end"
+        })
+        .unwrap()["id"]
+        .clone();
+    let mut plan = json!({"questions":[
+        {"id":"finished-duration","claim_id":proposal_id,
+         "binding":{"finding_id":known["id"],"pointer":interval["pointer"],"start_operation":"checkpoint","end_operation":"capture_end"}},
+        {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],
+         "end_operation":"capture_end","reason":"No supported ending for this scoped root"}],
+        "reviewed_checks":assertions["final_review"]["checks"]});
+    let plan_path = temp.path().join("plan.json");
+    let compile = |plan: &Value, name: &str| {
+        fs::write(&plan_path, plan.to_string()).unwrap();
+        let output_path = temp.path().join(name);
+        let output = Command::new("python3")
+            .args(["-I"])
+            .arg(root().join(".agents/skills/analyze-logs/scripts/map_questions.py"))
+            .arg("--draft")
+            .arg(if name == "compiled-unknown.json" {
+                temp.path().join("no-draft.json")
+            } else {
+                draft_path.clone()
+            })
+            .arg("--artifact")
+            .arg(&artifact)
+            .arg("--plan")
+            .arg(&plan_path)
+            .arg("--output")
+            .arg(&output_path)
+            .arg("--analyzer")
+            .arg(env!("CARGO_BIN_EXE_log-analyzer"))
+            .arg("--verification-output")
+            .arg(output_path.with_extension("verification.json"))
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            name != "compiled-wrong.json",
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let summary: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            summary["status"],
+            if name == "compiled-wrong.json" {
+                "needs_revision"
+            } else {
+                "verified_with_unknowns"
+            }
+        );
+        let report: Value = serde_json::from_slice(
+            &fs::read(output_path.with_extension("verification.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            summary["requirement_results"],
+            report["artifact_retrieval"]["claim_verification"]["requirement_results"]
+        );
+        serde_json::from_slice::<Value>(&fs::read(output_path).unwrap()).unwrap()
+    };
+    let compiled = compile(&plan, "compiled.json");
+    assert!(verify(&compiled).0);
+    let all_unknown = json!({"questions":[
+        {"id":"unfinished-duration","kind":"interval","finding_id":unknown["id"],
+         "end_operation":"capture_end","reason":"No supported ending for this scoped root"},
+        {"id":"cause","kind":"fact","finding_id":unknown["id"],"reason":"No causal mechanism established"},
+        {"id":"finish-link","kind":"link","finding_id":unknown["id"],"step_id":"capture-end","reason":"No supported scoped ending"}],
+        "reviewed_checks":assertions["final_review"]["checks"]});
+    let all_unknown = compile(&all_unknown, "compiled-unknown.json");
+    assert_eq!(all_unknown["claims"], json!([]));
+    let (ok, value) = verify(&all_unknown);
+    assert!(ok, "{value}");
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["checks"],
+        json!([])
+    );
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["final_review"]["status"],
+        "declared_checks_passed_with_unknowns"
+    );
+    let mut incomplete_unknown = all_unknown.clone();
+    incomplete_unknown["unresolved"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(!verify(&incomplete_unknown).0);
+    let mut unanchored_unknown = all_unknown.clone();
+    unanchored_unknown["requirements"][0]["finding_id"] = json!("missing-root");
+    assert!(!verify(&unanchored_unknown).0);
+    let mut available_unknown = all_unknown.clone();
+    available_unknown["requirements"][0]["finding_id"] = known["id"].clone();
+    assert!(!verify(&available_unknown).0);
+    assert!(verify(&all_unknown).0);
+    fs::write(&plan_path, plan.to_string()).unwrap();
+    let prior_report = temp.path().join("compiled.verification.json");
+    let prior_bytes = fs::read(&prior_report).unwrap();
+    let fresh_claims = temp.path().join("stale-proof-claims.json");
+    let rejected = Command::new("python3")
+        .arg("-I")
+        .arg(root().join(".agents/skills/analyze-logs/scripts/map_questions.py"))
+        .arg("--draft")
+        .arg(&draft_path)
+        .arg("--artifact")
+        .arg(&artifact)
+        .arg("--plan")
+        .arg(&plan_path)
+        .arg("--output")
+        .arg(&fresh_claims)
+        .arg("--analyzer")
+        .arg(env!("CARGO_BIN_EXE_log-analyzer"))
+        .arg("--verification-output")
+        .arg(&prior_report)
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(rejected.stdout.is_empty());
+    assert!(!fresh_claims.exists());
+    assert_eq!(fs::read(&prior_report).unwrap(), prior_bytes);
+    assert!(verify(&compiled).0);
+    plan["questions"][1] = json!({"id":"unfinished-duration","kind":"interval",
+        "finding_id":known["id"],"end_operation":"capture_end","reason":"Trying to hide a supported measurement"});
+    assert!(!verify(&compile(&plan, "compiled-wrong.json")).0);
+    assert!(verify(&compiled).0);
+    // An unrelated supported link cannot fulfill a requested interval ID.
+    let positive = assertions.clone();
+    assertions["unresolved"] = json!([]);
+    assertions["claims"][1]["id"] = json!("unfinished-duration");
+    assertions["final_review"]["finding_claim_ids"][1] = json!("unfinished-duration");
+    assertions["final_review"]["unresolved_question_ids"] = json!([]);
+    let (ok, value) = verify(&assertions);
+    assert!(!ok);
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["checks"][1]["status"],
+        "verified"
+    );
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["requirement_results"][1]["status"],
+        "needs_revision"
+    );
+    assert!(verify(&positive).0);
+    // A source-bound cached/contrary interval also has the wrong ending name.
+    let mut wrong_interval = draft["claims"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "interval" && c["subject"]["source"]["evidence_ref"]["line"] == 2)
+        .unwrap()
+        .clone();
+    wrong_interval["id"] = json!("unfinished-duration");
+    assertions["claims"][1] = wrong_interval;
+    assert!(!verify(&assertions).0);
+    assert!(verify(&positive).0);
+    // A known supported interval cannot be hidden in the unresolved list.
+    assertions = positive.clone();
+    assertions["claims"] = json!([assertions["claims"][1]]);
+    assertions["unresolved"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"id":"finished-duration","reason":"Unknown"}));
+    assertions["final_review"]["summary_claim_ids"] = json!([]);
+    assertions["final_review"]["finding_claim_ids"] = json!(["contrary-link"]);
+    assertions["final_review"]["unresolved_question_ids"] =
+        json!(["finished-duration", "unfinished-duration"]);
+    let (ok, value) = verify(&assertions);
+    assert!(!ok);
+    assert_eq!(
+        value["artifact_retrieval"]["claim_verification"]["requirement_results"][0]["reason"],
+        "requested_interval_available_cannot_declare_unknown"
+    );
+    assert!(verify(&positive).0);
+    let mut missing_summary_unknown = positive.clone();
+    missing_summary_unknown["final_review"]["unresolved_question_ids"] = json!([]);
+    assert!(!verify(&missing_summary_unknown).0);
+    assert!(verify(&positive).0);
 }
 
 #[test]

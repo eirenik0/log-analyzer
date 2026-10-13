@@ -206,3 +206,12 @@ The measured process uses fixed 8 MiB item and 2 GiB index/state allowances. Raw
 results are saved in
 [`../evals/streaming-selected-retrieval-memory.json`](../evals/streaming-selected-retrieval-memory.json).
 These are measured synthetic thresholds, not an OS-enforced RSS ceiling.
+
+Subject-bound claims use a bounded projection of explicitly referenced pointers and
+findings, preserving their original array indices for requirement/endpoint checks.
+Referenced evidence shares an 8 MiB allowance (or the smaller item allowance), and
+claim observations/drafts are capped at 8 MiB. Distinct-record and operation-filtered
+counts visit one record at a time with an on-disk identity index. Draft generation
+and workflow summaries scan findings incrementally; they retain bounded candidate
+assertions and gap samples with exact omission counts. No claim path reconstructs
+the complete artifact tree.

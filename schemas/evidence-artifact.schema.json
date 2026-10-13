@@ -1407,6 +1407,12 @@
                 },
                 "event_chain": {
                   "$ref": "#/$defs/event_chain"
+                },
+                "gap_classification": {
+                  "enum": [
+                    "recognition_unresolved",
+                    "identity_or_scope_unavailable"
+                  ]
                 }
               },
               "required": [
@@ -1925,6 +1931,12 @@
                     "$ref": "#/$defs/occurrence"
                   },
                   "minItems": 0
+                },
+                "gap_classification": {
+                  "enum": [
+                    "recognition_unresolved",
+                    "identity_or_scope_unavailable"
+                  ]
                 }
               },
               "required": [
@@ -2996,6 +3008,12 @@
                             "string",
                             "null"
                           ]
+                        },
+                        "source": {
+                          "$ref": "#/$defs/occurrence"
+                        },
+                        "target": {
+                          "$ref": "#/$defs/occurrence"
                         }
                       },
                       "required": [
@@ -3228,6 +3246,12 @@
             "null"
           ],
           "minimum": 0
+        },
+        "root_event_name": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -3339,6 +3363,33 @@
     },
     "verification": {
       "$ref": "#/$defs/verification"
+    },
+    "question_checklist": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question",
+        "required_relationship"
+      ],
+      "properties": {
+        "question": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_relationship": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "required": [

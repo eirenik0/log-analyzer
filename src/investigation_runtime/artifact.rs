@@ -214,7 +214,88 @@ fn opaque(value: &mut Value) {
         *value = json!(format!("opaque-{}", digest(text.as_bytes())));
     }
 }
+fn redact_claim_verification(verification: &mut Value) {
+    fn identifier(value: &mut Value) {
+        if !value.as_str().is_some_and(|s| {
+            s.strip_prefix("opaque-")
+                .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()))
+        }) {
+            opaque(value);
+        }
+    }
+    fn identifiers(value: &mut Value) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    if matches!(key.as_str(), "id" | "finding_id") {
+                        identifier(child);
+                    } else if key.ends_with("_claim_ids") || key == "unresolved_question_ids" {
+                        for id in child.as_array_mut().into_iter().flatten() {
+                            identifier(id);
+                        }
+                    } else {
+                        identifiers(child);
+                    }
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(identifiers),
+            _ => (),
+        }
+    }
+    for question in verification["questions"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        *question = json!("[REDACTED QUESTION]");
+    }
+    for check in verification["checks"].as_array_mut().into_iter().flatten() {
+        check["label"] = Value::Null;
+        if check["identity"].is_object() {
+            check["identity"]["expected"] = Value::Null;
+        }
+    }
+    for unknown in verification["unresolved"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        unknown["reason"] = json!("[REDACTED REASON]");
+    }
+    if verification["final_review"].is_object() {
+        for issue in verification["final_review"]["issues"]
+            .as_array_mut()
+            .into_iter()
+            .flatten()
+        {
+            *issue = json!("[REDACTED REVIEW ISSUE]");
+        }
+        // Additional caller-defined review dimensions may contain private text.
+        verification["final_review"]["acknowledged_prose_checks"] = Value::Null;
+    }
+    identifiers(verification);
+}
+pub(super) fn checklist(artifact: &Value) -> &Value {
+    artifact
+        .get("question_checklist")
+        .unwrap_or(&artifact["report_metadata"]["evidence"]["query"]["command"]["Investigate"])
+}
 pub(super) fn redact(artifact: &mut Value) {
+    let original = checklist(artifact);
+    let questions: Vec<_> = original["question"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|_| "[REDACTED QUESTION]")
+        .collect();
+    let required: Vec<_> = original["required_relationship"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(|id| format!("opaque-{}", digest(id.as_bytes())))
+        .collect();
+    artifact["question_checklist"] = json!({"question":questions,"required_relationship":required});
     artifact["content"] = json!("redacted");
     artifact["effective_profile"] = Value::Null;
     artifact["effective_profile_omitted"] = json!(true);
@@ -279,7 +360,7 @@ pub(super) fn redact(artifact: &mut Value) {
             finding["details"]["fingerprint"] = Value::Null;
         }
         if let Some(chain) = finding["details"].get_mut("event_chain") {
-            for key in ["id", "title"] {
+            for key in ["id", "title", "root_event_name"] {
                 opaque(&mut chain[key]);
             }
             for key in ["scope_fields"] {
@@ -771,6 +852,43 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     )?;
     indexed.validate()?;
     let retained = &indexed.base;
+    if cli.redact && retained["report_metadata"]["evidence"]["redaction"]["applied"] != true {
+        return Err("Retrieve an artifact created with --redact; original evidence cannot be presented as a redacted retained artifact".into());
+    }
+    if args.draft_claims {
+        let draft = super::claims::draft_indexed(&indexed, args.id.as_deref())?;
+        let path = cli
+            .output
+            .as_ref()
+            .ok_or("--draft-claims requires --output")?;
+        if same_destination(path, &args.artifact, true) {
+            return Err("Claim draft destination conflicts with the retained artifact".into());
+        }
+        for input in retained["report_metadata"]["evidence"]["inputs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            if input["file"]
+                .as_str()
+                .is_some_and(|file| same_destination(path, Path::new(file), true))
+            {
+                return Err("Claim draft destination conflicts with a captured source".into());
+            }
+        }
+        let mut temporary = stage(path)?;
+        serde_json::to_writer_pretty(&mut temporary, &draft)?;
+        temporary.write_all(b"\n")?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist_noclobber(path)
+            .map_err(|_| "Claim drafts save only new files; choose a new --output path")?;
+        println!(
+            "{}",
+            json!({"status":"draft_requires_review","claims_path":crate::evidence::path_label(path),"candidate_claims":draft["claims"].as_array().map_or(0,Vec::len),"limitations":["Draft expectations come from retained evidence, not independent truth. Match the question and source semantics, remove unrelated claims, map checklist IDs, and acknowledge final review only after inspection. Missing endings are not drafted as absence claims."],"next_action":{"kind":"review_then_verify_claims","argv":[std::env::current_exe()?.to_string_lossy(),"evidence",crate::evidence::path_label(&args.artifact),"--expected-sha256",hash,"--artifact-max-bytes",args.artifact_max_bytes.to_string(),"--claims",crate::evidence::path_label(path)]}})
+        );
+        return Ok(());
+    }
     let allowed = [
         "/findings",
         "/records",
@@ -846,14 +964,14 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         }
         count
     };
-    let claim_verification = args
+    let mut claim_verification = args
         .claims
         .as_ref()
         .map(|path| super::claims::verify_indexed(&indexed, path))
         .transpose()?;
-    let claims_failed = claim_verification
-        .as_ref()
-        .is_some_and(|value| value["status"] != "verified");
+    let claims_failed = claim_verification.as_ref().is_some_and(|value| {
+        value["status"] != "verified" && value["status"] != "verified_with_unknowns"
+    });
     let base = binding(retained, &hash);
     let query = if !args.compact && claim_verification.is_none() {
         json!([base, args.collection, args.id])
@@ -867,6 +985,11 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         ])
     };
     let query_binding = digest(query.to_string().as_bytes());
+    if retained["content"] == "redacted"
+        && let Some(verification) = &mut claim_verification
+    {
+        redact_claim_verification(verification);
+    }
     let prior = if let Some(cursor) = &cli.report_cursor {
         let parts: Vec<_> = cursor.split(':').collect();
         if parts.len() != 3 || parts[0] != "v1" || parts[1] != query_binding {
@@ -895,9 +1018,97 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     if args.compact {
         output["artifact_retrieval"]["view"] = json!("compact");
     }
+    let mut declared_questions: Vec<String> = claim_verification
+        .as_ref()
+        .and_then(|v| v["questions"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    let mut declared_required: Vec<String> = claim_verification
+        .as_ref()
+        .and_then(|v| v["required_claim_ids"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    let checklist = checklist(retained);
+    if declared_questions.is_empty() {
+        declared_questions = checklist["question"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect();
+    }
+    let original_required: Vec<String> = checklist["required_relationship"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    for id in original_required {
+        if !declared_required.contains(&id) {
+            declared_required.push(id);
+        }
+    }
+    let mut workflow = workflow_indexed(&indexed, &declared_questions, &declared_required)?;
     if let Some(verification) = claim_verification {
+        workflow["declared_claims"] = verification["status"].clone();
+        workflow["claim_results"] = json!(
+            verification["checks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|c| json!({"id":c["id"],"status":c["status"],"assurance":c["assurance"]}))
+                .collect::<Vec<_>>()
+        );
+        let missing: Vec<_> = declared_required
+            .iter()
+            .filter(|id| {
+                !verification["unresolved_required_claim_ids"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|u| u == *id)
+                    && !verification["checks"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .any(|c| c["id"] == **id)
+            })
+            .collect();
+        if !missing.is_empty() {
+            workflow["declared_claims"] = json!("needs_revision");
+        }
+        workflow["missing_required_claim_ids"] = json!(missing);
+        workflow["unresolved_required_claim_ids"] =
+            verification["unresolved_required_claim_ids"].clone();
+        workflow["requirement_results"] = verification["requirement_results"].clone();
         output["artifact_retrieval"]["claim_verification"] = verification;
     }
+    output["artifact_retrieval"]["workflow"] = workflow;
+    let selected_finding_id = if matches!(args.collection.as_str(), "/findings" | "/chain-bundles")
+    {
+        match args.id.as_deref() {
+            Some(id)
+                if indexed
+                    .find_node(id)?
+                    .map(|n| n.pointer("/details/event_chain"))
+                    .transpose()?
+                    .flatten()
+                    .is_some() =>
+            {
+                Some(id)
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let has_chains = output["artifact_retrieval"]["workflow"]["chain_finding_ids"]
+        .as_array()
+        .is_some_and(|ids| !ids.is_empty());
     let refresh = |output: &mut Value, count: u64, status: &str| {
         let section = &mut output["artifact_retrieval"];
         section["displayed"] = json!(count);
@@ -908,6 +1119,64 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         } else {
             Value::Null
         };
+        section["workflow"]["evidence_delivery"] = json!({"collection":args.collection,"finding_id":selected_finding_id,"delivered_this_page":count,"omitted_this_collection":total-prior-count,"prior_items":prior});
+        let mut argv = vec![
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.to_str().map(str::to_owned))
+                .unwrap_or_else(|| "log-analyzer".into()),
+            "evidence".into(),
+            crate::evidence::path_label(&args.artifact),
+            "--expected-sha256".into(),
+            hash.clone(),
+            "--artifact-max-bytes".into(),
+            args.artifact_max_bytes.to_string(),
+        ];
+        let draft_base = argv.clone();
+        argv.extend([
+            "--collection".into(),
+            args.collection.clone(),
+            "--report-max-items".into(),
+            max.clamp(1, 5).to_string(),
+        ]);
+        if let Some(id) = &args.id {
+            argv.extend(["--id".into(), id.clone()]);
+        }
+        if args.compact {
+            argv.push("--compact".into());
+        }
+        if let Some(claims) = &args.claims {
+            argv.extend(["--claims".into(), crate::evidence::path_label(claims)]);
+        }
+        if total > prior && count == 0 {
+            section["workflow"]["next_action"] = json!({"kind":"retrieval_stopped","argv":null,"reason":"No evidence delivered within this page budget. Stop; revise limits only within the agreed budget. Do not loop the unchanged query."});
+        } else if let Some(cursor) = section["next_cursor"].as_str() {
+            argv.extend(["--report-cursor".into(), cursor.into()]);
+            section["workflow"]["next_action"] =
+                json!({"kind":"retrieve_omitted_evidence","argv":argv});
+        } else if args.claims.is_none()
+            && retained["content"] == "original"
+            && count > 0
+            && has_chains
+        {
+            let mut argv = draft_base;
+            if let Some(id) = selected_finding_id {
+                argv.extend(["--id".into(), id.into()]);
+            }
+            argv.extend([
+                "--draft-claims".into(),
+                "--output".into(),
+                crate::evidence::path_label(&args.artifact.with_file_name("claims-draft.json")),
+            ]);
+            section["workflow"]["next_action"] = json!({"kind":"review_then_draft_claims","argv":argv,"reason":"Inspect delivered subjects and gaps first. Save editable assertions, map question checklist IDs, remove unrelated intervals, then run the returned verification argv. Drafting does not establish truth or review."});
+        } else {
+            let reason = if retained["content"] == "redacted" {
+                "Redacted evidence cannot produce source-bound drafts. Preserve unknowns and report identity and source-verification limits."
+            } else {
+                "Inspect exact subjects, terminal/contrary/later events and omissions. Declare source-bound claims after review; do not repeat completed retrieval without a specific remaining gap."
+            };
+            section["workflow"]["next_action"] = json!({"kind":"inspect_delivered_evidence_and_verification","argv":null,"reason":reason});
+        }
     };
     refresh(
         &mut output,
@@ -1215,4 +1484,104 @@ fn verify_sources(retained: &Value, max_bytes: u64) -> Value {
         })
         .collect();
     json!({"status":"checked","inputs":states,"verified_bytes":max_bytes-remaining,"facts":"retained_snapshot","reason":"Current file identity does not rewrite retained evidence"})
+}
+
+fn workflow_indexed(
+    indexed: &super::indexed_artifact::IndexedArtifact,
+    questions: &[String],
+    required: &[String],
+) -> Result<Value> {
+    let mut workflow = super::guidance::workflow(&indexed.base, questions, required, &[]);
+    let mut chain_ids = Vec::new();
+    let mut chain_count = 0u64;
+    let mut root_gaps = Vec::new();
+    let mut step_gaps = Vec::new();
+    let mut gap_count = 0u64;
+    let mut sample_bytes = 0u64;
+    for node in indexed
+        .root
+        .field("findings")?
+        .ok_or("missing findings")?
+        .children()
+    {
+        indexed.checkpoint()?;
+        let node = node?;
+        let chain = node.pointer("/details/event_chain")?.is_some();
+        if !chain && node.pointer("/details/gap_classification")?.is_none() {
+            continue;
+        }
+        let finding = node.read(indexed.limits.item_bytes)?;
+        if chain {
+            chain_count += 1;
+            if chain_ids.len() < 5 {
+                chain_ids.push(finding["id"].clone());
+            }
+        }
+        let mut part = indexed.base.clone();
+        part["findings"] = json!([finding]);
+        let sample = super::guidance::workflow(&part, questions, required, &[]);
+        let gaps = sample["gaps"].as_array().ok_or("missing workflow gaps")?;
+        gap_count += gaps.len() as u64 + sample["omitted_gaps"].as_u64().unwrap_or(0);
+        for gap in gaps {
+            let destination = if gap["step_id"] == "$root" {
+                &mut root_gaps
+            } else {
+                &mut step_gaps
+            };
+            if destination.len() < 5 {
+                sample_bytes += gap.to_string().len() as u64;
+                if sample_bytes > indexed.limits.item_bytes {
+                    return Err("artifact workflow metadata exceeds item byte limit".into());
+                }
+                destination.push(gap.clone());
+            }
+        }
+    }
+    root_gaps.extend(
+        step_gaps
+            .into_iter()
+            .take(5usize.saturating_sub(root_gaps.len())),
+    );
+    workflow["chain_finding_ids"] = json!(chain_ids);
+    workflow["omitted_chain_finding_ids"] =
+        json!(chain_count.saturating_sub(chain_ids.len() as u64));
+    workflow["omitted_gaps"] = json!(gap_count.saturating_sub(root_gaps.len() as u64));
+    workflow["gaps"] = json!(root_gaps);
+    Ok(workflow)
+}
+
+#[cfg(test)]
+mod indexed_workflow_tests {
+    use super::*;
+    #[test]
+    fn streamed_workflow_preserves_global_gap_order_and_omission_counts() {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../examples/investigation-contract/supported.artifact.json"
+        ))
+        .unwrap();
+        let findings: Vec<_> = (0..9).map(|i| {
+            let steps: Vec<_> = (0..8).map(|j| json!({"id":format!("step-{j}"),"status":"not_observed","recognition":{"role_matched_records":0,"rule_matched_records":1},"omitted_occurrences":0,"ambiguity":{}})).collect();
+            let mut finding = json!({"id":format!("f-{i}"),"details":{"event_chain":{"ambiguity":"none","steps":steps}}});
+            if i % 2 == 1 { finding["details"]["gap_classification"] = json!("recognition_unresolved"); }
+            finding
+        }).collect();
+        value["findings"] = json!(findings);
+        let file = tempfile::NamedTempFile::new().unwrap();
+        serde_json::to_writer(file.as_file(), &value).unwrap();
+        let indexed = super::super::indexed_artifact::IndexedArtifact::open(
+            file.reopen().unwrap(),
+            super::super::indexed_artifact::Limits {
+                item_bytes: 8 << 20,
+                index_bytes: 64 << 20,
+                state_bytes: 64 << 20,
+                elapsed_ms: 30000,
+                work_units: 1_000_000,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            workflow_indexed(&indexed, &[], &[]).unwrap(),
+            super::super::guidance::workflow(&value, &[], &[], &[])
+        );
+    }
 }

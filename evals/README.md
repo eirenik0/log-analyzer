@@ -332,9 +332,36 @@ costs. Create an aggregate with `python3 evals/publish.py REPORT OUTPUT`. Inspec
 optional model configuration before sharing; the publisher is a projection, not
 a universal secret detector.
 
-There is currently **no executed model comparison** and no measured model variance,
-accuracy improvement, token savings or provider-cost improvement. Scripted success
-establishes harness/scorer regression gates only. First real paired model runs should
-establish repeat variability and evidence/cause/abstention baselines before choosing
-quality targets. Small public fixtures do not establish production coverage,
+The adapter comparisons above have not been executed. The separate native comparison
+below has run, but establishes no accuracy improvement, token savings or provider-cost
+improvement. Scripted success establishes harness/scorer regression gates only.
+Small public fixtures do not establish production coverage,
 acquisition completeness, arbitrary prompt-injection resistance or throughput.
+
+## Native evidence-workflow comparison
+
+`native_workflow.py` compares frozen analyzer/skill trees containing `log-analyzer`,
+`README.md`, `config/` and `.agents/skills/analyze-logs/`. Record their source/binary
+hashes in a freeze manifest and use a fresh result directory:
+
+```sh
+python3 evals/native_workflow.py --frozen-root /absolute/frozen-experiment --run
+```
+
+The native Claude runtime is trusted, not filesystem-sandboxed. Default Haiku/Opus
+aliases have no effort override: two cases, two repeats, 30 calls/180 seconds/2 MB/
+$1 API-equivalent per trial (16 trials, at most $16). Both arms receive identical
+inputs and generic JSON-schema delivery; the scorer checks typed answers and source
+witnesses, not arbitrary prose, citation consumption or causality.
+
+The [historical result](results/question-plan-compact-native.json) records 16/16
+factual passes, but only 7/8 candidate final reviews (Haiku 3/4, Opus 4/4).
+One Haiku held-out trial skipped recovery and verification after 79 seconds/9 calls.
+Independent held-out validation covered 3/4 trials; interval proof covered Haiku
+6/8 and Opus 8/8. Cost was $3.60689522 API-equivalent. Small public cases, two repeats,
+unblinded inspection and uncontrolled host load establish no accuracy or savings gain.
+
+The summary retains failed-attempt history and hashes; detailed reports and traces
+remain local. This run predates the PR's skill reduction and does not validate the
+shortened skill. The native delivery protocol changed equally in both arms; its
+format effect cannot be attributed solely to the skill.
