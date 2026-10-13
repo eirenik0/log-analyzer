@@ -227,6 +227,32 @@ pub(crate) fn validate(
                 entry.source_line_number as u64,
                 entry.source_row_path.clone(),
             )];
+            for (field, expected) in [
+                (
+                    "timestamp",
+                    serde_json::json!(entry.source_timestamp.map(|time| time.to_rfc3339())),
+                ),
+                (
+                    "timestamp_year_source",
+                    serde_json::json!(if entry.timestamp_year_inferred {
+                        "inferred"
+                    } else {
+                        "source"
+                    }),
+                ),
+                (
+                    "timestamp_offset_source",
+                    serde_json::json!(if entry.source_timestamp.is_some() {
+                        "source"
+                    } else {
+                        "assumed"
+                    }),
+                ),
+            ] {
+                if record[field] != expected {
+                    return Err(format!("retained {field} differs from captured source"));
+                }
+            }
             if serde_json::to_value(&entry.classification).map_err(|e| e.to_string())?
                 != record["fields"]["classification"]
             {

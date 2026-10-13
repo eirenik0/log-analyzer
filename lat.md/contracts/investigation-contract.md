@@ -161,7 +161,8 @@ verification is unavailable. Redaction may omit
 those semantics and keeps its source-verification limitation explicit.
 [[src/investigation_runtime/chain_validation.rs#validate|Chain cardinality validation]]
 reuses the parser and chain engine on retained captures and profile rules to check
-root/source/target counts. Fresh classifications must equal retained classifications.
+root/source/target counts. Fresh classifications, timestamps and year/offset provenance must equal retained
+record metadata before interval availability or duration is trusted.
 Stored filters and exact selectors reconstruct each unaffected input's complete
 selected record population; missing retained records are rejected. It reads no live
 input files. Missing profiles or captures defer this relation explicitly; exhausted

@@ -1803,3 +1803,118 @@ fn checked_presentation_requires_canonical_qualifications() {
         }
     }
 }
+
+#[test]
+fn replay_binds_timestamps_and_provenance_before_interval_validation() {
+    fn update_intervals(value: &mut Value, occurrence: &Value, timestamp: &Value) {
+        match value {
+            Value::Object(fields) => {
+                if let Some(interval) = fields.get_mut("endpoint_interval") {
+                    let mut changed = false;
+                    for (side, key) in [("source", "start_timestamp"), ("target", "end_timestamp")]
+                    {
+                        if interval[side] == *occurrence {
+                            interval[key] = timestamp.clone();
+                            changed = true;
+                        }
+                    }
+                    if changed {
+                        if let (Some(start), Some(end)) = (
+                            interval["start_timestamp"].as_str(),
+                            interval["end_timestamp"].as_str(),
+                        ) {
+                            let elapsed = chrono::DateTime::parse_from_rfc3339(end)
+                                .unwrap()
+                                .signed_duration_since(
+                                    chrono::DateTime::parse_from_rfc3339(start).unwrap(),
+                                );
+                            interval["value"] =
+                                json!(elapsed.num_nanoseconds().unwrap() as f64 / 1_000_000.0);
+                        } else {
+                            interval["status"] = json!("unavailable");
+                            interval["reason"] = json!("explicit_source_timestamps_unavailable");
+                            interval["value"] = Value::Null;
+                        }
+                    }
+                }
+                for child in fields.values_mut() {
+                    update_intervals(child, occurrence, timestamp);
+                }
+            }
+            Value::Array(values) => {
+                for child in values {
+                    update_intervals(child, occurrence, timestamp);
+                }
+            }
+            _ => (),
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "timestamps",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("timestamps")).unwrap()).unwrap();
+    let occurrence =
+        step(chain(&report["findings"], "alpha"), "capture-end")["join_samples"][0]["target"]
+            .clone();
+    for (field, replacement) in [
+        ("timestamp", json!("2026-01-01T02:00:09.500+02:00")),
+        ("timestamp", Value::Null),
+        ("timestamp_year_source", json!("inferred")),
+        ("timestamp_offset_source", json!("assumed")),
+    ] {
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        let record = saved["records"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|r| r["occurrence"] == occurrence)
+            .unwrap();
+        record[field] = replacement.clone();
+        if field == "timestamp" {
+            for sequence in saved["sequences"].as_array_mut().unwrap() {
+                for event in sequence["events"].as_array_mut().unwrap() {
+                    if event["occurrence"] == occurrence {
+                        event["timestamp"] = replacement.clone();
+                    }
+                }
+                if replacement.is_null() {
+                    sequence["events"].as_array_mut().unwrap().sort_by_key(|e| {
+                        (
+                            e["timestamp"].is_null(),
+                            e["record_ordinal"].as_u64().unwrap(),
+                        )
+                    });
+                }
+            }
+        }
+        let endpoint = if field == "timestamp" {
+            replacement
+        } else {
+            Value::Null
+        };
+        update_intervals(&mut altered, &occurrence, &endpoint);
+        update_intervals(&mut saved, &occurrence, &endpoint);
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        altered["presentation"]["serialized_bytes"] = Value::Null;
+        altered["presentation"]["serialized_characters"] = Value::Null;
+        shape(&altered, false);
+        log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(
+            error
+                .reason
+                .contains(&format!("retained {field} differs from captured source")),
+            "{field}: {error}"
+        );
+    }
+}

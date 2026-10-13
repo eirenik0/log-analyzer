@@ -52,6 +52,9 @@ rejects fabricated join identities and mutually consistent report/artifact edits
 that invent a completion, remove steps or joins, or change labels, counts, ambiguity
 and completeness. Processing cutoffs
 explicitly defer completeness when calculation-stage history is unavailable.
+[[tests/test_checked_presentation.rs#replay_binds_timestamps_and_provenance_before_interval_validation]]
+rejects changed or removed retained timestamps and altered year/offset provenance,
+even when event sequences and interval measurements are updated consistently.
 [[tests/test_checked_presentation.rs#checked_presentation_requires_canonical_qualifications]]
 rejects empty or replaced aggregate limits, finding assurance limits and population
 rules in full and empty-page reports, with and without retained artifact bytes.
