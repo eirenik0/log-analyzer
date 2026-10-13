@@ -35,8 +35,10 @@ Project behavior/details should be discovered from:
 
 ## Design Decisions
 
-Follow [lat.md](lat.md), the canonical design philosophy. Update principles there
-and link to them from other documents instead of duplicating them.
+Consult the [Lat knowledge graph](lat.md/lat.md) before design changes; use
+`lat locate` and `lat section` to retrieve relevant context. Keep canonical
+principles and designs there, distinguish proposals from implemented behavior,
+and run `lat check` after changing the graph or code it references.
 
 ## Communication Style
 

@@ -17,9 +17,10 @@ built-in or validated file-based profile.
 
 ## Design philosophy
 
-[lat.md](lat.md) is the canonical source for the project's design philosophy.
-The [checked analysis design](docs/checked-analysis.md) applies it to the proposed
-interface, failure behavior and acceptance cases.
+The [Lat knowledge graph](lat.md/lat.md) holds the canonical
+[design philosophy](lat.md/philosophy.md) and
+[proposed checked-analysis design](lat.md/checked-analysis.md).
+It uses [Lat](https://www.lat.md/) to validate links between concepts, code and tests.
 
 ## Installation
 

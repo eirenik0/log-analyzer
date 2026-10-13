@@ -1,8 +1,6 @@
 # Log Analyzer philosophy
 
-This is the canonical source for the project's design principles. README.md,
-AGENTS.md and implementation designs refer here. These principles guide ongoing
-development; they do not claim every current workflow already satisfies them.
+These are the project's agreed design principles, guiding the [[checked-analysis|proposed checked-analysis design]]. They do not claim every current workflow already satisfies them.
 
 Build a log analyzer that gives useful, trustworthy answers through one command.
 

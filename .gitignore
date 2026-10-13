@@ -113,3 +113,4 @@ logs/
 # Python check artifacts
 __pycache__/
 *.pyc
+.lat-build
