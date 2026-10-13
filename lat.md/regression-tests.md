@@ -27,6 +27,11 @@ keeps aggregate assurance unavailable for redaction, artifact limits and mixed
 UTF-8/non-UTF-8 input, including pages with no displayed findings.
 It rejects independently mutated uncertainty counts and assurance against retained
 artifacts while accepting older reports that omit the optional aggregate.
+[[tests/test_checked_presentation.rs#checked_assurance_rejects_levels_and_bindings_that_disagree_with_evidence]]
+rejects altered assurance levels and coordinated binding changes.
+[[tests/test_checked_presentation.rs#unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact]]
+rejects timestamp and operation changes in both report and artifact for ambiguous
+and negative intervals, preserving the distinction between endpoints and measurements.
 
 ## Missing join identity
 

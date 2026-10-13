@@ -538,3 +538,176 @@ fn checked_coverage_distinguishes_unparsed_partial_and_empty_selection() {
         "complete"
     );
 }
+
+#[test]
+fn checked_assurance_rejects_levels_and_bindings_that_disagree_with_evidence() {
+    let temp = tempfile::tempdir().unwrap();
+    for (name, options) in [
+        ("original", vec!["--json", "--complete-output"]),
+        ("redacted", vec!["--json", "--complete-output", "--redact"]),
+        (
+            "unavailable",
+            vec!["--json", "--complete-output", "--artifact-max-bytes", "1"],
+        ),
+    ] {
+        let report: Value =
+            serde_json::from_str(&run(temp.path(), name, PROFILE, &[INPUT], &options)).unwrap();
+        let bytes = fs::read(temp.path().join(name)).ok();
+        log_analyzer::investigation::validate_relations(&report, bytes.as_deref()).unwrap();
+        let mut levels = std::collections::BTreeSet::new();
+        for (index, finding) in report["findings"].as_array().unwrap().iter().enumerate() {
+            let level = finding["checked"]["assurance"]["level"].as_str().unwrap();
+            if !levels.insert(level) {
+                continue;
+            }
+            for altered_level in ["source_bound", "link_exists", "relations_only"] {
+                if altered_level == level {
+                    continue;
+                }
+                let mut altered = report.clone();
+                altered["findings"][index]["checked"]["assurance"]["level"] = json!(altered_level);
+                shape(&altered, false);
+                for artifact in [None, bytes.as_deref()] {
+                    let error = log_analyzer::investigation::validate_relations(&altered, artifact)
+                        .unwrap_err();
+                    assert!(
+                        error.reason.contains("assurance level"),
+                        "{name}/{level}/{altered_level}: {error}"
+                    );
+                }
+            }
+            if bytes.is_some() {
+                let mut altered = report.clone();
+                let assurance = &mut altered["findings"][index]["checked"]["assurance"];
+                let validated = assurance["source_binding"] == "validated";
+                assurance["source_binding"] = json!(if validated {
+                    "unavailable"
+                } else {
+                    "validated"
+                });
+                assurance["subject_verification"] = json!(if validated {
+                    "unavailable"
+                } else {
+                    "not_requested"
+                });
+                assurance["level"] = json!(if validated {
+                    "relations_only"
+                } else {
+                    "link_exists"
+                });
+                shape(&altered, false);
+                let error =
+                    log_analyzer::investigation::validate_relations(&altered, bytes.as_deref())
+                        .unwrap_err();
+                assert!(
+                    error.reason.contains("source binding"),
+                    "{name}/{level}: {error}"
+                );
+            }
+        }
+        if name == "original" {
+            assert_eq!(
+                levels,
+                ["link_exists", "source_bound"].into_iter().collect()
+            );
+        } else {
+            assert_eq!(levels, ["relations_only"].into_iter().collect());
+        }
+    }
+}
+
+#[test]
+fn unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact() {
+    let temp = tempfile::tempdir().unwrap();
+    for (name, expected_reason) in [
+        ("ambiguous", "ambiguous_endpoint_population"),
+        ("negative", "negative_or_out_of_range_interval"),
+    ] {
+        let mut rows: Vec<Value> = fs::read_to_string(INPUT)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        if name == "ambiguous" {
+            rows.push(rows[0].clone());
+        } else {
+            rows[10]["ts"] = json!("2025-12-31T23:59:59+00:00");
+        }
+        let input = temp.path().join(format!("{name}.jsonl"));
+        fs::write(
+            &input,
+            rows.iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        let report: Value = serde_json::from_str(&run(
+            temp.path(),
+            name,
+            PROFILE,
+            &[input.to_str().unwrap()],
+            &["--json", "--complete-output"],
+        ))
+        .unwrap();
+        let artifact_bytes = fs::read(temp.path().join(name)).unwrap();
+        let artifact: Value = serde_json::from_slice(&artifact_bytes).unwrap();
+        log_analyzer::investigation::validate_relations(&report, Some(&artifact_bytes)).unwrap();
+        let finding = chain(&report["findings"], "alpha");
+        let finding_index = report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|f| f["id"] == finding["id"])
+            .unwrap();
+        let artifact_index = artifact["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|f| f["id"] == finding["id"])
+            .unwrap();
+        let step_index = finding["details"]["event_chain"]["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|s| s["id"] == "session-end")
+            .unwrap();
+        let interval_path =
+            format!("/details/event_chain/steps/{step_index}/join_samples/0/endpoint_interval");
+        let interval = finding.pointer(&interval_path).unwrap();
+        assert_eq!(interval["status"], "unavailable");
+        assert_eq!(interval["reason"], expected_reason);
+        assert!(interval["value"].is_null());
+        for field in [
+            "start_timestamp",
+            "end_timestamp",
+            "start_operation",
+            "end_operation",
+        ] {
+            let mut altered = report.clone();
+            let mut altered_artifact = artifact.clone();
+            let path = format!("{interval_path}/{field}");
+            let replacement = if field.ends_with("timestamp") {
+                json!("2026-02-01T00:00:00+00:00")
+            } else {
+                json!("unrelated_operation")
+            };
+            *altered["findings"][finding_index]
+                .pointer_mut(&path)
+                .unwrap() = replacement.clone();
+            *altered_artifact["findings"][artifact_index]
+                .pointer_mut(&path)
+                .unwrap() = replacement;
+            let bytes = serde_json::to_vec(&altered_artifact).unwrap();
+            altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+            shape(&altered, false);
+            let error = log_analyzer::investigation::validate_relations(&altered, Some(&bytes))
+                .unwrap_err();
+            assert!(
+                error.reason.contains("differs from source"),
+                "{name}/{field}: {error}"
+            );
+        }
+    }
+}

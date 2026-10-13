@@ -11,3 +11,5 @@ for independent outcomes, send/response/cache populations and unavailable comple
 Aggregate assurance preserves unavailable verification prerequisites even when
 affected findings are omitted from the displayed page.
 Validate aggregate uncertainty against retained findings when artifact bytes are supplied.
+Reject assurance labels that disagree with source binding or retained joins, and
+validate present endpoint metadata even when its interval cannot be measured.

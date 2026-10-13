@@ -143,6 +143,9 @@ text, while ambiguity and completeness remain in ordinary text.
 [[src/investigation.rs#validate_relations|Relation validation]] also checks optional
 checked subjects against retained records, population and scope projections, and
 nested endpoint interval arithmetic, timestamp provenance and cited event names.
+Assurance levels must match source binding and retained joins. Present endpoint
+timestamps and names remain source-bound even when an interval is unavailable
+because its endpoints are ambiguous or their elapsed time is negative.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.

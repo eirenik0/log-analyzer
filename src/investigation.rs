@@ -1100,6 +1100,35 @@ pub fn validate_relations(
                     "source binding unavailable",
                 )?;
             }
+            if artifact.is_some() || report["artifact"]["status"] != "unavailable" {
+                require(
+                    (checked["assurance"]["source_binding"] == "validated")
+                        == (finding["verification"]["source_and_rules"] == "available"),
+                    "/findings/checked/assurance",
+                    "source binding differs from finding verification",
+                )?;
+            }
+            let has_link = finding["details"]["event_chain"]["steps"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|step| {
+                    step["join_samples"]
+                        .as_array()
+                        .is_some_and(|joins| !joins.is_empty())
+                });
+            let expected_level = if checked["assurance"]["source_binding"] != "validated" {
+                "relations_only"
+            } else if has_link {
+                "link_exists"
+            } else {
+                "source_bound"
+            };
+            require(
+                checked["assurance"]["level"] == expected_level,
+                "/findings/checked/assurance/level",
+                "assurance level differs from source binding and retained links",
+            )?;
             for subject in list(checked, "/subjects")? {
                 let source = get(subject, "/occurrence")?;
                 require(
@@ -1550,13 +1579,20 @@ pub fn validate_relations(
                                         path,
                                         "ambiguous endpoints cannot establish an interval",
                                     )?;
-                                    for (side, timestamp, operation) in [
-                                        ("source", "start_timestamp", "start_operation"),
-                                        ("target", "end_timestamp", "end_operation"),
-                                    ] {
-                                        if let Some(record) =
-                                            retained.get(&occurrence(&join[side])?)
-                                        {
+                                } else {
+                                    require(
+                                        interval["status"] == "unavailable"
+                                            && interval["value"].is_null(),
+                                        path,
+                                        "unavailable interval must not have a value",
+                                    )?;
+                                }
+                                for (side, timestamp, operation) in [
+                                    ("source", "start_timestamp", "start_operation"),
+                                    ("target", "end_timestamp", "end_operation"),
+                                ] {
+                                    if let Some(record) = retained.get(&occurrence(&join[side])?) {
+                                        if !interval[timestamp].is_null() {
                                             require(
                                                 interval[timestamp] == record["timestamp"]
                                                     && record["timestamp_year_source"] == "source"
@@ -1565,26 +1601,21 @@ pub fn validate_relations(
                                                 path,
                                                 "interval timestamp differs from source",
                                             )?;
-                                            if finding["verification"]["source_and_rules"]
-                                                == "available"
-                                            {
-                                                require(
-                                                    interval[operation]
-                                                        == record["fields"]["classification"]["semantics"]
-                                                            ["name"],
-                                                    path,
-                                                    "interval operation differs from source",
-                                                )?;
-                                            }
+                                        }
+                                        if finding["verification"]["source_and_rules"]
+                                            == "available"
+                                            && (interval["status"] == "measured"
+                                                || !interval[operation].is_null())
+                                        {
+                                            require(
+                                                interval[operation]
+                                                    == record["fields"]["classification"]["semantics"]
+                                                        ["name"],
+                                                path,
+                                                "interval operation differs from source",
+                                            )?;
                                         }
                                     }
-                                } else {
-                                    require(
-                                        interval["status"] == "unavailable"
-                                            && interval["value"].is_null(),
-                                        path,
-                                        "unavailable interval must not have a value",
-                                    )?;
                                 }
                             }
                         }
