@@ -3,14 +3,17 @@
 These generic synthetic documents specify investigation report v1 and retained
 artifact v1.
 
-They are contract fixtures, not claims that a unified command or artifact
-retrieval is already implemented. Existing Rust performance reports supply their
+Browse the [fixture files](../examples/investigation-contract/). These are
+hand-authored contract fixtures; the [[architecture#Architecture#Retained investigations|implemented runtime]]
+produces reports and artifacts through `investigate` and retrieves them through
+`evidence`. Existing Rust performance reports supply the fixtures'
 source identities and supported intervals. The retained effective profile comes
 from `examples/investigations/profile.toml` after default/inheritance resolution.
 
 Each `*.report.json` links its exact `*.artifact.json` bytes by SHA-256. The
 `output-limited` report refers to the complete supported artifact. Retention is
-`unspecified` so the examples do not select raw archival or a default lifetime.
+`unspecified` in these fixtures. Runtime artifacts use `until_deleted` retention
+as described in the [contract](contracts/investigation-contract.md#retained-artifact-and-historical-retrieval).
 
 - `supported`: paired lifecycles, physical record counts and the current percentile method.
 - `insufficient`: missing completion is unknown, not proof of failure.

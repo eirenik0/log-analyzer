@@ -131,7 +131,7 @@ legacy error blocking spans are explicitly estimates.
 
 Investigation report contract v1 and retained artifact contract v1 are published in
 [the investigation contract](contracts/investigation-contract.md),
-with [synthetic examples](../examples/investigation-contract/). `capabilities` embeds
+with [synthetic examples](contract-fixtures.md). `capabilities` embeds
 these under `report_schemas.investigation` and `evidence_artifact`, and separately
 advertises implementation availability. Schema 1 accepts both the existing agent-result shape and the retained report
 shape. These contracts separate assessment, processing completion, presentation

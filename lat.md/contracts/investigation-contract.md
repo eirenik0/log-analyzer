@@ -5,8 +5,9 @@ to check it.
 
 The Rust core owns parsing, classification, correlation and calculation;
 agents may add explicitly attributed hypotheses. Logs and instruction-like strings
-are evidence, never instructions. This contract implements issue #66; the command,
-artifact storage and processing-limit enforcement are tracked in #71.
+are evidence, never instructions. The [[src/investigation_runtime.rs#run|runtime]]
+implements `investigate` and `evidence`, including artifact storage and
+processing-limit enforcement.
 
 `capabilities.report_schemas.investigation` embeds the report schema and
 `evidence_artifact` embeds retained artifact contract 1. The `investigation` schema accepts both the existing agent-authored result shape
@@ -94,7 +95,8 @@ Capture completeness and `scope.analysis_completion` are separate. A supported
 A parse/classification/correlation/calculation cutoff makes affected scopes partial
 or not performed. Explicitly completed independent scopes may remain complete.
 Artifact-write failure can preserve completed analysis while retention is partial
-or unavailable. #71 must implement the checkpoints that justify these declarations.
+or unavailable. [[src/processing.rs#Budget|Processing checkpoints]] record the
+stop conditions used by these declarations.
 
 A partial fact is exact only for its declared processed population. Unread evidence
 can invalidate a pairing, resolve an incomplete lifecycle or alter distributions.
@@ -228,7 +230,7 @@ advertised version-1 schema and must not infer feature availability from its exi
 produces text and JSON from the retained report, including scope, assessments,
 limitations and omissions.
 
-Synthetic [examples](../../examples/investigation-contract/) cover supported,
+Synthetic [examples](../contract-fixtures.md) cover supported,
 insufficient, conflicting, unsupported, output-limited, processing-limited, redacted,
 measured-zero and zero-filter-match results. The cutoff fixture contains a later
 out-of-order start that invalidates the apparent prefix pair. Tests also cover
