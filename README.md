@@ -68,7 +68,9 @@ log-analyzer investigate captures/*.log
 
 The default output summarizes what happened, event timings and what remains
 unknown, with per-file coverage and source lines. Standalone analysis gaps remain
-visible even when lifecycle assessments are supported. Calculated-fact labels, scope
+visible even when lifecycle assessments are supported; standalone unknowns show a
+bounded preview with an omitted count. Unmatched lifecycle observations remain
+visible. Calculated-fact labels, scope
 IDs and repeated assessment diagnostics appear only with `--verbose`. A fresh local
 `log-analyzer-evidence-*` directory stores `evidence.json`; its path appears at
 the end. Calculations and evidence references are checked internally before the

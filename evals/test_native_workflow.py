@@ -16,6 +16,22 @@ class NativeVariantMetadataTests(unittest.TestCase):
             self.assertEqual(original['natural-use'], updated['natural-use'])
             self.assertNotEqual(original['verification-required'], updated['verification-required'])
 
+    def test_duplicate_trial_dimensions_fail_before_starting_runs(self):
+        import contextlib, io
+        from unittest.mock import patch
+        from native_workflow import main
+        for repeated in [['--variant', 'natural-use', '--variant', 'natural-use'],
+                         ['--case', 'development', '--case', 'development'],
+                         ['--models', 'haiku', 'haiku']]:
+            argv = ['native_workflow', '--frozen-root', 'unused', '--run', *repeated]
+            with patch('sys.argv', argv), patch('native_workflow.prepare_inputs') as prepare, \
+                 patch('native_workflow.trial') as trial, contextlib.redirect_stderr(io.StringIO()), \
+                 self.assertRaises(SystemExit) as error:
+                main()
+            self.assertEqual(error.exception.code, 2)
+            prepare.assert_not_called()
+            trial.assert_not_called()
+
     def test_report_hashes_match_each_selected_variants_answer_schema(self):
         import contextlib, hashlib, io, json, tempfile
         from pathlib import Path

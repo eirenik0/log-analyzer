@@ -244,7 +244,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
         assertions, claims, _ = read_local(directory, proof['claims'], 1_048_576)
         saved, _, _ = read_local(directory, proof['report'])
         inputs = artifact['report_metadata']['evidence']['inputs']
-        if len(inputs) != 1 or inputs[0]['sha256'] != digest(capture) or retained_path(inputs[0]['file'], artifact, directory) != capture.resolve():
+        if len(inputs) != 1 or inputs[0]['sha256'] != digest(capture) or not retained_path(inputs[0]['file'], artifact, directory).samefile(capture):
             raise ValueError('artifact must retain this trial capture, not an unrelated input')
         # These controlled fixtures contain one valid JSON event per nonempty line.
         measured = inputs[0]['coverage']
@@ -296,7 +296,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
             if len(configs) != 1:
                 raise ValueError('Retain one explicit local profile for independent validation.')
             selected = retained_path(configs[0], artifact, directory)
-            if not selected.is_relative_to(directory.resolve()):
+            if not any(parent.samefile(directory) for parent in selected.parents):
                 raise ValueError('Validated profile must stay in this trial directory.')
             expectations = directory / f'runner-expectations-{attempt}.json'
             expectations.write_text(json.dumps(profile_expectations(answer, artifact, assertions, source_records)), encoding='utf-8')

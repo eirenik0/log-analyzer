@@ -339,6 +339,9 @@ def main():
     parser.add_argument('--api-equivalent-usd',type=float,default=1)
     args=parser.parse_args()
     if not args.run: parser.error('--run explicitly authorizes model execution')
+    for name in ['variant', 'case', 'models']:
+        values = getattr(args, name) or []
+        if len(values) != len(set(values)): parser.error(f'duplicate {name} values are not allowed')
     if args.repeats < 2 or args.wall_seconds <= 0 or args.api_equivalent_usd <= 0: parser.error('at least two repeats and positive budgets required')
     root=args.frozen_root.resolve()
     limits={'wall_seconds':args.wall_seconds,'api_equivalent_usd':args.api_equivalent_usd,'tool_calls':30,'output_bytes':2_000_000}

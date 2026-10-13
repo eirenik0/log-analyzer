@@ -50,6 +50,7 @@ use crate::investigation_view::{Aggregate, FindingGroup, InvestigationView, Meas
 pub(super) struct FindingOverview {
     source_errors: String,
     unknowns: BTreeSet<(String, String)>,
+    omitted_unknowns: usize,
     highlighted: BTreeSet<String>,
     rendered: String,
     groups: Vec<(FindingGroup, BTreeSet<String>)>,
@@ -264,42 +265,53 @@ pub(super) fn finding_overview(
     detailed: bool,
 ) -> FindingOverview {
     let (source_errors, highlighted) = source_errors(report, detailed);
+    let mut unknowns = BTreeSet::new();
+    let mut omitted_unknowns = 0;
+    for finding in report["findings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|finding| finding["kind"] == "unknown")
+        .filter(|finding| {
+            let scope = &finding["scope_id"];
+            let suffix = label(&finding["id"])
+                .strip_prefix(label(scope))
+                .unwrap_or("");
+            let goal = match suffix {
+                "-lifecycle-unavailable" | "-starts-unavailable" | "-ends-unavailable" => {
+                    "incomplete_lifecycles"
+                }
+                "-failures-unavailable" | "-successes-unavailable" => "failures",
+                _ => return true,
+            };
+            !report["assessments"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|assessment| {
+                    assessment["scope_id"] == *scope
+                        && assessment["goal"] == goal
+                        && assessment["status"] != "supported"
+                })
+        })
+    {
+        let key = (
+            input_label(report, &finding["scope_id"]),
+            escape_controls(label(&finding["claim"])),
+        );
+        if unknowns.contains(&key) {
+            continue;
+        }
+        if unknowns.len() < MAX_OVERVIEW_GROUPS {
+            unknowns.insert(key);
+        } else {
+            omitted_unknowns += 1;
+        }
+    }
     let mut overview = FindingOverview {
         source_errors,
-        unknowns: report["findings"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|finding| finding["kind"] == "unknown")
-            .filter(|finding| {
-                let scope = &finding["scope_id"];
-                let suffix = label(&finding["id"])
-                    .strip_prefix(label(scope))
-                    .unwrap_or("");
-                let goal = match suffix {
-                    "-lifecycle-unavailable" | "-starts-unavailable" | "-ends-unavailable" => {
-                        "incomplete_lifecycles"
-                    }
-                    "-failures-unavailable" | "-successes-unavailable" => "failures",
-                    _ => return true,
-                };
-                !report["assessments"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .any(|assessment| {
-                        assessment["scope_id"] == *scope
-                            && assessment["goal"] == goal
-                            && assessment["status"] != "supported"
-                    })
-            })
-            .map(|finding| {
-                (
-                    input_label(report, &finding["scope_id"]),
-                    escape_controls(label(&finding["claim"])),
-                )
-            })
-            .collect(),
+        unknowns,
+        omitted_unknowns,
         highlighted,
         rendered: String::new(),
         groups: Vec::new(),
@@ -722,10 +734,23 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
                     readable_chain(&mut output, chain);
                     continue;
                 }
+                let covered_by_chain = finding["id"].as_str().is_some_and(|id| {
+                    id.starts_with(&format!("{}-unmatched-", label(&finding["scope_id"])))
+                }) && finding["details"]["supporting_occurrences"]
+                    .as_array()
+                    .is_some_and(|sources| {
+                        !sources.is_empty()
+                            && findings.iter().any(|other| {
+                                other["details"].get("event_chain").is_some()
+                                    && other["details"]["supporting_occurrences"]
+                                        .as_array()
+                                        .is_some_and(|covered| {
+                                            sources.iter().all(|source| covered.contains(source))
+                                        })
+                            })
+                    });
                 if finding["kind"] == "unknown"
-                    || finding["id"].as_str().is_some_and(|id| {
-                        id.starts_with(&format!("{}-unmatched-", label(&finding["scope_id"])))
-                    })
+                    || covered_by_chain
                     || (finding["kind"] == "calculated_fact"
                         && finding["details"]["unit"] == "records")
                 {
@@ -896,6 +921,13 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
             for (input, claim) in &overview.unknowns {
                 let _ = writeln!(output, "- {input}: {claim}");
             }
+            if overview.omitted_unknowns > 0 {
+                let _ = writeln!(
+                    output,
+                    "{} additional unknown findings omitted; see retained evidence.",
+                    overview.omitted_unknowns
+                );
+            }
         }
     }
     if report["presentation"]["omitted_findings"]
@@ -968,4 +1000,31 @@ fn shell_quote(value: &str) -> String {
         return quoted;
     }
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn standalone_unknown_preview_is_bounded_before_pagination() {
+        let findings: Vec<_> = (0..100)
+            .map(|i| {
+                json!({
+                    "id": format!("scope-0-resource-{i}"), "scope_id": "scope-0",
+                    "kind": "unknown", "claim": format!("Resource {i} was not observed.")
+                })
+            })
+            .collect();
+        let mut report = json!({"findings": findings, "assessments": [],
+            "scopes": [{"id": "scope-0", "input_ordinals": [0]}]});
+        let overview = finding_overview(&report, None, false, false);
+        assert_eq!(overview.unknowns.len(), MAX_OVERVIEW_GROUPS);
+        assert_eq!(overview.omitted_unknowns, 80);
+        report["findings"] = json!([]);
+        let output = text(&report, &overview, false);
+        assert_eq!(output.matches("was not observed.").count(), 20);
+        assert!(output.contains("80 additional unknown findings omitted"));
+    }
 }

@@ -7247,3 +7247,40 @@ fn readable_summary_preserves_standalone_unknowns_beyond_the_findings_page() {
         }
     }
 }
+
+#[test]
+fn readable_summary_preserves_unmatched_lifecycle_observations() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("start.jsonl");
+    fs::write(
+        &source,
+        format!(
+            "{}\n",
+            json!({"timestamp":"2026-01-01T00:00:00Z",
+        "level":"INFO", "message":"start", "phase":"start", "operation":"task",
+        "id":"one", "session":"a"})
+        ),
+    )
+    .unwrap();
+    let result = binary()
+        .current_dir(temp.path())
+        .args([
+            "--config",
+            root()
+                .join("examples/investigations/profile.toml")
+                .to_str()
+                .unwrap(),
+            "investigate",
+            source.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let text = String::from_utf8(result.stdout).unwrap();
+    assert!(text.contains("A start has no observed end"), "{text}");
+    assert!(!text.contains("scope-0"), "{text}");
+}
