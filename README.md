@@ -17,35 +17,8 @@ built-in or validated file-based profile.
 
 ## Design philosophy
 
-Answer what the evidence supports, identify exactly what remains unknown, and
-keep deterministic bookkeeping inside the tool. These principles guide ongoing
-development; they are not a claim that every workflow already satisfies them.
-
-- **One command should be useful.** Ordinary analysis should summarize what
-  happened, timings, coverage and unknowns. Helpers and claim files stay optional;
-  technical diagnostics belong behind `--verbose`.
-- **Return checked findings.** Keep subject identity, interval endpoints, count
-  populations and source citations together. Text, JSON and follow-up queries
-  should use the same checked results. Internal checks establish consistency with
-  captured evidence and declared semantics, not unlogged facts or causality.
-- **Let agents investigate.** Agents select questions and intended subjects, test
-  explanations and communicate findings. Ambiguous subjects remain explicit;
-  agents should not have to assemble verification documents or manage hashes.
-- **Bound recovery.** Validate proposed profile adaptations against independent
-  expectations, including negative cases, before adoption. Stop when evidence or
-  budgets are exhausted and explain the remaining gap.
-- **Enforce through execution.** When verification is mandatory, the runner
-  checks question coverage and tool-produced results. Unsupported prose must not
-  inherit a finding's verified status. More skill instructions are not enforcement.
-- **Measure useful completion.** Evaluate supported answers, false certainty,
-  unnecessary unknowns, latency and cost on held-out formats and multi-turn
-  investigations. Verification calls and rejection counts are not success metrics.
-
-The first refactoring milestone is capture and close timings, record counts and
-causal uncertainty through the existing CLI, with checks inside the analyzer.
-Preserve proven parsing and correlation code; expand only after demonstrating
-better answer completion under the same evaluation budget.
-See the [checked analysis design](docs/checked-analysis.md) for the proposed
+[lat.md](lat.md) is the canonical source for the project's design philosophy.
+The [checked analysis design](docs/checked-analysis.md) applies it to the proposed
 interface, failure behavior and acceptance cases.
 
 ## Installation

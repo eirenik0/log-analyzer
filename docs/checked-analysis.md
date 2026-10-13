@@ -1,14 +1,9 @@
 # Checked analysis design
 
-Status: proposed implementation, following the [design philosophy](../README.md#design-philosophy).
+Status: proposed implementation, applying the canonical [design philosophy](../lat.md).
 PR #89 is closed unmerged; its branch remains available for individual fixes and tests.
 
 ## Product contract
-
-One investigation should return a useful account of what happened, timings,
-coverage and explicit unknowns. Agents choose questions and subjects; the analyzer
-owns calculations, evidence addresses and consistency checks. Ordinary use requires
-no checklist file, claim file, helper script or separate verification command.
 
 Keep `log-analyzer investigate application.log` as the entry point. Default text
 is concise; `--verbose` exposes diagnostics. JSON and text use the same findings.
@@ -95,10 +90,9 @@ Test through the CLI with independently specified expectations:
 
 Use existing synthetic evaluation cases as regressions, plus unseen formats and
 multi-turn subject changes. Freeze inputs, expected facts, binaries and budgets
-before comparison. Measure supported completion, false certainty, unnecessary
-unknowns, latency and cost. Keep natural use and mandatory enforcement separate.
-Expand only after the first slice improves useful completion without factual
-regressions; paid model trials require an explicit run budget.
+before comparison. Use the success criteria in [lat.md](../lat.md). Keep natural
+use and mandatory enforcement separate. Paid model trials require an explicit
+run budget.
 
 ## Reuse from the closed experiment
 
