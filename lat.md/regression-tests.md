@@ -57,9 +57,13 @@ scope fields, root event names and root ambiguity, even when checked projections
 It also rejects hidden later activity and earlier occurrences mislabeled as later samples.
 [[tests/test_checked_presentation.rs#replay_requires_all_chain_findings_for_completed_inputs]]
 rejects deletion of one or all chains despite consistent report totals and references.
+It also rejects deleting the root record together with its chain finding.
 [[tests/test_checked_presentation.rs#independent_cutoffs_do_not_defer_unaffected_chain_completeness]]
 keeps earlier chain and step completeness checked when a later independent input
 fails parsing or exhausts its record budget.
+[[tests/test_checked_presentation.rs#replay_checks_classifications_against_captured_source_and_rules]]
+rejects edited rule IDs and event semantics even when checked subject projections
+agree with the altered retained classification.
 [[tests/unit/grouped_assurance.rs#grouped_assurance_covers_every_member_and_preserves_scope_boundaries]]
 checks mixed assurance in both representative orders, explicit representative-only
 details and separation of matching dimensions across independent scopes. Configured

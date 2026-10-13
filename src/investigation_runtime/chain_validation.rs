@@ -1,5 +1,5 @@
 //! Reuse the chain engine to check retained endpoint populations before sampling.
-use super::chains;
+use super::{Selector, chains, selected as is_selected};
 use crate::{
     config::AnalyzerConfig,
     evidence, parser,
@@ -50,6 +50,18 @@ pub(crate) fn validate(
     if policy.chains.is_empty() && chain_findings.is_empty() {
         return Ok(Vec::new());
     }
+    let query = &artifact["report_metadata"]["evidence"]["query"];
+    let filter = crate::build_filter(&query["filter"].as_str().map(str::to_owned))
+        .map_err(|e| e.to_string())?;
+    let selectors: Vec<Selector> = query["command"]["Investigate"]["select"]
+        .as_array()
+        .ok_or("missing retained selectors")?
+        .iter()
+        .map(|selector| {
+            serde_json::from_str(selector.as_str().ok_or("invalid retained selector")?)
+                .map_err(|e| e.to_string())
+        })
+        .collect::<Result<_, _>>()?;
     let mut ordinals: BTreeSet<_> = chain_findings
         .iter()
         .map(|f| {
@@ -65,6 +77,12 @@ pub(crate) fn validate(
                 .ok_or("missing record input")?,
         );
     }
+    ordinals.extend(
+        0..artifact["report_metadata"]["evidence"]["inputs"]
+            .as_array()
+            .ok_or("missing inputs")?
+            .len() as u64,
+    );
     let mut complete = true;
     // Cutoff metadata does not record whether chain calculation had already completed.
     let mut completeness_deferred = false;
@@ -122,17 +140,51 @@ pub(crate) fn validate(
         });
         let input = &artifact["report_metadata"]["evidence"]["inputs"][ordinal as usize];
         let eof = artifact["captured_inputs"][ordinal as usize]["capture"] == "complete";
-        let mut parsed = parser::parse_capture(
+        let parsed = parser::parse_capture(
             Path::new(input["file"].as_str().ok_or("missing input path")?),
             bytes,
             eof,
             &config,
             &mut budget,
-        )
-        .map_err(|e| format!("{e:?}"))?;
+        );
+        let mut parsed = match parsed {
+            Ok(parsed) => parsed,
+            Err(_)
+                if selected.is_empty()
+                    && input["coverage"]["parsed_entries"] == 0
+                    && !chain_findings.iter().any(|f| {
+                        f["details"]["event_chain"]["root"]["input_ordinal"] == ordinal
+                    }) =>
+            {
+                complete = false;
+                continue;
+            }
+            Err(error) => return Err(format!("{error:?}")),
+        };
         let input_complete = parsed.coverage.rejected_candidates == 0
             && parsed.coverage.normalization_diagnostics.is_empty()
             && !parsed.coverage.is_unparsed();
+        for entry in &mut parsed.entries {
+            entry.source_input_ordinal = Some(ordinal as usize);
+        }
+        parsed
+            .entries
+            .retain(|entry| filter.matches(entry) && is_selected(entry, &selectors, &config));
+        if completeness_available {
+            let source_population: BTreeSet<_> = parsed
+                .entries
+                .iter()
+                .map(|entry| {
+                    (
+                        entry.source_line_number as u64,
+                        entry.source_row_path.clone(),
+                    )
+                })
+                .collect();
+            if source_population != selected.keys().cloned().collect() {
+                return Err("retained records differ from selected captured population".into());
+            }
+        }
         parsed.entries.retain(|entry| {
             selected.contains_key(&(
                 entry.source_line_number as u64,
@@ -148,9 +200,13 @@ pub(crate) fn validate(
                 entry.source_line_number as u64,
                 entry.source_row_path.clone(),
             )];
-            entry.classification =
-                serde_json::from_value(record["fields"]["classification"].clone())
-                    .map_err(|e| e.to_string())?;
+            if serde_json::to_value(&entry.classification).map_err(|e| e.to_string())?
+                != record["fields"]["classification"]
+            {
+                return Err(
+                    "retained classification differs from captured source and profile".into(),
+                );
+            }
         }
         let mut context = evidence::Context::default();
         context.observe(&parsed.coverage, &parsed.entries);

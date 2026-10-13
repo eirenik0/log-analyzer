@@ -160,8 +160,10 @@ Retained classification semantics still constrain endpoint names when source
 verification is unavailable. Redaction may omit
 those semantics and keeps its source-verification limitation explicit.
 [[src/investigation_runtime/chain_validation.rs#validate|Chain cardinality validation]]
-reuses the parser and chain engine on retained captures, selected record addresses
-and retained classifications to check root/source/target counts. It reads no live
+reuses the parser and chain engine on retained captures and profile rules to check
+root/source/target counts. Fresh classifications must equal retained classifications.
+Stored filters and exact selectors reconstruct each unaffected input's complete
+selected record population; missing retained records are rejected. It reads no live
 input files. Missing profiles or captures defer this relation explicitly; exhausted
 validation work, time or memory allowances return an error rather than accepting counts.
 Replay allowances cover retained processing limits and usage, including expanded

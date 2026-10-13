@@ -1403,7 +1403,8 @@ fn replay_requires_all_chain_findings_for_completed_inputs() {
     let artifact: Value =
         serde_json::from_slice(&fs::read(temp.path().join("all-chains")).unwrap()).unwrap();
     let beta_id = chain(&report["findings"], "beta")["id"].clone();
-    for all in [false, true] {
+    let beta_root = chain(&report["findings"], "beta")["details"]["event_chain"]["root"].clone();
+    for (all, omit_record) in [(false, false), (true, false), (false, true)] {
         let mut altered = report.clone();
         let mut saved = artifact.clone();
         for document in [&mut altered, &mut saved] {
@@ -1463,6 +1464,56 @@ fn replay_requires_all_chain_findings_for_completed_inputs() {
                 ids.iter().position(|id| *id == target["id"]).unwrap()
             ));
         }
+        if omit_record {
+            saved["records"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|record| record["occurrence"] != beta_root);
+            for membership in saved["memberships"].as_array_mut().unwrap() {
+                membership["members"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|member| member["occurrence"] != beta_root);
+            }
+            for sequence in saved["sequences"].as_array_mut().unwrap() {
+                sequence["events"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|event| event["occurrence"] != beta_root);
+            }
+            let memberships = saved["memberships"].clone();
+            for document in [&mut altered, &mut saved] {
+                for population in document["populations"].as_array_mut().unwrap() {
+                    let membership = memberships
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|m| m["population_id"] == population["id"])
+                        .unwrap();
+                    let members = &membership["members"];
+                    population["count"] = json!(members.as_array().unwrap().len());
+                    population["membership"]["count"] = population["count"].clone();
+                    population["membership"]["sha256"] = json!(log_analyzer::evidence::digest(
+                        &serde_json::to_vec(members).unwrap()
+                    ));
+                }
+                let populations = document["populations"].clone();
+                for finding in document["findings"].as_array_mut().unwrap() {
+                    if finding["details"]["calculation"] == "count" {
+                        let population = populations
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|p| p["id"] == finding["details"]["population_id"])
+                            .unwrap();
+                        finding["details"]["value"] = population["count"].clone();
+                        if finding["checked"].is_object() {
+                            finding["checked"]["population"] = population.clone();
+                        }
+                    }
+                }
+            }
+        }
         let bytes = serde_json::to_vec(&saved).unwrap();
         altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
         altered["presentation"]["serialized_bytes"] = Value::Null;
@@ -1472,9 +1523,11 @@ fn replay_requires_all_chain_findings_for_completed_inputs() {
         let error =
             log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
         assert!(
-            error
-                .reason
-                .contains("retained chain findings differ from replayed population"),
+            error.reason.contains(if omit_record {
+                "retained records differ from selected captured population"
+            } else {
+                "retained chain findings differ from replayed population"
+            }),
             "{error}"
         );
     }
@@ -1554,5 +1607,60 @@ fn independent_cutoffs_do_not_defer_unaffected_chain_completeness() {
                 "{error}"
             );
         }
+    }
+}
+
+#[test]
+fn replay_checks_classifications_against_captured_source_and_rules() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "classification",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let bytes = fs::read(temp.path().join("classification")).unwrap();
+    let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+    let root = chain(&report["findings"], "alpha")["details"]["event_chain"]["root"].clone();
+    for rule_ids in [false, true] {
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        let record = saved["records"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|r| r["occurrence"] == root)
+            .unwrap();
+        if rule_ids {
+            record["fields"]["classification"]["rule_ids"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!("synthetic-extra-rule"));
+        } else {
+            record["fields"]["classification"]["semantics"]["correlation_id"] = json!("neighbor");
+            for finding in altered["findings"].as_array_mut().unwrap() {
+                for subject in finding["checked"]["subjects"].as_array_mut().unwrap() {
+                    if subject["occurrence"] == root {
+                        subject["event"]["correlation_id"] = json!("neighbor");
+                    }
+                }
+            }
+        }
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        altered["presentation"]["serialized_bytes"] = Value::Null;
+        altered["presentation"]["serialized_characters"] = Value::Null;
+        shape(&altered, false);
+        log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(
+            error
+                .reason
+                .contains("retained classification differs from captured source and profile"),
+            "{error}"
+        );
     }
 }
