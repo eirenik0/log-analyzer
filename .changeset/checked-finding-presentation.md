@@ -36,3 +36,4 @@ completeness deferral to affected inputs rather than the whole investigation.
 Recompute classifications from captured bytes and retained rules, and reconstruct
 complete selected populations from stored filters/selectors to reject deleted records.
 Bind each sampled join identity to its replayed source/target relationship.
+Validate complete nested excerpt payloads and policy labels against retained-source replay.

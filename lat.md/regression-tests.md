@@ -49,9 +49,12 @@ checks publication and artifact validation after more than 100,000 expanded rows
 are parsed under raised limits, with only ten selected chain records retained.
 [[tests/test_checked_presentation.rs#replay_rejects_invented_completion_and_incomplete_step_results]]
 rejects fabricated join identities and mutually consistent report/artifact edits
-that invent a completion, remove
-steps or joins, or change counts, ambiguity and completeness. Processing cutoffs
+that invent a completion, remove steps or joins, or change labels, counts, ambiguity
+and completeness. Processing cutoffs
 explicitly defer completeness when calculation-stage history is unavailable.
+[[tests/test_checked_presentation.rs#replay_binds_nested_excerpt_payloads_to_source]]
+rejects altered text, omitted-character counts, displayed fields and verification
+metadata in linked, ambiguous and later-activity excerpts with configured source fields.
 [[tests/test_checked_presentation.rs#replay_binds_chain_identity_and_context_to_retained_subjects]]
 rejects coordinated report/artifact changes to chain identities, context identities,
 scope fields, root event names and root ambiguity, even when checked projections agree.

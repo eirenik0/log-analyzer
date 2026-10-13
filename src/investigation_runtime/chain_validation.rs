@@ -21,6 +21,33 @@ fn address(source: &Value) -> Option<Address> {
     ))
 }
 
+fn samples(
+    value: &Value,
+    source_records: Option<&BTreeMap<Address, &Value>>,
+) -> Result<Vec<Value>, String> {
+    value
+        .as_array()
+        .ok_or("missing chain samples")?
+        .iter()
+        .map(|sample| {
+            let location = address(&sample["occurrence"]).ok_or("missing sample address")?;
+            let mut payload = sample.clone();
+            if let Some(record) = source_records.and_then(|records| records.get(&location))
+                && record["verification"]["source_and_rules"] == "unavailable"
+                && payload["verification"].is_object()
+            {
+                // Stored sources may explicitly withhold verification after capture/redaction.
+                for field in ["source_and_rules", "losses"] {
+                    payload["verification"][field] = record["verification"][field].clone();
+                }
+            }
+            // Snapshot and input identity are assigned by the per-input replay context.
+            payload["occurrence"] = serde_json::to_value(location).map_err(|e| e.to_string())?;
+            Ok(payload)
+        })
+        .collect()
+}
+
 pub(crate) fn validate(
     artifact: &Value,
     captures: &BTreeMap<u64, Vec<u8>>,
@@ -208,7 +235,7 @@ pub(crate) fn validate(
                 );
             }
         }
-        let mut context = evidence::Context::default();
+        let mut context = evidence::Context::for_investigation_replay(&config);
         context.observe(&parsed.coverage, &parsed.entries);
         let mut replayed = Vec::new();
         chains::calculate(
@@ -266,6 +293,8 @@ pub(crate) fn validate(
                 return Err("chain root cardinality differs from retained population".into());
             }
             for field in [
+                "title",
+                "evidence_policy",
                 "identity",
                 "context_identity",
                 "scope_fields",
@@ -278,18 +307,9 @@ pub(crate) fn validate(
                     return Err(format!("chain {field} differs from retained population"));
                 }
             }
-            let later = |chain: &Value| -> Result<Vec<_>, String> {
-                chain["later_activity"]
-                    .as_array()
-                    .ok_or("missing later activity")?
-                    .iter()
-                    .map(|sample| {
-                        address(&sample["occurrence"])
-                            .ok_or_else(|| "missing later activity address".into())
-                    })
-                    .collect()
-            };
-            if later(chain)? != later(replay)? {
+            if samples(&chain["later_activity"], None)?
+                != samples(&replay["later_activity"], Some(&selected))?
+            {
                 return Err("chain later_activity differs from retained population".into());
             }
             if completeness_available && chain["completeness"] != replay["completeness"] {
@@ -310,6 +330,7 @@ pub(crate) fn validate(
                     .find(|s| s["id"] == step["id"])
                     .ok_or("chain step absent from effective policy")?;
                 for field in [
+                    "label",
                     "status",
                     "observed_count",
                     "linked_count",
@@ -334,24 +355,9 @@ pub(crate) fn validate(
                     return Err("chain step completeness differs from retained population".into());
                 }
                 for field in ["evidence", "ambiguous_evidence", "outcomes"] {
-                    let project = |step: &Value| -> Result<Vec<_>, String> {
-                        step[field]
-                            .as_array()
-                            .ok_or("missing chain samples")?
-                            .iter()
-                            .map(|sample| {
-                                let source = address(&sample["occurrence"])
-                                    .ok_or("missing sample address")?;
-                                Ok((
-                                    source,
-                                    sample.get("level").cloned(),
-                                    sample.get("field").cloned(),
-                                    sample.get("value").cloned(),
-                                ))
-                            })
-                            .collect()
-                    };
-                    if project(step)? != project(expected_step)? {
+                    if samples(&step[field], None)?
+                        != samples(&expected_step[field], Some(&selected))?
+                    {
                         return Err(format!(
                             "chain step {field} differs from retained population"
                         ));

@@ -170,7 +170,12 @@ Replay allowances cover retained processing limits and usage, including expanded
 rows parsed before selection, so raised investigation limits also apply to validation.
 Replay also checks the complete configured step list, statuses, counts, ambiguity,
 recognition, evidence/outcome samples and join samples (including each join identity)
-against retained records.
+against retained records. Complete nested excerpt payloads, including text, omitted
+characters, displayed fields and verification metadata, must match replay; only
+replay-specific occurrence identity is normalized. Explicit source-verification losses
+are inherited from the retained source record. Replay uses
+[[src/evidence.rs#Context#for_investigation_replay|the retained display-field policy]].
+Step labels, chain titles and evidence policy text must also match.
 Chain identities, context identities, scope fields, root event names and root
 ambiguity must also match replay, binding links to their retained correlation subject.
 Later-activity counts and samples must match the retained same-context population

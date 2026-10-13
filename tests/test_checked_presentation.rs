@@ -1224,6 +1224,7 @@ fn replay_rejects_invented_completion_and_incomplete_step_results() {
         ("completion", "beta", "capture-end", "chain step status"),
         ("join", "alpha", "submitted", "chain join samples"),
         ("join-identity", "alpha", "submitted", "chain join identity"),
+        ("label", "alpha", "submitted", "chain step label"),
         ("step", "beta", "cache", "chain steps"),
         ("count", "alpha", "polls", "chain step observed_count"),
         ("ambiguity", "beta", "capture-end", "chain step ambiguity"),
@@ -1263,6 +1264,7 @@ fn replay_rejects_invented_completion_and_incomplete_step_results() {
                     assert_eq!(step["join_samples"], json!([]));
                 }
                 "join" => step["join_samples"] = json!([]),
+                "label" => step["label"] = json!("terminal completion"),
                 "join-identity" => {
                     step["join_samples"][0]["identity"][0]["value"] = json!("neighbor");
                 }
@@ -1345,6 +1347,8 @@ fn replay_binds_chain_identity_and_context_to_retained_subjects() {
             json!([{"field":"session_id","value":"neighbor"}]),
         ),
         ("scope_fields", json!(["capture_id"])),
+        ("title", json!("fabricated completion")),
+        ("evidence_policy", json!("fabricated policy")),
         ("root_event_name", json!("neighbor")),
         ("ambiguity", json!("reused_root_identity")),
         ("later_activity_observed_count", json!(0)),
@@ -1666,5 +1670,88 @@ fn replay_checks_classifications_against_captured_source_and_rules() {
                 .contains("retained classification differs from captured source and profile"),
             "{error}"
         );
+    }
+}
+
+#[test]
+fn replay_binds_nested_excerpt_payloads_to_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("fields.toml");
+    fs::write(
+        &profile,
+        format!(
+            "{}\n[investigation_view]\nsource_fields = [\"event.name\", \"capture_id\"]\n",
+            fs::read_to_string(PROFILE).unwrap()
+        ),
+    )
+    .unwrap();
+    let ambiguous = temp.path().join("ambiguous.jsonl");
+    let input = fs::read_to_string(INPUT).unwrap();
+    fs::write(
+        &ambiguous,
+        format!("{input}{}\n", input.lines().nth(1).unwrap()),
+    )
+    .unwrap();
+    for collection in ["evidence", "ambiguous_evidence", "later_activity"] {
+        let source = if collection == "ambiguous_evidence" {
+            ambiguous.to_str().unwrap()
+        } else {
+            INPUT
+        };
+        let report: Value = serde_json::from_str(&run(
+            temp.path(),
+            collection,
+            profile.to_str().unwrap(),
+            &[source],
+            &["--json", "--complete-output"],
+        ))
+        .unwrap();
+        let artifact: Value =
+            serde_json::from_slice(&fs::read(temp.path().join(collection)).unwrap()).unwrap();
+        let id = chain(&report["findings"], "alpha")["id"].clone();
+        for field in ["text", "omitted_characters", "fields", "verification"] {
+            let mut altered = report.clone();
+            let mut saved = artifact.clone();
+            for document in [&mut altered, &mut saved] {
+                let chain = &mut document["findings"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|f| f["id"] == id)
+                    .unwrap()["details"]["event_chain"];
+                let sample = if collection == "later_activity" {
+                    &mut chain[collection][0]
+                } else {
+                    &mut chain["steps"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|s| s["id"] == "submitted")
+                        .unwrap()[collection][0]
+                };
+                assert!(sample["fields"].is_object());
+                match field {
+                    "text" => sample[field] = json!("fabricated completion"),
+                    "omitted_characters" => sample[field] = json!(999),
+                    "fields" => sample[field]["event.name"] = json!("fabricated completion"),
+                    "verification" => sample[field]["arithmetic"] = json!("available"),
+                    _ => unreachable!(),
+                }
+            }
+            let bytes = serde_json::to_vec(&saved).unwrap();
+            altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+            altered["presentation"]["serialized_bytes"] = Value::Null;
+            altered["presentation"]["serialized_characters"] = Value::Null;
+            shape(&altered, false);
+            log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+            let error = log_analyzer::investigation::validate_relations(&altered, Some(&bytes))
+                .unwrap_err();
+            assert!(
+                error
+                    .reason
+                    .contains(&format!("{collection} differs from retained population")),
+                "{collection}/{field}: {error}"
+            );
+        }
     }
 }
