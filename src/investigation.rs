@@ -88,11 +88,30 @@ pub fn validate_relations(
     report: &Value,
     artifact_bytes: Option<&[u8]>,
 ) -> Result<ValidationSummary, ContractError> {
+    let artifact = artifact_bytes
+        .map(serde_json::from_slice)
+        .transpose()
+        .map_err(|e| error("/artifact", e.to_string()))?;
+    if let Some(bytes) = artifact_bytes {
+        require(
+            report["artifact"]["stored_sha256"] == digest(bytes),
+            "/artifact/stored_sha256",
+            "stored artifact digest mismatch",
+        )?;
+    }
+    validate_retained(report, artifact.as_ref())
+}
+
+/// Validate logical retained evidence without serializing and reparsing its tree.
+pub(crate) fn validate_retained(
+    report: &Value,
+    artifact: Option<&Value>,
+) -> Result<ValidationSummary, ContractError> {
     let mut summary = ValidationSummary {
-        artifact_checked: artifact_bytes.is_some(),
+        artifact_checked: artifact.is_some(),
         deferred_relations: Vec::new(),
     };
-    if artifact_bytes.is_none() {
+    if artifact.is_none() {
         summary
             .deferred_relations
             .push("retained_membership_and_source_verification".into());
@@ -442,23 +461,14 @@ pub fn validate_relations(
         }
     }
     let mut findings = index(list(report, "/findings")?, "/findings")?;
-    let artifact: Option<Value> = artifact_bytes
-        .map(serde_json::from_slice)
-        .transpose()
-        .map_err(|e| error("/artifact", e.to_string()))?;
     let mut retained = BTreeMap::new();
     let mut population_samples: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-    let mut original_captures: BTreeMap<u64, Vec<u8>> = BTreeMap::new();
-    if let (Some(bytes), Some(artifact)) = (artifact_bytes, artifact.as_ref()) {
+    let mut original_captures: BTreeMap<u64, std::borrow::Cow<'_, [u8]>> = BTreeMap::new();
+    if let Some(artifact) = artifact {
         require(
             number(artifact, "/contract_version")? == u64::from(ARTIFACT_VERSION),
             "/artifact/contract_version",
             "unsupported artifact version",
-        )?;
-        require(
-            report["artifact"]["stored_sha256"] == digest(bytes),
-            "/artifact/stored_sha256",
-            "stored artifact digest mismatch",
         )?;
         for key in [
             "report_metadata",
@@ -521,23 +531,26 @@ pub fn validate_relations(
             }
             if capture["data_omitted"] == false {
                 let bytes = match text(capture, "/encoding")? {
-                    "utf8" => get(capture, "/data")?
-                        .as_str()
-                        .ok_or_else(|| {
-                            error("/artifact/captured_inputs/data", "expected UTF-8 text")
-                        })?
-                        .as_bytes()
-                        .to_vec(),
-                    "bytes" => list(capture, "/data")?
-                        .iter()
-                        .map(|v| {
-                            v.as_u64()
-                                .and_then(|v| u8::try_from(v).ok())
-                                .ok_or_else(|| {
-                                    error("/artifact/captured_inputs/data", "expected byte")
-                                })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
+                    "utf8" => std::borrow::Cow::Borrowed(
+                        get(capture, "/data")?
+                            .as_str()
+                            .ok_or_else(|| {
+                                error("/artifact/captured_inputs/data", "expected UTF-8 text")
+                            })?
+                            .as_bytes(),
+                    ),
+                    "bytes" => std::borrow::Cow::Owned(
+                        list(capture, "/data")?
+                            .iter()
+                            .map(|v| {
+                                v.as_u64()
+                                    .and_then(|v| u8::try_from(v).ok())
+                                    .ok_or_else(|| {
+                                        error("/artifact/captured_inputs/data", "expected byte")
+                                    })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    ),
                     _ => {
                         return Err(error(
                             "/artifact/captured_inputs/encoding",

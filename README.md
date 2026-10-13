@@ -457,11 +457,23 @@ ceiling. Other defaults are 1,000,000 record attempts, 100,000 expanded-row atte
 storage and 8 MiB per physical line/multiline record. Conservative data allowance
 is 512 times planned input bytes, bounded between 512 MiB and 32 GiB; this is
 accounting, not a RAM allocation or RSS ceiling. Explicit limits override planning.
-Evidence retrieval has a separate 64 MiB default read limit and clones only the
-requested page's items. Larger stored artifacts require an explicit
-`evidence --artifact-max-bytes BYTES` allowance; raise it only on a host with enough
-memory to parse and validate the complete artifact. Output pagination does not
-bound artifact parsing memory.
+Evidence retrieval has a separate 64 MiB default read/snapshot limit. JSON
+artifacts still require memory to parse and validate the complete retained tree.
+`investigate --artifact-storage sqlite` creates an opt-in indexed store with the
+same evidence semantics; JSON remains the default for legacy readers. SQLite
+retrieval verifies the whole checksum into a private disk snapshot, then uses
+indexes to load the requested page or exact ID without parsing unrelated items.
+`--evidence-cache-max-bytes` bounds the SQLite cache and, separately, a conservative
+retained-page allocation allowance; `--evidence-record-max-bytes` caps serialized
+items and metadata (both default to 8 MiB). These allowances are not RSS ceilings.
+A page memory cutoff returns a continuation cursor, including with
+`--complete-output`; oversized single items fail explicitly. Raise the separate
+`--artifact-max-bytes` limit for larger stores only within the agreed disk budget.
+SQLite claim assertions currently require choosing JSON storage instead.
+Artifact serialization writes directly to a private staging destination. Failed
+writes publish no reusable artifact. Parser and correlation working sets still
+use the existing processing budgets; SQLite does not yet spill those working sets.
+See [storage contracts and remaining work](docs/design/disk-backed-evidence.md).
 Oversized captures can still stop at these finite ceilings; inspect every input's
 capture and scope status. See
 `investigate --help` for overrides. Work accounts for parsing bytes, loop steps

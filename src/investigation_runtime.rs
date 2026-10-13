@@ -9,6 +9,7 @@ pub(crate) mod policy;
 mod presentation;
 mod resource_observations;
 mod selection;
+mod store;
 use crate::{
     cli::{Cli, Commands, InvestigateArgs},
     config, evidence, parser,
@@ -760,25 +761,45 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "A captured byte stream is not complete UTF-8; source text verification is unavailable.",
         );
     }
-    let bytes = artifact::bounded_serialization(&retained, budget.limits.artifact_bytes)?;
-    let mut report = artifact::report(&retained, &artifact_path, bytes.as_deref());
+    // Serialize directly into the private staging destination, then validate the
+    // borrowed logical tree. No complete serialized byte buffer is retained.
+    let written = match args.artifact_storage {
+        crate::cli::ArtifactStorage::Json => artifact::write_json(
+            &retained,
+            temporary.as_file_mut(),
+            budget.limits.artifact_bytes,
+        )
+        .map_err(|error| error.to_string()),
+        crate::cli::ArtifactStorage::Sqlite => store::write(
+            temporary.path(),
+            &retained,
+            budget.limits.artifact_bytes,
+            args.cancel_file.as_deref(),
+        )
+        .map(|()| true)
+        .map_err(|error| error.to_string()),
+    };
+    let hash = if matches!(written, Ok(true)) {
+        Some(artifact::file_digest(temporary.as_file_mut())?)
+    } else {
+        None
+    };
+    let mut report = artifact::report(&retained, &artifact_path, hash.as_deref());
+    if hash.is_some() {
+        crate::investigation::validate_retained(&report, Some(&retained))?;
+    }
     if cli.redact
-        && bytes.is_some()
+        && hash.is_some()
         && let Some(directory) = &auto_directory
     {
-        // This generated handle contains no caller-controlled parent directories.
         report["artifact"]["location"] = json!(format!(
             "{}/evidence.json",
             directory.path().file_name().unwrap().to_string_lossy()
         ));
     }
-    // Validation reparses the exact stored bytes; release the construction tree first.
     drop(retained);
-    if let Some(bytes) = bytes {
-        // Validate calculations/cross-references against the exact bytes before publishing.
-        crate::investigation::validate_relations(&report, Some(&bytes))?;
+    if hash.is_some() {
         let saved = (|| -> Result<()> {
-            temporary.write_all(&bytes)?;
             temporary.as_file().sync_all()?;
             temporary.persist_noclobber(&artifact_path)?;
             if let Some(directory) = auto_directory {
@@ -793,7 +814,14 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             );
         }
     } else {
-        artifact::unavailable(&mut report, "artifact byte limit exceeded");
+        let reason = match &written {
+            Ok(false) => "artifact byte limit exceeded".to_owned(),
+            Err(error) if !cli.redact => format!(
+                "Artifact write failed: {error}; no reusable evidence artifact was published"
+            ),
+            _ => "Artifact write failed; no reusable evidence artifact was published".to_owned(),
+        };
+        artifact::unavailable(&mut report, &reason);
     }
     let overview = (!args.brief
         && matches!(cli.effective_format(), crate::cli::OutputFormat::Text))

@@ -24,6 +24,7 @@ thiserror = "2.0"
 toml = "0.8"
 sha2 = "0.10"
 tempfile = "3.24"
+rusqlite = { version = "0.38", features = ["bundled", "limits"] }
 
 [dev-dependencies]
 jsonschema = { version = "0.58.6", default-features = false }
