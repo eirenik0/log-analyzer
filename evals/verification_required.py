@@ -122,6 +122,16 @@ def answer_issues(answer, artifact, assertions, verification, requested, source_
         if (fields.get('operation_name'), fields.get('session_id')) != requested[key]:
             issues.append(f'{key}: checked root is a different requested subject or scope')
         refs = finding.get('refs', [])
+        allowed_refs = {root['evidence_ref']['line']}
+        for cid in references.get(key, []) + references.get('explanation', []):
+            checked = checks.get(cid, {})
+            subject = claims.get(cid, {}).get('subject', {})
+            if (checked.get('status') == 'verified' and checked.get('assurance') == 'subject_verified'
+                    and (subject.get('root') or subject.get('source')) == root):
+                allowed_refs.update(subject[endpoint]['evidence_ref']['line'] for endpoint in ['source', 'target']
+                                    if endpoint in subject)
+        if not set(refs) <= allowed_refs:
+            issues.append(f'{key}: every source reference must belong to an explicitly checked claim for this subject')
         if root['evidence_ref']['line'] not in refs:
             issues.append(f'{key}: cite the checked root occurrence')
         root_role = 'close_start' if key == 'close' else 'checkpoint'
@@ -233,6 +243,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
     if not isinstance(answer, dict):
         return {'accepted': False, 'issues': ['Return the required structured answer with verification files and claim IDs.'], 'tool_calls': 0}
     calls, output_bytes = 0, 0
+    generated_reports = []
     deadline = time.monotonic() + remaining_seconds
     try:
         if capture_sha256 is not None and digest(capture) != capture_sha256:
@@ -266,6 +277,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
             return {'accepted': False, 'issues': ['No remaining budget for independent verification.'], 'tool_calls': 0}
         verified = directory / f'runner-verification-{attempt}.json'
         calls = 1
+        generated_reports.append(verified)
         executed = subprocess.run([str(binary), 'evidence', str(path), '--expected-sha256', sha,
                                    '--claims', str(claims), '--output', str(verified)],
                                   capture_output=True, timeout=max(.001, deadline - time.monotonic()), check=False)
@@ -302,6 +314,7 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
             expectations.write_text(json.dumps(profile_expectations(answer, artifact, assertions, source_records)), encoding='utf-8')
             profile_report = directory / f'runner-profile-validation-{attempt}.json'
             calls += 1
+            generated_reports.append(profile_report)
             checked = subprocess.run([str(binary), '--profile', str(selected), 'profile', 'validate', str(capture),
                                       '--kind', 'event', '--purpose', 'recognition', '--expected', str(expectations),
                                       '--complete-output', '--output', str(profile_report)],
@@ -314,12 +327,12 @@ def acceptance_gate(answer, directory, binary, capture, requested, attempt, rema
                 issues.append('Profile failed independent source-role and positive/wrong-identity link checks; correct the rules and rerun investigation.')
             if validation['report_metadata']['evidence']['profile_sha256'] != artifact['report_metadata']['evidence']['profile_sha256']:
                 issues.append('Profile changed since investigation; regenerate the artifact and claims.')
-        return {'accepted': not issues, 'issues': issues[:20], 'tool_calls': calls, 'output_bytes': output_bytes, 'artifact_sha256': sha,
+        return {'accepted': not issues, 'issues': issues[:20], 'tool_calls': calls, 'output_bytes': output_bytes + sum(p.stat().st_size for p in generated_reports if p.is_file()), 'artifact_sha256': sha,
                 'verification_report': str(verified), 'profile_validation_report': str(profile_report) if profile_report else None,
                 'verified_profile': {key: artifact['effective_profile'].get(key) for key in ['event_rules', 'investigation']} if not issues else None,
                 'verified_facts': cv if not issues else None}
     except (InvalidValue, KeyError, IndexError, TypeError, ValueError, OSError, subprocess.TimeoutExpired) as error:
-        return {'accepted': False, 'issues': [f'Prepare and verify the current question plan: {error}'], 'tool_calls': calls, 'output_bytes': output_bytes}
+        return {'accepted': False, 'issues': [f'Prepare and verify the current question plan: {error}'], 'tool_calls': calls, 'output_bytes': output_bytes + sum(p.stat().st_size for p in generated_reports if p.is_file())}
 
 
 class Budget:
@@ -351,6 +364,8 @@ def run_phase(directory, model, prompt, schema, budget, phase, tools=True):
             '--json-schema', json.dumps(schema, sort_keys=True)]
     if tools: argv += ['--allowedTools', 'Bash,Read,Write']
     trace = directory / (phase + '.jsonl')
+    prompt_path = directory / (phase + '-prompt.txt')
+    prompt_path.write_bytes(prompt.encode('utf-8'))
     environment = {k: v for k, v in os.environ.items() if not k.startswith('LOG_ANALYZER_')}
     stop = None
     with trace.open('wb') as output, (directory / (phase + '-stderr.txt')).open('wb') as errors:
@@ -380,7 +395,8 @@ def run_phase(directory, model, prompt, schema, budget, phase, tools=True):
     else: budget.usage_known = False
     stop = stop or ('failed' if result.get('is_error') else budget.stop())
     return {'phase': phase, 'answer': answer, 'result': result, 'metrics': measured,
-            'stop': stop, 'exit_code': process.returncode, 'trace': str(trace)}
+            'stop': stop, 'exit_code': process.returncode, 'trace': str(trace),
+            'prompt_path': str(prompt_path), 'prompt_sha256': hashlib.sha256(prompt.encode('utf-8')).hexdigest()}
 
 
 def trial_required(root, version, case, model, repeat, limits):
@@ -451,8 +467,9 @@ def trial_required(root, version, case, model, repeat, limits):
             'limits': limits, 'answer': answer, 'score': score(answer if execution == 'complete' else None, expected),
             'acceptance_checks': gates, 'prose_review': prose, 'correction_attempts': max(0, sum(p['phase'].startswith('answer-') for p in phases) - 1),
             'runner_verification_calls': sum(g['tool_calls'] for g in gates),
-            'phases': [{'phase': p['phase'], 'trace': p['trace'], 'stop': p['stop']} for p in phases],
-            'input_sha256': digest(capture), 'prompt_sha256': digest(directory / 'prompt.txt'),
+            'phases': [{key: p[key] for key in ['phase', 'trace', 'stop', 'prompt_path', 'prompt_sha256']} for p in phases],
+            'prompt_sequence_sha256': hashlib.sha256(json.dumps([p['prompt_sha256'] for p in phases]).encode()).hexdigest(),
+            'input_sha256': digest(capture), 'initial_prompt_sha256': digest(directory / 'prompt.txt'),
             'skill_sha256': digest(skill), 'binary_sha256': digest(binary), 'profile_sha256': digest(selected),
             'answer_schema_sha256': hashlib.sha256(json.dumps(REQUIRED_SCHEMA, sort_keys=True).encode()).hexdigest(),
             'effort_override': None, 'attention': 'unmeasured',

@@ -255,7 +255,7 @@ fn offline_required_verification_checks_delivered_answers_without_model_calls() 
     );
     let report: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
     assert_eq!(report["model_calls"], 0);
-    assert_eq!(report["controls"].as_array().unwrap().len(), 36);
+    assert_eq!(report["controls"].as_array().unwrap().len(), 44);
     assert!(
         report["controls"]
             .as_array()

@@ -108,11 +108,22 @@ def controls(binary, repository):
             wrong = copy.deepcopy(answer); wrong['claim_ids']['capture'] = ['close']; cases.append(('wrong-claim-id', wrong, False))
             wrong = copy.deepcopy(answer); wrong['other']['completion'] = True; cases.append(('unknown-as-complete', wrong, False))
             wrong = copy.deepcopy(answer); wrong['verification']['report'] = str(directory / 'missing.json'); cases.append(('missing-proof', wrong, False))
+            for key, extra in [('capture', 2), ('close', 1), ('other', 1)]:
+                wrong = copy.deepcopy(answer); wrong[key]['refs'].append(extra)
+                cases.append((f'{key}-cross-subject-reference', wrong, False))
+            linked = copy.deepcopy(answer)
+            claims_for_refs = json.loads(Path(answer['verification']['claims']).read_text(encoding='utf-8'))['claims']
+            for claim in claims_for_refs:
+                if claim['kind'] == 'link' and claim['subject']['root']['evidence_ref']['line'] == 2:
+                    linked['claim_ids']['other'].append(claim['id'])
+                    linked['other']['refs'].append(claim['subject']['target']['evidence_ref']['line'])
+            cases.append(('explicitly-mapped-subject-references', linked, True))
             for index, (name, proposed, accepted) in enumerate(cases):
                 result = acceptance_gate(proposed, directory, binary, capture, requested, index, 10, 30)
                 assert result['accepted'] == accepted, (name, result)
                 if accepted:
                     assert result['tool_calls'] == 2
+                    assert result['output_bytes'] >= sum(Path(result[key]).stat().st_size for key in ['verification_report', 'profile_validation_report'])
                     validation = json.loads(Path(result['profile_validation_report']).read_text(encoding='utf-8'))
                     assert validation['profile_validation']['expected_facts']['status'] == 'passed'
                     expectations = json.loads((directory / f'runner-expectations-{index}.json').read_text(encoding='utf-8'))

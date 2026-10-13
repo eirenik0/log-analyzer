@@ -1,4 +1,6 @@
 import copy
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,9 +49,11 @@ class RequiredRunnerControls(unittest.TestCase):
         queue = list(answers); costs = list(costs or [.1] * len(queue))
         def execute(directory, model, prompt, schema, budget, name, tools=True):
             value = queue.pop(0); budget.cost += costs.pop(0)
+            prompt_path = directory / (name + '-prompt.txt'); prompt_path.write_bytes(prompt.encode())
             return {'phase': name, 'answer': value, 'result': {'usage': {'input_tokens': 1, 'output_tokens': 2}},
                     'metrics': {**metrics([]), 'turns': 1},
-                    'stop': budget.stop(), 'exit_code': 0, 'trace': str(directory / (name + '.jsonl'))}
+                    'stop': budget.stop(), 'exit_code': 0, 'trace': str(directory / (name + '.jsonl')),
+                    'prompt_path': str(prompt_path), 'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest()}
         return execute
 
     def gate(self, accepted, issues=None):
@@ -68,12 +72,14 @@ class RequiredRunnerControls(unittest.TestCase):
             from native_workflow import answer_schema_hashes
             self.assertEqual(result['answer_schema_sha256'], answer_schema_hashes(['verification-required'])['verification-required'])
             self.assertEqual(result['correction_attempts'], 1)
+            hashes = [p['prompt_sha256'] for p in result['phases']]
+            self.assertEqual(len(hashes), len(set(hashes)))
+            self.assertEqual(result['prompt_sequence_sha256'], hashlib.sha256(json.dumps(hashes).encode()).hexdigest())
             self.assertEqual(result['runner_verification_calls'], 2)
             self.assertAlmostEqual(result['api_equivalent_cost_usd'], .3)
             self.assertIn('verification report missing', phases.call_args_list[1].args[2])
             self.assertEqual(phases.call_args_list[-1].kwargs, {'tools': False})
             review_prompt = phases.call_args_list[-1].args[2]
-            import json
             review_context = json.loads(review_prompt.split('\n', 1)[1])
             self.assertEqual(review_context['domain_semantics'], DOMAIN_SEMANTICS)
             self.assertEqual(review_context['requested_subjects']['capture'], ['Checkpoint alpha', 'zone-a'])
@@ -138,6 +144,35 @@ class RequiredRunnerControls(unittest.TestCase):
             self.assertEqual(result['execution'], 'verification_rejected')
             self.assertEqual(result['score']['status'], 'unavailable')
             self.assertEqual(len(result['acceptance_checks']), 3)
+
+    def test_saved_report_output_exhaustion_prevents_prose_and_acceptance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); answer = self.setup(root)
+            gate = self.gate(True); gate['output_bytes'] = 2_000_001
+            with patch('verification_required.run_phase', side_effect=self.phase([answer])) as phases, \
+                 patch('verification_required.acceptance_gate', return_value=gate):
+                result = trial_required(root, 'candidate', 'development', 'opus', 0, self.limits())
+            self.assertEqual(phases.call_count, 1)
+            self.assertEqual(result['execution'], 'output_limit')
+            self.assertEqual(result['score']['status'], 'unavailable')
+
+    def test_native_phases_save_and_hash_exact_sent_prompts(self):
+        from unittest.mock import Mock
+        from verification_required import run_phase
+        with tempfile.TemporaryDirectory() as directory:
+            sent = []
+            def exited_process(*args, **kwargs):
+                kwargs['stdout'].write(json.dumps({'type':'result', 'structured_output':{'status':'pass','issues':[]},
+                    'total_cost_usd':.01}).encode() + b'\n')
+                return Mock(stdin=Mock(write=lambda data: sent.append(data)), poll=Mock(return_value=0), returncode=0)
+            budget = Budget(self.limits()); phases = []
+            with patch('verification_required.subprocess.Popen', side_effect=exited_process):
+                for index, prompt in enumerate(['Original é\n', 'Correct claim A; 12 seconds remain.\n']):
+                    phases.append(run_phase(Path(directory), 'haiku', prompt, PROSE_SCHEMA, budget, f'answer-{index}'))
+            for phase, data in zip(phases, sent):
+                self.assertEqual(Path(phase['prompt_path']).read_bytes(), data)
+                self.assertEqual(phase['prompt_sha256'], hashlib.sha256(data).hexdigest())
+            self.assertNotEqual(phases[0]['prompt_sha256'], phases[1]['prompt_sha256'])
 
     def test_required_answer_and_reviewer_schemas_are_explicit(self):
         validate({'status': 'pass', 'issues': []}, PROSE_SCHEMA)
