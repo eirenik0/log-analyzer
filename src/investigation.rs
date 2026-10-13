@@ -1634,6 +1634,8 @@ pub fn validate_relations(
                                         )?;
                                         if finding["verification"]["source_and_rules"]
                                             == "available"
+                                            || record["fields"]["classification"]["semantics"]
+                                                .is_object()
                                         {
                                             require(
                                                 interval[operation]

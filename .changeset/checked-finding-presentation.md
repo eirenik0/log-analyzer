@@ -17,3 +17,5 @@ Require the complete checked subject set, rejecting missing, extra or duplicated
 root, outcome and evidence occurrences.
 Derive interval availability and its reason from endpoint evidence, rejecting
 hidden measurements and omitted known timestamps.
+Preserve endpoint-name consistency with retained classification semantics even
+when independent source verification is unavailable.

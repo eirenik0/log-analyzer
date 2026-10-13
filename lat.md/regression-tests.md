@@ -38,6 +38,9 @@ reports, while accepting reordered subjects and older reports without the projec
 [[tests/test_checked_presentation.rs#measured_intervals_cannot_be_hidden_by_unavailable_status_or_missing_timestamps]]
 rejects unavailable-status substitutions and hidden known timestamps. Unavailable
 interval controls also check exact reasons for ambiguity, negative time and missing timestamps.
+[[tests/test_checked_presentation.rs#retained_endpoint_names_are_checked_when_source_verification_is_unavailable]]
+rejects changed or removed names for measured and unavailable intervals when stored
+source verification is unavailable, while accepting redacted reports with omitted semantics.
 
 ## Missing join identity
 

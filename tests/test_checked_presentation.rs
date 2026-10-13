@@ -897,3 +897,122 @@ fn measured_intervals_cannot_be_hidden_by_unavailable_status_or_missing_timestam
         );
     }
 }
+
+#[test]
+fn retained_endpoint_names_are_checked_when_source_verification_is_unavailable() {
+    let temp = tempfile::tempdir().unwrap();
+    fn withhold_source_verification(value: &mut Value) {
+        match value {
+            Value::Object(fields) => {
+                if fields.contains_key("source_and_rules") {
+                    fields.insert(
+                        "losses".into(),
+                        json!(["Synthetic stored source verification unavailable"]),
+                    );
+                }
+                for (key, value) in fields {
+                    if key == "source_and_rules" {
+                        *value = json!("unavailable");
+                    } else {
+                        withhold_source_verification(value);
+                    }
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(withhold_source_verification),
+            _ => (),
+        }
+    }
+    for redacted in [false, true] {
+        let name = if redacted { "redacted" } else { "retained" };
+        let mut options = vec!["--json", "--complete-output"];
+        if redacted {
+            options.push("--redact");
+        }
+        let mut report: Value =
+            serde_json::from_str(&run(temp.path(), name, PROFILE, &[INPUT], &options)).unwrap();
+        let mut artifact: Value =
+            serde_json::from_slice(&fs::read(temp.path().join(name)).unwrap()).unwrap();
+        // A stored artifact can withhold source verification while retaining classifications.
+        withhold_source_verification(&mut artifact);
+        withhold_source_verification(&mut report);
+        for finding in report["findings"].as_array_mut().unwrap() {
+            finding["checked"]["assurance"]["source_binding"] = json!("unavailable");
+            finding["checked"]["assurance"]["subject_verification"] = json!("unavailable");
+            finding["checked"]["assurance"]["level"] = json!("relations_only");
+        }
+        report["presentation"]["uncertainty"]["source_binding_unavailable_findings"] =
+            json!(report["findings"].as_array().unwrap().len());
+        report["presentation"]["uncertainty"]["subject_verification"] = json!("unavailable");
+        report["presentation"]["serialized_bytes"] = Value::Null;
+        report["presentation"]["serialized_characters"] = Value::Null;
+        let bytes = serde_json::to_vec(&artifact).unwrap();
+        report["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        shape(&report, false);
+        log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+        let mut statuses = std::collections::BTreeSet::new();
+        for (index, finding) in report["findings"].as_array().unwrap().iter().enumerate() {
+            let Some(steps) = finding["details"]["event_chain"]["steps"].as_array() else {
+                continue;
+            };
+            assert_eq!(finding["verification"]["source_and_rules"], "unavailable");
+            let saved_index = artifact["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|f| f["id"] == finding["id"])
+                .unwrap();
+            for (step_index, step) in steps.iter().enumerate() {
+                for (join_index, join) in
+                    step["join_samples"].as_array().unwrap().iter().enumerate()
+                {
+                    let status = join["endpoint_interval"]["status"].as_str().unwrap();
+                    if !statuses.insert(status) {
+                        continue;
+                    }
+                    let path = format!(
+                        "/details/event_chain/steps/{step_index}/join_samples/{join_index}/endpoint_interval"
+                    );
+                    for (field, side) in
+                        [("start_operation", "source"), ("end_operation", "target")]
+                    {
+                        let record = artifact["records"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|r| r["occurrence"] == join[side])
+                            .unwrap();
+                        assert_eq!(
+                            record["fields"]["classification"]["semantics"].is_object(),
+                            !redacted
+                        );
+                        if redacted {
+                            continue;
+                        }
+                        for replacement in [json!("wrong_operation"), Value::Null] {
+                            let mut altered = report.clone();
+                            let mut saved = artifact.clone();
+                            altered["findings"][index].pointer_mut(&path).unwrap()[field] =
+                                replacement.clone();
+                            saved["findings"][saved_index].pointer_mut(&path).unwrap()[field] =
+                                replacement;
+                            let bytes = serde_json::to_vec(&saved).unwrap();
+                            altered["artifact"]["stored_sha256"] =
+                                json!(log_analyzer::evidence::digest(&bytes));
+                            shape(&altered, false);
+                            let error = log_analyzer::investigation::validate_relations(
+                                &altered,
+                                Some(&bytes),
+                            )
+                            .unwrap_err();
+                            assert!(
+                                error.reason.contains("operation differs from source"),
+                                "{status}/{field}: {error}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(statuses, ["measured", "unavailable"].into_iter().collect());
+    }
+}
