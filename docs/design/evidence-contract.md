@@ -170,12 +170,3 @@ All declared inputs are parsed before this rejection, so mixed-input coverage
 and snapshot manifests include both the parsed and unparsed sides. `--output`
 receives the same document as stdout. Filesystem/configuration errors retain
 their diagnostics and are distinct from recognized unparsed-input reports.
-
-## Indexed retained investigations
-
-Investigation artifacts can opt into the SQLite storage contract documented in
-[disk-backed evidence](disk-backed-evidence.md). Public report and retrieval JSON
-contracts remain version 1. The SQL storage version is separate; JSON artifacts
-remain readable. Logical validation during creation consumes the borrowed tree,
-then publication binds its exact stored bytes by streamed SHA-256. SQLite readers
-verify a private disk snapshot before any indexed item is delivered.

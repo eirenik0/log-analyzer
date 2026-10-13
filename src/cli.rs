@@ -312,13 +312,6 @@ pub struct PrepareProfileArgs {
     pub witness_limit: u32,
 }
 
-#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
-pub enum ArtifactStorage {
-    #[default]
-    Json,
-    Sqlite,
-}
-
 #[derive(serde::Serialize, clap::Args)]
 pub struct InvestigateArgs {
     /// Stable project context for profile discovery; defaults to the current directory
@@ -340,9 +333,6 @@ pub struct InvestigateArgs {
     #[arg(long)]
     #[serde(serialize_with = "crate::evidence::serialize_optional_path")]
     pub artifact: Option<PathBuf>,
-    /// Artifact backend: JSON for legacy readers, SQLite for indexed retrieval
-    #[arg(long, value_enum, default_value = "json")]
-    pub artifact_storage: ArtifactStorage,
     /// Exact JSON selector (input_ordinal, kind, name, correlation_id, scope); repeat for OR
     #[arg(long)]
     pub select: Vec<String>,
@@ -402,13 +392,7 @@ pub struct InvestigationEvidenceArgs {
     /// Hash current sources separately and report unchanged, changed, missing or prefix
     #[arg(long)]
     pub verify_sources: bool,
-    /// SQLite page cache and retained retrieval page cap (default: 8 MiB)
-    #[arg(long, default_value = "8388608")]
-    pub evidence_cache_max_bytes: usize,
-    /// Maximum serialized SQLite item/metadata size (default: 8 MiB)
-    #[arg(long, default_value = "8388608")]
-    pub evidence_record_max_bytes: usize,
-    /// Hard artifact read/snapshot limit (default: 64 MiB); JSON also uses parsing memory
+    /// Hard artifact read limit (default: 64 MiB); raising it allows more parsing memory
     #[arg(long, default_value = "67108864")]
     pub artifact_max_bytes: u64,
 }

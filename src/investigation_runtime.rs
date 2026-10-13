@@ -9,19 +9,16 @@ pub(crate) mod policy;
 mod presentation;
 mod resource_observations;
 mod selection;
-mod store;
+
 use crate::{
     cli::{Cli, Commands, InvestigateArgs},
     config, evidence, parser,
     processing::{Budget, Limits},
+    streaming::Capture,
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::{
-    fs::File,
-    io::{Read, Write},
-    path::Path,
-};
+use std::{io::Write, path::Path};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug, Deserialize)]
@@ -76,48 +73,8 @@ pub(super) fn selected(
             .any(|selector| selector.matches(entry, config))
 }
 
-struct Capture {
-    data: Vec<u8>,
-    complete: bool,
-}
 fn capture(path: &Path, budget: &mut Budget) -> Result<Capture> {
-    let mut file = File::open(path)?;
-    let mut data = Vec::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        if !budget.checkpoint("capture", 1) {
-            break;
-        }
-        let remaining = budget.limits.input_bytes.saturating_sub(budget.input_bytes);
-        if remaining == 0 {
-            budget.stop("capture", "input_limit", Some("input_bytes"));
-            break;
-        }
-        let capacity = buffer.len().min(remaining.min(usize::MAX as u64) as usize);
-        // Reservation covers captured storage, JSON escaping and artifact/report copies.
-        if !budget.reserve("capture", (capacity as u64) * 16) {
-            break;
-        }
-        let count = match file.read(&mut buffer[..capacity]) {
-            Ok(count) => count,
-            Err(_) => {
-                budget.stop("capture", "io_error", None);
-                break;
-            }
-        };
-        if count == 0 {
-            return Ok(Capture {
-                data,
-                complete: true,
-            });
-        }
-        budget.input_bytes += count as u64;
-        data.extend_from_slice(&buffer[..count]);
-    }
-    Ok(Capture {
-        data,
-        complete: false,
-    })
+    Ok(Capture::read(path, budget)?)
 }
 
 pub(crate) fn run(cli: &Cli) -> Result<()> {
@@ -324,6 +281,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     let mut context = evidence::Context::new(cli, &config)?;
     let mut progress = Vec::new();
     let mut captures = Vec::new();
+    let mut spooled = Vec::new();
     let mut processed_ordinals = std::collections::BTreeSet::new();
     let mut parsed_records = 0usize;
     let mut parse_calls = 0usize;
@@ -343,6 +301,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         if budget.stop.is_some() && (!automatic || cached[ordinal].is_none()) {
             budget.affected_scopes.insert(ordinal);
             progress.push(json!({"input_ordinal":ordinal,"capture":"unread","consumed_bytes":0,"consumed_sha256":null,"remaining_bytes":null}));
+            spooled.push(None);
             captures.push(json!({"input_ordinal":ordinal,"capture":"unread","encoding":"utf8","data":null,"data_omitted":true,"original_consumed_sha256":null,"stored_sha256":null}));
             continue;
         }
@@ -358,12 +317,13 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             Err(_) => {
                 budget.stop("capture", "io_error", None);
                 progress.push(json!({"input_ordinal":ordinal,"capture":"unread","consumed_bytes":0,"consumed_sha256":null,"remaining_bytes":null}));
+                spooled.push(None);
                 captures.push(json!({"input_ordinal":ordinal,"capture":"unread","encoding":"utf8","data":null,"data_omitted":true,"original_consumed_sha256":null,"stored_sha256":null}));
                 continue;
             }
         };
-        let hash = evidence::digest(&capture.data);
-        progress.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"consumed_bytes":capture.data.len(),"consumed_sha256":hash,"remaining_bytes":if capture.complete {Some(0)} else {None}}));
+        let hash = capture.sha256.clone();
+        progress.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"consumed_bytes":capture.bytes,"consumed_sha256":hash,"remaining_bytes":if capture.complete {Some(0)} else {None}}));
         let working_memory_start = budget.memory_bytes;
         let collection_start = [
             records.len(),
@@ -374,57 +334,69 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         ];
         budget.begin_stage();
         parse_calls += 1;
-        let mut parsed = match parser::parse_capture(
-            path,
-            &capture.data,
-            capture.complete,
-            &config,
-            &mut budget,
-        ) {
-            Ok(parsed) => parsed,
+        let mut yielded = Vec::new();
+        let coverage = if capture.parseable_utf8 {
+            parser::visit_capture_reader(
+                path,
+                std::io::BufReader::with_capacity(
+                    crate::streaming::CHUNK_BYTES,
+                    capture.file.reopen()?,
+                ),
+                capture.complete,
+                &config,
+                &mut budget,
+                |mut entry| {
+                    entry.source_input_ordinal = Some(ordinal);
+                    let retain = filter.matches(&entry);
+                    if retain {
+                        yielded.push(entry);
+                    }
+                    Ok(retain)
+                },
+            )
+        } else {
+            Err(parser::ParseError::InvalidLogFormat(
+                "capture is not UTF-8".into(),
+            ))
+        };
+        let parsed = match coverage {
+            Ok(mut coverage) => {
+                coverage.input_bytes = capture.bytes;
+                coverage.snapshot_sha256 = hash.clone();
+                parser::ParsedLogFile {
+                    entries: yielded,
+                    coverage,
+                }
+            }
             Err(_) => {
                 budget.stop("parse", "unsupported", None);
                 let mut parsed = parser::parse_capture(path, b"", false, &config, &mut budget)
                     .map_err(|e| format!("{e:?}"))?;
-                parsed.coverage.nonempty_lines = usize::from(!capture.data.is_empty());
-                parsed.coverage.input_bytes = capture.data.len() as u64;
+                parsed.coverage.nonempty_lines = usize::from(capture.bytes != 0);
+                parsed.coverage.input_bytes = capture.bytes;
                 parsed.coverage.snapshot_sha256 = hash.clone();
                 parsed
             }
         };
-        for entry in &mut parsed.entries {
-            entry.source_input_ordinal = Some(ordinal);
-        }
         context.observe_selected(&parsed.coverage, &parsed.entries, |entry| {
             selected(entry, &selectors, &config)
         });
-        let mut retained_capture_extra = 0u64;
-        let (encoding, data) = match String::from_utf8(capture.data) {
-            Ok(text) => ("utf8", json!(text)),
-            Err(error) => {
-                let bytes = error.into_bytes();
-                if budget.reserve("artifact_write", (bytes.len() as u64).saturating_mul(64)) {
-                    retained_capture_extra = (bytes.len() as u64).saturating_mul(64);
-                    ("bytes", json!(bytes))
-                } else {
-                    ("omitted_bytes", serde_json::Value::Null)
-                }
-            }
-        };
-        captures.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"encoding":if encoding=="omitted_bytes"{"bytes"}else{encoding},"data":data,"data_omitted":encoding=="omitted_bytes","original_consumed_sha256":hash,"stored_sha256":if encoding=="omitted_bytes"{None}else{Some(hash.clone())}}));
+        let capture_complete = capture.complete;
+        captures.push(json!({"input_ordinal":ordinal,"capture":if capture.complete {"complete"} else {"prefix"},"encoding":if capture.utf8 {"utf8"}else{"bytes"},"data":null,"data_omitted":false,"original_consumed_sha256":hash,"stored_sha256":hash}));
+        spooled.push(Some(capture));
         processed_ordinals.insert(ordinal);
-        parsed_records += parsed.entries.len();
+        parsed_records += parsed.coverage.parsed_entries;
         budget.active_scope = ordinal;
         budget.begin_stage();
         let mut entries = Vec::new();
-        for entry in parsed.entries.iter().filter(|entry| filter.matches(entry)) {
+        for entry in parsed.entries {
             if !budget.checkpoint("calculation", 1) {
                 break;
             }
-            if selected(entry, &selectors, &config) {
-                records.push(findings::record(entry, &context, &snapshot));
+            if selected(&entry, &selectors, &config) {
+                records.push(findings::record(&entry, &context, &snapshot));
             }
-            entries.push(entry.clone());
+            entries.push(entry);
         }
         budget.begin_stage();
         correlation_calls += 1;
@@ -470,7 +442,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         };
         let coverage = perf.as_ref().map(|_| &view);
         scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Legacy global filters apply before correlation; exact selectors apply to retained occurrences after shared correlation. Each input is an independent run.","extent":"declared_input","completeness":if structural_loss{"partial"}else{"complete"},"analysis_completion":if perf.is_some(){"complete"}else{"not_performed"},"correlation_scope":[],"semantic_coverage":{"status":semantic_status,"relevant_records":coverage.map(|c|c.relevant),"classified_records":coverage.map(|c|c.classified),"paired_events":coverage.map(|c|c.pairs * 2),"unmatched_events":coverage.map(|c|c.unmatched),"ambiguous_events":coverage.map(|c|c.ambiguous),"rejected_events":coverage.map(|c|c.rejected),"reason":"Effective profile validated structurally and assessed against the observed sample; no automatic semantic proof or upstream completeness claim."},"upstream_completeness":"unknown"}));
-        let severity_complete = capture.complete && !structural_loss && budget.stop.is_none();
+        let severity_complete = capture_complete && !structural_loss && budget.stop.is_none();
         budget.begin_stage();
         findings::observed_levels(
             &view.entries,
@@ -615,7 +587,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 Ok(sum.saturating_add(serde_json::to_vec(values)?.len() as u64))
             },
         )?;
-        budget.memory_bytes = working_memory_start.saturating_add(retained_capture_extra);
+        budget.memory_bytes = working_memory_start;
         budget.reserve("calculation", retained_bytes.saturating_mul(16));
     }
     // Unread independent inputs retain their own unavailable analysis scopes.
@@ -763,22 +735,13 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     }
     // Serialize directly into the private staging destination, then validate the
     // borrowed logical tree. No complete serialized byte buffer is retained.
-    let written = match args.artifact_storage {
-        crate::cli::ArtifactStorage::Json => artifact::write_json(
-            &retained,
-            temporary.as_file_mut(),
-            budget.limits.artifact_bytes,
-        )
-        .map_err(|error| error.to_string()),
-        crate::cli::ArtifactStorage::Sqlite => store::write(
-            temporary.path(),
-            &retained,
-            budget.limits.artifact_bytes,
-            args.cancel_file.as_deref(),
-        )
-        .map(|()| true)
-        .map_err(|error| error.to_string()),
-    };
+    let written = artifact::write_json(
+        &retained,
+        &spooled,
+        temporary.as_file_mut(),
+        budget.limits.artifact_bytes,
+    )
+    .map_err(|error| error.to_string());
     let hash = if matches!(written, Ok(true)) {
         Some(artifact::file_digest(temporary.as_file_mut())?)
     } else {
@@ -786,7 +749,18 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     };
     let mut report = artifact::report(&retained, &artifact_path, hash.as_deref());
     if hash.is_some() {
-        crate::investigation::validate_retained(&report, Some(&retained))?;
+        crate::investigation::validate_spooled(
+            &report,
+            &retained,
+            &spooled
+                .iter()
+                .map(|capture| {
+                    capture
+                        .as_ref()
+                        .map(|capture| capture.file.path().to_path_buf())
+                })
+                .collect::<Vec<_>>(),
+        )?;
     }
     if cli.redact
         && hash.is_some()

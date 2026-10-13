@@ -22,7 +22,7 @@ fn prefix(capture: &Capture, byte_limit: usize) -> usize {
             }
         }
     }
-    if capture.complete && limit == capture.data.len() {
+    if capture.complete && limit as u64 == capture.bytes {
         limit
     } else {
         end
@@ -45,8 +45,8 @@ pub(super) fn detect(
         .map(|c| c.as_ref().map_or(0, |c| prefix(c, per_input)))
         .collect();
     let samples: Vec<_> = captures.iter().zip(&lengths).enumerate().map(|(ordinal, (capture, length))| {
-        json!({"input_ordinal":ordinal,"sample_bytes":length,"captured_bytes":capture.as_ref().map(|c| c.data.len()),
-            "entire_input":capture.as_ref().is_some_and(|c| c.complete && *length == c.data.len())})
+        json!({"input_ordinal":ordinal,"sample_bytes":length,"captured_bytes":capture.as_ref().map(|c| c.bytes),
+            "entire_input":capture.as_ref().is_some_and(|c| c.complete && *length as u64 == c.bytes)})
     }).collect();
     let insufficient = captures.iter().zip(&lengths).any(|(c, len)| {
         c.as_ref()
@@ -88,7 +88,7 @@ pub(super) fn detect(
             match parser::parse_capture(
                 &paths[ordinal],
                 &capture.data[..*length],
-                capture.complete && *length == capture.data.len(),
+                capture.complete && *length as u64 == capture.bytes,
                 &candidate.config,
                 budget,
             ) {
@@ -170,7 +170,7 @@ pub(super) fn detect(
                 // Only a fully sampled input can be proven blank. A blank prefix
                 // must not hide later records outside the detection allowance.
                 !(capture.complete
-                    && **length == capture.data.len()
+                    && **length as u64 == capture.bytes
                     && std::str::from_utf8(&capture.data[..**length])
                         .is_ok_and(|text| text.trim().is_empty()))
             })

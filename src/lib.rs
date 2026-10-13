@@ -40,6 +40,7 @@ mod relationship_rules;
 mod report_budget;
 pub mod resource_observations;
 pub mod search;
+mod streaming;
 mod summary;
 pub mod timeline;
 pub mod trace;

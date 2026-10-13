@@ -92,21 +92,106 @@ impl<W: Write> Write for LimitedWriter<W> {
         self.writer.flush()
     }
 }
-pub(super) fn write_json(value: &Value, file: &mut File, limit: u64) -> Result<bool> {
+pub(super) fn write_json(
+    value: &Value,
+    captures: &[Option<crate::streaming::Capture>],
+    file: &mut File,
+    limit: u64,
+) -> Result<bool> {
     let mut writer = LimitedWriter {
         writer: std::io::BufWriter::new(file),
         bytes: 0,
         limit,
         exceeded: false,
     };
-    match serde_json::to_writer(&mut writer, value) {
+    let result = write_artifact(value, captures, &mut writer);
+    match result {
         Ok(()) => {
             writer.flush()?;
             Ok(true)
         }
         Err(_) if writer.exceeded => Ok(false),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(error),
     }
+}
+fn write_artifact(
+    value: &Value,
+    captures: &[Option<crate::streaming::Capture>],
+    writer: &mut impl Write,
+) -> Result<()> {
+    writer.write_all(b"{")?;
+    for (index, (key, value)) in value
+        .as_object()
+        .ok_or("Artifact must be an object")?
+        .iter()
+        .enumerate()
+    {
+        if index != 0 {
+            writer.write_all(b",")?;
+        }
+        serde_json::to_writer(&mut *writer, key)?;
+        writer.write_all(b":")?;
+        if key != "captured_inputs" {
+            serde_json::to_writer(&mut *writer, value)?;
+            continue;
+        }
+        let rows = value.as_array().ok_or("Captures must be an array")?;
+        if rows.len() != captures.len() {
+            return Err("Capture count differs".into());
+        }
+        writer.write_all(b"[")?;
+        for (ordinal, row) in rows.iter().enumerate() {
+            if ordinal != 0 {
+                writer.write_all(b",")?;
+            }
+            writer.write_all(b"{")?;
+            for (index, (key, value)) in row
+                .as_object()
+                .ok_or("Capture must be an object")?
+                .iter()
+                .enumerate()
+            {
+                if index != 0 {
+                    writer.write_all(b",")?;
+                }
+                serde_json::to_writer(&mut *writer, key)?;
+                writer.write_all(b":")?;
+                if key != "data" || row["data_omitted"] != false {
+                    serde_json::to_writer(&mut *writer, value)?;
+                    continue;
+                }
+                let capture = captures[ordinal]
+                    .as_ref()
+                    .ok_or("Missing captured source")?;
+                let mut source = capture.file.reopen()?;
+                if capture.utf8 {
+                    crate::streaming::write_json_string(source, writer)?;
+                } else {
+                    writer.write_all(b"[")?;
+                    let mut buffer = [0u8; crate::streaming::CHUNK_BYTES];
+                    let mut first = true;
+                    loop {
+                        let count = source.read(&mut buffer)?;
+                        if count == 0 {
+                            break;
+                        }
+                        for byte in &buffer[..count] {
+                            if !first {
+                                writer.write_all(b",")?;
+                            }
+                            first = false;
+                            serde_json::to_writer(&mut *writer, byte)?;
+                        }
+                    }
+                    writer.write_all(b"]")?;
+                }
+            }
+            writer.write_all(b"}")?;
+        }
+        writer.write_all(b"]")?;
+    }
+    writer.write_all(b"}")?;
+    Ok(())
 }
 pub(super) fn file_digest(file: &mut File) -> Result<String> {
     use sha2::{Digest, Sha256};
@@ -667,21 +752,12 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     if args.compact && (args.collection != "/chain-bundles" || args.id.is_none()) {
         return Err("--compact requires --collection /chain-bundles and --id".into());
     }
-    let (snapshot, hash, indexed) = super::store::snapshot(
+    let (snapshot, hash) = crate::streaming::verified_snapshot(
         &args.artifact,
         args.artifact_max_bytes,
         &args.expected_sha256,
     )?;
-    let mut page = if indexed {
-        Some(super::store::read(snapshot.path(), cli, args)?)
-    } else {
-        None
-    };
-    let retained: Value = if let Some(page) = &mut page {
-        std::mem::take(&mut page.retained)
-    } else {
-        serde_json::from_reader(std::io::BufReader::new(snapshot.as_file()))?
-    };
+    let retained: Value = serde_json::from_reader(std::io::BufReader::new(snapshot.as_file()))?;
     if retained["contract_version"] != 1 || retained["investigation_contract_version"] != 1 {
         return Err("Unsupported evidence artifact version".into());
     }
@@ -690,10 +766,9 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             return Err("Malformed artifact: required collections are absent".into());
         }
     }
-    if !indexed {
-        let full_report = report(&retained, &args.artifact, Some(&hash));
-        crate::investigation::validate_retained(&full_report, Some(&retained))?;
-    }
+    let full_report = report(&retained, &args.artifact, Some(&hash));
+    crate::investigation::validate_retained(&full_report, Some(&retained))?;
+    drop(full_report);
     let allowed = [
         "/findings",
         "/records",
@@ -710,11 +785,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         return Err("Unsupported retained evidence collection".into());
     }
     // A navigation view of retained facts only: no parsing or new relationship inference.
-    let bundle_findings = page.as_ref().map_or_else(
-        || retained["findings"].as_array().unwrap(),
-        |page| &page.items,
-    );
-    let mut bundles: Vec<Value> = bundle_findings.iter()
+    let mut bundles: Vec<Value> = retained["findings"].as_array().unwrap().iter()
         .filter(|finding| args.collection == "/chain-bundles" && finding["details"].get("event_chain").is_some() && args.id.as_ref().is_none_or(|id| finding["id"].as_str() == Some(id)))
         .map(|finding| json!({"id":finding["id"],"scope_id":finding["scope_id"],"chain":finding["details"]["event_chain"],"evidence":finding["evidence"],"limitations":finding["limitations"],"verification":finding["verification"]}))
         .collect();
@@ -733,8 +804,6 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         .is_some_and(|v| v["status"] != "verified");
     let collection = if args.collection == "/chain-bundles" {
         &bundles
-    } else if let Some(page) = &page {
-        &page.items
     } else {
         retained
             .pointer(&args.collection)
@@ -754,7 +823,6 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             })
         })
         .collect();
-    let total = page.as_ref().map_or(selected.len(), |page| page.total);
     let base = binding(&retained, &hash);
     let query = if !args.compact && claim_verification.is_none() {
         json!([base, args.collection, args.id])
@@ -779,11 +847,8 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     } else {
         0
     };
-    if prior > total {
+    if prior > selected.len() {
         return Err("Cursor is outside the retained collection".into());
-    }
-    if page.as_ref().is_some_and(|page| page.prior != prior) {
-        return Err("Invalid indexed retrieval cursor".into());
     }
     let source_state = if args.verify_sources {
         verify_sources(&retained, args.artifact_max_bytes)
@@ -791,11 +856,11 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         json!({"status":"not_requested","facts":"retained_snapshot","reason":"Current source files were not read"})
     };
     let max = if cli.complete_output {
-        total
+        selected.len()
     } else {
         cli.report_max_items.unwrap_or(20)
     };
-    let mut output = json!({"artifact_retrieval":{"contract_version":1,"artifact_sha256":hash,"binding_sha256":query_binding,"collection":args.collection,"id":args.id,"source_verification":source_state,"parse_passes":0,"correlation_passes":0,"total":total,"prior":prior,"displayed":0,"remaining":total-prior,"next_cursor":null,"status":"complete","items":[]}});
+    let mut output = json!({"artifact_retrieval":{"contract_version":1,"artifact_sha256":hash,"binding_sha256":query_binding,"collection":args.collection,"id":args.id,"source_verification":source_state,"parse_passes":0,"correlation_passes":0,"total":selected.len(),"prior":prior,"displayed":0,"remaining":selected.len()-prior,"next_cursor":null,"status":"complete","items":[]}});
     if args.compact {
         output["artifact_retrieval"]["view"] = json!("compact");
     }
@@ -805,9 +870,9 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     let refresh = |output: &mut Value, count: usize, status: &str| {
         let section = &mut output["artifact_retrieval"];
         section["displayed"] = json!(count);
-        section["remaining"] = json!(total - prior - count);
+        section["remaining"] = json!(selected.len() - prior - count);
         section["status"] = json!(status);
-        section["next_cursor"] = if prior + count < total {
+        section["next_cursor"] = if prior + count < selected.len() {
             json!(format!("v1:{query_binding}:{}", prior + count))
         } else {
             Value::Null
@@ -816,7 +881,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     refresh(
         &mut output,
         0,
-        if total == prior {
+        if selected.is_empty() {
             "complete"
         } else if max == 0 {
             "item_limit_zero"
@@ -833,11 +898,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     } else {
         let mut displayed = Vec::new();
         let mut payload = (0usize, 0usize);
-        for item in selected
-            .iter()
-            .skip(if indexed { 0 } else { prior })
-            .take(max)
-        {
+        for item in selected.iter().skip(prior).take(max) {
             let text = serde_json::to_string(item)?;
             let comma = usize::from(!displayed.is_empty());
             let candidate = (
@@ -848,7 +909,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             refresh(
                 &mut output,
                 count,
-                if prior + count == total {
+                if prior + count == selected.len() {
                     "complete"
                 } else {
                     "page"

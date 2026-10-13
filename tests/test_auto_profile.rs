@@ -620,8 +620,8 @@ fn global_detection_cutoffs_mark_every_input_despite_complete_generic_parsing() 
                 .unwrap()
                 .len() as u64
                 * 16;
-        // Two short files each reserve one 8 KiB data read and one EOF read.
-        let capture_allowance = 2 * 2 * 8192 * 16;
+        // Two captures retain bounded 64 KiB profile samples; read scratch is released.
+        let capture_allowance = 2 * 64 * 1024;
         let limit = catalog_allowance + initial_configuration + capture_allowance + headroom;
         let dir = TempDir::new().unwrap();
         fs::create_dir(dir.path().join("config")).unwrap();

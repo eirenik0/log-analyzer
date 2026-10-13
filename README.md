@@ -457,23 +457,11 @@ ceiling. Other defaults are 1,000,000 record attempts, 100,000 expanded-row atte
 storage and 8 MiB per physical line/multiline record. Conservative data allowance
 is 512 times planned input bytes, bounded between 512 MiB and 32 GiB; this is
 accounting, not a RAM allocation or RSS ceiling. Explicit limits override planning.
-Evidence retrieval has a separate 64 MiB default read/snapshot limit. JSON
-artifacts still require memory to parse and validate the complete retained tree.
-`investigate --artifact-storage sqlite` creates an opt-in indexed store with the
-same evidence semantics; JSON remains the default for legacy readers. SQLite
-retrieval verifies the whole checksum into a private disk snapshot, then uses
-indexes to load the requested page or exact ID without parsing unrelated items.
-`--evidence-cache-max-bytes` bounds the SQLite cache and, separately, a conservative
-retained-page allocation allowance; `--evidence-record-max-bytes` caps serialized
-items and metadata (both default to 8 MiB). These allowances are not RSS ceilings.
-A page memory cutoff returns a continuation cursor, including with
-`--complete-output`; oversized single items fail explicitly. Raise the separate
-`--artifact-max-bytes` limit for larger stores only within the agreed disk budget.
-SQLite claim assertions currently require choosing JSON storage instead.
-Artifact serialization writes directly to a private staging destination. Failed
-writes publish no reusable artifact. Parser and correlation working sets still
-use the existing processing budgets; SQLite does not yet spill those working sets.
-See [storage contracts and remaining work](docs/design/disk-backed-evidence.md).
+Evidence retrieval has a separate 64 MiB default read limit and clones only the
+requested page's items. Larger stored artifacts require an explicit
+`evidence --artifact-max-bytes BYTES` allowance; raise it only on a host with enough
+memory to parse and validate the complete artifact. Output pagination does not
+bound artifact parsing memory.
 Oversized captures can still stop at these finite ceilings; inspect every input's
 capture and scope status. See
 `investigate --help` for overrides. Work accounts for parsing bytes, loop steps
@@ -502,6 +490,30 @@ mappings do not authorize the other outcome; unavailable recognition withholds
 zero counts and missing-boundary claims. Positive classified facts remain retained
 with explicit partial population coverage when capabilities differ. Reading exactly the input byte cap conservatively
 reports a prefix if physical EOF was not observed.
+
+Investigation source capture uses 64 KiB reads into private temporary files and
+retains only a 64 KiB profile sample per input. Parsing reads those snapshots and
+yields individual records, including normalized rows. Records rejected by global
+filters release their memory reservations immediately. Physical and multiline
+records remain bounded by `--record-max-bytes`; chunk boundaries do not finish an
+open lifecycle or a pending multiline record. Captured source strings are escaped
+directly into the staged JSON artifact in bounded chunks. Temporary captures are
+removed on completion or error. The input-byte limit also bounds their total size;
+the separately staged artifact has its own byte limit.
+
+The library's `parser::visit_log_file(path, config, record_max_bytes, callback)`
+provides a fallible record consumer without collecting parsed records. Returning
+an error stops ingestion. Its normalization coverage retains up to 20 diagnostics
+and returns an error if that bound is exceeded. See
+[`examples/stream-records.rs`](examples/stream-records.rs) for a counting consumer
+and [the streaming design](docs/design/streaming-pipeline.md) for the stage boundaries.
+Existing `Vec`-returning parser APIs remain available.
+
+Correlation and report construction still retain selected records and calculated
+collections under the processing budget. They do not yet spill to disk; large
+investigations can still stop with an explicit partial outcome. This source-I/O
+change does not make the entire investigation or evidence retrieval constant-memory.
+Artifacts remain version-1 JSON; no SQLite artifact format or backend flag is added.
 
 The memory setting bounds a conservative reservation model for buffered/retained
 source and calculated data, including normalization field-mapping amplification

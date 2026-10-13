@@ -26,22 +26,19 @@ profile-selection gap.
 `memory_limit` measures accounted data, not process RSS; measure peak RSS separately
 when investigating RAM consumption.
 
+Investigation sources are captured to temporary files and parsed through a record
+visitor with bounded reads. This avoids retaining complete source buffers, but
+correlation and report collections still use the processing allowance. Do not
+interpret streaming ingestion as proof that an arbitrarily large investigation
+will complete. JSON evidence retrieval still parses the retained artifact; output
+pagination does not bound its memory. No SQLite storage option is required.
+
 Retrieve retained collections using `evidence`, the exact artifact
 checksum and snapshot-bound cursor. Check displayed, prior, remaining and total
 counts; append each collection once. A missing displayed item is not a measured
 zero. Stop on missing pages, changed bindings, no progress or oversized items.
 Preflight, reference reads and retrieval share the overall budget; bytes and
 characters are not exact model-token counts.
-
-For large retained evidence, `investigate --artifact-storage sqlite` enables
-indexed retrieval after checksum verification of a private disk snapshot. It
-preserves source addresses and snapshot/profile/query/redaction cursor binding.
-Respect the evidence cache, serialized-record and artifact byte limits. A page
-memory cutoff requires following its cursor even with `--complete-output`;
-a single oversized record is an explicit failure. This backend does not yet
-spill parser/correlation working sets. Claims currently require JSON artifacts.
-Legacy JSON retrieval still materializes the retained tree. Do not describe the
-SQLite retrieval memory sweep as proof of bounded source processing.
 
 ## Profiles
 
