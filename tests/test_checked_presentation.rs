@@ -1133,3 +1133,75 @@ fn interval_cardinalities_are_checked_against_retained_chain_populations() {
             .any(|r| r == "chain_cardinalities_require_retained_profile_and_capture")
     );
 }
+
+#[test]
+fn chain_validation_honors_raised_processing_limits_before_selection() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("expanded.toml");
+    fs::write(
+        &profile,
+        format!(
+            "{}\n[normalization]\nroot_path = \"/rows\"\nexpand_rows = true\n",
+            fs::read_to_string(PROFILE).unwrap()
+        ),
+    )
+    .unwrap();
+    let rows: Vec<Value> = fs::read_to_string(INPUT)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let mut row: Value = serde_json::from_str(line).unwrap();
+            row["timestamp"] = row["ts"].take();
+            row
+        })
+        .collect();
+    let count = 100_001 + rows.len();
+    let input = temp.path().join("expanded.jsonl");
+    let mut contents =
+        "{\"rows\":[{\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"unselected\"}]}\n"
+            .repeat(100_001);
+    contents.push_str(&(json!({"rows":rows}).to_string() + "\n"));
+    fs::write(&input, contents).unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "retained",
+        profile.to_str().unwrap(),
+        &[input.to_str().unwrap()],
+        &[
+            "--json",
+            "--complete-output",
+            "--select",
+            r#"{"correlation_id":"alpha"}"#,
+            "--processing-max-expanded-records",
+            "200000",
+            "--processing-max-work",
+            "1000000000",
+            "--processing-max-ms",
+            "240000",
+            "--processing-max-memory-bytes",
+            "8589934592",
+        ],
+    ))
+    .unwrap();
+    assert_eq!(
+        report["processing"]["status"], "complete",
+        "{}",
+        report["processing"]
+    );
+    assert_eq!(report["processing"]["usage"]["expanded_records"], count);
+    let bytes = fs::read(temp.path().join("retained")).unwrap();
+    let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(artifact["records"].as_array().unwrap().len(), 10);
+    let summary = log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+    assert!(
+        !summary
+            .deferred_relations
+            .iter()
+            .any(|r| r == "chain_cardinalities_require_retained_profile_and_capture")
+    );
+    let finding = chain(&report["findings"], "alpha");
+    assert_eq!(
+        step(finding, "capture-end")["join_samples"][0]["endpoint_interval"]["status"],
+        "measured"
+    );
+}

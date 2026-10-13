@@ -161,6 +161,8 @@ reuses the parser and chain engine on retained captures, selected record address
 and retained classifications to check root/source/target counts. It reads no live
 input files. Missing profiles or captures defer this relation explicitly; exhausted
 validation work, time or memory allowances return an error rather than accepting counts.
+Replay allowances cover retained processing limits and usage, including expanded
+rows parsed before selection, so raised investigation limits also apply to validation.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.

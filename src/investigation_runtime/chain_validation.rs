@@ -69,15 +69,23 @@ pub(crate) fn validate(
             })
             .collect::<Result<_, _>>()?;
         // Validation covers the already-retained population, independently of generation cutoffs.
+        let allowance = |name: &str, minimum: u64| {
+            minimum
+                .max(artifact["processing"]["limits"][name].as_u64().unwrap_or(0))
+                .max(artifact["processing"]["usage"][name].as_u64().unwrap_or(0))
+        };
         let mut budget = Budget::new(Limits {
-            input_bytes: bytes.len() as u64,
-            records: bytes.len() as u64,
-            expanded_records: 100_000.max(selected.len() as u64),
-            work_units: 500_000_000,
-            elapsed_ms: 180_000,
-            memory_bytes: (bytes.len() as u64)
-                .saturating_mul(512)
-                .clamp(512 * 1024 * 1024, 32 * 1024 * 1024 * 1024),
+            input_bytes: allowance("input_bytes", bytes.len() as u64),
+            records: allowance("records", bytes.len() as u64),
+            expanded_records: allowance("expanded_records", 100_000.max(selected.len() as u64)),
+            work_units: allowance("work_units", 500_000_000),
+            elapsed_ms: allowance("elapsed_ms", 180_000),
+            memory_bytes: allowance(
+                "memory_bytes",
+                (bytes.len() as u64)
+                    .saturating_mul(512)
+                    .clamp(512 * 1024 * 1024, 32 * 1024 * 1024 * 1024),
+            ),
             artifact_bytes: u64::MAX,
             record_bytes: usize::MAX,
             cancel_file: None,

@@ -44,6 +44,9 @@ source verification is unavailable, while accepting redacted reports with omitte
 [[tests/test_checked_presentation.rs#interval_cardinalities_are_checked_against_retained_chain_populations]]
 rejects forged singleton root/source/target counts that would turn ambiguous joins
 into measured intervals, and checks explicit deferral when redaction prevents replay.
+[[tests/test_checked_presentation.rs#chain_validation_honors_raised_processing_limits_before_selection]]
+checks publication and artifact validation after more than 100,000 expanded rows
+are parsed under raised limits, with only ten selected chain records retained.
 
 ## Missing join identity
 
