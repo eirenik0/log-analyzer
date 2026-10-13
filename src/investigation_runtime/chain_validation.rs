@@ -1,5 +1,5 @@
-//! Reuse the chain engine to check retained endpoint populations before sampling.
-use super::{Selector, chains, selected as is_selected};
+//! Replay retained source metadata and excerpts, then check configured chain populations.
+use super::{Selector, chains, findings as source_findings, selected as is_selected};
 use crate::{
     config::AnalyzerConfig,
     evidence, parser,
@@ -67,28 +67,28 @@ pub(crate) fn validate(
     let config: AnalyzerConfig =
         serde_json::from_value(artifact["effective_profile"].clone()).map_err(|e| e.to_string())?;
     config.validate_event_rules()?;
-    let Some(policy) = config.investigation.as_ref() else {
-        return if chain_findings.is_empty() {
-            Ok(Vec::new())
-        } else {
-            Err("chain findings lack effective policy".into())
-        };
-    };
-    if policy.chains.is_empty() && chain_findings.is_empty() {
-        return Ok(Vec::new());
+    let policy = config.investigation.as_ref();
+    let has_chains =
+        policy.is_some_and(|policy| !policy.chains.is_empty()) || !chain_findings.is_empty();
+    if policy.is_none() && !chain_findings.is_empty() {
+        return Err("chain findings lack effective policy".into());
     }
     let query = &artifact["report_metadata"]["evidence"]["query"];
     let filter = crate::build_filter(&query["filter"].as_str().map(str::to_owned))
         .map_err(|e| e.to_string())?;
-    let selectors: Vec<Selector> = query["command"]["Investigate"]["select"]
-        .as_array()
-        .ok_or("missing retained selectors")?
-        .iter()
-        .map(|selector| {
-            serde_json::from_str(selector.as_str().ok_or("invalid retained selector")?)
-                .map_err(|e| e.to_string())
-        })
-        .collect::<Result<_, _>>()?;
+    let selectors: Vec<Selector> = if let Some(command) = query["command"].get("Investigate") {
+        command["select"]
+            .as_array()
+            .ok_or("missing retained selectors")?
+            .iter()
+            .map(|selector| {
+                serde_json::from_str(selector.as_str().ok_or("invalid retained selector")?)
+                    .map_err(|e| e.to_string())
+            })
+            .collect::<Result<_, _>>()?
+    } else {
+        Vec::new()
+    };
     let mut ordinals: BTreeSet<_> = chain_findings
         .iter()
         .map(|f| {
@@ -127,7 +127,7 @@ pub(crate) fn validate(
         let completeness_available = !artifact["processing"]["stop"]["scope_ids"]
             .as_array()
             .is_some_and(|scopes| scopes.contains(&scope["id"]));
-        completeness_deferred |= !completeness_available;
+        completeness_deferred |= has_chains && !completeness_available;
         let Some(bytes) = captures.get(&ordinal) else {
             complete = false;
             continue;
@@ -197,7 +197,7 @@ pub(crate) fn validate(
         parsed
             .entries
             .retain(|entry| filter.matches(entry) && is_selected(entry, &selectors, &config));
-        if completeness_available {
+        if completeness_available && (has_chains || query["command"].get("Investigate").is_some()) {
             let source_population: BTreeSet<_> = parsed
                 .entries
                 .iter()
@@ -218,7 +218,21 @@ pub(crate) fn validate(
                 entry.source_row_path.clone(),
             ))
         });
-        if parsed.entries.len() != selected.len() {
+        let parsed_addresses: BTreeSet<_> = parsed
+            .entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.source_line_number as u64,
+                    entry.source_row_path.clone(),
+                )
+            })
+            .collect();
+        if selected.iter().any(|(location, record)| {
+            !parsed_addresses.contains(location)
+                && !(record["data_omitted"] == true
+                    && record["verification"]["source_and_rules"] == "unavailable")
+        }) {
             return Err("retained chain population differs from captured records".into());
         }
         for entry in &mut parsed.entries {
@@ -227,6 +241,11 @@ pub(crate) fn validate(
                 entry.source_line_number as u64,
                 entry.source_row_path.clone(),
             )];
+            if record["data_omitted"] == true
+                && record["verification"]["source_and_rules"] == "unavailable"
+            {
+                continue;
+            }
             for (field, expected) in [
                 (
                     "timestamp",
@@ -263,6 +282,66 @@ pub(crate) fn validate(
         }
         let mut context = evidence::Context::for_investigation_replay(&config);
         context.observe(&parsed.coverage, &parsed.entries);
+        let source_entries: BTreeMap<_, _> = parsed
+            .entries
+            .iter()
+            .map(|entry| {
+                (
+                    (
+                        entry.source_line_number as u64,
+                        entry.source_row_path.clone(),
+                    ),
+                    entry,
+                )
+            })
+            .collect();
+        for finding in findings
+            .iter()
+            .filter(|f| !f["details"]["event_chain"].is_object())
+        {
+            for excerpt in finding["evidence"]
+                .as_array()
+                .ok_or("missing finding evidence")?
+            {
+                if excerpt["occurrence"]["input_ordinal"] != ordinal {
+                    continue;
+                }
+                let location = address(&excerpt["occurrence"]).ok_or("missing excerpt address")?;
+                if selected.get(&location).is_some_and(|record| {
+                    record["data_omitted"] == true
+                        && record["verification"]["source_and_rules"] == "unavailable"
+                }) && excerpt["verification"]["source_and_rules"] == "unavailable"
+                {
+                    continue;
+                }
+                let entry = source_entries
+                    .get(&location)
+                    .ok_or("excerpt absent from parsed population")?;
+                let mut replay = source_findings::excerpt(entry, &context, &Value::Null);
+                let text = excerpt["text"].as_str().ok_or("missing excerpt text")?;
+                if ![entry.message.as_str(), entry.raw_logline.as_str()]
+                    .iter()
+                    .any(|original| {
+                        original.starts_with(text)
+                            && excerpt["omitted_characters"].as_u64()
+                                == Some((original.chars().count() - text.chars().count()) as u64)
+                    })
+                {
+                    return Err("excerpt differs from retained record or replayed source".into());
+                }
+                // Legacy artifacts may retain different valid excerpt bounds.
+                replay["text"] = excerpt["text"].clone();
+                replay["omitted_characters"] = excerpt["omitted_characters"].clone();
+                if samples(&serde_json::json!([excerpt]), None)?
+                    != samples(&serde_json::json!([replay]), Some(&selected))?
+                {
+                    return Err("finding evidence differs from replayed source".into());
+                }
+            }
+        }
+        let Some(policy) = policy.filter(|policy| !policy.chains.is_empty()) else {
+            continue;
+        };
         let mut replayed = Vec::new();
         chains::calculate(
             policy,
@@ -438,7 +517,7 @@ pub(crate) fn validate(
         }
     }
     let mut deferred = Vec::new();
-    if !complete {
+    if has_chains && !complete {
         deferred.push("chain_cardinalities_require_retained_profile_and_capture");
     }
     if completeness_deferred {

@@ -160,7 +160,8 @@ Retained classification semantics still constrain endpoint names when source
 verification is unavailable. Redaction may omit
 those semantics and keeps its source-verification limitation explicit.
 [[src/investigation_runtime/chain_validation.rs#validate|Chain cardinality validation]]
-reuses the parser and chain engine on retained captures and profile rules to check
+replays retained sources for every profile, independently of chain policy. It uses
+the parser and, when configured, the chain engine on retained captures and rules to check
 root/source/target counts. Fresh classifications, timestamps and year/offset provenance must equal retained
 record metadata before interval availability or duration is trusted.
 Stored filters and exact selectors reconstruct each unaffected input's complete
@@ -176,7 +177,9 @@ characters, displayed fields and verification metadata, must match replay; only
 replay-specific occurrence identity is normalized. Explicit source-verification losses
 are inherited from the retained source record. Replay uses
 [[src/evidence.rs#Context#for_investigation_replay|the retained display-field policy]].
-Step labels, chain titles and evidence policy text must also match.
+Step labels, chain titles and evidence policy text must also match. Non-chain
+excerpts receive the same source-field validation. Display projection permits text
+clipping with matching omission counts but requires all other excerpt fields unchanged.
 Chain identities, context identities, scope fields, root event names and root
 ambiguity must also match replay, binding links to their retained correlation subject.
 Later-activity counts and samples must match the retained same-context population

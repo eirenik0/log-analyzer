@@ -1930,3 +1930,95 @@ fn replay_binds_timestamps_and_provenance_before_interval_validation() {
         );
     }
 }
+
+#[test]
+fn replay_checks_source_bindings_without_chain_policy() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("errors.jsonl");
+    fs::write(
+        &input,
+        fs::read_to_string(INPUT)
+            .unwrap()
+            .replacen("\"INFO\"", "\"ERROR\"", 1),
+    )
+    .unwrap();
+    let base = fs::read_to_string(PROFILE).unwrap();
+    let rules = base.split("[investigation]").next().unwrap();
+    for (name, policy) in [
+        ("no-policy", ""),
+        (
+            "no-chains",
+            "\n[investigation]\nversion = 1\nroles = [{id = \"checkpoint\", rule_ids = [\"typed-event\"], select = [{field = \"event.name\", equals = \"checkpoint\"}]}]\n",
+        ),
+    ] {
+        let profile = temp.path().join(format!("{name}.toml"));
+        fs::write(&profile, format!("{rules}\n[investigation_view]\nsource_fields = [\"event.name\", \"capture_id\"]\n{policy}")).unwrap();
+        let report: Value = serde_json::from_str(&run(
+            temp.path(),
+            name,
+            profile.to_str().unwrap(),
+            &[input.to_str().unwrap()],
+            &["--json", "--complete-output"],
+        ))
+        .unwrap();
+        let artifact: Value =
+            serde_json::from_slice(&fs::read(temp.path().join(name)).unwrap()).unwrap();
+        assert!(
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|f| !f["details"]["event_chain"].is_object())
+        );
+        let index = report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|f| !f["evidence"].as_array().unwrap().is_empty())
+            .unwrap();
+        let occurrence = report["findings"][index]["evidence"][0]["occurrence"].clone();
+        for case in ["classification", "display-fields", "stored-fields"] {
+            let mut altered = report.clone();
+            let mut saved = artifact.clone();
+            if case == "classification" {
+                let record = saved["records"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|r| r["occurrence"] == occurrence)
+                    .unwrap();
+                record["fields"]["classification"]["semantics"]["correlation_id"] =
+                    json!("neighbor");
+                for finding in altered["findings"].as_array_mut().unwrap() {
+                    for subject in finding["checked"]["subjects"].as_array_mut().unwrap() {
+                        if subject["occurrence"] == occurrence {
+                            subject["event"]["correlation_id"] = json!("neighbor");
+                        }
+                    }
+                }
+            } else {
+                altered["findings"][index]["evidence"][0]["fields"]["event.name"] =
+                    json!("fabricated completion");
+                if case == "stored-fields" {
+                    saved["findings"][index]["evidence"][0]["fields"]["event.name"] =
+                        json!("fabricated completion");
+                }
+            }
+            let bytes = serde_json::to_vec(&saved).unwrap();
+            altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+            altered["presentation"]["serialized_bytes"] = Value::Null;
+            altered["presentation"]["serialized_characters"] = Value::Null;
+            shape(&altered, false);
+            log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+            let error = log_analyzer::investigation::validate_relations(&altered, Some(&bytes))
+                .unwrap_err();
+            let expected = match case {
+                "classification" => "retained classification differs",
+                "display-fields" => "invalid excerpt projection",
+                "stored-fields" => "finding evidence differs from replayed source",
+                _ => unreachable!(),
+            };
+            assert!(error.reason.contains(expected), "{name}/{case}: {error}");
+        }
+    }
+}

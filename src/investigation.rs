@@ -674,9 +674,10 @@ pub fn validate_relations(
                 let mut overflow = false;
                 for original in originals {
                     let original_text = text(original, "/text")?;
-                    if !original_text.starts_with(displayed_text)
-                        || excerpt["verification"] != original["verification"]
-                    {
+                    let mut projected = original.clone();
+                    projected["text"] = excerpt["text"].clone();
+                    projected["omitted_characters"] = excerpt["omitted_characters"].clone();
+                    if !original_text.starts_with(displayed_text) || *excerpt != projected {
                         continue;
                     }
                     let clipped =

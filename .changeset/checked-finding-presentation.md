@@ -40,3 +40,4 @@ Validate complete nested excerpt payloads and policy labels against retained-sou
 Reject removed or replaced canonical uncertainty, assurance and count-population qualifications.
 Check retained timestamps and year/offset provenance against parsed captures before validating intervals.
 Bind top-level chain evidence, including root display fields, to complete replayed payloads.
+Replay source metadata without chain policies and verify non-chain excerpt fields in stored and displayed reports.
