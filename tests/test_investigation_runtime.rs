@@ -124,6 +124,7 @@ fn unified_counts_durations_and_legacy_perf_agree() {
             .all(|record| record["timestamp_offset_source"] == "source")
     );
 }
+// @lat: [[regression-tests#Evidence regressions#Processing cutoffs]]
 #[test]
 fn limits_and_cancellation_return_valid_partial_processed_populations() {
     for extra in [
@@ -5268,6 +5269,7 @@ fn connected_chains_missing_root_context_keep_links_but_report_partial_analysis(
     }
 }
 
+// @lat: [[regression-tests#Evidence regressions#Missing join identity]]
 #[test]
 fn connected_chains_missing_join_identity_is_partial_and_never_guessed() {
     let mut submission = chain_event("submitted", "run-1", "capture-1", 0);
@@ -5784,6 +5786,7 @@ fn failed_resource_cache_bundle_excludes_other_sessions_without_inventing_reques
     );
 }
 
+// @lat: [[regression-tests#Evidence regressions#Interval boundaries]]
 #[test]
 fn chain_intervals_preserve_offsets_fractional_precision_and_unknown_boundaries() {
     for (start, end, expected) in [
@@ -6226,6 +6229,7 @@ fn verify_subject_claim(
     verification.clone()
 }
 
+// @lat: [[regression-tests#Evidence regressions#Subject binding]]
 #[test]
 fn subject_bound_links_reject_adjacent_names_scopes_ids_and_endpoints() {
     let events = [

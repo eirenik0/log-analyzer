@@ -466,7 +466,7 @@ fn adding_a_format_needs_only_rules_and_flat_field_fixtures() {
 
 #[test]
 fn documented_toml_example_loads_and_compiles() {
-    let document = include_str!("../docs/design/event-classification.md");
+    let document = include_str!("../lat.md/contracts/event-classification.md");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("documented.toml");
     let lf = document.replace("\r\n", "\n");

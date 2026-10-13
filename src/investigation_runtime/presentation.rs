@@ -402,6 +402,7 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
         }
     }
 }
+// @lat: [[usability#Usability#NFR-005 One-command initial analysis]]
 pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
     let mut output = String::new();
     let incomplete = report["scopes"].as_array().is_some_and(|scopes| {

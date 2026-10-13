@@ -267,6 +267,7 @@ fn reused_ids_expose_missing_or_aliasing_scope_with_witnesses() {
                 && d["witnesses"].as_array().unwrap().len() == 4)
     );
 }
+// @lat: [[regression-tests#Evidence regressions#Independent profile expectations]]
 #[test]
 fn strict_expected_positive_negative_and_pair_facts_validate_inherited_candidate_without_writes() {
     let dir = tempdir().unwrap();

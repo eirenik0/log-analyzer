@@ -1,9 +1,13 @@
 # Grounded investigation evaluations
 
+These protocols separate deterministic checks, model trials and prose review, with explicit budgets and limitations.
+
 ## Profile discovery and recovery
 
 `discovery.py` starts with a question, log paths and project context, **without an
-injected profile**. Its separate nine-case suite covers project/nested-directory
+injected profile**.
+
+Its separate nine-case suite covers project/nested-directory
 discovery, conflicting outcome rules, current saved-mapping revalidation, terminal
 evidence beyond the first page, grammar beyond the detection prefix, processing
 cutoffs, unparsed input and unsupported semantics. The broker permits discovery,
@@ -81,7 +85,7 @@ binary's advertised schemas. CI runs scorer regressions without credentials.
 
 ## Three separate evaluation layers
 
-The [published layered smoke](results/layers-scripted.json) records 98 scripted
+The [published layered smoke](../evals/results/layers-scripted.json) records 98 scripted
 attempts with corpus, harness and binary hashes.
 
 `layers.py` reports tool correctness, verified-fact interpretation and the complete
@@ -170,7 +174,9 @@ the existing portable skill work; interactive host behavior remains untested her
 ## Completion checklist evaluation
 
 The skill checks processing coverage, final lifecycle evidence and outcome/contrary
-records before an absence or completion claim. `tests/test_completion_evidence.rs`
+records before an absence or completion claim.
+
+`tests/test_completion_evidence.rs`
 exercises ten synthetic captures: a paginated late success, a failed end, processing
 cutoff, a rejected terminal record, an unrecognized result, an unsuitable profile,
 start-only/end-only captures, a different-scope end, and failure followed by success.
@@ -217,7 +223,9 @@ alone cannot establish skill effectiveness. No such model comparison has been ru
 ## CLI corpus and historical migrations
 
 `cases.json` contains 28 desired contracts for text/Rust tracing/syslog/console/JSONL,
-coverage, extraction, timing, selection, offsets and Unicode. Unsupported access
+coverage, extraction, timing, selection, offsets and Unicode.
+
+Unsupported access
 and tuple inputs test honest rejection, not parser support. `original-cases.json`
 preserves the exact local draft and `migrations.json` records its hash, executable
 hash, issue links and passing regression assertions before stale markers were
@@ -235,6 +243,8 @@ Use `--case 'perf-*'`, `--list`, `--report PATH` or `--timeout SECONDS` for CLI 
 Timezone tests must actually run on a host honoring the requested TZ setting.
 
 ## Executable investigation scoring
+
+The executable scenario suite scores factual answers and citations across thirteen investigation questions.
 
 Version-2 `scenarios.json` has thirteen questions and covers failure triage, independent slow/baseline runs,
 INFO-only delay, reused IDs, incomplete capture, unsuitable profiles, nested
@@ -265,7 +275,9 @@ expansion-address citations or unrestricted semantic judgment.
 ## Two tool arms and budgets
 
 The same scripted participant reads the same questions/inputs under analyzer and
-search/script arms. It is a deliberately limited fixture participant that checks
+search/script arms.
+
+It is a deliberately limited fixture participant that checks
 harness execution; it is not an AI model or evidence of agent quality. Analyzer
 requests use existing read-only commands and five-item cursor pages; the baseline
 uses literal search, five-record reads/explicit nested rows, fixture-limited classic/Rust tracing
@@ -326,9 +338,11 @@ identities. Hashes always describe the actual consumed bytes.
 
 ## Published baseline and limits
 
-[baseline.json](results/baseline.json) records the first sanitized scripted run,
+[baseline.json](../evals/results/baseline.json) records the first sanitized scripted run,
 with build/binary, input/profile/corpus, harness/prompt identities and diagnostic
-costs. Create an aggregate with `python3 evals/publish.py REPORT OUTPUT`. Inspect
+costs.
+
+Create an aggregate with `python3 evals/publish.py REPORT OUTPUT`. Inspect
 optional model configuration before sharing; the publisher is a projection, not
 a universal secret detector.
 
@@ -354,7 +368,7 @@ $1 API-equivalent per trial (16 trials, at most $16). Both arms receive identica
 inputs and generic JSON-schema delivery; the scorer checks typed answers and source
 witnesses, not arbitrary prose, citation consumption or causality.
 
-The [historical result](results/question-plan-compact-native.json) records 16/16
+The [historical result](../evals/results/question-plan-compact-native.json) records 16/16
 factual passes, but only 7/8 candidate final reviews (Haiku 3/4, Opus 4/4).
 One Haiku held-out trial skipped recovery and verification after 79 seconds/9 calls.
 Independent held-out validation covered 3/4 trials; interval proof covered Haiku

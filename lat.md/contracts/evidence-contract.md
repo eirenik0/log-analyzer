@@ -1,6 +1,8 @@
 # Evidence contract (version 1)
 
-This contract extends `report_metadata` and schema version 1. Existing report keys
+This contract extends `report_metadata` and schema version 1.
+
+Existing report keys
 and their semantics are preserved. New fields are additive; consumers must allow
 unknown fields. Removal, renaming, or a change of meaning requires a new report
 schema version and migration notes. Evidence contract revisions are advertised
@@ -20,7 +22,7 @@ Command results default to JSON. `report.schema.json` covers report variants;
 five findings and retrieval guidance. `command-summary.schema.json` covers the
 omission envelope used by schema, mapping and generated-profile summaries. Other
 summaries retain their command's report shape and reduce displayed detail.
-See [output modes](../../README.md#output-for-models-and-people) for migration.
+See [output modes](../cli-reference.md#output-for-models-and-people) for migration.
 These schemas describe CLI output, not standalone library formatter calls, which
 do not load an output context. `generate-config` returns generated TOML inside
 `generated_profile.toml` by default; `--format text` explicitly exports raw TOML.
@@ -34,7 +36,9 @@ supports a claim.
 
 `report_metadata.evidence.inputs` records each ordered input's file, byte count,
 SHA-256 of the exact byte stream consumed by the parser, parse coverage, and
-selected-record count. Original bytes include whitespace and line endings.
+selected-record count.
+
+Original bytes include whitespace and line endings.
 `input_id` hashes the supplied path and content hash together: two files with
 identical lines are distinct sources. `snapshot_id` hashes the ordered input IDs.
 Paths are interpreted exactly as supplied; relative/absolute aliases and a
@@ -70,6 +74,7 @@ that upstream exports or the capture window are complete.
 
 `evidence_ref` contains a stable opaque `reference_id`, `input_id`, one-based physical `line`, and `row_path`
 (JSON Pointer for normalization-expanded rows, or null for ordinary entries).
+
 It is attached to search/process/trace records, extraction row sources, error
 samples and span boundaries, performance boundaries and diagnostics, comparison
 instances, and event timeline sources. Resolve `input_id` in the manifest,
@@ -110,6 +115,7 @@ Agent findings must describe this as an estimate, not measured blocking work.
 ## Scope, coverage, limits and redaction
 
 Shared `scope` counts parsed and filter-selected records before display limits.
+
 It distinguishes `empty_input`, `zero_filter_matches`, `unparsed_input`, `parsed`,
 and `not_applicable`. Parse rejections and normalization diagnostics remain
 visible for partial inputs. Event classification, ambiguous pairing, and analysis
@@ -152,7 +158,9 @@ Redaction is optional and does not guarantee that arbitrary log content is secre
 ## Agent findings and runtime behavior
 
 The investigation schema requires explicit kinds: observation, measurement,
-hypothesis, contrary evidence, or unknown. Measurements require numeric values,
+hypothesis, contrary evidence, or unknown.
+
+Measurements require numeric values,
 units, timing semantics, effective profile identity and two actual evidence
 boundaries. Hypotheses have confidence and supporting references, and cannot
 carry measured values or boundaries. Unknowns carry a reason. The Rust core does

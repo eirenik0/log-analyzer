@@ -1,10 +1,13 @@
 # Investigation report contract version 1
 
 Version 1 defines a bounded investigation report and the retained evidence needed
-to check it. The Rust core owns parsing, classification, correlation and calculation;
+to check it.
+
+The Rust core owns parsing, classification, correlation and calculation;
 agents may add explicitly attributed hypotheses. Logs and instruction-like strings
-are evidence, never instructions. This contract implements issue #66; the command,
-artifact storage and processing-limit enforcement are tracked in #71.
+are evidence, never instructions. The [[src/investigation_runtime.rs#run|runtime]]
+implements `investigate` and `evidence`, including artifact storage and
+processing-limit enforcement.
 
 `capabilities.report_schemas.investigation` embeds the report schema and
 `evidence_artifact` embeds retained artifact contract 1. The `investigation` schema accepts both the existing agent-authored result shape
@@ -16,6 +19,7 @@ working command. These schemas are standalone Draft 2020-12 documents.
 ## Report identity and occurrences
 
 The report retains `report_metadata` and its existing version-1 evidence manifest.
+
 The new schemas reuse its exact definitions; no existing field changes meaning.
 The ordered manifest identifies consumed input streams, active/effective profile,
 query, producer build, parsing coverage, selection and redaction. Read the
@@ -37,7 +41,9 @@ resource or request suffixes, paths, filenames or languages do not establish one
 ## Automatic profile inference
 
 Without an explicit profile selection (`--profile`, or compatibility `--config`/`--preset`), `investigate` probes bounded prefixes of the same
-captured bytes later analyzed. The effective query records candidate observations,
+captured bytes later analyzed.
+
+The effective query records candidate observations,
 sample extents and selection/fallback status in `execution.profile_selection`.
 This grammar inference includes built-ins and bounded TOML discovery in the declared
 project root's `config` directory (current directory by default)
@@ -59,6 +65,7 @@ entry to detect exhaustion; reaching that sentinel stops ancestor sibling walks.
 ## Assessment, processing and presentation
 
 `capabilities --summary` advertises compatibility without embedded schemas.
+
 `investigate --summary` projects the final report into `brief_version: 1`, described
 by `investigation-brief.schema.json`. Processing and artifact contracts do not
 change. The summary displays up to five findings and supplies
@@ -88,7 +95,8 @@ Capture completeness and `scope.analysis_completion` are separate. A supported
 A parse/classification/correlation/calculation cutoff makes affected scopes partial
 or not performed. Explicitly completed independent scopes may remain complete.
 Artifact-write failure can preserve completed analysis while retention is partial
-or unavailable. #71 must implement the checkpoints that justify these declarations.
+or unavailable. [[src/processing.rs#Budget|Processing checkpoints]] record the
+stop conditions used by these declarations.
 
 A partial fact is exact only for its declared processed population. Unread evidence
 can invalidate a pairing, resolve an incomplete lifecycle or alter distributions.
@@ -107,6 +115,7 @@ oversized bundles do not silently lose their required witnesses. See
 
 Every finding has an ID, author, scope, material limitations, verification guarantees,
 and representative excerpts with occurrence references and explicit clipping counts.
+
 Observations, measurements, hypotheses, contrary evidence and unknowns remain
 separate. Only an agent may author a hypothesis, with explicit confidence and support.
 Contrary evidence identifies its target finding. Unknowns retain a reason and may
@@ -151,7 +160,9 @@ it cannot alter the claim, fact, support identity, limitations or verification.
 
 Artifact contract 1 retains the shared metadata, processing state, scopes,
 assessments, full findings, records, population memberships, effective configuration,
-captured streams and scoped event sequences. It contains no self-digest; the report
+captured streams and scoped event sequences.
+
+It contains no self-digest; the report
 stores SHA-256 of its exact serialized bytes separately from original input digests.
 Membership digests hash compact JSON serialization with lexicographically ordered
 object keys, UTF-8 values and no whitespace or trailing newline (the existing Rust
@@ -172,8 +183,8 @@ history does not assert that current originals match: checking current originals
 is a separate revalidation step before a new analysis or reuse against current data.
 
 Retention states its actual policy: unspecified, until explicit deletion, or an
-expiry. Raw-byte archival and a default lifetime are not selected by this contract.
-#71 must choose/document storage location, privacy, cleanup and cancellation behavior.
+expiry. The [[src/investigation_runtime.rs#investigate|runtime]] retains artifacts
+until deletion, in a fresh local directory or an explicit new destination.
 Artifact storage belongs outside tracked project/profile configuration.
 
 Requested redaction applies after analysis and before persistence/output. Each
@@ -200,6 +211,7 @@ less restrictive output view.
 
 Validate JSON shape against the installed schema, then call Rust
 `investigation::validate_relations(report, optional_exact_artifact_bytes)`.
+
 It checks source/occurrence identity, scope and support references, captured digests,
 retained membership, duplicate resource identities, calculation arithmetic,
 source-offset boundaries, processing cutoffs and presentation reconciliation.
@@ -209,17 +221,16 @@ a successful summary-only check is not exhaustive evidence verification.
 
 These checks do not establish event meaning, replay classification, authenticate
 files, synchronize clocks, prove upstream completeness or judge unrestricted prose.
-The producer must supply valid scoped classifications/calculations; #71 will exercise
-this contract through the shared Rust engines. Shape validation alone cannot prove
-that a citation supports a claim.
+The producer supplies scoped classifications and calculations through the shared
+Rust engines. Shape validation alone cannot prove that a citation supports a claim.
 
 Existing CLI outputs, report/evidence versions, agent-result fields, capabilities keys
-and stateless bounded retrieval keep their meaning. No `investigate` or saved-artifact
-retrieval command is implemented by #66. Consumers validate either shape against the advertised
-version-1 schema and must not infer feature availability from its existence. Text and JSON in #71 must render the same selected model,
-including scope, assessment, limitations and omissions.
+and stateless bounded retrieval keep their meaning. Consumers validate against the
+advertised version-1 schema and must not infer feature availability from its existence. The [[architecture|implemented runtime]]
+produces text and JSON from the retained report, including scope, assessments,
+limitations and omissions.
 
-Synthetic [examples](../../examples/investigation-contract/) cover supported,
+Synthetic [examples](../contract-fixtures.md) cover supported,
 insufficient, conflicting, unsupported, output-limited, processing-limited, redacted,
 measured-zero and zero-filter-match results. The cutoff fixture contains a later
 out-of-order start that invalidates the apparent prefix pair. Tests also cover

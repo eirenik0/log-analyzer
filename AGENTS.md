@@ -33,6 +33,13 @@ Project behavior/details should be discovered from:
 - Validate with targeted tests/commands when practical.
 - State assumptions and verification gaps explicitly.
 
+## Design Decisions
+
+Consult the [Lat knowledge graph](lat.md/lat.md) before design changes; use
+`lat locate` and `lat section` to retrieve relevant context. Keep canonical
+principles and designs there, distinguish proposals from implemented behavior,
+and run `lat check` after changing the graph or code it references.
+
 ## Communication Style
 
 - Be concise, direct, and technical.
@@ -53,7 +60,8 @@ Project behavior/details should be discovered from:
   `type(scope): description`. Scope is optional; use `!` for breaking changes.
   Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
   `build`, `ci`, `chore`, `revert`. Example: `fix(parser): preserve timezone offsets`.
-- Follow [CONTRIBUTING.md](CONTRIBUTING.md) for pre-commit setup and quality checks.
+- Follow the [contribution guide](lat.md/contributing.md) for pre-commit setup and quality checks.
+- Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and [PR format](lat.md/contributing.md#pull-request-format) for every PR, including CLI-created PRs.
 - Keep formatting, lint, tests, and applicable evaluation checks passing. Do not
   silence failures or weaken assertions to make CI green.
 - Add a focused regression test for a bug fix. Use synthetic, generic data;

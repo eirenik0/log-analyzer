@@ -434,6 +434,7 @@ fn render_analysis_report(
     }
 }
 
+// @lat: [[architecture#Architecture#Command routing]]
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut cli = cli_parse();
     cli.prepare_common_reports()?;

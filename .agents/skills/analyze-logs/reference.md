@@ -109,6 +109,6 @@ analysis cannot answer it. Example: “Request boundaries are recognized, but th
 profile defines no resource-to-request relationship.” A later analyzer cutoff
 cannot explain a script that was already written earlier.
 
-The [investigation contract](https://github.com/eirenik0/log-analyzer/blob/main/docs/design/investigation-contract.md)
+The [investigation contract](https://github.com/eirenik0/log-analyzer/blob/main/lat.md/contracts/investigation-contract.md)
 is authoritative. Deterministic fixture checks verify commands and evidence;
 they do not establish improved model adherence, accuracy or token savings.

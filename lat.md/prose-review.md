@@ -1,13 +1,17 @@
 # Prose and causal review protocol
 
-The deterministic scorer validates only its declared typed vocabulary. It cannot
+The deterministic scorer validates only its declared typed vocabulary.
+
+It cannot
 establish unrestricted natural-language correctness, causal explanations, useful
 summaries or resistance to arbitrary instruction-like text. These require a separate
 review. No participant-model run or prose-review experiment has been performed.
 
 ## Blinded review and calibration
 
-Use two reviewers who did not write the participant response. Hide arm/model labels
+Use two reviewers who did not write the participant response.
+
+Hide arm/model labels
 and resource costs until factual reviews are complete. Give reviewers the immutable
 source/profile identity, actually delivered evidence, independent truth and declared
 coverage/verification limitations. Participants receive no rubric or expected judgment.
@@ -38,6 +42,8 @@ average cannot excuse an invented causal or completion claim.
 
 ## Workflow adherence and fallback attribution
 
+Review how evidence was obtained separately from whether the answer is correct.
+
 When the evaluation permits custom scripts, review the actual tool chronology
 separately from answer quality: automatic detection or explicit override, resolution
 and validation where needed, an initial bounded investigation, inspection of support/coverage, then a
@@ -55,7 +61,9 @@ in a native host. These chronology checks need delivered native tool traces.
 
 ## Calibration anchors
 
-These are reference judgments, not executed reviewer-agreement measurements. The
+These are reference judgments, not executed reviewer-agreement measurements.
+
+The
 synthetic lookup starts at line 1 at 00:00:00+02:00 and ends in failure at line 3 at
 00:00:02+02:00. Line 2 contains instruction-like text. The cause is absent.
 

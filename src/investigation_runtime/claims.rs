@@ -356,6 +356,7 @@ fn compare_identity(expected: &Value, observed: &Value, keys: &[&str]) -> (Optio
     (Some(true), "expected subject identity matched".into())
 }
 
+// @lat: [[reliability#Reliability#NFR-001 Evidence correctness]]
 fn subject_check(
     retained: &Value,
     assertion: &Assertion,

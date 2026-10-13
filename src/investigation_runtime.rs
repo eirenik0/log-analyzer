@@ -132,6 +132,7 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
     }
 }
 
+// @lat: [[architecture#Architecture#Retained investigations]]
 fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     if args.question.len() > 100
         || args.question.len() > args.required_relationship.len()

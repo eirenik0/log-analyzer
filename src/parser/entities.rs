@@ -79,6 +79,7 @@ pub enum LogEntryKind {
 }
 
 /// Main log entry structure with integrated base fields
+// @lat: [[domain#Domain concepts#Records and coverage]]
 #[derive(Debug, Clone)]
 pub struct LogEntry {
     pub classification: Option<crate::event_rules::ClassifiedRecord>,

@@ -45,6 +45,7 @@ log record or making an invented completion claim.
 ## Grammar and adapters
 
 The optional `[event_rules]` table requires `version = 1` or `2` and a `rules` array.
+
 Each rule requires unique `id`, `adapter`, and `mapping`. Unknown keys in this
 schema are errors. Rule IDs are 1..128 ASCII letters, digits, `_`, `-`, or `.`.
 
@@ -137,6 +138,8 @@ scope = [{ from = "field", field = "session" }]
 
 ## Outcomes and match policy
 
+Explicit outcome labels and deterministic match rules control classification and conflicts.
+
 - `Unclassified`: no adapter matched; retain the searchable record.
 - `Recognized`: one unique lifecycle interpretation; retain matching rule IDs.
 - `IdentityOnly`: one unique identity with no phase; never send to lifecycle pairing.
@@ -174,6 +177,8 @@ fabricated for unavailable classification or incomplete pairing.
 
 ## Bounds and performance
 
+Rule counts, field sizes and regex resources are bounded; oversized semantic values are rejected rather than truncated.
+
 Version 1 fixes these limits: 128 rules; 16 conditions per structured rule;
 16 scope mappings; 8192 UTF-8 bytes per regex; 4096 UTF-8 bytes per mapping source,
 condition key/string and **decoded** resolved value; 1 MiB per original message.
@@ -206,7 +211,9 @@ Unicode. No regex compilation occurs per record.
 
 ## Versioning and legacy migration
 
-Missing `event_rules` means legacy mode. Existing custom parser/performance
+Missing `event_rules` means legacy mode.
+
+Existing custom parser/performance
 marker settings continue with their existing meaning; no automatic translation,
 substring reinterpretation, or implicit rule generation is permitted.
 Unsupported versions fail loading instead of falling back to legacy behavior.
@@ -225,9 +232,11 @@ winner. Programmatic configurations must run the same mixed-mode validation.
 
 Shipped `eyes`, `custom-start`, `service-api`, `event-pipeline` and synchronized
 skill templates use global version-2 `event_rules`; `base` declares an empty rule
-set and retains generic parsing. `generate-config` shares compiled rules and
+set and retains generic parsing.
+
+`generate-config` shares compiled rules and
 preserves explicit/legacy mode. It does not mine wording or translate directions.
-Exact text grammar and canonical structured-field forms are documented in README.
+Exact text grammar and canonical structured-field forms are documented in [[profiles]].
 Request directions/phases and event receive/start, emit/end mappings are declared
 by each profile; they are application contracts, not universal defaults.
 
@@ -278,6 +287,8 @@ classification labels, while source IDs/names/scopes/endpoints and rule/profile
 provenance pass through normal redaction in both text and JSON.
 
 ## Validation and review
+
+Interface tests exercise grammar, identity, conflicts and resource limits using synthetic evidence.
 
 Interface tests cover equivalent adapters, full-message rejection, Unicode and
 escaped names, field types, explicit decoding, malformed data, optional captures,

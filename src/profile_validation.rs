@@ -242,6 +242,7 @@ pub(crate) fn scope_adequacy(
     Some(diagnostics)
 }
 
+// @lat: [[adr-003-verification-boundaries#ADR 003: Verification boundaries and independent expectations#Scope of applicability]]
 pub fn analyze(
     inputs: &[Vec<LogEntry>],
     config: &AnalyzerConfig,

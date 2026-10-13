@@ -404,6 +404,7 @@ fn output_only_omission_can_defer_relations_without_reparsing() {
     assert!(complete.artifact_checked);
     assert!(complete.deferred_relations.is_empty());
 }
+// @lat: [[regression-tests#Evidence regressions#Redacted verification]]
 #[test]
 fn redacted_arithmetic_is_distinct_from_independent_source_checking() {
     let (mut report, artifact) = fixture("redacted");
@@ -418,6 +419,7 @@ fn redacted_arithmetic_is_distinct_from_independent_source_checking() {
     let bytes = refresh(&mut report, &artifact);
     validate_relations(&report, Some(&bytes)).unwrap();
 }
+// @lat: [[regression-tests#Evidence regressions#Coverage and zero]]
 #[test]
 fn measured_zero_filter_zero_and_unsupported_input_remain_distinct() {
     let (zero, _) = fixture("measured-zero");

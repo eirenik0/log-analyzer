@@ -17,7 +17,7 @@ reports, and explicit limits on what the logs can establish.
 - **Eyes/Applitools logs:** select `--preset eyes`. The default `base` profile is
   now generic.
 - **Custom profiles:** shipped profiles now use version-2 `event_rules` with
-  whole-message recognition. Review the [migration guide](docs/design/event-classification.md);
+  whole-message recognition. Review the [migration guide](lat.md/contracts/event-classification.md);
   legacy-only profiles remain supported.
 - **Rust integrations:** constructed operation records must include classification
   evidence. Timing requires valid, scoped start/end boundaries.
@@ -28,7 +28,7 @@ reports, and explicit limits on what the logs can establish.
 - Source citations and JSON schemas that let agents verify findings against the
   original records, with input, profile and query identities.
 - Paged JSON reports with byte, character and item budgets, resumable cursors,
-  and explicit omitted-detail counts. See [bounded output](README.md#bounded-investigation-output).
+  and explicit omitted-detail counts. See [bounded output](lat.md/cli-reference.md#bounded-investigation-output).
 - `validate-profile` to check parsing, recognition and timing against sample logs
   and optional known facts before using a custom profile.
 - Profile inheritance, configurable timing boundaries and intentional start-only
@@ -37,7 +37,7 @@ reports, and explicit limits on what the logs can establish.
 - Rust tracing, syslog and JSON-lines detection, plus browser-console prefixes
   on classic logs.
 - Failure, slow-run and lifecycle investigation workflows with synthetic checks.
-  [Evaluation results](evals/README.md) validate the scripted harness; model-quality
+  [Evaluation results](lat.md/evaluation.md) validate the scripted harness; model-quality
   improvements and token savings remain unmeasured.
 
 ### Fixed

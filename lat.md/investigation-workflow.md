@@ -1,6 +1,8 @@
 # Investigate with verifiable log evidence
 
-This portable workflow works with a CLI-consuming agent or a person. The binary
+This portable workflow works with a CLI-consuming agent or a person.
+
+The binary
 parses, classifies, correlates and calculates; the consumer chooses queries and
 explains their implications. It does not call a model or decide a root cause.
 The shared Codex, Pi and Claude skill adapts these steps without maintaining a
@@ -8,6 +10,8 @@ second command catalog. See [host setup](../.agents/skills/analyze-logs/hosts.md
 Use the actual binary's help and capabilities for syntax and compatibility.
 
 ## Establish the investigation
+
+Establish the installed capabilities, input coverage and profile suitability before interpreting results.
 
 1. State the question, related source files, known run/session relationships,
    capture limits, and the permitted tool-call, output, elapsed-time and agent-token
@@ -45,6 +49,7 @@ into a shell. Use raw evidence only to test a claim within the established scope
 ## Retrieve within the agreed budget
 
 Command results default to JSON; `--summary` is concise JSON for models and people.
+
 Start with the summary's profile, processing, coverage, assessments, findings and
 next actions. It displays up to five findings; a smaller requested item limit still
 applies. Use its literal retrieval arguments to continue after displayed findings.
@@ -76,11 +81,13 @@ requires a new snapshot investigation, not reuse of old cursors or citations.
 can repeat those references. Retrieve original payload evidence with supported
 search/source-record interfaces rather than inventing a parser. Schema validity
 checks structure; citation resolution and semantic support are separate checks.
-See the [retrieval contract](design/bounded-reports.md) for CPU/memory tradeoffs.
+See the [retrieval contract](contracts/bounded-reports.md) for CPU/memory tradeoffs.
 
 ## Failure triage
 
-Start with coverage/suitability and the ERROR/WARN inventory. Inspect cited samples
+Start with coverage/suitability and the ERROR/WARN inventory.
+
+Inspect cited samples
 and their contexts; an error pattern or estimated error-to-last-record span is not
 proof of blocking work or lifecycle completion. Follow a candidate ID/session with
 `trace` or structured search, then retrieve its classified source boundaries and
@@ -119,7 +126,9 @@ boundaries; the first page alone need not contain the final measurement.
 ## Slow-run comparison, including INFO-only delays
 
 Validate and analyze each independent run separately with the same intended
-profile. Inspect INFO-level lifecycle evidence even when the error inventory is
+profile.
+
+Inspect INFO-level lifecycle evidence even when the error inventory is
 empty. Compare complete paired operation intervals, then use `compare` for broad
 payload/occurrence differences and source discovery. Matching comparison rows
 are not causal or lifecycle equivalence. Do not merge independent run files into
@@ -149,7 +158,9 @@ observed intervals; it does not infer a reason for the regression.
 
 ## One lifecycle and stopping decisions
 
-A reused ID needs full scope and actual boundary references. The maintained reused
+A reused ID needs full scope and actual boundary references.
+
+The maintained reused
 fixture yields separate 2000 ms and 3000 ms lifecycles under scopes `a` and `b`.
 A start without an end shows missing completion evidence within this capture;
 it cannot establish an infinite duration or prove a hang. Intentional start-only
@@ -167,7 +178,9 @@ window, exact identity, or telemetry distinguishing network delay from schedulin
 
 Use the [investigation contract](../schemas/investigation.schema.json): observations,
 measurements with two actual boundaries and timing semantics, hypotheses with
-confidence/support, contrary evidence, and unknowns with reasons. Separate causal
+confidence/support, contrary evidence, and unknowns with reasons.
+
+Separate causal
 hypotheses from measured intervals. Resolve each `input_id` through its manifest,
 verify consumed-byte hash, physical line/normalized row and reference identity,
 and verify that the record actually supports the claim. Redacted locations are
@@ -192,14 +205,16 @@ validate emitted pages and final contracts against the embedded schemas.
 
 These checks verify deterministic workflows and command handling, not an arbitrary
 model's reasoning or resistance to prompt injection. Agent-quality scoring and
-provider/token/cost measurements use the separate [evaluation harness](../evals/README.md).
+provider/token/cost measurements use the separate [evaluation harness](evaluation.md).
 Its [published scripted baseline](../evals/results/baseline.json) verifies harness
 behavior; real-model quality, variability and token savings remain unmeasured.
 
 ## Readable investigations and retained evidence
 
 `log-analyzer investigate application.log` prints readable findings and creates a
-fresh `log-analyzer-evidence-*/evidence.json`. Use `--artifact PATH` for an explicit
+fresh `log-analyzer-evidence-*/evidence.json`.
+
+Use `--artifact PATH` for an explicit
 new destination, `--json` for the full contract, and `--summary` for the existing
 concise decision brief. Presentation limits imply JSON. `evidence` always returns
 JSON and reads the retained artifact without repeating parsing or correlation.
