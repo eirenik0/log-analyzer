@@ -527,11 +527,33 @@ start cannot leave an earlier tentative pair in the output. Inputs remain indepe
 and normalized rows preserve their emission order and original timestamps.
 See [`examples/stream-correlations.rs`](examples/stream-correlations.rs).
 
+Evidence retrieval verifies a private artifact snapshot, builds temporary JSON
+offset and reference indexes, and validates records, memberships, calculations and
+sequences in bounded passes. It materializes individual items and witness bundles,
+then spools the response to disk, including `--complete-output`. Exact finding IDs
+use the validated offset index. This avoids a complete artifact tree in memory;
+each request still scans and validates the artifact before returning facts.
+These indexes use plain temporary files, without SQLite. Version-1 JSON artifacts,
+checksums, source verification and existing cursors remain compatible.
+
+Retrieval has separate configurable limits: `--artifact-max-item-bytes` (8 MiB)
+bounds metadata, each materialized item and witness bundle;
+`--artifact-max-index-bytes` (1 GiB) bounds JSON offsets; and
+`--artifact-max-state-bytes` (2 GiB) bounds reference/validation scratch indexes.
+Each scratch index receives one sixteenth of that allowance, so an individual
+index can exhaust its share first. `--artifact-max-validation-ms` (180,000) and
+`--artifact-max-validation-work` (500 million) limit cooperative validation work.
+The existing `--artifact-max-bytes` read limit remains 64 MiB. Exceeding validation
+limits returns an error before a page is published. An atomic result exceeding
+its item allowance reports `oversized_item`; use nested membership or sequence
+collection pointers to retrieve their members/events. Temporary state is removed
+on success or failure. These are allocation/work allowances, not OS RSS limits.
+
 The CLI's report builder still holds selected records and completed result/evidence
-collections under the processing allowance. JSON retrieval still materializes the
-retained tree. Those remaining collections mean the complete CLI pipeline does not
-yet have bounded RSS for growing selected inputs or artifacts. Artifacts remain
-version-1 JSON; the correlation limits do not change their retrieval contract.
+collections under the processing allowance. That remaining stage means the complete
+investigation pipeline does not yet have bounded RSS for growing selected inputs.
+Selected-state and artifact-retrieval memory sweeps are documented in
+[the streaming design](docs/design/streaming-pipeline.md).
 
 The memory setting bounds a conservative reservation model for buffered/retained
 source and calculated data, including normalization field-mapping amplification
@@ -627,6 +649,8 @@ result is emitted. Assertions use full retained-artifact pointers, independently
 of presentation paging and compact views. A verified result covers only submitted
 assertions and the retained snapshot, not every sentence of an answer or upstream
 capture completeness. The claims input is capped at 1 MiB and 100 assertions.
+Returned claim observations share an 8 MiB allowance; distinct-record assertions
+scan the addressed array using a temporary identity index.
 
 Profile recovery now separates source-expectation authoring, candidate preparation,
 validation and an explicit rerun. Preparation does not require supplied expectations.

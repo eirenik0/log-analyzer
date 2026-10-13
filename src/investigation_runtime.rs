@@ -5,6 +5,7 @@ pub(crate) mod chains;
 mod claims;
 mod findings;
 mod guidance;
+mod indexed_artifact;
 pub(crate) mod policy;
 mod presentation;
 mod resource_observations;

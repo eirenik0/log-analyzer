@@ -749,6 +749,8 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
 }
 
 pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()> {
+    use super::indexed_artifact::{IndexedArtifact, Limits};
+    use std::io::{Seek, SeekFrom};
     if args.compact && (args.collection != "/chain-bundles" || args.id.is_none()) {
         return Err("--compact requires --collection /chain-bundles and --id".into());
     }
@@ -757,18 +759,18 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         args.artifact_max_bytes,
         &args.expected_sha256,
     )?;
-    let retained: Value = serde_json::from_reader(std::io::BufReader::new(snapshot.as_file()))?;
-    if retained["contract_version"] != 1 || retained["investigation_contract_version"] != 1 {
-        return Err("Unsupported evidence artifact version".into());
-    }
-    for key in ["findings", "populations", "sequences"] {
-        if !retained.get(key).is_some_and(Value::is_array) {
-            return Err("Malformed artifact: required collections are absent".into());
-        }
-    }
-    let full_report = report(&retained, &args.artifact, Some(&hash));
-    crate::investigation::validate_retained(&full_report, Some(&retained))?;
-    drop(full_report);
+    let mut indexed = IndexedArtifact::open(
+        snapshot.reopen()?,
+        Limits {
+            item_bytes: args.artifact_max_item_bytes,
+            index_bytes: args.artifact_max_index_bytes,
+            state_bytes: args.artifact_max_state_bytes,
+            elapsed_ms: args.artifact_max_validation_ms,
+            work_units: args.artifact_max_validation_work,
+        },
+    )?;
+    indexed.validate()?;
+    let retained = &indexed.base;
     let allowed = [
         "/findings",
         "/records",
@@ -784,46 +786,75 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     {
         return Err("Unsupported retained evidence collection".into());
     }
-    // A navigation view of retained facts only: no parsing or new relationship inference.
-    let mut bundles: Vec<Value> = retained["findings"].as_array().unwrap().iter()
-        .filter(|finding| args.collection == "/chain-bundles" && finding["details"].get("event_chain").is_some() && args.id.as_ref().is_none_or(|id| finding["id"].as_str() == Some(id)))
-        .map(|finding| json!({"id":finding["id"],"scope_id":finding["scope_id"],"chain":finding["details"]["event_chain"],"evidence":finding["evidence"],"limitations":finding["limitations"],"verification":finding["verification"]}))
-        .collect();
-    if args.compact {
-        for bundle in &mut bundles {
-            compact_bundle(bundle);
+    let bundles = args.collection == "/chain-bundles";
+    let collection = indexed
+        .root
+        .pointer(if bundles {
+            "/findings"
+        } else {
+            &args.collection
+        })?
+        .filter(|node| node.is_array())
+        .ok_or("Collection is not a retained array")?;
+    let selected = |node: &crate::json_index::Node| -> Result<bool> {
+        if bundles && node.pointer("/details/event_chain")?.is_none() {
+            return Ok(false);
         }
-    }
+        let Some(id) = &args.id else {
+            return Ok(true);
+        };
+        for pointer in if bundles {
+            &["/id"][..]
+        } else {
+            &[
+                "/id",
+                "/population_id",
+                "/occurrence/evidence_ref/reference_id",
+            ][..]
+        } {
+            if let Some(value) = node.pointer(pointer)?
+                && value.is_string()
+                && value.read(65536)?.as_str() == Some(id.as_str())
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    };
+    // Finding IDs are unique and validated before this direct offset lookup.
+    let exact = if matches!(args.collection.as_str(), "/findings" | "/chain-bundles") {
+        args.id
+            .as_deref()
+            .map(|id| indexed.find_node(id))
+            .transpose()?
+    } else {
+        None
+    };
+    let nodes = || -> Box<dyn Iterator<Item = Result<crate::json_index::Node>>> {
+        match &exact {
+            Some(node) => Box::new(node.clone().into_iter().map(Ok)),
+            None => Box::new(collection.children()),
+        }
+    };
+    let total = if args.id.is_none() && !bundles {
+        collection.len()
+    } else {
+        let mut count = 0u64;
+        for node in nodes() {
+            indexed.checkpoint()?;
+            count += u64::from(selected(&node?)?);
+        }
+        count
+    };
     let claim_verification = args
         .claims
         .as_ref()
-        .map(|path| super::claims::verify(&retained, path))
+        .map(|path| super::claims::verify_indexed(&indexed, path))
         .transpose()?;
     let claims_failed = claim_verification
         .as_ref()
-        .is_some_and(|v| v["status"] != "verified");
-    let collection = if args.collection == "/chain-bundles" {
-        &bundles
-    } else {
-        retained
-            .pointer(&args.collection)
-            .and_then(Value::as_array)
-            .ok_or("Collection is not a retained array")?
-    };
-    let selected: Vec<_> = collection
-        .iter()
-        .filter(|item| {
-            args.id.as_ref().is_none_or(|id| {
-                item["id"].as_str() == Some(id)
-                    || item["population_id"].as_str() == Some(id)
-                    || item
-                        .pointer("/occurrence/evidence_ref/reference_id")
-                        .and_then(Value::as_str)
-                        == Some(id)
-            })
-        })
-        .collect();
-    let base = binding(&retained, &hash);
+        .is_some_and(|value| value["status"] != "verified");
+    let base = binding(retained, &hash);
     let query = if !args.compact && claim_verification.is_none() {
         json!([base, args.collection, args.id])
     } else {
@@ -843,36 +874,36 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 "Invalid cursor: artifact/profile/query/redaction/selector identity changed".into(),
             );
         }
-        parts[2].parse::<usize>()?
+        parts[2].parse::<u64>()?
     } else {
         0
     };
-    if prior > selected.len() {
+    if prior > total {
         return Err("Cursor is outside the retained collection".into());
     }
     let source_state = if args.verify_sources {
-        verify_sources(&retained, args.artifact_max_bytes)
+        verify_sources(retained, args.artifact_max_bytes)
     } else {
         json!({"status":"not_requested","facts":"retained_snapshot","reason":"Current source files were not read"})
     };
     let max = if cli.complete_output {
-        selected.len()
+        total
     } else {
-        cli.report_max_items.unwrap_or(20)
+        cli.report_max_items.unwrap_or(20) as u64
     };
-    let mut output = json!({"artifact_retrieval":{"contract_version":1,"artifact_sha256":hash,"binding_sha256":query_binding,"collection":args.collection,"id":args.id,"source_verification":source_state,"parse_passes":0,"correlation_passes":0,"total":selected.len(),"prior":prior,"displayed":0,"remaining":selected.len()-prior,"next_cursor":null,"status":"complete","items":[]}});
+    let mut output = json!({"artifact_retrieval":{"contract_version":1,"artifact_sha256":hash,"binding_sha256":query_binding,"collection":args.collection,"id":args.id,"source_verification":source_state,"parse_passes":0,"correlation_passes":0,"total":total,"prior":prior,"displayed":0,"remaining":total-prior,"next_cursor":null,"status":"complete","items":[]}});
     if args.compact {
         output["artifact_retrieval"]["view"] = json!("compact");
     }
     if let Some(verification) = claim_verification {
         output["artifact_retrieval"]["claim_verification"] = verification;
     }
-    let refresh = |output: &mut Value, count: usize, status: &str| {
+    let refresh = |output: &mut Value, count: u64, status: &str| {
         let section = &mut output["artifact_retrieval"];
         section["displayed"] = json!(count);
-        section["remaining"] = json!(selected.len() - prior - count);
+        section["remaining"] = json!(total - prior - count);
         section["status"] = json!(status);
-        section["next_cursor"] = if prior + count < selected.len() {
+        section["next_cursor"] = if prior + count < total {
             json!(format!("v1:{query_binding}:{}", prior + count))
         } else {
             Value::Null
@@ -881,7 +912,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
     refresh(
         &mut output,
         0,
-        if selected.is_empty() {
+        if total == prior {
             "complete"
         } else if max == 0 {
             "item_limit_zero"
@@ -889,52 +920,108 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             "oversized_item"
         },
     );
-    let fits = |value: &Value| -> Result<bool> {
-        let text = serde_json::to_string(value)?;
-        Ok(!over(cli, (text.len() + 1, text.chars().count() + 1)))
-    };
-    if !fits(&output)? {
+    let header = serde_json::to_string(&output)?;
+    let mut payload = tempfile::tempfile()?;
+    let mut payload_size = (0usize, 0usize);
+    let mut displayed = 0u64;
+    if over(cli, (header.len() + 1, header.chars().count() + 1)) {
         refresh(&mut output, 0, "mandatory_metadata_over_budget");
     } else {
-        let mut displayed = Vec::new();
-        let mut payload = (0usize, 0usize);
-        for item in selected.iter().skip(prior).take(max) {
-            let text = serde_json::to_string(item)?;
-            let comma = usize::from(!displayed.is_empty());
+        let mut position = 0u64;
+        for node in nodes() {
+            indexed.checkpoint()?;
+            let node = node?;
+            if !selected(&node)? {
+                continue;
+            }
+            position += 1;
+            if position <= prior {
+                continue;
+            }
+            if displayed >= max {
+                break;
+            }
+            // A single atomic item has an explicit materialization allowance.
+            // Larger membership/sequence arrays remain retrievable by their
+            // nested collection pointers rather than as one enormous item.
+            if node.byte_len() > args.artifact_max_item_bytes {
+                refresh(
+                    &mut output,
+                    displayed,
+                    if displayed == 0 {
+                        "oversized_item"
+                    } else {
+                        "page"
+                    },
+                );
+                break;
+            }
+            let mut item = node.read(args.artifact_max_item_bytes)?;
+            if bundles {
+                item = json!({"id":item["id"],"scope_id":item["scope_id"],"chain":item["details"]["event_chain"],"evidence":item["evidence"],"limitations":item["limitations"],"verification":item["verification"]});
+                if args.compact {
+                    compact_bundle(&mut item);
+                }
+            }
+            let text = serde_json::to_string(&item)?;
+            let comma = usize::from(displayed != 0);
             let candidate = (
-                payload.0 + text.len() + comma,
-                payload.1 + text.chars().count() + comma,
+                payload_size
+                    .0
+                    .checked_add(text.len() + comma)
+                    .ok_or("retrieval byte count overflow")?,
+                payload_size
+                    .1
+                    .checked_add(text.chars().count() + comma)
+                    .ok_or("retrieval character count overflow")?,
             );
-            let count = displayed.len() + 1;
             refresh(
                 &mut output,
-                count,
-                if prior + count == selected.len() {
+                displayed + 1,
+                if prior + displayed + 1 == total {
                     "complete"
                 } else {
                     "page"
                 },
             );
-            // Items stay outside the header until pagination finishes.
             let header = serde_json::to_string(&output)?;
             if over(
                 cli,
                 (
-                    header.len() + candidate.0 + 1,
-                    header.chars().count() + candidate.1 + 1,
+                    header.len().saturating_add(candidate.0).saturating_add(1),
+                    header
+                        .chars()
+                        .count()
+                        .saturating_add(candidate.1)
+                        .saturating_add(1),
                 ),
             ) {
                 refresh(
                     &mut output,
-                    count - 1,
-                    if count == 1 { "oversized_item" } else { "page" },
+                    displayed,
+                    if displayed == 0 {
+                        "oversized_item"
+                    } else {
+                        "page"
+                    },
                 );
                 break;
             }
-            payload = candidate;
-            displayed.push((*item).clone());
+            if candidate.0 as u64
+                > args
+                    .artifact_max_bytes
+                    .saturating_mul(8)
+                    .max(16 * 1024 * 1024)
+            {
+                return Err("retrieval output disk limit exceeded".into());
+            }
+            if comma != 0 {
+                payload.write_all(b",")?;
+            }
+            payload.write_all(text.as_bytes())?;
+            payload_size = candidate;
+            displayed += 1;
         }
-        output["artifact_retrieval"]["items"] = Value::Array(displayed);
     }
     if cli.redact && retained["report_metadata"]["evidence"]["redaction"]["applied"] != true {
         return Err("Retrieve an artifact created with --redact; original evidence cannot be presented as a redacted retained artifact".into());
@@ -945,7 +1032,7 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
         }
         for input in retained["report_metadata"]["evidence"]["inputs"]
             .as_array()
-            .unwrap()
+            .ok_or("missing retained inputs")?
         {
             if let Some(file) = input["file"].as_str()
                 && same_destination(path, Path::new(file), true)
@@ -953,17 +1040,44 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
                 return Err("Report destination conflicts with a captured source".into());
             }
         }
-        let mut temporary = stage(path)?;
-        serde_json::to_writer(&mut temporary, &output)?;
-        temporary.write_all(b"\n")?;
-        temporary.as_file().sync_all()?;
-        temporary.persist_noclobber(path).map_err(
-            |_| "Evidence retrieval saves only new report files; choose a new --output path",
-        )?;
     }
-    std::io::stdout()
-        .lock()
-        .write_all(format!("{}\n", serde_json::to_string(&output)?).as_bytes())?;
+    let mut delivery = if let Some(path) = &cli.output {
+        stage(path)?
+    } else {
+        tempfile::NamedTempFile::new()?
+    };
+    delivery.write_all(b"{\"artifact_retrieval\":{")?;
+    for (ordinal, (key, value)) in output["artifact_retrieval"]
+        .as_object()
+        .ok_or("invalid retrieval envelope")?
+        .iter()
+        .enumerate()
+    {
+        if ordinal != 0 {
+            delivery.write_all(b",")?;
+        }
+        serde_json::to_writer(&mut delivery, key)?;
+        delivery.write_all(b":")?;
+        if key == "items" {
+            delivery.write_all(b"[")?;
+            payload.seek(SeekFrom::Start(0))?;
+            std::io::copy(&mut payload, &mut delivery)?;
+            delivery.write_all(b"]")?;
+        } else {
+            serde_json::to_writer(&mut delivery, value)?;
+        }
+    }
+    delivery.write_all(b"}}\n")?;
+    let mut delivered = if let Some(path) = &cli.output {
+        delivery.as_file().sync_all()?;
+        delivery.persist_noclobber(path).map_err(
+            |_| "Evidence retrieval saves only new report files; choose a new --output path",
+        )?
+    } else {
+        delivery.reopen()?
+    };
+    delivered.seek(SeekFrom::Start(0))?;
+    std::io::copy(&mut delivered, &mut std::io::stdout().lock())?;
     if claims_failed {
         return Err(
             "Claim verification failed or unavailable; inspect claim_verification before answering"

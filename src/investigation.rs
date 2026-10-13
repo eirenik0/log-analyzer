@@ -118,10 +118,72 @@ pub(crate) fn validate_spooled(
     validate_sources(report, Some(artifact), sources)
 }
 
+#[derive(Default)]
+pub(crate) struct ValidationSession {
+    captures: BTreeMap<std::path::PathBuf, (String, u64)>,
+    cursors: BTreeMap<u64, SourceCursor>,
+    verified_records: Option<crate::disk_index::DiskIndex>,
+    pub(crate) deadline: Option<std::time::Instant>,
+}
+impl ValidationSession {
+    /// All capture paths used by a session must refer to its private immutable
+    /// snapshots. Only raw-source checks are cached, never fact validation.
+    pub(crate) fn bounded(records: u64, disk_bytes: u64) -> Result<Self, ContractError> {
+        Ok(Self {
+            verified_records: Some(
+                crate::disk_index::DiskIndex::new(records, disk_bytes)
+                    .map_err(|e| error("/artifact/validation_state", e.to_string()))?,
+            ),
+            ..Self::default()
+        })
+    }
+    fn capture(&mut self, path: &std::path::Path) -> Result<(String, u64), ContractError> {
+        if let Some(identity) = self.captures.get(path) {
+            return Ok(identity.clone());
+        }
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut source = std::fs::File::open(path)
+            .map_err(|e| error("/artifact/captured_inputs", e.to_string()))?;
+        let mut hash = Sha256::new();
+        let mut count = 0;
+        let mut buffer = [0; crate::streaming::CHUNK_BYTES];
+        loop {
+            if self
+                .deadline
+                .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+            {
+                return Err(error(
+                    "/artifact/captured_inputs",
+                    "artifact validation time limit exceeded",
+                ));
+            }
+            let read = source
+                .read(&mut buffer)
+                .map_err(|e| error("/artifact/captured_inputs", e.to_string()))?;
+            if read == 0 {
+                break;
+            }
+            hash.update(&buffer[..read]);
+            count += read as u64;
+        }
+        let identity = (format!("{:x}", hash.finalize()), count);
+        self.captures.insert(path.to_path_buf(), identity.clone());
+        Ok(identity)
+    }
+}
 fn validate_sources(
     report: &Value,
     artifact: Option<&Value>,
     sources: &[Option<std::path::PathBuf>],
+) -> Result<ValidationSummary, ContractError> {
+    validate_session(report, artifact, sources, &mut ValidationSession::default())
+}
+pub(crate) fn validate_session(
+    report: &Value,
+    artifact: Option<&Value>,
+    sources: &[Option<std::path::PathBuf>],
+    session: &mut ValidationSession,
 ) -> Result<ValidationSummary, ContractError> {
     let mut summary = ValidationSummary {
         artifact_checked: artifact.is_some(),
@@ -548,24 +610,7 @@ fn validate_sources(
             }
             if capture["data_omitted"] == false {
                 if let Some(Some(path)) = sources.get(ordinal) {
-                    use sha2::{Digest, Sha256};
-                    use std::io::Read;
-                    let mut source = std::fs::File::open(path)
-                        .map_err(|e| error("/artifact/captured_inputs", e.to_string()))?;
-                    let mut hash = Sha256::new();
-                    let mut count = 0u64;
-                    let mut buffer = [0u8; crate::streaming::CHUNK_BYTES];
-                    loop {
-                        let read = source
-                            .read(&mut buffer)
-                            .map_err(|e| error("/artifact/captured_inputs", e.to_string()))?;
-                        if read == 0 {
-                            break;
-                        }
-                        hash.update(&buffer[..read]);
-                        count += read as u64;
-                    }
-                    let hash = format!("{:x}", hash.finalize());
+                    let (hash, count) = session.capture(path)?;
                     require(
                         capture["stored_sha256"] == hash
                             && capture["original_consumed_sha256"] == hash
@@ -1022,7 +1067,6 @@ fn validate_sources(
                 record["occurrence"]["evidence_ref"]["line"].as_u64(),
             )
         });
-        let mut cursors = BTreeMap::new();
         for record in ordered {
             if record["verification"]["source_and_rules"] == "available" {
                 let source = get(record, "/occurrence")?;
@@ -1034,19 +1078,38 @@ fn validate_sources(
                     "/artifact/records/verification",
                     "source or rule verification prerequisites lost",
                 )?;
+                require(
+                    original_captures.contains_key(&ordinal)
+                        || spooled_captures.contains_key(&ordinal),
+                    "/artifact/records/verification",
+                    "original source bytes not retained",
+                )?;
+                let record_key = session
+                    .verified_records
+                    .as_ref()
+                    .map(|_| digest(record.to_string().as_bytes()));
+                if let (Some(cache), Some(key)) = (&session.verified_records, &record_key)
+                    && cache
+                        .get(key.as_bytes())
+                        .map_err(|e| error("/artifact/validation_state", e.to_string()))?
+                        .is_some()
+                {
+                    continue;
+                }
                 let raw = text(record, "/raw_text")?;
                 let line = usize::try_from(number(source, "/evidence_ref/line")?)
                     .map_err(|_| error("/artifact/records/raw_text", "line too large"))?;
                 let matches = if let Some(path) = spooled_captures.get(&ordinal) {
                     if let std::collections::btree_map::Entry::Vacant(entry) =
-                        cursors.entry(ordinal)
+                        session.cursors.entry(ordinal)
                     {
-                        entry.insert(
-                            SourceCursor::open(path)
-                                .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?,
-                        );
+                        let mut cursor = SourceCursor::open(path)
+                            .map_err(|e| error("/artifact/records/raw_text", e.to_string()))?;
+                        cursor.deadline = session.deadline;
+                        entry.insert(cursor);
                     }
-                    cursors
+                    session
+                        .cursors
                         .get_mut(&ordinal)
                         .expect("opened source")
                         .matches(line, raw)
@@ -1073,6 +1136,11 @@ fn validate_sources(
                     "/artifact/records/raw_text",
                     "raw record differs from retained input",
                 )?;
+                if let (Some(cache), Some(key)) = (&mut session.verified_records, record_key) {
+                    cache
+                        .insert(key.as_bytes(), 1)
+                        .map_err(|e| error("/artifact/validation_state", e.to_string()))?;
+                }
             }
         }
         if artifact["verification"]["source_and_rules"] == "available" {
@@ -2044,22 +2112,42 @@ mod tests {
 struct SourceCursor {
     reader: std::io::BufReader<std::fs::File>,
     line: usize,
+    deadline: Option<std::time::Instant>,
 }
 impl SourceCursor {
     fn open(path: &std::path::Path) -> std::io::Result<Self> {
         Ok(Self {
             reader: std::io::BufReader::new(std::fs::File::open(path)?),
             line: 1,
+            deadline: None,
         })
     }
     fn matches(&mut self, line: usize, raw: &str) -> std::io::Result<bool> {
         use std::io::{BufRead, Read, Seek, SeekFrom};
         if line < self.line {
-            return Ok(false);
+            self.reader.seek(SeekFrom::Start(0))?;
+            self.line = 1;
         }
         while self.line < line {
-            if self.reader.skip_until(b'\n')? == 0 {
-                return Ok(false);
+            loop {
+                if self
+                    .deadline
+                    .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+                {
+                    return Err(std::io::Error::other(
+                        "artifact validation time limit exceeded",
+                    ));
+                }
+                let buffer = self.reader.fill_buf()?;
+                if buffer.is_empty() {
+                    return Ok(false);
+                }
+                let newline = buffer.iter().position(|b| *b == b'\n');
+                let count = newline.map_or(buffer.len(), |n| n + 1);
+                self.reader.consume(count);
+                if newline.is_some() {
+                    break;
+                }
             }
             self.line += 1;
         }

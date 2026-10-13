@@ -398,7 +398,22 @@ pub struct InvestigationEvidenceArgs {
     /// Hash current sources separately and report unchanged, changed, missing or prefix
     #[arg(long)]
     pub verify_sources: bool,
-    /// Hard artifact read limit (default: 64 MiB); raising it allows more parsing memory
+    /// Maximum materialized artifact item or witness bundle (default: 8 MiB)
+    #[arg(long, default_value_t = 8388608)]
+    pub artifact_max_item_bytes: u64,
+    /// Temporary JSON offset-index disk limit (default: 1 GiB)
+    #[arg(long, default_value_t = 1073741824)]
+    pub artifact_max_index_bytes: u64,
+    /// Temporary validation/reference state disk allowance (default: 2 GiB)
+    #[arg(long, default_value_t = 2147483648)]
+    pub artifact_max_state_bytes: u64,
+    /// Cooperative artifact validation deadline in milliseconds (default: 180000)
+    #[arg(long, default_value_t = 180000)]
+    pub artifact_max_validation_ms: u64,
+    /// Cooperative artifact validation work allowance (default: 500000000)
+    #[arg(long, default_value_t = 500000000)]
+    pub artifact_max_validation_work: u64,
+    /// Hard artifact read limit (default: 64 MiB); items and indexes have separate limits
     #[arg(long, default_value = "67108864")]
     pub artifact_max_bytes: u64,
 }

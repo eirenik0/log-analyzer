@@ -119,7 +119,103 @@ fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'sta
         }
     }
 }
-pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
+pub(super) fn verify_indexed(
+    indexed: &super::indexed_artifact::IndexedArtifact,
+    path: &Path,
+) -> Result<Value> {
+    const LIMIT: u64 = 8 * 1024 * 1024;
+    let mut remaining = LIMIT;
+    verify_with(path, |assertion| {
+        let result = match assertion {
+            Assertion::DistinctRecords { pointer, expected } => {
+                let count = (|| -> Result<Option<usize>> {
+                    let Some(array) = indexed.root.pointer(pointer)? else {
+                        return Ok(None);
+                    };
+                    if !array.is_array() {
+                        return Ok(None);
+                    }
+                    let mut seen = crate::disk_index::DiskIndex::new(
+                        array.len(),
+                        indexed.limits.state_bytes / 16,
+                    )?;
+                    for item in array.children() {
+                        indexed.checkpoint()?;
+                        let Some(occurrence) = item?.field("occurrence")? else {
+                            return Ok(None);
+                        };
+                        if occurrence.field("evidence_ref")?.is_none() {
+                            return Ok(None);
+                        }
+                        seen.insert(occurrence.read(65536)?.to_string().as_bytes(), 1)?;
+                    }
+                    Ok(Some(usize::try_from(seen.len())?))
+                })()?;
+                (
+                    count.map(|count| count == *expected),
+                    json!(count),
+                    "Distinct source occurrences in this retained array, not an exhaustive count of omitted records or attempts",
+                )
+            }
+            Assertion::Fact { pointer, equals } => {
+                let mut retained = json!({});
+                if let Some(node) = indexed.root.pointer(pointer)? {
+                    retained["value"] = node.read(remaining)?;
+                }
+                check(
+                    &retained,
+                    &Assertion::Fact {
+                        pointer: "/value".into(),
+                        equals: equals.clone(),
+                    },
+                )
+            }
+            Assertion::Interval {
+                pointer,
+                expected_ms,
+            } => {
+                let mut retained = json!({});
+                if let Some(node) = indexed.root.pointer(pointer)? {
+                    retained["value"] = node.read(remaining)?;
+                }
+                check(
+                    &retained,
+                    &Assertion::Interval {
+                        pointer: "/value".into(),
+                        expected_ms: *expected_ms,
+                    },
+                )
+            }
+            Assertion::Link { finding_id, .. } | Assertion::Absence { finding_id, .. } => {
+                let findings = match indexed.find_node(finding_id)? {
+                    Some(node) => vec![node.read(remaining)?],
+                    None => Vec::new(),
+                };
+                check(&json!({"findings":findings}), assertion)
+            }
+        };
+        struct Count(u64);
+        impl std::io::Write for Count {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 += bytes.len() as u64;
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut size = Count(0);
+        serde_json::to_writer(&mut size, &result.1)?;
+        remaining = remaining
+            .checked_sub(size.0)
+            .ok_or("Claim observations exceed 8 MiB")?;
+        Ok(result)
+    })
+}
+fn verify_with(
+    path: &Path,
+    mut check_assertion: impl FnMut(&Assertion) -> Result<(Option<bool>, Value, &'static str)>,
+) -> Result<Value> {
     let file = fs::File::open(path)?;
     if file.metadata()?.len() > 1_048_576 {
         return Err("Claims file exceeds 1 MiB".into());
@@ -156,7 +252,7 @@ pub(super) fn verify(retained: &Value, path: &Path) -> Result<Value> {
             Assertion::Interval { expected_ms, .. } if !expected_ms.is_finite() || *expected_ms < 0.0 => return Err("Expected interval must be finite and nonnegative".into()),
             _ => {}
         }
-        let (result, observed, reason) = check(retained, &claim.assertion);
+        let (result, observed, reason) = check_assertion(&claim.assertion)?;
         checks.push(json!({"id":claim.id,"status":match result {Some(true)=>"verified",Some(false)=>"contradicted",None=>"unavailable"},"observed":observed,"reason":reason}));
     }
     let missing: Vec<_> = assertions

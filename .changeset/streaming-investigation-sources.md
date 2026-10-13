@@ -13,5 +13,11 @@ with explicit disk limits, cancellation, temporary-state cleanup and whole-key
 ambiguity decisions. Expose a consuming library correlator and measure its RSS
 using selected starts followed by late completions.
 
-CLI selected-record/report collections and JSON evidence retrieval still require
-the remaining out-of-core integration; this does not complete issue #86.
+Retrieve version-1 artifacts through bounded JSON offset/reference indexes and
+semantic validation passes without materializing the entire artifact. Use plain
+temporary files for retrieval state, preserve exact arithmetic and source checks,
+and spool complete output pages. Add item, index, validation-state, work and time
+limits, corruption regressions, and selected-record retrieval RSS measurements.
+
+CLI selected-record/report construction still requires the remaining out-of-core
+integration; this does not complete issue #86.

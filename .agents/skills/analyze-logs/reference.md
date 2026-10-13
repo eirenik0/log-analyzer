@@ -34,9 +34,14 @@ index. `--correlation-max-index-bytes` controls the index allowance and
 State exhaustion leaves correlation unavailable, not a measured zero. The CLI
 still retains selected report records and completed evidence under the processing
 allowance. Do not interpret ingestion/correlation streaming as proof that an
-arbitrarily large investigation will complete. JSON evidence retrieval still
-parses the retained tree; output pagination does not bound its memory. SQLite is
-internal disposable state, never the retained artifact format.
+arbitrarily large investigation will complete. Evidence retrieval uses temporary
+JSON offset/reference indexes and bounded validation passes, then spools its page.
+It still verifies the entire artifact before returning facts. `--artifact-max-item-bytes`
+bounds atomic items and witness bundles; `--artifact-max-index-bytes` and
+`--artifact-max-state-bytes` bound separate temporary indexes. Validation time/work
+have separate limits. Use nested membership/event pointers when a parent item is
+oversized; never infer absence from an oversized or failed page. SQLite is used
+only for spilled correlation indexes, never retrieval or retained artifact storage.
 
 Retrieve retained collections using `evidence`, the exact artifact
 checksum and snapshot-bound cursor. Check displayed, prior, remaining and total
