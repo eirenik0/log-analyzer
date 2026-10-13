@@ -1205,3 +1205,110 @@ fn chain_validation_honors_raised_processing_limits_before_selection() {
         "measured"
     );
 }
+
+#[test]
+fn replay_rejects_invented_completion_and_incomplete_step_results() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "steps",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let bytes = fs::read(temp.path().join("steps")).unwrap();
+    let artifact: Value = serde_json::from_slice(&bytes).unwrap();
+    log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+    for (case, identity, step_id, reason) in [
+        ("completion", "beta", "capture-end", "chain step status"),
+        ("join", "alpha", "submitted", "chain join samples"),
+        ("step", "beta", "cache", "chain steps"),
+        ("count", "alpha", "polls", "chain step observed_count"),
+        ("ambiguity", "beta", "capture-end", "chain step ambiguity"),
+        (
+            "completeness",
+            "alpha",
+            "submitted",
+            "chain step completeness",
+        ),
+    ] {
+        let id = chain(&report["findings"], identity)["id"].clone();
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        for document in [&mut altered, &mut saved] {
+            let finding = document["findings"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|finding| finding["id"] == id)
+                .unwrap();
+            let excerpt = finding["evidence"][0].clone();
+            let steps = finding["details"]["event_chain"]["steps"]
+                .as_array_mut()
+                .unwrap();
+            if case == "step" {
+                steps.retain(|step| step["id"] != step_id);
+                continue;
+            }
+            let step = steps.iter_mut().find(|step| step["id"] == step_id).unwrap();
+            match case {
+                "completion" => {
+                    assert_eq!(step["status"], "not_observed");
+                    step["observed_count"] = json!(1);
+                    step["linked_count"] = json!(1);
+                    step["status"] = json!("observed");
+                    step["evidence"] = json!([excerpt]);
+                    assert_eq!(step["join_samples"], json!([]));
+                }
+                "join" => step["join_samples"] = json!([]),
+                "count" => {
+                    step["observed_count"] = json!(1);
+                    step["linked_count"] = json!(1);
+                    step["evidence"].as_array_mut().unwrap().truncate(1);
+                    step["join_samples"].as_array_mut().unwrap().truncate(1);
+                }
+                "ambiguity" => step["ambiguity"]["source_occurrences_missing_identity"] = json!(1),
+                "completeness" => {
+                    assert_eq!(step["count_completeness"], "complete");
+                    step["count_completeness"] = json!("partial");
+                }
+                _ => unreachable!(),
+            }
+        }
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        // These mutually consistent edits pass report-only relations, but not source replay.
+        altered["presentation"]["serialized_bytes"] = Value::Null;
+        altered["presentation"]["serialized_characters"] = Value::Null;
+        shape(&altered, false);
+        log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(error.reason.contains(reason), "{case}: {error}");
+    }
+    let partial: Value = serde_json::from_str(&run(
+        temp.path(),
+        "partial-steps",
+        PROFILE,
+        &[INPUT],
+        &[
+            "--json",
+            "--complete-output",
+            "--processing-max-records",
+            "4",
+        ],
+    ))
+    .unwrap();
+    let summary = log_analyzer::investigation::validate_relations(
+        &partial,
+        Some(&fs::read(temp.path().join("partial-steps")).unwrap()),
+    )
+    .unwrap();
+    assert!(
+        summary
+            .deferred_relations
+            .iter()
+            .any(|r| r == "chain_completeness_requires_processing_stage_history")
+    );
+}

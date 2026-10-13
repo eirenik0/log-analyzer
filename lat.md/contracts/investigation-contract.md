@@ -166,6 +166,11 @@ input files. Missing profiles or captures defer this relation explicitly; exhaus
 validation work, time or memory allowances return an error rather than accepting counts.
 Replay allowances cover retained processing limits and usage, including expanded
 rows parsed before selection, so raised investigation limits also apply to validation.
+Replay also checks the complete configured step list, statuses, counts, ambiguity,
+recognition, evidence/outcome samples and join samples against retained records.
+Completeness is checked against replayed parse coverage when processing completed.
+After a cutoff, missing stage history explicitly defers completeness comparisons;
+step counts, statuses and populations remain checked.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.

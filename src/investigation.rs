@@ -1011,13 +1011,13 @@ pub fn validate_relations(
             )?;
         }
     }
-    if let Some(artifact) = artifact.as_ref()
-        && !crate::investigation_runtime::chain_validation::validate(artifact, &original_captures)
-            .map_err(|reason| error("/findings/details/event_chain", reason))?
-    {
-        summary
-            .deferred_relations
-            .push("chain_cardinalities_require_retained_profile_and_capture".into());
+    if let Some(artifact) = artifact.as_ref() {
+        summary.deferred_relations.extend(
+            crate::investigation_runtime::chain_validation::validate(artifact, &original_captures)
+                .map_err(|reason| error("/findings/details/event_chain", reason))?
+                .into_iter()
+                .map(str::to_owned),
+        );
     }
     if artifact.is_some()
         && let Some(uncertainty) = report["presentation"].get("uncertainty")

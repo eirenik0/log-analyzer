@@ -25,3 +25,6 @@ Honor retained processing limits and usage during replay, including expanded row
 outside the selected chain population.
 Aggregate assurance across every configured group member and label representative
 subjects and limits explicitly, preserving independent scope boundaries.
+Validate complete replayed chain step results and join samples, rejecting invented
+completion and hidden populations. Explicitly defer completeness after processing
+cutoffs when the artifact does not retain calculation-stage history.

@@ -24,17 +24,19 @@ fn address(source: &Value) -> Option<Address> {
 pub(crate) fn validate(
     artifact: &Value,
     captures: &BTreeMap<u64, Vec<u8>>,
-) -> Result<bool, String> {
+) -> Result<Vec<&'static str>, String> {
     let findings = artifact["findings"].as_array().ok_or("missing findings")?;
     let chain_findings: Vec<_> = findings
         .iter()
         .filter(|f| f["details"]["event_chain"].is_object())
         .collect();
     if chain_findings.is_empty() {
-        return Ok(true);
+        return Ok(Vec::new());
     }
     if artifact["effective_profile_omitted"] == true {
-        return Ok(false);
+        return Ok(vec![
+            "chain_cardinalities_require_retained_profile_and_capture",
+        ]);
     }
     let config: AnalyzerConfig =
         serde_json::from_value(artifact["effective_profile"].clone()).map_err(|e| e.to_string())?;
@@ -52,6 +54,8 @@ pub(crate) fn validate(
         })
         .collect::<Result<_, _>>()?;
     let mut complete = true;
+    // Cutoff metadata does not record whether chain calculation had already completed.
+    let completeness_available = artifact["processing"]["stop"].is_null();
     for ordinal in ordinals {
         let Some(bytes) = captures.get(&ordinal) else {
             complete = false;
@@ -100,6 +104,9 @@ pub(crate) fn validate(
             &mut budget,
         )
         .map_err(|e| format!("{e:?}"))?;
+        let input_complete = parsed.coverage.rejected_candidates == 0
+            && parsed.coverage.normalization_diagnostics.is_empty()
+            && !parsed.coverage.is_unparsed();
         parsed.entries.retain(|entry| {
             selected.contains_key(&(
                 entry.source_line_number as u64,
@@ -130,7 +137,7 @@ pub(crate) fn validate(
             "validation",
             &context,
             &Value::Null,
-            true,
+            input_complete,
             &mut budget,
             &mut replayed,
             None,
@@ -160,13 +167,71 @@ pub(crate) fn validate(
             if chain["root_occurrences"] != replay["root_occurrences"] {
                 return Err("chain root cardinality differs from retained population".into());
             }
-            for step in chain["steps"].as_array().ok_or("missing steps")? {
+            if completeness_available && chain["completeness"] != replay["completeness"] {
+                return Err("chain completeness differs from retained population".into());
+            }
+            let steps = chain["steps"].as_array().ok_or("missing steps")?;
+            let replay_steps = replay["steps"].as_array().ok_or("missing replay steps")?;
+            if steps.iter().map(|s| &s["id"]).collect::<Vec<_>>()
+                != replay_steps.iter().map(|s| &s["id"]).collect::<Vec<_>>()
+            {
+                return Err("chain steps differ from effective policy".into());
+            }
+            for step in steps {
                 let expected_step = replay["steps"]
                     .as_array()
                     .ok_or("missing replay steps")?
                     .iter()
                     .find(|s| s["id"] == step["id"])
                     .ok_or("chain step absent from effective policy")?;
+                for field in [
+                    "status",
+                    "observed_count",
+                    "linked_count",
+                    "ambiguity",
+                    "omitted_occurrences",
+                    "omitted_outcomes",
+                    "recognition",
+                    "from",
+                    "join_fields",
+                    "cardinality",
+                    "event_type",
+                ] {
+                    if step[field] != expected_step[field] {
+                        return Err(format!(
+                            "chain step {field} differs from retained population"
+                        ));
+                    }
+                }
+                if completeness_available
+                    && step["count_completeness"] != expected_step["count_completeness"]
+                {
+                    return Err("chain step completeness differs from retained population".into());
+                }
+                for field in ["evidence", "ambiguous_evidence", "outcomes"] {
+                    let project = |step: &Value| -> Result<Vec<_>, String> {
+                        step[field]
+                            .as_array()
+                            .ok_or("missing chain samples")?
+                            .iter()
+                            .map(|sample| {
+                                let source = address(&sample["occurrence"])
+                                    .ok_or("missing sample address")?;
+                                Ok((
+                                    source,
+                                    sample.get("level").cloned(),
+                                    sample.get("field").cloned(),
+                                    sample.get("value").cloned(),
+                                ))
+                            })
+                            .collect()
+                    };
+                    if project(step)? != project(expected_step)? {
+                        return Err(format!(
+                            "chain step {field} differs from retained population"
+                        ));
+                    }
+                }
                 for join in step["join_samples"].as_array().ok_or("missing joins")? {
                     let expected_join = expected_step["join_samples"]
                         .as_array()
@@ -185,8 +250,33 @@ pub(crate) fn validate(
                         );
                     }
                 }
+                let joins = |step: &Value| -> Result<Vec<_>, String> {
+                    let mut pairs = step["join_samples"]
+                        .as_array()
+                        .ok_or("missing joins")?
+                        .iter()
+                        .map(|join| {
+                            Ok((
+                                address(&join["source"]).ok_or("missing join source")?,
+                                address(&join["target"]).ok_or("missing join target")?,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, String>>()?;
+                    pairs.sort();
+                    Ok(pairs)
+                };
+                if joins(step)? != joins(expected_step)? {
+                    return Err("chain join samples differ from retained population".into());
+                }
             }
         }
     }
-    Ok(complete)
+    let mut deferred = Vec::new();
+    if !complete {
+        deferred.push("chain_cardinalities_require_retained_profile_and_capture");
+    }
+    if !completeness_available {
+        deferred.push("chain_completeness_requires_processing_stage_history");
+    }
+    Ok(deferred)
 }
