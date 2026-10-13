@@ -169,7 +169,8 @@ validation work, time or memory allowances return an error rather than accepting
 Replay allowances cover retained processing limits and usage, including expanded
 rows parsed before selection, so raised investigation limits also apply to validation.
 Replay also checks the complete configured step list, statuses, counts, ambiguity,
-recognition, evidence/outcome samples and join samples against retained records.
+recognition, evidence/outcome samples and join samples (including each join identity)
+against retained records.
 Chain identities, context identities, scope fields, root event names and root
 ambiguity must also match replay, binding links to their retained correlation subject.
 Later-activity counts and samples must match the retained same-context population

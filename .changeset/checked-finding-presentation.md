@@ -35,3 +35,4 @@ Require every replayed chain in unaffected scopes to remain retained, and scope
 completeness deferral to affected inputs rather than the whole investigation.
 Recompute classifications from captured bytes and retained rules, and reconstruct
 complete selected populations from stored filters/selectors to reject deleted records.
+Bind each sampled join identity to its replayed source/target relationship.

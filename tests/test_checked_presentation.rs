@@ -1223,6 +1223,7 @@ fn replay_rejects_invented_completion_and_incomplete_step_results() {
     for (case, identity, step_id, reason) in [
         ("completion", "beta", "capture-end", "chain step status"),
         ("join", "alpha", "submitted", "chain join samples"),
+        ("join-identity", "alpha", "submitted", "chain join identity"),
         ("step", "beta", "cache", "chain steps"),
         ("count", "alpha", "polls", "chain step observed_count"),
         ("ambiguity", "beta", "capture-end", "chain step ambiguity"),
@@ -1262,6 +1263,9 @@ fn replay_rejects_invented_completion_and_incomplete_step_results() {
                     assert_eq!(step["join_samples"], json!([]));
                 }
                 "join" => step["join_samples"] = json!([]),
+                "join-identity" => {
+                    step["join_samples"][0]["identity"][0]["value"] = json!("neighbor");
+                }
                 "count" => {
                     step["observed_count"] = json!(1);
                     step["linked_count"] = json!(1);

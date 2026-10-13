@@ -367,6 +367,9 @@ pub(crate) fn validate(
                                 && address(&j["target"]) == address(&join["target"])
                         })
                         .ok_or("chain join absent from retained population")?;
+                    if join["identity"] != expected_join["identity"] {
+                        return Err("chain join identity differs from retained population".into());
+                    }
                     if join["source_count"] != expected_join["source_count"]
                         || join["target_count"] != expected_join["target_count"]
                     {
