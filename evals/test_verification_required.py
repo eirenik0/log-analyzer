@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from native_workflow import DOMAIN_SEMANTICS, fixture, prepare_inputs, metrics
+from native_workflow import DOMAIN_SEMANTICS, FINAL_ANSWER_CONTRACT, fixture, prepare_inputs, metrics
 from verification_required import Budget, REQUIRED_SCHEMA, PROSE_SCHEMA, trial_required
 from schema import validate, InvalidValue
 
@@ -79,7 +79,9 @@ class RequiredRunnerControls(unittest.TestCase):
             self.assertEqual(review_context['requested_subjects']['capture'], ['Checkpoint alpha', 'zone-a'])
             self.assertIn('Passed independent', review_context['profile_validation'])
             self.assertEqual(review_context['verified_profile'], {'investigation': {'roles': []}})
-            self.assertIn('task semantics as authoritative', review_prompt)
+            self.assertEqual(review_context['answer_format'], FINAL_ANSWER_CONTRACT)
+            self.assertIn('cause (null when\nunsupported)', review_context['answer_format'])
+            self.assertIn('answer-format contract as authoritative', review_prompt)
 
     def test_verified_claims_do_not_bypass_separate_prose_review(self):
         with tempfile.TemporaryDirectory() as directory:
