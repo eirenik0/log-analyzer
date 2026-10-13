@@ -9,3 +9,4 @@ the task's answer contract, domain semantics and independently checked profile, 
 paths in the analysis context.
 Keep unmatched lifecycle observations visible and bound standalone unknown previews.
 Reject duplicate trial selections and compare retained Windows paths by file identity.
+Do not report absent timings when the grouped overview already displays them.

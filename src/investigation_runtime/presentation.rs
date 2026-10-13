@@ -706,6 +706,7 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
     }
     output.push_str(&overview.source_errors);
     output.push_str(&overview.rendered);
+    let summary_heading = output.len();
     output.push_str(if detailed {
         "\nObserved findings (individual findings page):\n"
     } else {
@@ -870,7 +871,11 @@ pub(super) fn text(report: &Value, overview: &FindingOverview, detailed: bool) -
         }
     }
     if !detailed && output.len() == summary_start {
-        output.push_str("No recognized operations or measured timings on this page.\n");
+        if overview.rendered.is_empty() {
+            output.push_str("No recognized operations or measured timings on this page.\n");
+        } else {
+            output.truncate(summary_heading);
+        }
     }
     if detailed {
         output.push_str("\nAssessment limits:\n");
@@ -1006,6 +1011,32 @@ fn shell_quote(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn grouped_measurements_do_not_trigger_the_empty_timing_fallback() {
+        let report = json!({"findings": [{"id":"elapsed", "kind":"calculated_fact",
+            "scope_id":"scope-0", "details":{"value":25, "unit":"ms"}}]});
+        let view: InvestigationView = serde_json::from_value(json!({"groups":[{
+            "id":"timings", "title":"Measured timings",
+            "select":[{"path":"/kind", "equals":"calculated_fact"}],
+            "by":[{"label":"Scope", "path":"/scope_id"}],
+            "measurements":[{"label":"Elapsed", "path":"/details/value",
+                "unit_path":"/details/unit", "unit":"ms", "aggregate":"max"}]
+        }]}))
+        .unwrap();
+        let overview = finding_overview(&report, Some(&view), false, false);
+        let output = text(&report, &overview, false);
+        assert!(
+            output.contains("Measured timings")
+                && output.contains("Elapsed: 25.00 ms (1 measured, 0 unavailable)"),
+            "{output}"
+        );
+        assert!(
+            !output.contains("No recognized operations or measured timings"),
+            "{output}"
+        );
+        assert!(!output.contains("What happened"), "{output}");
+    }
 
     #[test]
     fn standalone_unknown_preview_is_bounded_before_pagination() {
