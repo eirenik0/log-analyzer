@@ -8,4 +8,10 @@ row addresses, multiline boundaries, checksums, redaction, and partial-processin
 contracts. Use temporary source snapshots instead of retaining complete input
 buffers; keep version-1 JSON artifacts and existing parser collection APIs.
 
-Correlation and retained analysis remain memory-budgeted and do not yet spill.
+Spill pending correlation indexes to SQLite only after the resident index limit,
+with explicit disk limits, cancellation, temporary-state cleanup and whole-key
+ambiguity decisions. Expose a consuming library correlator and measure its RSS
+using selected starts followed by late completions.
+
+CLI selected-record/report collections and JSON evidence retrieval still require
+the remaining out-of-core integration; this does not complete issue #86.

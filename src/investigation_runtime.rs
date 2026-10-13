@@ -90,6 +90,58 @@ pub(crate) fn run(cli: &Cli) -> Result<()> {
     }
 }
 
+/// The report builder currently needs completed result vectors, while the
+/// correlation engine keeps its pending records and key summaries out of them.
+pub(super) struct Correlated {
+    operations: Vec<crate::perf_analyzer::TimedOperation>,
+    unmatched_events: Vec<crate::perf_analyzer::UnmatchedEvent>,
+}
+fn correlate(
+    entries: &[parser::LogEntry],
+    config: &config::AnalyzerConfig,
+    args: &InvestigateArgs,
+    budget: &mut Budget,
+) -> Result<Option<Correlated>> {
+    use crate::correlation_stream::{CorrelationStream, Limits};
+    let mut stream = CorrelationStream::new(
+        config.clone(),
+        Limits {
+            index_bytes: args.correlation_max_index_bytes,
+            disk_bytes: args.correlation_max_disk_bytes,
+            record_bytes: (budget.limits.record_bytes as u64)
+                .saturating_mul(64)
+                .max(65536),
+        },
+    )?;
+    for entry in entries {
+        if !budget.checkpoint("correlation", 1) {
+            return Ok(None);
+        }
+        stream.push(entry.clone())?;
+    }
+    let mut result = Correlated {
+        operations: Vec::new(),
+        unmatched_events: Vec::new(),
+    };
+    let finished = stream.finish(
+        || budget.checkpoint("correlation", 1),
+        |decision| {
+            if let Some(operation) = decision.operation {
+                result.operations.push(operation);
+            }
+            if let Some(unmatched) = decision.unmatched {
+                result.unmatched_events.push(unmatched);
+            }
+            Ok(())
+        },
+    );
+    match finished {
+        Ok(()) => Ok(Some(result)),
+        Err(_) if budget.halted => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     if cli.report_cursor.is_some() {
         return Err("Use investigation-evidence to resume a retained artifact without processing sources again".into());
@@ -400,13 +452,19 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         }
         budget.begin_stage();
         correlation_calls += 1;
-        let perf = crate::perf_analyzer::analyze_performance_checked(
-            &entries,
-            &crate::comparator::LogFilter::new(),
-            None,
-            &config,
-            |work| budget.checkpoint("correlation", work),
-        );
+        let perf = match correlate(&entries, &config, args, &mut budget) {
+            Ok(perf) => perf,
+            Err(error) => {
+                let reason =
+                    if error.to_string().contains("limit") || error.to_string().contains("full") {
+                        "storage_limit"
+                    } else {
+                        "io_error"
+                    };
+                budget.stop("correlation", reason, Some("correlation_state"));
+                None
+            }
+        };
         budget.begin_stage();
         let scope_aliases = crate::profile_validation::scope_adequacy(&entries, &config, |work| {
             budget.checkpoint("calculation", work)
@@ -662,7 +720,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     }
     metadata["profile_selection"] = auto_profile::summary(&detection);
     // Instrumentation belongs to the effective query and its digest, never to evidence text.
-    metadata["evidence"]["query"]["execution"] = json!({"parse_passes":parse_calls + detection_parse_calls,"analysis_parse_passes":parse_calls,"detection_parse_passes":detection_parse_calls,"correlation_passes":correlation_calls,"input_relationship":"independent_runs","record_max_bytes":budget.limits.record_bytes,"planned_input_bytes":planned_bytes,"working_sets":"sequential_independent_inputs","profile_selection":detection,"source_locations":source_locations});
+    metadata["evidence"]["query"]["execution"] = json!({"parse_passes":parse_calls + detection_parse_calls,"analysis_parse_passes":parse_calls,"detection_parse_passes":detection_parse_calls,"correlation_passes":correlation_calls,"input_relationship":"independent_runs","record_max_bytes":budget.limits.record_bytes,"planned_input_bytes":planned_bytes,"working_sets":"sequential_independent_inputs","correlation_state":{"index_bytes":args.correlation_max_index_bytes,"disk_bytes":args.correlation_max_disk_bytes,"backend":"temporary_files_with_threshold_sqlite_index"},"profile_selection":detection,"source_locations":source_locations});
     metadata["evidence"]["query_sha256"] = json!(evidence::digest(
         metadata["evidence"]["query"].to_string().as_bytes()
     ));

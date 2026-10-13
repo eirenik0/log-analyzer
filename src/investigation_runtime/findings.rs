@@ -1,9 +1,6 @@
 use super::selection::View;
 use crate::{
-    event_rules::ClassifiedRecord,
-    evidence,
-    parser::LogEntry,
-    perf_analyzer::{PerfAnalysisResults, SourceLocation},
+    event_rules::ClassifiedRecord, evidence, parser::LogEntry, perf_analyzer::SourceLocation,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -74,7 +71,7 @@ pub(super) fn population(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build(
     entries: &[LogEntry],
-    perf: Option<&PerfAnalysisResults>,
+    perf: Option<&super::Correlated>,
     view: &View<'_>,
     scope: &str,
     context: &evidence::Context,

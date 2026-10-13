@@ -5982,3 +5982,58 @@ fn profile_recovery_distinguishes_authored_expectations_from_preparation() {
             .contains("not an external truth file")
     );
 }
+
+#[test]
+fn spilled_correlation_preserves_retained_facts_and_disk_exhaustion_is_partial() {
+    let resident = tempfile::tempdir().unwrap();
+    let disk = tempfile::tempdir().unwrap();
+    let (resident_report, resident_path) = investigate(
+        resident.path(),
+        &[
+            "--complete-output",
+            "--correlation-max-index-bytes",
+            "1048576",
+        ],
+    );
+    let (disk_report, disk_path) = investigate(
+        disk.path(),
+        &["--complete-output", "--correlation-max-index-bytes", "0"],
+    );
+    assert_eq!(resident_report["processing"]["status"], "complete");
+    assert_eq!(disk_report["processing"]["status"], "complete");
+    let resident: Value = serde_json::from_slice(&fs::read(resident_path).unwrap()).unwrap();
+    let disk: Value = serde_json::from_slice(&fs::read(disk_path).unwrap()).unwrap();
+    for collection in [
+        "records",
+        "findings",
+        "populations",
+        "memberships",
+        "sequences",
+        "scopes",
+        "assessments",
+    ] {
+        assert_eq!(resident[collection], disk[collection], "{collection}");
+    }
+    let limited = tempfile::tempdir().unwrap();
+    let (report, _) = investigate(
+        limited.path(),
+        &[
+            "--complete-output",
+            "--correlation-max-index-bytes",
+            "0",
+            "--correlation-max-disk-bytes",
+            "1",
+        ],
+    );
+    assert_eq!(report["processing"]["status"], "partial");
+    assert_eq!(report["processing"]["stop"]["stage"], "correlation");
+    assert_eq!(report["processing"]["stop"]["reason"], "storage_limit");
+    assert_eq!(report["scopes"][0]["analysis_completion"], "not_performed");
+    assert!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|f| f["kind"] != "measurement")
+    );
+}

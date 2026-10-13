@@ -509,11 +509,29 @@ and returns an error if that bound is exceeded. See
 and [the streaming design](docs/design/streaming-pipeline.md) for the stage boundaries.
 Existing `Vec`-returning parser APIs remain available.
 
-Correlation and report construction still retain selected records and calculated
-collections under the processing budget. They do not yet spill to disk; large
-investigations can still stop with an explicit partial outcome. This source-I/O
-change does not make the entire investigation or evidence retrieval constant-memory.
-Artifacts remain version-1 JSON; no SQLite artifact format or backend flag is added.
+Investigation correlation stages pending records in private append-only files.
+Its resident index spills to SQLite only after `--correlation-max-index-bytes`
+(default 1 MiB) is reached. Each of the two state stores has a 2 MiB SQLite page
+cache with mmap disabled. `--correlation-max-disk-bytes` (default 2 GiB) bounds
+payload and database pages, split equally between records and key summaries.
+Each serialized state record is capped at the larger of 64 KiB or 64 times the
+physical-record cap to accommodate normalized fields and provenance.
+State files are removed when correlation finishes or fails. Disk exhaustion and
+cancellation publish no tentative lifecycle results; the investigation explicitly
+reports incomplete analysis. SQLite is never the retained artifact format.
+
+Library consumers can feed `correlation_stream::CorrelationStream` directly from
+the parser visitor and receive at most two records per finalized decision. The
+correlator establishes whole-key ambiguity before emitting pairs: a later duplicate
+start cannot leave an earlier tentative pair in the output. Inputs remain independent,
+and normalized rows preserve their emission order and original timestamps.
+See [`examples/stream-correlations.rs`](examples/stream-correlations.rs).
+
+The CLI's report builder still holds selected records and completed result/evidence
+collections under the processing allowance. JSON retrieval still materializes the
+retained tree. Those remaining collections mean the complete CLI pipeline does not
+yet have bounded RSS for growing selected inputs or artifacts. Artifacts remain
+version-1 JSON; the correlation limits do not change their retrieval contract.
 
 The memory setting bounds a conservative reservation model for buffered/retained
 source and calculated data, including normalization field-mapping amplification

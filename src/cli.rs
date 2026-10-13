@@ -357,6 +357,12 @@ pub struct InvestigateArgs {
     /// Conservative data allowance planned from input sizes, 512 MiB–32 GiB; not RSS
     #[arg(long)]
     pub processing_max_memory_bytes: Option<u64>,
+    /// Resident correlation index allowance; each spilled store also has a 2 MiB SQLite cache
+    #[arg(long, default_value_t = 1048576)]
+    pub correlation_max_index_bytes: usize,
+    /// Disposable correlation payload and index disk cap (default: 2 GiB)
+    #[arg(long, default_value_t = 2147483648)]
+    pub correlation_max_disk_bytes: u64,
     /// Hard retained artifact cap in bytes (default: 1 GiB)
     #[arg(long)]
     pub artifact_max_bytes: Option<u64>,

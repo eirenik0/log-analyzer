@@ -28,10 +28,15 @@ when investigating RAM consumption.
 
 Investigation sources are captured to temporary files and parsed through a record
 visitor with bounded reads. This avoids retaining complete source buffers, but
-correlation and report collections still use the processing allowance. Do not
-interpret streaming ingestion as proof that an arbitrarily large investigation
-will complete. JSON evidence retrieval still parses the retained artifact; output
-pagination does not bound its memory. No SQLite storage option is required.
+pending correlation state now uses private files with a threshold-triggered SQLite
+index. `--correlation-max-index-bytes` controls the index allowance and
+`--correlation-max-disk-bytes` caps its temporary payload and database pages.
+State exhaustion leaves correlation unavailable, not a measured zero. The CLI
+still retains selected report records and completed evidence under the processing
+allowance. Do not interpret ingestion/correlation streaming as proof that an
+arbitrarily large investigation will complete. JSON evidence retrieval still
+parses the retained tree; output pagination does not bound its memory. SQLite is
+internal disposable state, never the retained artifact format.
 
 Retrieve retained collections using `evidence`, the exact artifact
 checksum and snapshot-bound cursor. Check displayed, prior, remaining and total

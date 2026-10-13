@@ -2,11 +2,8 @@
 use super::{Selector, selected};
 use crate::event_rules::{Adapter, EventRule, EventSemantics, Outcome, Phase, ValueMapping};
 use crate::{
-    config::AnalyzerConfig,
-    event_rules::ClassifiedRecord,
-    parser::LogEntry,
-    perf_analyzer::{PerfAnalysisResults, SourceLocation},
-    processing::Budget,
+    config::AnalyzerConfig, event_rules::ClassifiedRecord, parser::LogEntry,
+    perf_analyzer::SourceLocation, processing::Budget,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,7 +38,7 @@ impl<'a> View<'a> {
         entries: &'a [LogEntry],
         selectors: &[Selector],
         config: &AnalyzerConfig,
-        perf: Option<&PerfAnalysisResults>,
+        perf: Option<&super::Correlated>,
         budget: &mut Budget,
     ) -> Self {
         let mut view = Self {

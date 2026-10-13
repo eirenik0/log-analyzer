@@ -11,9 +11,11 @@ flowchart TD
     B -->|bounded physical / multiline records| E[Parser visitor]
     D --> E
     E -->|one normalized row at a time| F[Global filter]
-    F --> G[Memory-budgeted correlation and report state]
+    F --> P[Selected record collection: still resident in CLI]
+    P --> G[Correlation spool with threshold-triggered SQLite indexes]
+    G --> R[Memory-budgeted report collections]
     B -->|stream and escape captured bytes| H[Staged JSON artifact]
-    G --> H
+    R --> H
     H --> I[Digest and source-witness validation]
     I --> J[Atomic no-clobber publication]
 ```
@@ -58,16 +60,27 @@ flowchart TD
 
 The investigation consumer still retains selected `LogEntry` values and calculated
 report collections under its existing conservative memory budget. It emits a
-partial outcome if that budget is exhausted. JSON retrieval still materializes the
+partial outcome if that budget is exhausted. Pending correlation indexes now spill,
+but completed results and retained report collections do not. JSON retrieval still materializes the
 artifact tree. These stages do not have constant RSS, and source streaming alone
 does not complete issue #86's end-to-end out-of-core requirements.
 
-There is no SQLite dependency in this implementation. Any future spill belongs
-behind correlation state: scoped open boundaries, ambiguous/reused identities,
-late completion candidates, joins and ordered populations that cannot be safely
-finalized yet. It must preserve input scope, timestamp offsets, source order and
-ambiguity. Replacing the external artifact with a database does not solve those
-state requirements. The ordinary parser consumer does not need a database.
+Pending correlation records and per-key summaries use append-only temporary payload
+files. The resident index spills to SQLite at a fixed allowance; SQLite stores
+only offsets, identities and sort keys, with a 2 MiB page cache per state store,
+`mmap_size=0` and disposable journaling disabled. It is never the external artifact
+format. Payload plus database page limits are checked on every append; failed
+writes cannot produce a successful partial stream. Temporary directories are
+removed on drop, including cancellation and consumer errors.
+
+Correlation makes two ordered passes. The first establishes inferred-year and
+whole-key overlap decisions, including late ambiguity that invalidates earlier
+pairs. The second holds one pending boundary and emits zero, one or two source
+records per decision. Records require unique input/line/row addresses; duplicate
+addresses and inconsistent input-to-file mappings fail explicitly. A single
+correlation stream owns its effective profile and is consumed by finalization.
+The CLI uses this correlator, but collects its completed operations and unmatched
+records for the existing report builder. The library consumer can remain bounded.
 
 ## Measurement
 
@@ -103,3 +116,25 @@ On the recorded macOS arm64 runs, source size grew from 66,000 to 66,000,000 byt
 The parser probe stayed below 10 MiB peak RSS; the excluding-filter investigation
 stayed below 14 MiB while publishing complete artifacts. These are measured stage
 results on the synthetic corpus, not a bound for retained correlation state.
+
+### Selected correlation workload
+
+```sh
+cargo build --release --locked --example stream-correlations
+python3 scripts/measure-correlation-memory.py target/release/examples/stream-correlations
+```
+
+This separate probe selects every parsed record, writes every start before any
+completion, and checks exact emitted-record counts, pair counts, each duration,
+source ordering, scope, and input hashes. It uses a 1 MiB resident index allowance,
+two 2 MiB SQLite page caches, a 256 KiB serialized-record cap and a 4 GiB disk cap.
+Every size runs in a fresh worker. The script fails above a 64 MiB absolute RSS
+ceiling or a 24 MiB growth tolerance across the sweep; these are reproducible
+measurement thresholds, not a cross-platform allocation guarantee.
+
+The recorded 2,000 / 20,000 / 200,000 selected-record sweep used 13.3 / 15.6 /
+14.6 MiB peak RSS and correctly completed 1,000 / 10,000 / 100,000 late pairs.
+Results are in [`../evals/streaming-selected-correlation-memory.json`](../evals/streaming-selected-correlation-memory.json).
+It measures the yielding parser plus real growing correlation state. It does not
+measure full CLI evidence construction or retrieval, whose remaining materialized
+collections still prevent an end-to-end bounded-memory claim.
