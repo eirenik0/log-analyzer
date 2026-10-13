@@ -3,6 +3,9 @@
 Use a focused branch and pull request. Keep unrelated changes separate and
 describe the behavior change, its reason, and the checks you ran.
 
+[[.github/CONTRIBUTING.md]] is the GitHub discovery entry point; this page is
+the canonical guide.
+
 ## Commit messages
 
 Every authored commit and PR title must use Conventional Commits:
