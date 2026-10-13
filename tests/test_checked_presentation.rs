@@ -1755,3 +1755,51 @@ fn replay_binds_nested_excerpt_payloads_to_source() {
         }
     }
 }
+
+#[test]
+fn checked_presentation_requires_canonical_qualifications() {
+    let temp = tempfile::tempdir().unwrap();
+    for (name, options) in [
+        ("full", vec!["--json", "--complete-output"]),
+        ("page", vec!["--json", "--report-max-items", "0"]),
+    ] {
+        let report: Value =
+            serde_json::from_str(&run(temp.path(), name, PROFILE, &[INPUT], &options)).unwrap();
+        let bytes = fs::read(temp.path().join(name)).unwrap();
+        let mut paths = vec!["/presentation/uncertainty/limits"];
+        if name == "full" {
+            paths.extend([
+                "/findings/0/checked/assurance/limits",
+                "/findings/0/checked/population_rule",
+            ]);
+        }
+        for path in paths {
+            for remove in [true, false] {
+                let mut altered = report.clone();
+                let replacement = if path.ends_with("population_rule") {
+                    json!(if remove {
+                        ""
+                    } else {
+                        "All counts are interchangeable."
+                    })
+                } else if remove {
+                    json!([])
+                } else {
+                    json!(["All conclusions are certain."])
+                };
+                *altered.pointer_mut(path).unwrap() = replacement;
+                altered["presentation"]["serialized_bytes"] = Value::Null;
+                altered["presentation"]["serialized_characters"] = Value::Null;
+                shape(&altered, false);
+                for artifact in [None, Some(bytes.as_slice())] {
+                    let error = log_analyzer::investigation::validate_relations(&altered, artifact)
+                        .unwrap_err();
+                    assert!(
+                        error.reason.contains("presentation contract"),
+                        "{path}: {error}"
+                    );
+                }
+            }
+        }
+    }
+}

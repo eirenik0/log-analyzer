@@ -42,7 +42,7 @@ impl CheckedResult {
             });
             finding["checked"] = json!({
                 "version":1,
-                "population_rule":"Counts retain their named population. Chain steps count distinct source occurrences (snapshot_id, input_ordinal, reference_id) within this input and chain scope; observed and linked populations are separate. No logical request or failure deduplication is inferred.",
+                "population_rule":crate::investigation::CHECKED_POPULATION_RULE,
                 "scope":scopes.get(&finding["scope_id"].to_string()),
                 "identity":chain.get("identity"),
                 "subjects":subjects,
@@ -51,7 +51,7 @@ impl CheckedResult {
                     "level":if !source_checked {"relations_only"} else if has_link {"link_exists"} else {"source_bound"},
                     "source_binding":if source_checked {"validated"} else {"unavailable"},
                     "subject_verification":if source_checked {"not_requested"} else {"unavailable"},
-                    "limits":["Source binding checks retained evidence consistency, not intended question meaning or independent profile semantics. subject_verified requires independent expected subjects through claim verification."]
+                    "limits":crate::investigation::CHECKED_ASSURANCE_LIMITS
                 }
             });
         }
@@ -61,7 +61,7 @@ impl CheckedResult {
             "incomplete_chains":findings.iter().filter(|f| f["details"]["event_chain"].is_object() && (f["details"]["event_chain"]["completeness"] != "complete" || f["details"]["event_chain"]["steps"].as_array().into_iter().flatten().any(|s| s["status"] != "observed"))).count(),
             "source_binding_unavailable_findings":findings.iter().filter(|f| f["checked"]["assurance"]["source_binding"] == "unavailable").count(),
             "subject_verification":if findings.iter().any(|f| f["checked"]["assurance"]["subject_verification"] == "unavailable") {"unavailable"} else {"not_requested"},
-            "limits":["Counts above describe all processed findings, including omitted detail. Missing endpoints remain unavailable within the selected capture. Upstream completeness, clock synchronization and causality are unknown.", "An existing link does not establish intended subject meaning. Independent expected subjects are required for subject_verified assurance."]
+            "limits":crate::investigation::UNCERTAINTY_LIMITS
         });
         drop(records);
         drop(retained);

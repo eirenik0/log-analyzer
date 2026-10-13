@@ -190,6 +190,11 @@ also agree with all retained findings, including those omitted from the page.
 Renderers copy measurements; they do not recalculate them.
 
 Presentation retains all-finding uncertainty counts even when findings are omitted.
+[[src/investigation.rs#UNCERTAINTY_LIMITS|Aggregate uncertainty limits]],
+[[src/investigation.rs#CHECKED_ASSURANCE_LIMITS|finding assurance limits]] and the
+[[src/investigation.rs#CHECKED_POPULATION_RULE|population rule]] are canonical shared
+publication/validation values. Report-only and artifact-backed validation reject
+removed or replaced qualifications, including on pages with no displayed findings.
 The decision brief keeps this metadata and explicit omitted-finding counts. See the
 [[examples/investigations/checked/README.md|maintained bounded example]] and
 [[regression-tests#Evidence regressions#Checked finding presentation]]. These tests

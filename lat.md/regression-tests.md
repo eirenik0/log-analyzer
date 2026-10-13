@@ -52,6 +52,9 @@ rejects fabricated join identities and mutually consistent report/artifact edits
 that invent a completion, remove steps or joins, or change labels, counts, ambiguity
 and completeness. Processing cutoffs
 explicitly defer completeness when calculation-stage history is unavailable.
+[[tests/test_checked_presentation.rs#checked_presentation_requires_canonical_qualifications]]
+rejects empty or replaced aggregate limits, finding assurance limits and population
+rules in full and empty-page reports, with and without retained artifact bytes.
 [[tests/test_checked_presentation.rs#replay_binds_nested_excerpt_payloads_to_source]]
 rejects altered text, omitted-character counts, displayed fields and verification
 metadata in linked, ambiguous and later-activity excerpts with configured source fields.

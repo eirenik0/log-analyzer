@@ -12,6 +12,15 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const CONTRACT_VERSION: u32 = 1;
 pub const ARTIFACT_VERSION: u32 = 1;
 
+pub(crate) const CHECKED_POPULATION_RULE: &str = "Counts retain their named population. Chain steps count distinct source occurrences (snapshot_id, input_ordinal, reference_id) within this input and chain scope; observed and linked populations are separate. No logical request or failure deduplication is inferred.";
+pub(crate) const CHECKED_ASSURANCE_LIMITS: &[&str] = &[
+    "Source binding checks retained evidence consistency, not intended question meaning or independent profile semantics. subject_verified requires independent expected subjects through claim verification.",
+];
+pub(crate) const UNCERTAINTY_LIMITS: &[&str] = &[
+    "Counts above describe all processed findings, including omitted detail. Missing endpoints remain unavailable within the selected capture. Upstream completeness, clock synchronization and causality are unknown.",
+    "An existing link does not establish intended subject meaning. Independent expected subjects are required for subject_verified assurance.",
+];
+
 pub(crate) fn endpoint_milliseconds(interval: &Value) -> Option<f64> {
     let start = DateTime::parse_from_rfc3339(interval["start_timestamp"].as_str()?).ok()?;
     let end = DateTime::parse_from_rfc3339(interval["end_timestamp"].as_str()?).ok()?;
@@ -1019,6 +1028,13 @@ pub fn validate_relations(
                 .map(str::to_owned),
         );
     }
+    if let Some(uncertainty) = report["presentation"].get("uncertainty") {
+        require(
+            uncertainty["limits"] == serde_json::json!(UNCERTAINTY_LIMITS),
+            "/presentation/uncertainty/limits",
+            "uncertainty limits differ from the presentation contract",
+        )?;
+    }
     if artifact.is_some()
         && let Some(uncertainty) = report["presentation"].get("uncertainty")
     {
@@ -1071,6 +1087,16 @@ pub fn validate_relations(
             .get(text(finding, "/scope_id")?)
             .ok_or_else(|| error("/findings/scope_id", "unknown scope"))?;
         if let Some(checked) = finding.get("checked") {
+            require(
+                checked["population_rule"] == CHECKED_POPULATION_RULE,
+                "/findings/checked/population_rule",
+                "population rule differs from the presentation contract",
+            )?;
+            require(
+                checked["assurance"]["limits"] == serde_json::json!(CHECKED_ASSURANCE_LIMITS),
+                "/findings/checked/assurance/limits",
+                "assurance limits differ from the presentation contract",
+            )?;
             require(
                 checked["scope"] == **scope,
                 "/findings/checked/scope",
