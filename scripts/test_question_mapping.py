@@ -33,6 +33,34 @@ class QuestionMappingTests(unittest.TestCase):
         self.assertEqual(self.draft['claims'][0]['id'], 'interval-a')
         return result
 
+    def test_preparation_leaves_subject_selection_and_review_unacknowledged(self):
+        prepared = mapping.prepare_plan(self.artifact)
+        self.assertEqual(prepared['questions'], [{'id': q} for q in ['duration', 'count', 'cause']])
+        self.assertEqual(prepared['reviewed_checks'], [])
+        with self.assertRaisesRegex(ValueError, 'independently select'):
+            mapping.compile_plan(self.draft, self.artifact, prepared)
+        artifact = copy.deepcopy(self.artifact)
+        artifact['report_metadata'] = {}
+        with self.assertRaisesRegex(ValueError, 'Register'):
+            mapping.prepare_plan(artifact)
+
+    def test_operation_candidates_are_retained_counts_not_subject_selections(self):
+        def record(line, name):
+            return {'occurrence': {'line': line}, 'fields': {'classification': {
+                'status': 'event', 'semantics': {'kind': 'event', 'name': name}}}}
+        artifact = copy.deepcopy(self.artifact)
+        artifact.update(records=[record(1, 'send'), record(1, 'send'), record(2, 'response')],
+                        processing={'status': 'complete'})
+        proposed = mapping.candidates(self.draft, artifact)
+        operations = {c['operation']['name']: c for c in proposed['claims'] if 'operation' in c}
+        self.assertEqual(operations['send']['expected'], 1)
+        self.assertEqual(operations['response']['expected'], 1)
+        self.assertEqual(proposed['claims'][-1]['pointer'], '/processing/status')
+        self.assertNotIn('requirements', proposed)
+        artifact['records'][0]['fields']['classification']['status'] = 'unclassified'
+        proposed = mapping.candidates(self.draft, artifact)
+        self.assertFalse(any('operation' in c for c in proposed['claims']))
+
     def test_mappings_preserve_all_ids_and_explicit_unknowns(self):
         self.positive()
         for mutate in [lambda p: p['questions'].pop(),
@@ -74,7 +102,7 @@ class QuestionMappingTests(unittest.TestCase):
             view = json.loads(inventory.stdout)
             self.assertEqual(view['required_initial_ids'], initial)
             self.assertEqual(view['supported_options'], [])
-            self.assertEqual(view['unknown_anchors'][0]['finding_id'], 'root-a')
+            self.assertEqual(view['event_candidates'][0]['finding_id'], 'root-a')
             self.assertFalse(missing_draft.exists())
             output, verification = root / 'claims.json', root / 'verification.json'
             result = subprocess.run([sys.executable, mapping.__file__, '--draft', str(root / 'draft'),
@@ -309,6 +337,6 @@ class QuestionMappingTests(unittest.TestCase):
         preview = json.loads(text[:5000])
         self.assertEqual({r['claim_id'] for r in preview['supported_options']}, {c['id'] for c in claims})
         self.assertEqual(preview['required_initial_ids'], ['duration', 'count', 'cause'])
-        self.assertEqual(preview['unknown_anchors'][0]['root']['line'], 1)
+        self.assertEqual(preview['event_candidates'][0]['root']['line'], 1)
         self.assertEqual(preview['required_review_checks'], mapping.CHECKS)
         self.assertEqual(claims[0]['subject']['source']['snapshot_id'], 's' * 64)

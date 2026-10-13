@@ -5,6 +5,7 @@ import copy
 import json
 import hashlib
 import subprocess
+import sys
 from pathlib import Path
 
 CHECKS = ['event_subjects', 'duration_endpoints_and_units', 'operation_types_and_count_semantics',
@@ -75,6 +76,48 @@ def requirement(claim, artifact):
     return result
 
 
+def candidates(draft, artifact):
+    """Propose mechanically retained facts; never choose a question's subject."""
+    draft = copy.deepcopy(draft)
+    rows = artifact.get('records', [])
+    if rows and all(r.get('fields', {}).get('classification', {}).get('status') == 'event'
+                    and r['fields']['classification'].get('semantics', {}).get('kind') in ('command', 'request', 'event')
+                    and isinstance(r['fields']['classification']['semantics'].get('name'), str)
+                    and r['fields']['classification']['semantics']['name'] for r in rows):
+        operations = sorted({(r['fields']['classification']['semantics']['kind'],
+                              r['fields']['classification']['semantics']['name']) for r in rows})
+        for kind, name in operations:
+            if kind not in ('command', 'request', 'event') or not name:
+                continue
+            selected = [r for r in rows if r['fields']['classification']['semantics']['kind'] == kind
+                        and r['fields']['classification']['semantics']['name'] == name]
+            expected = len({json.dumps(r['occurrence'], sort_keys=True) for r in selected})
+            cid = 'operation-' + hashlib.sha256(json.dumps([kind, name]).encode()).hexdigest()[:16]
+            draft['claims'].append({'id': cid, 'kind': 'distinct_records', 'pointer': '/records',
+                                    'operation': {'kind': kind, 'name': name}, 'expected': expected})
+    if artifact.get('processing', {}).get('status') is not None:
+        draft['claims'].append({'id': 'input-processing', 'kind': 'fact', 'pointer': '/processing/status',
+                                'equals': artifact['processing']['status']})
+    if len(draft['claims']) > 100:
+        raise ValueError('More than 100 candidates; use a targeted --finding-id and new draft path')
+    return draft
+
+
+def prepare_plan(artifact):
+    ids = required_ids(artifact)
+    if not ids:
+        raise ValueError('Register --required-relationship IDs when investigating before preparing a plan')
+    return {'questions': [{'id': qid} for qid in ids], 'supporting_claim_ids': [], 'reviewed_checks': []}
+
+
+def new_path(path):
+    for index in range(101):
+        candidate = path if not index else path.with_name(f'{path.stem}-{index}{path.suffix}')
+        if not candidate.exists():
+            return candidate
+    raise ValueError('Choose a new output directory; too many existing outputs')
+
+
 def compile_plan(draft, artifact, plan):
     claims_by_id = {c['id']: c for c in draft['claims']}
     if len(claims_by_id) != len(draft['claims']):
@@ -87,6 +130,8 @@ def compile_plan(draft, artifact, plan):
         if not isinstance(qid, str) or not qid.strip() or qid in ids:
             raise ValueError('Question IDs must be unique nonempty strings')
         ids.append(qid)
+        if set(item) == {'id'}:
+            raise ValueError(f'Question {qid}: independently select a claim and binding, or a typed anchored unknown')
         if 'claim_id' in item:
             if item['claim_id'] in used_claims:
                 raise ValueError('A supported question selects one distinct draft claim ID')
@@ -180,17 +225,20 @@ def inventory(draft, artifact):
         options.append(row)
     initial = required_ids(artifact)
     return {'required_initial_ids': initial, 'required_review_checks': CHECKS,
-            'unknown_anchors': [{'finding_id': fid, 'start_operation': c['root_event_name'],
-                                 'root': address(c['root']), 'identity': c.get('identity')}
+            'event_candidates': [{'finding_id': fid, 'start_operation': c['root_event_name'],
+                                 'root': address(c['root']), 'identity': c.get('identity'),
+                                 'scope_fields': c.get('scope_fields'), 'context_identity': c.get('context_identity')}
                                 for fid, c in anchors(artifact).items()],
             'supported_options': options,
-            'limitation': 'Compact selectors for an explicit plan, not verified truth. Supported draft claims retain their snapshot/subject addresses; compilation runs checksum-bound verification.'}
+            'limitation': 'Candidates are not independent truth. Select the intended subject before checksum-bound verification.'}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--draft', required=True)
     parser.add_argument('--artifact', required=True)
+    parser.add_argument('--prepare-plan', type=Path, help='Create an unselected checklist plan and return the verification command')
+    parser.add_argument('--finding-id', help='Target one retained finding when creating a new draft')
     parser.add_argument('--plan', help='JSON with questions selecting {id,claim_id,binding} (population instead of binding for counts) or declaring {id,kind,finding_id,reason} plus end_operation, step_id, population or optional field; reviewed_checks and optional supporting_claim_ids')
     parser.add_argument('--output', help='New assertions file; never overwrites')
     parser.add_argument('--analyzer', type=Path, help='Analyzer executable; required for plans or creating a missing draft')
@@ -201,6 +249,12 @@ def main():
         if args.artifact_max_bytes is not None and not 0 < args.artifact_max_bytes <= 2**64 - 1:
             raise ValueError('--artifact-max-bytes must be a positive u64 byte limit')
         allowance = [] if args.artifact_max_bytes is None else ['--artifact-max-bytes', str(args.artifact_max_bytes)]
+        if args.prepare_plan and (args.plan or args.output or not args.analyzer):
+            raise ValueError('--prepare-plan needs --analyzer and cannot be combined with --plan/--output')
+        if args.prepare_plan:
+            template_path = args.prepare_plan.resolve()
+            if template_path.exists() or template_path in {Path(args.artifact).resolve(), Path(args.draft).resolve()}:
+                raise ValueError('Plan template must be a new path distinct from artifact and draft')
         if bool(args.plan) != bool(args.output):
             raise ValueError('--plan and --output must be supplied together')
         artifact_path = Path(args.artifact).resolve()
@@ -216,17 +270,34 @@ def main():
         if args.plan and args.verification_output.exists():
             raise ValueError('Verification report must be a new path; do not reuse prior proof')
         artifact, sha = read_artifact(artifact_path, args.artifact_max_bytes or 67108864)
+        template = prepare_plan(artifact) if args.prepare_plan else None
         plan = load(args.plan) if args.plan else None
         unknown_only = plan is not None and not plan.get('supporting_claim_ids') and all('claim_id' not in q for q in plan['questions'])
         if not Path(args.draft).exists() and not unknown_only and artifact.get('content') != 'redacted':
             if analyzer is None:
                 raise ValueError('A missing draft requires --analyzer to create it from the retained snapshot')
             subprocess.run([str(analyzer), 'evidence', str(artifact_path), '--expected-sha256', sha,
-                            '--draft-claims', '--output', args.draft] + allowance, check=True,
+                            '--draft-claims', '--output', args.draft] + allowance +
+                           ([] if args.finding_id is None else ['--id', args.finding_id]), check=True,
                            stdout=subprocess.DEVNULL)
         draft = load(args.draft) if Path(args.draft).exists() else {'claims': []}
+        draft = candidates(draft, artifact)
         if not args.plan:
-            print(json.dumps(inventory(draft, artifact), ensure_ascii=False, separators=(',', ':')))
+            view = inventory(draft, artifact)
+            command = None
+            if args.prepare_plan:
+                with template_path.open('x', encoding='utf-8') as stream:
+                    json.dump(template, stream, ensure_ascii=False, indent=2)
+                    stream.write('\n')
+                command = [sys.executable, '-I', str(Path(__file__).resolve()), '--artifact', str(artifact_path),
+                           '--draft', str(Path(args.draft).resolve()), '--plan', str(template_path),
+                           '--output', str(new_path(template_path.with_name('claims.json'))),
+                           '--analyzer', str(analyzer), '--verification-output',
+                           str(new_path(template_path.with_name('verification.json')))] + allowance
+            view = {'action_summary': {'required_question_count': len(required_ids(artifact)),
+                     'next_step': 'independently_select_subjects_and_review_then_verify', 'next_command': command,
+                     'plan_path': str(template_path) if args.prepare_plan else None}, **view}
+            print(json.dumps(view, ensure_ascii=False, separators=(',', ':')))
             return
         result = compile_plan(draft, artifact, plan)
         with Path(args.output).open('x', encoding='utf-8') as stream:

@@ -223,3 +223,44 @@ fn evaluation_schema_compositions_agree_with_rust_validation() {
         assert!(!validator.is_valid(&value));
     }
 }
+
+#[test]
+fn offline_required_verification_checks_delivered_answers_without_model_calls() {
+    let python = ["python3", "python"]
+        .into_iter()
+        .find(|name| {
+            Command::new(name)
+                .args(["-c", "import sys; sys.exit(sys.version_info < (3, 10))"])
+                .output()
+                .is_ok_and(|output| output.status.success())
+        })
+        .expect("Python 3.10+ required");
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("required-controls.json");
+    let output = Command::new(python)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "evals/offline_verification_controls.py",
+            "--analyzer",
+            env!("CARGO_BIN_EXE_log-analyzer"),
+            "--output",
+        ])
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(report["model_calls"], 0);
+    assert_eq!(report["controls"].as_array().unwrap().len(), 29);
+    assert!(
+        report["controls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["status"] == "passed")
+    );
+}

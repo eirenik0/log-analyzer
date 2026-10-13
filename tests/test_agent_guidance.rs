@@ -492,3 +492,38 @@ fn redacted_workflow_does_not_echo_private_question_or_relationship_labels() {
         "PRIVATE_RELATIONSHIP"
     );
 }
+
+#[test]
+fn action_summary_precedes_findings_and_keeps_one_executable_next_command() {
+    let temp = fixture();
+    let report = run(
+        temp.path(),
+        &[
+            "investigate",
+            "captures/input.jsonl",
+            "--artifact",
+            "evidence.json",
+            "--question",
+            "Did this finish?",
+            "--required-relationship",
+            "completion",
+            "--summary",
+        ],
+    );
+    let summary = &report["action_summary"];
+    assert_eq!(
+        summary["unresolved_questions"],
+        serde_json::json!(["completion"])
+    );
+    assert_eq!(summary["unresolved_question_count"], 1);
+    assert_eq!(summary["upstream_completeness"], "unknown");
+    assert_eq!(
+        summary["next_command"],
+        report["guidance"]["workflow"]["next_action"]["argv"]
+    );
+    assert!(summary["next_command"].is_array());
+    assert!(summary.to_string().len() < 2048);
+    let text = report.to_string();
+    assert!(text.starts_with("{\"action_summary\":"));
+    assert!(text.find("\"action_summary\":").unwrap() < text.find("\"findings\":").unwrap());
+}

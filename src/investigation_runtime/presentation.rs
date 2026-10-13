@@ -403,7 +403,7 @@ fn write_evidence(output: &mut String, finding: &Value, max: usize) {
     }
 }
 pub(super) fn text(report: &Value, overview: &FindingOverview) -> String {
-    let mut output = String::new();
+    let mut output = format!("Next action: {}\n", report["action_summary"]);
     let incomplete = report["scopes"].as_array().is_some_and(|scopes| {
         scopes
             .iter()

@@ -447,6 +447,9 @@
         "serialized_characters"
       ],
       "additionalProperties": false
+    },
+    "action_summary": {
+      "type": "object"
     }
   },
   "required": [

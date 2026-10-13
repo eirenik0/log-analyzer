@@ -1,5 +1,18 @@
 # Compile a question plan
 
+Complete helper flow (replace paths and selectors after independent inspection):
+
+```sh
+log-analyzer investigate /absolute/capture.jsonl --artifact /absolute/evidence.json \
+  --question 'How long did this capture take?' --required-relationship capture-duration --summary
+python3 -I SKILL_DIR/scripts/map_questions.py --artifact /absolute/evidence.json \
+  --draft /absolute/draft.json --analyzer EXECUTABLE --prepare-plan /absolute/plan.json
+# Inspect delivered sources and candidate identities; edit plan.json as below.
+python3 -I SKILL_DIR/scripts/map_questions.py --artifact /absolute/evidence.json \
+  --draft /absolute/draft.json --analyzer EXECUTABLE --plan /absolute/plan.json \
+  --output /absolute/claims.json --verification-output /absolute/verification.json
+```
+
 Read the draft inventory and original evidence before selecting claims. Use every
 initial question ID, with exact draft selectors for supported answers and scoped
 finding anchors for unknowns. For example:
@@ -7,13 +20,8 @@ finding anchors for unknowns. For example:
 ```json
 {"questions":[
   {"id":"capture-duration","claim_id":"EXACT_DRAFT_INTERVAL_ID",
-   "binding":{"finding_id":"ROOT","pointer":"EXACT_RETAINED_INTERVAL_POINTER","start_operation":"capture","end_operation":"capture completed"}},
-  {"id":"other-duration","kind":"interval","finding_id":"OTHER_ROOT",
-   "end_operation":"capture completed","reason":"No supported ending for this scoped root."},
-  {"id":"send-count","claim_id":"EXACT_DRAFT_COUNT_ID",
-   "population":{"pointer":"/records","operation":{"kind":"request","name":"send"}}},
-  {"id":"cause","kind":"fact","finding_id":"OTHER_ROOT","reason":"No causal mechanism established."}
-],"supporting_claim_ids":["EXACT_CACHED_LINK_ID"],
+   "binding":{"finding_id":"ROOT","pointer":"EXACT_RETAINED_INTERVAL_POINTER","start_operation":"capture","end_operation":"capture completed"}}
+],"supporting_claim_ids":[],
 "reviewed_checks":["event_subjects","duration_endpoints_and_units",
 "operation_types_and_count_semantics","terminal_later_cached_contrary",
 "summary_consistency","causal_support"]}

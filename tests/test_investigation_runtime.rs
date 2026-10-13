@@ -2551,7 +2551,8 @@ fn readable_default_creates_fresh_artifacts_and_reports_observed_errors() {
             String::from_utf8_lossy(&output.stderr)
         );
         let text = String::from_utf8(output.stdout).unwrap();
-        assert!(text.starts_with("Investigation: complete"), "{text}");
+        assert!(text.starts_with("Next action: "), "{text}");
+        assert!(text.contains("\nInvestigation: complete"), "{text}");
         assert!(text.contains("renderer failed"), "{text}");
         assert!(text.contains("failures: unsupported"), "{text}");
         assert!(text.contains("2 parsed records (complete)"), "{text}");
@@ -3950,7 +3951,8 @@ fn summary_and_readable_redacted_file_outputs_follow_requested_format() {
     ]);
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.starts_with("Investigation: complete"));
+    assert!(text.starts_with("Next action: "));
+    assert!(text.contains("\nInvestigation: complete"));
     assert!(!text.contains("private-message"));
     assert!(!text.contains("private-source.log"));
     assert_eq!(fs::read_to_string(destination).unwrap(), text);

@@ -2203,13 +2203,30 @@ for crate ownership, licensing, and the one-time crates.io configuration.
 
 ## Subject-bound evidence and workflow status
 
+Investigation and evidence output starts with `action_summary`: bounded coverage,
+unresolved question IDs, verification status and one literal `next_command` argv
+before findings. Omitted inputs/IDs stay explicit; upstream completeness stays unknown.
+
 Give each question a stable ID with repeatable `investigate --question TEXT` and
 `--required-relationship ID`. Supply at least one required ID per question; extra
 IDs may cover its subparts. Follow `guidance.workflow.next_action.argv` for
 checksum-bound evidence retrieval. Workflow status separates processing, delivery
 and verification; delivery does not establish review.
 
-Create editable assertions from the retained artifact:
+The skill helper prepares a blank question plan, lists scoped event candidates
+and proposed operation-count/coverage claims, then compiles and runs verification:
+
+```sh
+python3 -I .agents/skills/analyze-logs/scripts/map_questions.py --artifact /absolute/evidence.json \
+  --draft /absolute/draft.json --analyzer /absolute/log-analyzer --prepare-plan /absolute/plan.json
+```
+
+Independently select the intended subjects/populations, fill each plan entry,
+and review the evidence before acknowledging checks. Execute the returned
+`action_summary.next_command`; the helper never chooses subjects or acknowledges
+review automatically. For larger investigations, use `--finding-id` with a new draft.
+
+Create editable assertions directly from the retained artifact:
 
 ```sh
 log-analyzer evidence /absolute/evidence.json --expected-sha256 EXACT_SHA \
@@ -2244,3 +2261,8 @@ compiles explicit selections and runs verification, preserving failures and reje
 existing output paths. Pass `--artifact-max-bytes` to retain an agreed larger read allowance. Use [profile recovery](.agents/skills/analyze-logs/examples/role-recovery.md)
 only for source-supported recognition gaps: prepare, independently validate positive
 and negative witnesses, then investigate into a fresh artifact and verify its claims.
+
+The evaluation runner keeps natural use as the default and offers a separate
+[verification-required variant](evals/README.md#verification-required-workflow-experiment).
+It rechecks delivered answers against current claims and the original public capture,
+then reviews prose separately; corrections share the original trial budget.

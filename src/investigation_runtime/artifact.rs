@@ -587,6 +587,8 @@ pub(super) fn reconcile_unavailable(report: &mut Value, cli: &Cli) -> Result<()>
 }
 fn size(report: &mut Value, cli: &Cli) -> Result<(usize, usize)> {
     report["guidance"] = super::guidance::build(report, cli);
+    report["action_summary"] =
+        super::guidance::completion_summary(report, &report["guidance"]["workflow"]);
     // Size fields themselves count; converge on their exact serialized lengths.
     for _ in 0..8 {
         let text = serde_json::to_string(report)?;
@@ -663,19 +665,23 @@ pub(super) fn present(report: &mut Value, cli: &Cli, prior: usize) -> Result<()>
     let presentation = measure(&report["presentation"])?;
     let cursor = measure(&report["retrieval"]["next_cursor"])?;
     let guidance = measure(&report["guidance"])?;
+    let action_summary = measure(&report["action_summary"])?;
     let fixed = (
-        header.0 - presentation.0 - cursor.0 - guidance.0 + 1,
-        header.1 - presentation.1 - cursor.1 - guidance.1 + 1,
+        header.0 - presentation.0 - cursor.0 - guidance.0 - action_summary.0 + 1,
+        header.1 - presentation.1 - cursor.1 - guidance.1 - action_summary.1 + 1,
     );
     let exact = |report: &mut Value, payload: (usize, usize)| -> Result<(usize, usize)> {
         report["guidance"] = super::guidance::build(report, cli);
+        report["action_summary"] =
+            super::guidance::completion_summary(report, &report["guidance"]["workflow"]);
         let guidance = measure(&report["guidance"])?;
+        let action_summary = measure(&report["action_summary"])?;
         for _ in 0..8 {
             let presentation = measure(&report["presentation"])?;
             let cursor = measure(&report["retrieval"]["next_cursor"])?;
             let sizes = (
-                fixed.0 + presentation.0 + cursor.0 + guidance.0 + payload.0,
-                fixed.1 + presentation.1 + cursor.1 + guidance.1 + payload.1,
+                fixed.0 + presentation.0 + cursor.0 + guidance.0 + action_summary.0 + payload.0,
+                fixed.1 + presentation.1 + cursor.1 + guidance.1 + action_summary.1 + payload.1,
             );
             if report["presentation"]["serialized_bytes"] == sizes.0
                 && report["presentation"]["serialized_characters"] == sizes.1
@@ -1047,6 +1053,11 @@ pub(super) fn retrieve(cli: &Cli, args: &InvestigationEvidenceArgs) -> Result<()
             };
             section["workflow"]["next_action"] = json!({"kind":"inspect_delivered_evidence_and_verification","argv":null,"reason":reason});
         }
+        output["action_summary"] = super::guidance::completion_summary(
+            &retained,
+            &output["artifact_retrieval"]["workflow"],
+        );
+        output["action_summary"]["artifact_sha256"] = json!(hash);
     };
     refresh(
         &mut output,

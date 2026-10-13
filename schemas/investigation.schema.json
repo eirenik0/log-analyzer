@@ -2597,6 +2597,9 @@
             "unsupported_input",
             "budget_exhausted"
           ]
+        },
+        "action_summary": {
+          "type": "object"
         }
       },
       "required": [
@@ -2747,6 +2750,9 @@
             "principles"
           ],
           "additionalProperties": false
+        },
+        "action_summary": {
+          "type": "object"
         }
       },
       "required": [

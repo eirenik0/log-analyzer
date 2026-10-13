@@ -365,3 +365,36 @@ The summary retains failed-attempt history and hashes; detailed reports and trac
 remain local. This run predates the PR's skill reduction and does not validate the
 shortened skill. The native delivery protocol changed equally in both arms; its
 format effect cannot be attributed solely to the skill.
+
+### Verification-required workflow experiment
+
+`native_workflow.py` defaults to the existing `natural-use` variant. Add
+`--variant natural-use --variant verification-required` for a separate matched
+experiment; enforcement changes the experiment and is never credited as natural
+compliance. Required answers include artifact/claims/report paths, claim IDs for
+each substantive field, and exact coverage. The runner independently rechecks
+current artifact/checklist/claims, source identities, endpoints, operation-count
+populations and delivered summary. It rejects supported source-recognition gaps
+masquerading as unknowns. A separate tool-free model turn reviews prose for
+unsupported causality, contradictions and uncited findings. A passed claim check
+does not prove that prose review is accurate.
+
+Up to two corrections follow specific feedback. Answer attempts, native rechecks
+and prose review share the original wall/tool/output/API-equivalent budget; no
+effort override is added. Records retain acceptance failures, correction attempts,
+review outcomes, phase traces, tokens and total cost. Missing usage stays unknown.
+The native tool boundary is trusted, not an OS sandbox. The gate is tailored to
+the public JSON-lines incident and its disclosed domain semantics.
+
+Credential-free controls (no model calls):
+
+```sh
+cargo build --locked
+python3 evals/offline_verification_controls.py --analyzer target/debug/log-analyzer \
+  --output /absolute/new-offline-controls.json
+python3 -m unittest discover -s evals -p 'test_verification_required.py'
+```
+
+These controls establish acceptance mechanics and bounded correction behavior,
+not model compliance or correctness/cost improvement. Paid matched trials remain
+explicitly opt-in through `--run`; report variants separately.

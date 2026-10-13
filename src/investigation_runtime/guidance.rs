@@ -224,6 +224,121 @@ fn pick(value: &Value, keys: &[&str]) -> Value {
     result
 }
 
+fn coverage(report: &Value) -> Vec<Value> {
+    let mut observed = report["report_metadata"]["evidence"]["inputs"]
+        .as_array()
+        .into_iter()
+        .flatten();
+    let coverage: Vec<_> = report["processing"]["inputs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|progress| {
+            let mut entry = pick(
+                progress,
+                &[
+                    "input_ordinal",
+                    "capture",
+                    "consumed_bytes",
+                    "remaining_bytes",
+                ],
+            );
+            if progress["capture"] == "unread" {
+                entry["coverage"] = Value::Null;
+                entry["selected_entries"] = Value::Null;
+            } else if let Some(input) = observed.next() {
+                entry["coverage"] = pick(
+                    &input["coverage"],
+                    &[
+                        "input_bytes",
+                        "nonempty_lines",
+                        "parsed_entries",
+                        "rejected_candidates",
+                        "structural_diagnostics",
+                    ],
+                );
+                entry["coverage"]["normalization_diagnostic_count"] = json!(
+                    input["coverage"]["normalization_diagnostics"]
+                        .as_array()
+                        .map(Vec::len)
+                );
+                entry["selected_entries"] = input["selected_entries"].clone();
+            }
+            entry
+        })
+        .collect();
+    coverage
+}
+
+pub(super) fn completion_summary(report: &Value, workflow: &Value) -> Value {
+    let inputs = coverage(report);
+    let compact_inputs: Vec<_> = inputs
+        .iter()
+        .take(3)
+        .map(|input| {
+            let mut row = pick(
+                input,
+                &[
+                    "input_ordinal",
+                    "capture",
+                    "consumed_bytes",
+                    "remaining_bytes",
+                    "selected_entries",
+                ],
+            );
+            row["coverage"] = if input["coverage"].is_null() {
+                Value::Null
+            } else {
+                let mut counts = pick(
+                    &input["coverage"],
+                    &[
+                        "nonempty_lines",
+                        "parsed_entries",
+                        "rejected_candidates",
+                        "normalization_diagnostic_count",
+                    ],
+                );
+                counts["structural_diagnostic_count"] =
+                    input["coverage"]["structural_diagnostics"]["diagnostic_count"].clone();
+                counts
+            };
+            row
+        })
+        .collect();
+    let required = workflow["required_relationships"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let results = workflow["requirement_results"].as_array();
+    let unresolved: Vec<_> = required
+        .iter()
+        .filter(|id| {
+            !results.is_some_and(|rows| {
+                rows.iter()
+                    .any(|r| r.get("id") == Some(*id) && r["status"] == "verified")
+            })
+        })
+        .collect();
+    let preview: Vec<_> = unresolved
+        .iter()
+        .take(5)
+        .map(|id| {
+            if id.is_string() && id.to_string().len() <= 256 {
+                (*id).clone()
+            } else {
+                Value::Null
+            }
+        })
+        .collect();
+    json!({"processing":report["processing"]["status"],"coverage":compact_inputs,
+        "omitted_inputs":inputs.len().saturating_sub(3),"upstream_completeness":"unknown",
+        "verification":workflow["declared_claims"],"unresolved_questions":preview,
+        "unresolved_question_count":unresolved.len(),"omitted_question_ids":unresolved.len().saturating_sub(preview.iter().filter(|id| !id.is_null()).count()),
+        "next_command":workflow["next_action"]["argv"],"next_step":workflow["next_action"]["kind"],
+        "artifact_sha256":report["artifact"]["stored_sha256"],
+        "completion_rule":"Every requested question needs a verified claim or an explicit evidence-backed unknown; verification does not validate arbitrary prose."})
+}
+
 pub(super) fn brief(report: &Value, cli: &Cli) -> Value {
     let metadata = &report["report_metadata"];
     let selection = &metadata["evidence"]["query"]["execution"]["profile_selection"];
@@ -274,48 +389,7 @@ pub(super) fn brief(report: &Value, cli: &Cli) -> Value {
             assessment
         })
         .collect();
-    let mut observed = metadata["evidence"]["inputs"]
-        .as_array()
-        .into_iter()
-        .flatten();
-    let coverage: Vec<_> = report["processing"]["inputs"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|progress| {
-            let mut entry = pick(
-                progress,
-                &[
-                    "input_ordinal",
-                    "capture",
-                    "consumed_bytes",
-                    "remaining_bytes",
-                ],
-            );
-            if progress["capture"] == "unread" {
-                entry["coverage"] = Value::Null;
-                entry["selected_entries"] = Value::Null;
-            } else if let Some(input) = observed.next() {
-                entry["coverage"] = pick(
-                    &input["coverage"],
-                    &[
-                        "input_bytes",
-                        "nonempty_lines",
-                        "parsed_entries",
-                        "rejected_candidates",
-                        "structural_diagnostics",
-                    ],
-                );
-                entry["coverage"]["normalization_diagnostic_count"] = json!(
-                    input["coverage"]["normalization_diagnostics"]
-                        .as_array()
-                        .map(Vec::len)
-                );
-                entry["selected_entries"] = input["selected_entries"].clone();
-            }
-            entry
-        })
-        .collect();
+    let coverage = coverage(report);
     // A brief contains navigation, not uncited excerpts or synthetic conclusions.
     // Legacy --brief starts at zero; --summary resumes after its inline findings.
     let mut guidance = report["guidance"].clone();
@@ -342,7 +416,7 @@ pub(super) fn brief(report: &Value, cli: &Cli) -> Value {
     } else {
         json!([])
     };
-    let mut brief = json!({"brief_version":1,"build":metadata["build"],"profile":profile,"binding":pick(&metadata["evidence"], &["snapshot_id","profile_sha256","query_sha256"]),"processing":pick(&report["processing"], &["status","stop"]),"coverage":coverage,"upstream_completeness":"unknown","assessments":assessments,"artifact":pick(&report["artifact"], &["status","location","stored_sha256","content"]),"findings":{"total":report["presentation"]["total_findings"],"displayed":items.as_array().unwrap().len(),"items":items,"collection":"/findings"},"guidance":guidance,"presentation":{"status":"complete","budget_bytes":cli.report_max_bytes,"budget_characters":cli.report_max_chars}});
+    let mut brief = json!({"action_summary":completion_summary(report, &guidance["workflow"]),"brief_version":1,"build":metadata["build"],"profile":profile,"binding":pick(&metadata["evidence"], &["snapshot_id","profile_sha256","query_sha256"]),"processing":pick(&report["processing"], &["status","stop"]),"coverage":coverage,"upstream_completeness":"unknown","assessments":assessments,"artifact":pick(&report["artifact"], &["status","location","stored_sha256","content"]),"findings":{"total":report["presentation"]["total_findings"],"displayed":items.as_array().unwrap().len(),"items":items,"collection":"/findings"},"guidance":guidance,"presentation":{"status":"complete","budget_bytes":cli.report_max_bytes,"budget_characters":cli.report_max_chars}});
     for _ in 0..8 {
         let text = brief.to_string();
         let bytes = text.len() + 1;

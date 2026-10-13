@@ -73,7 +73,12 @@ class UnifiedTools(Tools):
             self.saved[group] = {'path': artifact, 'sha256': sha, 'artifact': retained}
             if manifest['scope']['status'] == 'unparsed_input': self.revealed[group].add('__unsupported__')
         else:
-            require(set(output) == {'artifact_retrieval'}, 'invalid retrieval envelope')
+            require(set(output) in ({'artifact_retrieval'}, {'artifact_retrieval', 'action_summary'}), 'invalid retrieval envelope')
+            if 'action_summary' in output:
+                summary = output['action_summary']; page = output['artifact_retrieval']
+                require(summary.get('artifact_sha256') == page['artifact_sha256'], 'summary artifact binding changed')
+                require(summary.get('next_command') == page['workflow']['next_action']['argv'], 'summary next command changed')
+                require(summary.get('upstream_completeness') == 'unknown', 'summary invented upstream completeness')
             page = output['artifact_retrieval']
             self.validate_page(page, request)
             require(page['artifact_sha256'] == self.saved[group]['sha256'], 'retrieval artifact changed')

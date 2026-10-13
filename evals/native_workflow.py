@@ -217,8 +217,8 @@ def prepare_inputs(root, cases):
             raise ValueError('frozen input changed')
 
 
-def trial(root, version, case, model, repeat, limits):
-    directory = root / 'runs' / f'{model}-{case}-{repeat}-{version}'
+def setup_trial(root, version, case, model, repeat, limits, variant="natural-use"):
+    directory = root / 'runs' / (f'{model}-{case}-{repeat}-{version}' + ('' if variant == 'natural-use' else '-' + variant))
     directory.mkdir(parents=True, exist_ok=True)
     frozen = root / version
     records, expected = fixture(case == 'held-out')
@@ -256,6 +256,14 @@ Use the skill workflow, inspect verification results, and complete a final revie
 
 Supplied skill entrypoint:\n{skill.read_text(encoding='utf-8')}
 '''
+    return directory, binary, capture, artifact, skill, selected, expected, prompt
+
+
+def trial(root, version, case, model, repeat, limits, variant="natural-use"):
+    if variant == "verification-required":
+        from verification_required import trial_required
+        return trial_required(root, version, case, model, repeat, limits)
+    directory, binary, capture, artifact, skill, selected, expected, prompt = setup_trial(root, version, case, model, repeat, limits)
     (directory/'prompt.txt').write_text(prompt,encoding='utf-8')
     argv = ['claude','--print','--model',model,'--safe-mode','--no-session-persistence',
             '--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--tools','Bash,Read,Write',
@@ -292,7 +300,7 @@ Supplied skill entrypoint:\n{skill.read_text(encoding='utf-8')}
     answer,result=final_json(events, structured=True)
     usage=result.get('usage')
     tokens = sum(usage.get(k,0) for k in ['input_tokens','output_tokens','cache_creation_input_tokens','cache_read_input_tokens']) if isinstance(usage,dict) else None
-    return {'version':version,'case':case,'model_alias':model,'repeat':repeat,
+    return {'variant':'natural-use','version':version,'case':case,'model_alias':model,'repeat':repeat,
             'runtime_error':result.get('result') if result.get('is_error') else None,
             'execution':stop or ('complete' if process.returncode == 0 and not result.get('is_error') else 'failed'),
             'elapsed_ms':round((time.monotonic()-started)*1000,3),'tokens':tokens,'exit_code':process.returncode,
@@ -308,6 +316,7 @@ def main():
     parser.add_argument('--run',action='store_true',help='Opt in to authenticated model calls')
     parser.add_argument('--repeats',type=int,default=2)
     parser.add_argument('--models',nargs='+',default=['haiku','opus'])
+    parser.add_argument('--variant', choices=['natural-use', 'verification-required'], action='append', help='Separate experiments; default preserves natural use')
     parser.add_argument('--case',choices=['development','held-out'],action='append')
     parser.add_argument('--wall-seconds',type=int,default=180)
     parser.add_argument('--api-equivalent-usd',type=float,default=1)
@@ -321,10 +330,11 @@ def main():
     records=[]
     report={'kind':'matched_native_workflow_trials','runtime':subprocess.check_output(['claude','--version'],text=True).strip(),
             'effort_override':None,'harness_sha256':digest(__file__),'limits':limits,'records':records,
-            'answer_transport':'native_structured_output',
+            'answer_transport':'native_structured_output','variants':args.variant or ['natural-use'],
             'answer_schema_sha256':hashlib.sha256(ANSWER_SCHEMA_JSON.encode()).hexdigest(),
             'limitations':['Native tool access is trusted, not sandboxed. Only public synthetic inputs are supplied.',
                            'Typed findings, source line witnesses and typed summary are checked. Unrestricted explanation prose requires independent review.',
+                           'Natural-use and verification-required are separate experiments; required correction/prose-review costs share the trial budget.',
                            'Command counts measure behavior, not success or attention; no points are awarded for calls.',
                            'CLI cost is API-equivalent on subscription auth; missing usage is unknown. Small public cases do not establish broad reliability.']}
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -332,16 +342,18 @@ def main():
             for case in args.case or ['development','held-out']:
                 for version in (['baseline','candidate'] if repeat%2 == 0 else ['candidate','baseline']):
                     print(f'Starting {version} {case} repeat {repeat+1}',flush=True)
-                    futures=[executor.submit(trial,root,version,case,model,repeat,limits) for model in args.models]
-                    startup_failed = False
-                    for future in futures:
-                        record=future.result();records.append(record)
-                        print(json.dumps({k:record[k] for k in ['version','case','model_alias','repeat','execution','elapsed_ms','api_equivalent_cost_usd','score','chain_bundle_commands','claim_verification_commands']}),flush=True)
-                        (root/'results.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
-                        if record['execution'] == 'failed' and record['tool_calls'] == 0 and record['tokens'] in (None,0):
-                            startup_failed = True
-                    if startup_failed:
-                        raise RuntimeError('native runtime startup failed; inspect retained stderr/trace before retrying')
+                    for variant in args.variant or ['natural-use']:
+                        futures=[executor.submit(trial,root,version,case,model,repeat,limits,variant) for model in args.models]
+                        startup_failed = False
+                        for future in futures:
+                            record=future.result();records.append(record)
+                            print(json.dumps({k:record[k] for k in ['variant','version','case','model_alias','repeat','execution','elapsed_ms','api_equivalent_cost_usd','score','chain_bundle_commands','claim_verification_commands']}),flush=True)
+                            (root/'results.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
+                            if record['execution'] == 'failed' and record['tool_calls'] == 0 and record['tokens'] in (None, 0):
+                                startup_failed = True
+                        if startup_failed:
+                            raise RuntimeError('native runtime startup failed; inspect retained stderr/trace before retrying')
+    (root/'results.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
 
 
 if __name__ == '__main__': main()
