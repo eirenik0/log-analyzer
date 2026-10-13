@@ -30,6 +30,23 @@ The configuration uses the standard
 hook at the `commit-msg` stage. It checks local commit messages; keep PR titles
 conventional when editing them on GitHub too.
 
+## Pull request format
+
+Use [[.github/PULL_REQUEST_TEMPLATE.md]] for every PR, including descriptions created with the CLI or an agent. Keep the same section order and scale detail to the change.
+
+1. **Summary:** the outcome and why it matters, in one or two sentences.
+2. **Problem:** the concrete limitation or failure being addressed.
+3. **Solution:** the final approach, with relevant ADR, NFR or contract links.
+4. **Scope:** affected behavior and material limits or migration risks.
+5. **Validation:** actual checks, outcomes and remaining gaps; distinguish local
+   results from CI and avoid claims beyond the tested scope.
+
+Use a concise Conventional Commit title. Under Solution, include a small Mermaid
+infographic when it clarifies flow, ownership or relationships. Use short labels,
+a clear direction and restrained colors with readable contrast. Replace template
+examples; omit decorative diagrams for trivial changes. Keep prose concise and
+rewrite the description if the implementation's scope changes.
+
 ## Quality checks
 
 The maintained example integration test requires Python 3.10+ on PATH (standard

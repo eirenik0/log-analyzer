@@ -61,6 +61,7 @@ and run `lat check` after changing the graph or code it references.
   Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
   `build`, `ci`, `chore`, `revert`. Example: `fix(parser): preserve timezone offsets`.
 - Follow the [contribution guide](lat.md/contributing.md) for pre-commit setup and quality checks.
+- Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and [PR format](lat.md/contributing.md#pull-request-format) for every PR, including CLI-created PRs.
 - Keep formatting, lint, tests, and applicable evaluation checks passing. Do not
   silence failures or weaken assertions to make CI green.
 - Add a focused regression test for a bug fix. Use synthetic, generic data;
