@@ -1276,14 +1276,38 @@ pub fn validate_relations(
                     )?;
                 }
             }
-            if artifact.is_some() {
-                let saved = findings.get(text(finding, "/id")?).ok_or_else(|| {
-                    error("/artifact/findings/checked", "retained finding absent")
-                })?;
+        }
+    }
+    if report["presentation"]["checked_version"] == 1
+        && let Some(saved) = artifact.as_ref()
+    {
+        for (stored_findings, scopes, populations) in [
+            (&saved["findings"], &saved["scopes"], &saved["populations"]),
+            (
+                &report["findings"],
+                &report["scopes"],
+                &report["populations"],
+            ),
+        ] {
+            let mut projected = stored_findings.clone();
+            crate::investigation_runtime::checked::project(
+                &mut projected,
+                &saved["records"],
+                scopes,
+                populations,
+                true,
+            );
+            let (Some(stored), Some(projected)) =
+                (stored_findings.as_array(), projected.as_array())
+            else {
+                continue;
+            };
+            for (stored, projected) in stored.iter().zip(projected) {
                 require(
-                    canonical_checked(&finding["checked"]) == canonical_checked(&saved["checked"]),
+                    canonical_checked(&stored["checked"])
+                        == canonical_checked(&projected["checked"]),
                     "/artifact/findings/checked",
-                    "retained checked projection differs",
+                    "retained checked projection differs from recomputed evidence",
                 )?;
             }
         }

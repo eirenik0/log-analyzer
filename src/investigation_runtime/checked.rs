@@ -20,7 +20,7 @@ pub(super) fn attach(retained: &mut Value, artifact_available: bool) {
     );
 }
 
-fn project(
+pub(crate) fn project(
     findings: &mut Value,
     records: &Value,
     scopes: &Value,

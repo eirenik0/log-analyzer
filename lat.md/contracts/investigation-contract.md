@@ -145,8 +145,10 @@ text, while ambiguity and completeness remain in ordinary text.
 
 [[src/investigation.rs#validate_relations|Relation validation]] requires `checked`
 on every displayed finding when `checked_version` is present. With artifact bytes,
-every retained finding must carry that same projection; dropping it from a later
-page is rejected. It then checks
+every retained finding must carry that projection, and both retained and displayed
+copies must equal the projection recomputed from retained records, scopes,
+populations and the finding's own evidence. Dropping it from a later page is
+rejected. Without artifact bytes, recomputation is not possible. It then checks
 subjects against retained records, population and scope projections, and
 nested endpoint interval arithmetic, timestamp provenance and cited event names.
 Checked subjects must equal the distinct chain root and sampled outcome occurrences,

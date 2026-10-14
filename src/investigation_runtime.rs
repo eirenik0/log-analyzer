@@ -3,7 +3,7 @@ mod artifact;
 mod auto_profile;
 pub(crate) mod chain_validation;
 pub(crate) mod chains;
-mod checked;
+pub(crate) mod checked;
 mod claims;
 mod findings;
 mod guidance;
