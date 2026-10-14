@@ -1315,6 +1315,46 @@ fn chain_validation_honors_raised_processing_limits_before_selection() {
 }
 
 #[test]
+fn expansion_cutoff_still_publishes_partial_chain_replay() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("expanded.toml");
+    fs::write(
+        &profile,
+        format!(
+            "{}\n[normalization]\nroot_path = \"/rows\"\nexpand_rows = true\n",
+            fs::read_to_string(PROFILE).unwrap()
+        ),
+    )
+    .unwrap();
+    let input = temp.path().join("expanded.jsonl");
+    fs::write(
+        &input,
+        "{\"rows\":[{\"timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"one\"},{\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":\"two\"}]}\n",
+    )
+    .unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "expansion-cutoff",
+        profile.to_str().unwrap(),
+        &[input.to_str().unwrap()],
+        &[
+            "--json",
+            "--complete-output",
+            "--processing-max-expanded-records",
+            "1",
+        ],
+    ))
+    .unwrap();
+    assert_eq!(report["processing"]["status"], "partial");
+    assert_eq!(
+        report["processing"]["stop"]["limit_name"],
+        "expanded_records"
+    );
+    let bytes = fs::read(temp.path().join("expansion-cutoff")).unwrap();
+    log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+}
+
+#[test]
 fn replay_rejects_invented_completion_and_incomplete_step_results() {
     let temp = tempfile::tempdir().unwrap();
     let report: Value = serde_json::from_str(&run(

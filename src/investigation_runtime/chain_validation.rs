@@ -397,6 +397,10 @@ pub(crate) fn validate(
             continue;
         };
         let mut replayed = Vec::new();
+        // Parsing may already have stopped at its own limit. Chain replay is a later
+        // stage, matching publication, and only its own halt is a validation failure.
+        budget.begin_stage();
+        let parse_stop = budget.stop.clone();
         chains::calculate(
             policy,
             &config,
@@ -410,7 +414,7 @@ pub(crate) fn validate(
             &mut replayed,
             None,
         );
-        if budget.stop.is_some() {
+        if budget.halted || budget.stop != parse_stop {
             return Err("chain cardinality validation did not finish".into());
         }
         let expected: BTreeMap<_, _> = replayed

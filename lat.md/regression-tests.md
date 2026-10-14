@@ -63,6 +63,9 @@ into measured intervals, and checks explicit deferral when redaction prevents re
 [[tests/test_checked_presentation.rs#chain_validation_honors_raised_processing_limits_before_selection]]
 checks publication and artifact validation after more than 100,000 expanded rows
 are parsed under raised limits, with only ten selected chain records retained.
+[[tests/test_checked_presentation.rs#expansion_cutoff_still_publishes_partial_chain_replay]]
+checks that exhausting the expanded-record limit still publishes a partial report
+instead of treating the parse stop as an unfinished chain replay.
 [[tests/test_checked_presentation.rs#replay_rejects_invented_completion_and_incomplete_step_results]]
 rejects fabricated join identities and mutually consistent report/artifact edits
 that invent a completion, remove steps or joins, or change labels, counts, ambiguity
