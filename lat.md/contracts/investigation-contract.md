@@ -192,11 +192,15 @@ after the chain's last linked event.
 Completeness is checked against replayed parse coverage when processing completed.
 For unaffected scopes, retained chain roots must equal the replayed set, including
 when no chain findings remain. After a cutoff, missing stage history defers
-completeness only for affected scopes whose stop can interrupt chain calculation;
-artifact writing cannot. Other inputs remain checked independently.
+completeness only for affected scopes whose stop can interrupt chain calculation.
+Artifact writing cannot, and a capture stop cannot when retained capture and
+progress both say that input was read completely. Other inputs remain checked independently.
 Step counts, statuses and populations remain checked for retained partial chains.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
+Without artifact bytes, uncertainty counts must still be at least the displayed
+finding counts, and exact when no findings are omitted. A displayed finding with
+unavailable source checking forces unavailable aggregate subject verification.
 Renderers copy measurements; they do not recalculate them.
 
 Presentation retains all-finding uncertainty counts even when findings are omitted.

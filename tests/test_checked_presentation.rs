@@ -295,6 +295,34 @@ fn checked_version_requires_metadata_on_every_displayed_finding() {
 }
 
 #[test]
+fn checked_uncertainty_rejects_totals_below_displayed_findings_without_artifact() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "uncertainty",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let mut altered = report;
+    altered["presentation"]["uncertainty"]["unknown_findings"] = json!(0);
+    altered["presentation"]["uncertainty"]["incomplete_chains"] = json!(0);
+    altered["presentation"]["uncertainty"]["source_binding_unavailable_findings"] = json!(0);
+    altered["presentation"]["uncertainty"]["subject_verification"] = json!("not_requested");
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    shape(&altered, false);
+    let error = log_analyzer::investigation::validate_relations(&altered, None).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("uncertainty total differs from retained findings"),
+        "{error}"
+    );
+}
+
+#[test]
 fn checked_lifecycles_keep_failed_ends_missing_ends_and_ambiguous_starts_separate() {
     let temp = tempfile::tempdir().unwrap();
     let input = temp.path().join("events.jsonl");
@@ -1929,6 +1957,120 @@ fn artifact_write_cutoff_does_not_defer_chain_population_or_completeness() {
         error
             .reason
             .contains("retained chain findings differ from replayed population"),
+        "{error}"
+    );
+}
+
+#[test]
+fn completed_capture_does_not_defer_chain_checks_for_a_capture_stop() {
+    let temp = tempfile::tempdir().unwrap();
+    let ambiguous = temp.path().join("ambiguous.jsonl");
+    let input = fs::read_to_string(INPUT).unwrap();
+    fs::write(
+        &ambiguous,
+        format!("{}{}\n", input, input.lines().next().unwrap()),
+    )
+    .unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "capture-stop",
+        PROFILE,
+        &[ambiguous.to_str().unwrap()],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("capture-stop")).unwrap()).unwrap();
+    assert_eq!(artifact["captured_inputs"][0]["capture"], "complete");
+    assert_eq!(artifact["processing"]["inputs"][0]["capture"], "complete");
+    let scope = report["scopes"][0]["id"].clone();
+    let id = chain(&report["findings"], "alpha")["id"].clone();
+    let mut altered = report.clone();
+    let mut saved = artifact.clone();
+    for document in [&mut altered, &mut saved] {
+        document["processing"]["status"] = json!("partial");
+        document["processing"]["stop"] = json!({
+            "stage": "capture",
+            "reason": "input_limit",
+            "limit_name": "input_bytes",
+            "scope_ids": [scope.clone()]
+        });
+        document["scopes"][0]["completeness"] = json!("partial");
+        document["scopes"][0]["analysis_completion"] = json!("partial");
+        for population in document["populations"].as_array_mut().unwrap() {
+            if population["completeness"] == "complete" {
+                population["completeness"] = json!("partial");
+            }
+        }
+        if let Some(sequences) = document
+            .get_mut("sequences")
+            .and_then(|value| value.as_array_mut())
+        {
+            for sequence in sequences {
+                if sequence["completeness"] == "complete" {
+                    sequence["completeness"] = json!("partial");
+                }
+            }
+        }
+        let scope_copy = document["scopes"][0].clone();
+        let populations = document["populations"].clone();
+        for finding in document["findings"].as_array_mut().unwrap() {
+            if finding["checked"].is_object() {
+                finding["checked"]["scope"] = scope_copy.clone();
+                if let Some(population) = populations
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|population| population["id"] == finding["details"]["population_id"])
+                {
+                    finding["checked"]["population"] = population.clone();
+                }
+            }
+        }
+        for assessment in document["assessments"].as_array_mut().unwrap() {
+            if assessment["status"] == "supported" {
+                assessment["status"] = json!("insufficient_evidence");
+            }
+        }
+        let finding = document["findings"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|finding| finding["id"] == id)
+            .unwrap();
+        assert_eq!(finding["details"]["event_chain"]["completeness"], "partial");
+        finding["details"]["event_chain"]["completeness"] = json!("complete");
+    }
+    let findings = &altered["findings"];
+    altered["presentation"]["uncertainty"]["incomplete_chains"] = json!(
+        findings
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| {
+                let chain = &finding["details"]["event_chain"];
+                chain.is_object()
+                    && (chain["completeness"] != "complete"
+                        || chain["steps"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .any(|step| step["status"] != "observed"))
+            })
+            .count()
+    );
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    shape(&altered, false);
+    log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("completeness differs from retained population"),
         "{error}"
     );
 }

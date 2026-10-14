@@ -126,21 +126,26 @@ pub(crate) fn validate(
             })
             .ok_or("missing chain input scope")?;
         let stop = &artifact["processing"]["stop"];
-        let chain_cutoff = matches!(
-            stop["stage"].as_str(),
-            Some(
-                "capture"
-                    | "profile_discovery"
-                    | "profile_detection"
-                    | "parse"
-                    | "classification"
-                    | "correlation"
-                    | "calculation"
-                    | "relationships"
-            )
-        ) && stop["scope_ids"]
+        let capture_completed = artifact["captured_inputs"]
+            .get(ordinal as usize)
+            .is_some_and(|input| input["capture"] == "complete")
+            && artifact["processing"]["inputs"]
+                .get(ordinal as usize)
+                .is_some_and(|input| input["capture"] == "complete");
+        let listed = stop["scope_ids"]
             .as_array()
             .is_some_and(|scopes| scopes.contains(&scope["id"]));
+        // A capture stop cannot explain missing chain results when retained
+        // capture and progress both say this input was read completely.
+        let chain_cutoff = listed
+            && match stop["stage"].as_str() {
+                Some("capture") => !capture_completed,
+                Some(
+                    "profile_discovery" | "profile_detection" | "parse" | "classification"
+                    | "correlation" | "calculation" | "relationships",
+                ) => true,
+                _ => false,
+            };
         let completeness_available = !chain_cutoff;
         completeness_deferred |= has_chains && chain_cutoff;
         let Some(bytes) = captures.get(&ordinal) else {

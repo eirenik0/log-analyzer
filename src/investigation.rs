@@ -1047,14 +1047,29 @@ pub fn validate_relations(
             "uncertainty limits differ from the presentation contract",
         )?;
     }
-    if artifact.is_some()
-        && let Some(uncertainty) = report["presentation"].get("uncertainty")
+    if let Some(uncertainty) = report["presentation"]
+        .get("uncertainty")
+        .filter(|uncertainty| uncertainty.is_object())
     {
-        let unavailable = findings
-            .values()
-            .filter(|finding| finding["verification"]["source_and_rules"] != "available")
-            .count();
-        for (field, expected) in [
+        let source_unavailable = |finding: &&&Value| {
+            if artifact.is_some() {
+                finding["verification"]["source_and_rules"] != "available"
+            } else {
+                finding["checked"]["assurance"]["source_binding"] == "unavailable"
+                    || finding.get("checked").is_none()
+                        && finding["verification"]["source_and_rules"] != "available"
+            }
+        };
+        let unavailable = findings.values().filter(source_unavailable).count();
+        let subject_unavailable = findings.values().any(|finding| {
+            if artifact.is_some() {
+                finding["verification"]["source_and_rules"] != "available"
+            } else {
+                finding["checked"]["assurance"]["subject_verification"] == "unavailable"
+                    || finding["verification"]["source_and_rules"] != "available"
+            }
+        });
+        let displayed = [
             (
                 "unknown_findings",
                 findings.values().filter(|f| f["kind"] == "unknown").count(),
@@ -1076,23 +1091,39 @@ pub fn validate_relations(
                     .count(),
             ),
             ("source_binding_unavailable_findings", unavailable),
-        ] {
+        ];
+        let omitted = report["presentation"]["omitted_findings"]
+            .as_u64()
+            .unwrap_or(0);
+        let exact = artifact.is_some() || omitted == 0;
+        for (field, expected) in displayed {
+            let actual = uncertainty[field].as_u64();
+            if exact {
+                require(
+                    actual == Some(expected as u64),
+                    &format!("/presentation/uncertainty/{field}"),
+                    "uncertainty total differs from retained findings",
+                )?;
+            } else {
+                require(
+                    actual.is_some_and(|count| count >= expected as u64),
+                    &format!("/presentation/uncertainty/{field}"),
+                    "uncertainty total is below displayed findings",
+                )?;
+            }
+        }
+        if subject_unavailable || exact {
             require(
-                uncertainty[field].as_u64() == Some(expected as u64),
-                &format!("/presentation/uncertainty/{field}"),
-                "uncertainty total differs from retained findings",
+                uncertainty["subject_verification"]
+                    == if subject_unavailable {
+                        "unavailable"
+                    } else {
+                        "not_requested"
+                    },
+                "/presentation/uncertainty/subject_verification",
+                "aggregate subject verification differs from retained findings",
             )?;
         }
-        require(
-            uncertainty["subject_verification"]
-                == if unavailable > 0 {
-                    "unavailable"
-                } else {
-                    "not_requested"
-                },
-            "/presentation/uncertainty/subject_verification",
-            "aggregate subject verification differs from retained findings",
-        )?;
     }
     for finding in list(report, "/findings")? {
         let scope = scopes

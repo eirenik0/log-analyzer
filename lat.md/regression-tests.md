@@ -100,6 +100,11 @@ fails parsing or exhausts its record budget.
 [[tests/test_checked_presentation.rs#artifact_write_cutoff_does_not_defer_chain_population_or_completeness]]
 rejects a relabeled complete chain and a removed chain finding when the only
 stop is artifact writing, which happens after chain calculation.
+[[tests/test_checked_presentation.rs#completed_capture_does_not_defer_chain_checks_for_a_capture_stop]]
+rejects a relabeled complete chain when a capture stop is claimed for an input
+whose retained capture and progress are both complete.
+[[tests/test_checked_presentation.rs#checked_uncertainty_rejects_totals_below_displayed_findings_without_artifact]]
+rejects zeroed uncertainty totals on a checked report even when no artifact bytes are supplied.
 [[tests/test_checked_presentation.rs#replay_checks_classifications_against_captured_source_and_rules]]
 rejects edited rule IDs and event semantics even when checked subject projections
 agree with the altered retained classification.
