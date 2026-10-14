@@ -78,6 +78,13 @@ fn list<'a>(v: &'a Value, p: &str) -> Result<&'a [Value], ContractError> {
 fn require(ok: bool, p: &str, reason: &str) -> Result<(), ContractError> {
     if ok { Ok(()) } else { Err(error(p, reason)) }
 }
+fn canonical_checked(value: &Value) -> Value {
+    let mut checked = value.clone();
+    if let Some(subjects) = checked.get_mut("subjects").and_then(Value::as_array_mut) {
+        subjects.sort_by_key(|subject| subject.to_string());
+    }
+    checked
+}
 fn index<'a>(items: &'a [Value], p: &str) -> Result<BTreeMap<&'a str, &'a Value>, ContractError> {
     let mut result = BTreeMap::new();
     for item in items {
@@ -635,6 +642,15 @@ pub fn validate_relations(
             )?;
         }
         let saved_findings = index(list(artifact, "/findings")?, "/artifact/findings")?;
+        if report["presentation"]["checked_version"] == 1 {
+            for saved in saved_findings.values() {
+                require(
+                    saved.get("checked").is_some_and(Value::is_object),
+                    "/artifact/findings/checked",
+                    "checked presentation requires retained finding metadata",
+                )?;
+            }
+        }
         for (id, displayed) in &findings {
             let saved = saved_findings.get(id).ok_or_else(|| {
                 error(
@@ -1259,6 +1275,16 @@ pub fn validate_relations(
                         "subject differs from retained event",
                     )?;
                 }
+            }
+            if artifact.is_some() {
+                let saved = findings.get(text(finding, "/id")?).ok_or_else(|| {
+                    error("/artifact/findings/checked", "retained finding absent")
+                })?;
+                require(
+                    canonical_checked(&finding["checked"]) == canonical_checked(&saved["checked"]),
+                    "/artifact/findings/checked",
+                    "retained checked projection differs",
+                )?;
             }
         }
     }

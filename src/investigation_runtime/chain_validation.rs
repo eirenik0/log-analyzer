@@ -464,6 +464,7 @@ pub(crate) fn validate(
                 Ok(Some(serde_json::json!([
                     class,
                     finding["claim"],
+                    finding["limitations"],
                     finding["details"]["reason"],
                     occurrences
                 ])))
@@ -487,6 +488,31 @@ pub(crate) fn validate(
             replayed_gaps.sort_by_key(|left| left.to_string());
             if retained_gaps != replayed_gaps {
                 return Err("retained chain gap findings differ from replayed population".into());
+            }
+        }
+        // Stages before chain calculation pass an incomplete input into generation, so
+        // every affected chain stays partial even when the retained prefix contains its steps.
+        let forced_partial = chain_cutoff
+            && !matches!(
+                stop["stage"].as_str(),
+                Some("calculation" | "relationships")
+            );
+        if forced_partial {
+            for finding in chain_findings.iter().filter(|finding| {
+                finding["details"]["event_chain"]["root"]["input_ordinal"] == ordinal
+            }) {
+                let chain = &finding["details"]["event_chain"];
+                if chain["completeness"] == "complete" {
+                    return Err("cutoff-affected chain completeness must stay partial".into());
+                }
+                if chain["steps"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|step| step["count_completeness"] == "complete")
+                {
+                    return Err("cutoff-affected chain step completeness must stay partial".into());
+                }
             }
         }
         for finding in chain_findings

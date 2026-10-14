@@ -144,7 +144,9 @@ failure deduplication is inferred. Recognition and join samples require verbose
 text, while ambiguity and completeness remain in ordinary text.
 
 [[src/investigation.rs#validate_relations|Relation validation]] requires `checked`
-on every displayed finding when `checked_version` is present, then checks
+on every displayed finding when `checked_version` is present. With artifact bytes,
+every retained finding must carry that same projection; dropping it from a later
+page is rejected. It then checks
 subjects against retained records, population and scope projections, and
 nested endpoint interval arithmetic, timestamp provenance and cited event names.
 Checked subjects must equal the distinct chain root and sampled outcome occurrences,
@@ -182,7 +184,7 @@ characters, displayed fields and verification metadata, must match replay; only
 replay-specific occurrence identity is normalized. Explicit source-verification losses
 are inherited from the retained source record. Replay uses
 [[src/evidence.rs#Context#for_investigation_replay|the retained display-field policy]].
-Step labels, chain titles and evidence policy text must also match. A chain finding's claim and limitations must match that replayed finding. Non-chain
+Step labels, chain titles and evidence policy text must also match. A chain finding's claim and limitations must match that replayed finding. Recognition and identity-gap findings must match too, including their limitations. Non-chain
 excerpts receive the same source-field validation. Display projection permits text
 clipping with matching omission counts but requires all other excerpt fields unchanged.
 Chain identities, context identities, scope fields, root event names and root
@@ -194,7 +196,10 @@ For unaffected scopes, retained chain roots must equal the replayed set, includi
 when no chain findings remain. After a cutoff, missing stage history defers
 completeness only for affected scopes whose stop can interrupt chain calculation.
 Artifact writing cannot, and a capture stop cannot when retained capture and
-progress both say that input was read completely. Other inputs remain checked independently.
+progress both say that input was read completely. A stop before chain calculation
+still requires affected chains and their steps to stay partial; population equality
+remains deferred. Calculation and relationship stops still defer that comparison
+because those stages can run after chain generation. Other inputs remain checked independently.
 Step counts, statuses and populations remain checked for retained partial chains.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.

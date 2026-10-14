@@ -32,8 +32,16 @@ checks independently specified facts in [[examples/investigations/checked/README
 checks that an omitted finding retrieved from the artifact still has the published
 checked scope, subjects, population, and assurance.
 [[tests/test_checked_presentation.rs#checked_version_requires_metadata_on_every_displayed_finding]]
-rejects a checked report that drops `checked` from a displayed finding, including
-when the original artifact bytes are still supplied.
+rejects a checked report that drops `checked` from a displayed finding, with or
+without the original artifact bytes.
+[[tests/test_checked_presentation.rs#retained_checked_is_required_when_the_report_advertises_it]]
+rejects an artifact whose findings drop `checked` while the paired report still
+advertises `checked_version`.
+[[tests/test_checked_presentation.rs#replay_binds_gap_limitations]]
+rejects a rewritten limitation on a recognition or identity gap finding.
+[[tests/test_checked_presentation.rs#capture_cutoff_keeps_chain_completeness_partial]]
+rejects relabeling a chain or step complete after an input-byte cutoff whose
+prefix already contains the configured steps.
 The same test suite covers failed ends, missing ends, ambiguous starts, renamed
 identities, independent inputs, redaction, tiny budgets and rejection of mutated
 arithmetic, source citations and event subjects. Existing coverage and zero tests

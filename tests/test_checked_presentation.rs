@@ -284,14 +284,182 @@ fn checked_version_requires_metadata_on_every_displayed_finding() {
     altered["presentation"]["serialized_bytes"] = Value::Null;
     altered["presentation"]["serialized_characters"] = Value::Null;
     shape(&altered, false);
+    for artifact in [None, Some(bytes.as_slice())] {
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, artifact).unwrap_err();
+        assert!(
+            error
+                .reason
+                .contains("checked presentation requires finding metadata"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn retained_checked_is_required_when_the_report_advertises_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "retained-checked",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("retained-checked")).unwrap()).unwrap();
+    let mut saved = artifact.clone();
+    for finding in saved["findings"].as_array_mut().unwrap() {
+        finding.as_object_mut().unwrap().remove("checked");
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    let mut altered = report.clone();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    shape(&altered, false);
     let error =
         log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
     assert!(
         error
             .reason
-            .contains("checked presentation requires finding metadata"),
+            .contains("checked presentation requires retained finding metadata"),
         "{error}"
     );
+    let mut saved = artifact;
+    let level = &saved["findings"][0]["checked"]["assurance"]["level"];
+    saved["findings"][0]["checked"]["assurance"]["level"] = if level == "source_bound" {
+        json!("link_exists")
+    } else {
+        json!("source_bound")
+    };
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    report["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    report["presentation"]["serialized_bytes"] = Value::Null;
+    report["presentation"]["serialized_characters"] = Value::Null;
+    shape(&report, false);
+    let error = log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap_err();
+    assert!(
+        error.reason.contains("retained checked projection differs"),
+        "{error}"
+    );
+}
+
+#[test]
+fn replay_binds_gap_limitations() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "gap-limits",
+        PROFILE,
+        &[INPUT],
+        &[
+            "--json",
+            "--complete-output",
+            "--select",
+            r#"{"name":"absent"}"#,
+        ],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("gap-limits")).unwrap()).unwrap();
+    let id = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|finding| finding["details"]["gap_classification"].is_string())
+        .unwrap()["id"]
+        .clone();
+    let mut altered = report;
+    let mut saved = artifact;
+    for document in [&mut altered, &mut saved] {
+        document["findings"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|finding| finding["id"] == id)
+            .unwrap()["limitations"] = json!(["No material limitation."]);
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    shape(&altered, false);
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("retained chain gap findings differ from replayed population"),
+        "{error}"
+    );
+}
+
+#[test]
+fn capture_cutoff_keeps_chain_completeness_partial() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "cutoff",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output", "--input-max-bytes", "3000"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("cutoff")).unwrap()).unwrap();
+    assert_eq!(report["processing"]["stop"]["stage"], "capture");
+    let id = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|finding| finding["details"]["event_chain"].is_object())
+        .unwrap()["id"]
+        .clone();
+    assert_eq!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|finding| finding["id"] == id)
+            .unwrap()["details"]["event_chain"]["completeness"],
+        "partial"
+    );
+    for (field, reason) in [
+        (
+            "completeness",
+            "cutoff-affected chain completeness must stay partial",
+        ),
+        (
+            "count_completeness",
+            "cutoff-affected chain step completeness must stay partial",
+        ),
+    ] {
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        for document in [&mut altered, &mut saved] {
+            let chain = &mut document["findings"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|finding| finding["id"] == id)
+                .unwrap()["details"]["event_chain"];
+            if field == "completeness" {
+                chain["completeness"] = json!("complete");
+            } else {
+                chain["steps"][0]["count_completeness"] = json!("complete");
+            }
+        }
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        altered["presentation"]["serialized_bytes"] = Value::Null;
+        altered["presentation"]["serialized_characters"] = Value::Null;
+        shape(&altered, false);
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(error.reason.contains(reason), "{field}: {error}");
+    }
 }
 
 #[test]
@@ -1071,10 +1239,12 @@ fn retained_endpoint_names_are_checked_when_source_verification_is_unavailable()
         // A stored artifact can withhold source verification while retaining classifications.
         withhold_source_verification(&mut artifact);
         withhold_source_verification(&mut report);
-        for finding in report["findings"].as_array_mut().unwrap() {
-            finding["checked"]["assurance"]["source_binding"] = json!("unavailable");
-            finding["checked"]["assurance"]["subject_verification"] = json!("unavailable");
-            finding["checked"]["assurance"]["level"] = json!("relations_only");
+        for document in [&mut report, &mut artifact] {
+            for finding in document["findings"].as_array_mut().unwrap() {
+                finding["checked"]["assurance"]["source_binding"] = json!("unavailable");
+                finding["checked"]["assurance"]["subject_verification"] = json!("unavailable");
+                finding["checked"]["assurance"]["level"] = json!("relations_only");
+            }
         }
         report["presentation"]["uncertainty"]["source_binding_unavailable_findings"] =
             json!(report["findings"].as_array().unwrap().len());
