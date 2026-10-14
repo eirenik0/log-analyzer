@@ -444,6 +444,50 @@ pub(crate) fn validate(
             if retained_roots != expected.keys().cloned().collect() {
                 return Err("retained chain findings differ from replayed population".into());
             }
+            let gap = |finding: &Value| -> Result<Option<Value>, String> {
+                let Some(class) = finding["details"]["gap_classification"].as_str() else {
+                    return Ok(None);
+                };
+                if !matches!(
+                    class,
+                    "recognition_unresolved" | "identity_or_scope_unavailable"
+                ) {
+                    return Ok(None);
+                }
+                let mut occurrences = finding["details"]["supporting_occurrences"]
+                    .as_array()
+                    .ok_or("missing gap occurrences")?
+                    .iter()
+                    .map(|occurrence| address(occurrence).ok_or("missing gap occurrence"))
+                    .collect::<Result<Vec<_>, _>>()?;
+                occurrences.sort();
+                Ok(Some(serde_json::json!([
+                    class,
+                    finding["claim"],
+                    finding["details"]["reason"],
+                    occurrences
+                ])))
+            };
+            let mut retained_gaps = findings
+                .iter()
+                .filter(|finding| finding["scope_id"] == scope["id"])
+                .map(|finding| gap(finding))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+            let mut replayed_gaps = replayed
+                .iter()
+                .map(|finding| gap(finding))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+            retained_gaps.sort_by(|left, right| left.to_string().cmp(&right.to_string()));
+            replayed_gaps.sort_by(|left, right| left.to_string().cmp(&right.to_string()));
+            if retained_gaps != replayed_gaps {
+                return Err("retained chain gap findings differ from replayed population".into());
+            }
         }
         for finding in chain_findings
             .iter()
@@ -556,6 +600,11 @@ pub(crate) fn validate(
                         return Err(
                             "chain endpoint cardinality differs from retained population".into(),
                         );
+                    }
+                    let left = &join["endpoint_interval"];
+                    let right = &expected_join["endpoint_interval"];
+                    if (!left.is_object() || !right.is_object()) && left != right {
+                        return Err("chain join interval differs from retained population".into());
                     }
                 }
                 let joins = |step: &Value| -> Result<Vec<_>, String> {

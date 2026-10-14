@@ -103,6 +103,8 @@ stop is artifact writing, which happens after chain calculation.
 [[tests/test_checked_presentation.rs#completed_capture_does_not_defer_chain_checks_for_a_capture_stop]]
 rejects a relabeled complete chain when a capture stop is claimed for an input
 whose retained capture and progress are both complete.
+[[tests/test_checked_presentation.rs#replay_keeps_chain_gap_findings_and_join_intervals]]
+rejects deletion of a replayed chain-gap finding and deletion of a join's endpoint interval.
 [[tests/test_checked_presentation.rs#checked_uncertainty_rejects_totals_below_displayed_findings_without_artifact]]
 rejects zeroed uncertainty totals on a checked report even when no artifact bytes are supplied.
 [[tests/test_checked_presentation.rs#replay_checks_classifications_against_captured_source_and_rules]]

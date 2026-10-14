@@ -2076,6 +2076,150 @@ fn completed_capture_does_not_defer_chain_checks_for_a_capture_stop() {
 }
 
 #[test]
+fn replay_keeps_chain_gap_findings_and_join_intervals() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "gaps",
+        PROFILE,
+        &[INPUT],
+        &[
+            "--json",
+            "--complete-output",
+            "--select",
+            r#"{"name":"absent"}"#,
+        ],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("gaps")).unwrap()).unwrap();
+    let gap_id = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|finding| finding["details"]["gap_classification"].is_string())
+        .unwrap()["id"]
+        .clone();
+    let mut altered = report.clone();
+    let mut saved = artifact.clone();
+    for document in [&mut altered, &mut saved] {
+        document["findings"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|finding| finding["id"] != gap_id);
+        let ids: Vec<_> = document["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|finding| finding["id"].clone())
+            .collect();
+        for assessment in document["assessments"].as_array_mut().unwrap() {
+            assessment["finding_ids"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|id| ids.contains(id));
+            if assessment["finding_ids"].as_array().unwrap().is_empty()
+                && assessment["status"] == "supported"
+            {
+                assessment["status"] = json!("insufficient_evidence");
+            }
+        }
+    }
+    let ids: Vec<_> = altered["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|finding| finding["id"].clone())
+        .collect();
+    let unknown = altered["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|finding| finding["kind"] == "unknown")
+        .count();
+    let count = ids.len();
+    altered["presentation"]["uncertainty"]["unknown_findings"] = json!(unknown);
+    altered["presentation"]["total_findings"] = json!(count);
+    altered["presentation"]["displayed_findings"] = json!(count);
+    altered["presentation"]["collections"][0]["total"] = json!(count);
+    altered["presentation"]["collections"][0]["displayed"] = json!(count);
+    let targets = altered["retrieval"]["targets"].as_array_mut().unwrap();
+    targets.retain(|target| target["kind"] != "finding" || ids.contains(&target["id"]));
+    for target in targets
+        .iter_mut()
+        .filter(|target| target["kind"] == "finding")
+    {
+        target["collection"] = json!(format!(
+            "/findings/{}",
+            ids.iter().position(|id| *id == target["id"]).unwrap()
+        ));
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    shape(&altered, false);
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("retained chain gap findings differ from replayed population"),
+        "{error}"
+    );
+
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "intervals",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("intervals")).unwrap()).unwrap();
+    let id = chain(&report["findings"], "alpha")["id"].clone();
+    let mut altered = report;
+    let mut saved = artifact;
+    for document in [&mut altered, &mut saved] {
+        let finding = document["findings"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|finding| finding["id"] == id)
+            .unwrap();
+        finding["details"]["event_chain"]["steps"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find_map(|step| {
+                step["join_samples"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|join| join["endpoint_interval"].is_object())
+            })
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("endpoint_interval");
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    shape(&altered, false);
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("chain join interval differs from retained population"),
+        "{error}"
+    );
+}
+
+#[test]
 fn replay_checks_classifications_against_captured_source_and_rules() {
     let temp = tempfile::tempdir().unwrap();
     let report: Value = serde_json::from_str(&run(
