@@ -643,6 +643,31 @@ fn finished_calculation_is_not_deferred_by_a_calculation_stop() {
             .contains("chain analysis interrupted disagrees with processing stop"),
         "{error}"
     );
+
+    for document in [&mut altered, &mut saved] {
+        document["processing"]["limits"]["work_units"] =
+            document["processing"]["usage"]["work_units"].clone();
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    shape(&altered, false);
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("chain analysis interrupted disagrees with processing stop"),
+        "final usage: {error}"
+    );
+
+    for document in [&mut altered, &mut saved] {
+        document["processing"]["stop"]["reason"] = json!("cancelled");
+        document["processing"]["stop"]["limit_name"] = Value::Null;
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    shape(&altered, false);
+    log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap();
 }
 
 #[test]

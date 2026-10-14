@@ -46,8 +46,9 @@ prefix already contains the configured steps.
 rejects relabeling that cutoff as `complete_input`. A completed report still
 validates through the older stage fallback after the recorded field is removed.
 [[tests/test_checked_presentation.rs#finished_calculation_is_not_deferred_by_a_calculation_stop]]
-rejects a calculation stop stamped onto a finished chain analysis, and rejects
-an `interrupted` label that the recorded usage and limits do not reproduce.
+rejects a calculation stop stamped onto a finished chain analysis. Lowering
+the limit to final usage still does not reproduce an interruption, because replay
+starts from the recorded chain-entry budget. A recorded cancellation remains valid.
 [[tests/test_checked_presentation.rs#earlier_stop_still_records_chain_calculation_halt]]
 records `interrupted` when an earlier work stop is kept and chain calculation
 still halts, instead of treating that halt as a finished partial input.

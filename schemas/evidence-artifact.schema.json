@@ -740,6 +740,29 @@
             "complete_input"
           ]
         },
+        "chain_budget": {
+          "type": "object",
+          "properties": {
+            "work_units": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "memory_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "elapsed_ms": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "work_units",
+            "memory_bytes",
+            "elapsed_ms"
+          ],
+          "additionalProperties": false
+        },
         "upstream_completeness": {
           "const": "unknown"
         }

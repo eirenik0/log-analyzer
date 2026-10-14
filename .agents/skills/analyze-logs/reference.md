@@ -77,6 +77,7 @@ The summary displays up to five findings; its retrieval action resumes `/finding
 after the displayed items. If retention fails, available partial findings remain
 inline with displayed/total counts.
 
+Each scope records `chain_analysis` as `complete_input`, `partial_input`, `interrupted`, or `not_run`.
 Each displayed finding includes `checked` scope, subjects, population and assurance.
 Configured text groups count assurance across all members within one scope.
 Representative subjects and limits describe only the named representative; inspect

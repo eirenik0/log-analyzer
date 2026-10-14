@@ -535,6 +535,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         budget.begin_stage();
         let chain_input_complete = !structural_loss && !budget.affected_scopes.contains(&ordinal);
         let stop_before_chains = budget.stop.clone();
+        let (chain_work, chain_memory, chain_elapsed) = budget.accounting();
         let chain_analysis = if let Some(policy) = &config.investigation {
             chains::calculate(
                 policy,
@@ -561,7 +562,15 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
         } else {
             "not_run"
         };
-        scopes.last_mut().unwrap()["chain_analysis"] = json!(chain_analysis);
+        let scope = scopes.last_mut().unwrap();
+        scope["chain_analysis"] = json!(chain_analysis);
+        if chain_analysis != "not_run" {
+            scope["chain_budget"] = json!({
+                "work_units": chain_work,
+                "memory_bytes": chain_memory,
+                "elapsed_ms": chain_elapsed
+            });
+        }
         if let Some(policy) = &config.investigation {
             policy::calculate(
                 policy,

@@ -141,8 +141,15 @@ fn calculation_cutoff_reproduces(
     context: &evidence::Context,
     input_complete: bool,
     limits: &Value,
-    usage: &Value,
+    entry: &Value,
 ) -> bool {
+    let (Some(work_units), Some(memory_bytes), Some(elapsed_ms)) = (
+        entry["work_units"].as_u64(),
+        entry["memory_bytes"].as_u64(),
+        entry["elapsed_ms"].as_u64(),
+    ) else {
+        return false;
+    };
     let mut budget = Budget::new(Limits {
         input_bytes: u64::MAX,
         records: u64::MAX,
@@ -154,9 +161,9 @@ fn calculation_cutoff_reproduces(
         record_bytes: usize::MAX,
         cancel_file: None,
     });
-    budget.work_units = usage["work_units"].as_u64().unwrap_or(0);
-    budget.memory_bytes = usage["memory_bytes"].as_u64().unwrap_or(0);
-    if usage["elapsed_ms"].as_u64().unwrap_or(0) >= budget.limits.elapsed_ms {
+    budget.work_units = work_units;
+    budget.memory_bytes = memory_bytes;
+    if elapsed_ms >= budget.limits.elapsed_ms {
         budget.limits.elapsed_ms = 0;
     }
     let before = budget.stop.clone();
@@ -596,6 +603,7 @@ pub(crate) fn validate(
                 stop["stage"].as_str(),
                 Some("calculation" | "relationships")
             )
+            && stop["reason"] != "cancelled"
             && !calculation_cutoff_reproduces(
                 policy,
                 &config,
@@ -603,7 +611,7 @@ pub(crate) fn validate(
                 &context,
                 input_complete,
                 &artifact["processing"]["limits"],
-                &artifact["processing"]["usage"],
+                &scope["chain_budget"],
             )
         {
             return Err("chain analysis interrupted disagrees with processing stop".into());

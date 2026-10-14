@@ -207,8 +207,11 @@ deferred for a parse, classification, or correlation stop, because those stages
 can leave retained records behind the capture. A recorded `complete_input` or
 `partial_input` is not deferred by a calculation or relationship stop. `interrupted`
 is recorded when chain calculation halts, including when an earlier stop is kept
-and only the halt flag changes. A calculation stop may defer replay only when that
-interruption reproduces under the recorded usage and limits. Older artifacts omit
+and only the halt flag changes. The scope also records `chain_budget`, the work,
+memory and elapsed counters at entry to chain calculation. A calculation stop may
+defer replay only when that interruption reproduces from those entry counters, not
+from the final usage. A recorded cancellation is its own stop and is not required
+to exhaust a numeric budget. Older artifacts omit
 `chain_analysis` and still defer completeness from the stop stage. Artifact writing
 cannot defer it, and a capture stop cannot when retained capture and progress both
 say that input was read completely. A legacy stop before chain calculation still
