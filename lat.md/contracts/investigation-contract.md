@@ -186,7 +186,7 @@ characters, displayed fields and verification metadata, must match replay; only
 replay-specific occurrence identity is normalized. Explicit source-verification losses
 are inherited from the retained source record. Replay uses
 [[src/evidence.rs#Context#for_investigation_replay|the retained display-field policy]].
-Step labels, chain titles and evidence policy text must also match. A chain finding's claim and limitations must match that replayed finding. Recognition and identity-gap findings must match too, including their limitations. Non-chain
+Step labels, chain titles and evidence policy text must also match. A chain finding must match the replayed finding after occurrence identity is normalized and checked metadata is removed. The comparison is the whole canonical finding, not a field list. Recognition and identity-gap findings use that same canonical comparison. Explicit source-verification losses on the retained finding are inherited before the comparison. Non-chain
 excerpts receive the same source-field validation. Display projection permits text
 clipping with matching omission counts but requires all other excerpt fields unchanged.
 Chain identities, context identities, scope fields, root event names and root
@@ -203,13 +203,16 @@ completeness with replay. `interrupted` still defers completeness. `not_run`
 rejects chain and gap findings, and disagrees with a processed scope whose profile
 configures chains. `complete_input` is rejected when retained capture is incomplete
 or a pre-calculation stop lists the scope. Record population equality stays
-deferred from the stop stage, because a parse, classification, or correlation stop
-can leave retained records behind the capture. Older artifacts omit `chain_analysis`
-and still defer completeness from the stop stage. Artifact writing cannot defer it,
-and a capture stop cannot when retained capture and progress both say that input
-was read completely. A legacy stop before chain calculation still requires affected
-chains and their steps to stay partial. Calculation and relationship stops still
-defer that legacy comparison because those stages can run after chain generation.
+deferred for a parse, classification, or correlation stop, because those stages
+can leave retained records behind the capture. A recorded `complete_input` or
+`partial_input` is not deferred by a calculation or relationship stop. `interrupted`
+is recorded when chain calculation halts, including when an earlier stop is kept
+and only the halt flag changes. A calculation stop may defer replay only when that
+interruption reproduces under the recorded usage and limits. Older artifacts omit
+`chain_analysis` and still defer completeness from the stop stage. Artifact writing
+cannot defer it, and a capture stop cannot when retained capture and progress both
+say that input was read completely. A legacy stop before chain calculation still
+requires affected chains and their steps to stay partial.
 Other inputs remain checked independently.
 Step counts, statuses and populations remain checked for retained partial chains.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must

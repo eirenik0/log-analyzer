@@ -549,7 +549,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &mut findings,
                 None,
             );
-            if budget.stop != stop_before_chains {
+            // Budget::stop keeps the first stop. A later checkpoint can halt chain
+            // calculation without changing that object, so the halt flag is required.
+            if budget.halted || budget.stop != stop_before_chains {
                 "interrupted"
             } else if chain_input_complete {
                 "complete_input"

@@ -48,6 +48,134 @@ fn samples(
         .collect()
 }
 
+fn canonical_finding(
+    finding: &Value,
+    source_records: Option<&BTreeMap<Address, &Value>>,
+    mask_completeness: bool,
+) -> Result<Value, String> {
+    let mut finding = finding.clone();
+    if let Some(object) = finding.as_object_mut() {
+        object.remove("id");
+        object.remove("scope_id");
+        object.remove("checked");
+    }
+    if mask_completeness && finding["details"]["event_chain"].is_object() {
+        finding["details"]["event_chain"]["completeness"] = Value::Null;
+        if let Some(steps) = finding["details"]["event_chain"]["steps"].as_array_mut() {
+            for step in steps {
+                step["count_completeness"] = Value::Null;
+            }
+        }
+    }
+    normalize_identity(&finding, source_records)
+}
+
+fn normalize_identity(
+    value: &Value,
+    source_records: Option<&BTreeMap<Address, &Value>>,
+) -> Result<Value, String> {
+    if value.get("evidence_ref").is_some() {
+        return serde_json::to_value(address(value).ok_or("missing occurrence address")?)
+            .map_err(|error| error.to_string());
+    }
+    if let Some(object) = value.as_object() {
+        if object.contains_key("occurrence") && source_records.is_some() {
+            let mut normalized = samples(&Value::Array(vec![value.clone()]), source_records)?;
+            return normalize_identity(&normalized.remove(0), None);
+        }
+        let mut normalized = serde_json::Map::new();
+        for (key, child) in object {
+            normalized.insert(key.clone(), normalize_identity(child, source_records)?);
+        }
+        return Ok(Value::Object(normalized));
+    }
+    if let Some(items) = value.as_array() {
+        return items
+            .iter()
+            .map(|item| normalize_identity(item, source_records))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::Array);
+    }
+    Ok(value.clone())
+}
+
+fn first_difference(left: &Value, right: &Value) -> Option<String> {
+    fn walk(path: &str, left: &Value, right: &Value, found: &mut Option<String>) {
+        if found.is_some() || left == right {
+            return;
+        }
+        match (left, right) {
+            (Value::Object(left), Value::Object(right)) => {
+                let keys: BTreeSet<_> = left.keys().chain(right.keys()).collect();
+                for key in keys {
+                    walk(
+                        &format!("{path}/{key}"),
+                        left.get(key).unwrap_or(&Value::Null),
+                        right.get(key).unwrap_or(&Value::Null),
+                        found,
+                    );
+                }
+            }
+            (Value::Array(left), Value::Array(right)) => {
+                for index in 0..left.len().max(right.len()) {
+                    walk(
+                        &format!("{path}/{index}"),
+                        left.get(index).unwrap_or(&Value::Null),
+                        right.get(index).unwrap_or(&Value::Null),
+                        found,
+                    );
+                }
+            }
+            _ => *found = Some(path.to_string()),
+        }
+    }
+    let mut found = None;
+    walk("", left, right, &mut found);
+    found
+}
+
+fn calculation_cutoff_reproduces(
+    policy: &crate::investigation_policy::InvestigationPolicy,
+    config: &AnalyzerConfig,
+    entries: &[crate::parser::LogEntry],
+    context: &evidence::Context,
+    input_complete: bool,
+    limits: &Value,
+    usage: &Value,
+) -> bool {
+    let mut budget = Budget::new(Limits {
+        input_bytes: u64::MAX,
+        records: u64::MAX,
+        expanded_records: u64::MAX,
+        work_units: limits["work_units"].as_u64().unwrap_or(0),
+        elapsed_ms: limits["elapsed_ms"].as_u64().unwrap_or(0),
+        memory_bytes: limits["memory_bytes"].as_u64().unwrap_or(0),
+        artifact_bytes: u64::MAX,
+        record_bytes: usize::MAX,
+        cancel_file: None,
+    });
+    budget.work_units = usage["work_units"].as_u64().unwrap_or(0);
+    budget.memory_bytes = usage["memory_bytes"].as_u64().unwrap_or(0);
+    if usage["elapsed_ms"].as_u64().unwrap_or(0) >= budget.limits.elapsed_ms {
+        budget.limits.elapsed_ms = 0;
+    }
+    let before = budget.stop.clone();
+    chains::calculate(
+        policy,
+        config,
+        entries,
+        &[],
+        "validation",
+        context,
+        &Value::Null,
+        input_complete,
+        &mut budget,
+        &mut Vec::new(),
+        None,
+    );
+    budget.halted || budget.stop != before
+}
+
 pub(crate) fn validate(
     artifact: &Value,
     captures: &BTreeMap<u64, Vec<u8>>,
@@ -137,18 +265,23 @@ pub(crate) fn validate(
         let listed = stop["scope_ids"]
             .as_array()
             .is_some_and(|scopes| scopes.contains(&scope["id"]));
+        let recorded = scope.get("chain_analysis").and_then(Value::as_str);
         // A capture stop cannot explain missing chain results when retained
         // capture and progress both say this input was read completely.
+        // A finished chain calculation is not deferred by renaming the stop to
+        // calculation or relationships. Only an interrupted or legacy artifact is.
         let chain_cutoff = listed
             && match stop["stage"].as_str() {
                 Some("capture") => !capture_completed,
                 Some(
                     "profile_discovery" | "profile_detection" | "parse" | "classification"
-                    | "correlation" | "calculation" | "relationships",
+                    | "correlation",
                 ) => true,
+                Some("calculation" | "relationships") => {
+                    !matches!(recorded, Some("complete_input" | "partial_input"))
+                }
                 _ => false,
             };
-        let recorded = scope.get("chain_analysis").and_then(Value::as_str);
         let population_available = !chain_cutoff;
         let compare_completeness = match recorded {
             Some("complete_input" | "partial_input") => true,
@@ -458,6 +591,23 @@ pub(crate) fn validate(
             continue;
         };
         let mut replayed = Vec::new();
+        if recorded == Some("interrupted")
+            && matches!(
+                stop["stage"].as_str(),
+                Some("calculation" | "relationships")
+            )
+            && !calculation_cutoff_reproduces(
+                policy,
+                &config,
+                &parsed.entries,
+                &context,
+                input_complete,
+                &artifact["processing"]["limits"],
+                &artifact["processing"]["usage"],
+            )
+        {
+            return Err("chain analysis interrupted disagrees with processing stop".into());
+        }
         // Parsing may already have stopped at its own limit. Chain replay is a later
         // stage, matching publication, and only its own halt is a validation failure.
         budget.begin_stage();
@@ -500,42 +650,41 @@ pub(crate) fn validate(
             if retained_roots != expected.keys().cloned().collect() {
                 return Err("retained chain findings differ from replayed population".into());
             }
-            let gap = |finding: &Value| -> Result<Option<Value>, String> {
-                let Some(class) = finding["details"]["gap_classification"].as_str() else {
-                    return Ok(None);
-                };
+            let gap = |finding: &Value,
+                       records: Option<&BTreeMap<Address, &Value>>|
+             -> Result<Option<String>, String> {
+                let class = finding["details"]["gap_classification"].as_str();
                 if !matches!(
                     class,
-                    "recognition_unresolved" | "identity_or_scope_unavailable"
+                    Some("recognition_unresolved" | "identity_or_scope_unavailable")
                 ) {
                     return Ok(None);
                 }
-                let mut occurrences = finding["details"]["supporting_occurrences"]
-                    .as_array()
-                    .ok_or("missing gap occurrences")?
-                    .iter()
-                    .map(|occurrence| address(occurrence).ok_or("missing gap occurrence"))
-                    .collect::<Result<Vec<_>, _>>()?;
-                occurrences.sort();
-                Ok(Some(serde_json::json!([
-                    class,
-                    finding["claim"],
-                    finding["limitations"],
-                    finding["details"]["reason"],
-                    occurrences
-                ])))
+                let mut finding = finding.clone();
+                if let Some(occurrences) =
+                    finding["details"]["supporting_occurrences"].as_array_mut()
+                {
+                    occurrences.sort_by_key(|occurrence| {
+                        address(occurrence)
+                            .map(|location| format!("{location:?}"))
+                            .unwrap_or_default()
+                    });
+                }
+                Ok(Some(
+                    canonical_finding(&finding, records, false)?.to_string(),
+                ))
             };
             let mut retained_gaps = findings
                 .iter()
                 .filter(|finding| finding["scope_id"] == scope["id"])
-                .map(&gap)
+                .map(|finding| gap(finding, None))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>();
             let mut replayed_gaps = replayed
                 .iter()
-                .map(gap)
+                .map(|finding| gap(finding, Some(&selected)))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .flatten()
@@ -715,6 +864,21 @@ pub(crate) fn validate(
                 if joins(step)? != joins(expected_step)? {
                     return Err("chain join samples differ from retained population".into());
                 }
+            }
+            let mask_completeness = recorded == Some("interrupted");
+            let mut replay_owned = (*replay_finding).clone();
+            // Explicit withholding is inherited from the retained finding. Replay parses the
+            // original bytes, so it does not reproduce that later verification loss.
+            if finding["verification"]["source_and_rules"] == "unavailable" {
+                for field in ["source_and_rules", "losses"] {
+                    replay_owned["verification"][field] = finding["verification"][field].clone();
+                }
+            }
+            let retained_finding = canonical_finding(finding, None, mask_completeness)?;
+            let replayed_finding =
+                canonical_finding(&replay_owned, Some(&selected), mask_completeness)?;
+            if let Some(path) = first_difference(&retained_finding, &replayed_finding) {
+                return Err(format!("chain finding differs from replay at {path}"));
             }
         }
     }

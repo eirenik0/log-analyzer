@@ -45,6 +45,12 @@ prefix already contains the configured steps.
 [[tests/test_checked_presentation.rs#recorded_chain_analysis_rejects_a_forged_complete_input]]
 rejects relabeling that cutoff as `complete_input`. A completed report still
 validates through the older stage fallback after the recorded field is removed.
+[[tests/test_checked_presentation.rs#finished_calculation_is_not_deferred_by_a_calculation_stop]]
+rejects a calculation stop stamped onto a finished chain analysis, and rejects
+an `interrupted` label that the recorded usage and limits do not reproduce.
+[[tests/test_checked_presentation.rs#earlier_stop_still_records_chain_calculation_halt]]
+records `interrupted` when an earlier work stop is kept and chain calculation
+still halts, instead of treating that halt as a finished partial input.
 The same test suite covers failed ends, missing ends, ambiguous starts, renamed
 identities, independent inputs, redaction, tiny budgets and rejection of mutated
 arithmetic, source citations and event subjects. Existing coverage and zero tests

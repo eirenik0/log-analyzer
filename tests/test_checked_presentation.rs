@@ -114,7 +114,7 @@ fn maintained_example_agrees_in_text_json_and_bounded_summary() {
         log_analyzer::investigation::validate_relations(&bad_report, Some(&bad_bytes))
             .unwrap_err()
             .reason
-            .contains("arithmetic")
+            .contains("differs from replay")
     );
     assert_eq!(interval["end_timestamp"], "2026-01-01T02:00:09+02:00");
     assert_eq!(alpha["checked"]["assurance"]["level"], "link_exists");
@@ -522,6 +522,162 @@ fn recorded_chain_analysis_rejects_a_forged_complete_input() {
     report["presentation"]["serialized_characters"] = Value::Null;
     shape(&report, false);
     log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+}
+
+#[test]
+fn finished_calculation_is_not_deferred_by_a_calculation_stop() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "finished",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("finished")).unwrap()).unwrap();
+    assert_eq!(report["scopes"][0]["chain_analysis"], "complete_input");
+    let scope = report["scopes"][0]["id"].clone();
+    let id = chain(&report["findings"], "alpha")["id"].clone();
+    let mut altered = report.clone();
+    let mut saved = artifact.clone();
+    for document in [&mut altered, &mut saved] {
+        document["processing"]["status"] = json!("partial");
+        document["processing"]["stop"] = json!({
+            "stage": "calculation",
+            "reason": "work_limit",
+            "limit_name": "work_units",
+            "scope_ids": [scope.clone()]
+        });
+        document["scopes"][0]["completeness"] = json!("partial");
+        document["scopes"][0]["analysis_completion"] = json!("partial");
+        for population in document["populations"].as_array_mut().unwrap() {
+            if population["completeness"] == "complete" {
+                population["completeness"] = json!("partial");
+            }
+        }
+        if let Some(sequences) = document
+            .get_mut("sequences")
+            .and_then(|value| value.as_array_mut())
+        {
+            for sequence in sequences {
+                if sequence["completeness"] == "complete" {
+                    sequence["completeness"] = json!("partial");
+                }
+            }
+        }
+        for assessment in document["assessments"].as_array_mut().unwrap() {
+            if assessment["status"] == "supported" {
+                assessment["status"] = json!("insufficient_evidence");
+            }
+        }
+        let scope_copy = document["scopes"][0].clone();
+        let populations = document["populations"].clone();
+        for finding in document["findings"].as_array_mut().unwrap() {
+            if finding["checked"].is_object() {
+                finding["checked"]["scope"] = scope_copy.clone();
+                if let Some(population) = populations
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|population| population["id"] == finding["details"]["population_id"])
+                {
+                    finding["checked"]["population"] = population.clone();
+                }
+            }
+            if finding["id"] == id {
+                finding["details"]["event_chain"]["completeness"] = json!("partial");
+            }
+        }
+    }
+    altered["presentation"]["uncertainty"]["incomplete_chains"] = json!(
+        altered["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| {
+                let chain = &finding["details"]["event_chain"];
+                chain.is_object()
+                    && (chain["completeness"] != "complete"
+                        || chain["steps"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .any(|step| step["status"] != "observed"))
+            })
+            .count()
+    );
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    shape(&altered, false);
+    log_analyzer::investigation::validate_relations(&altered, None).unwrap();
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("chain completeness differs from retained population"),
+        "{error}"
+    );
+
+    for document in [&mut altered, &mut saved] {
+        document["scopes"][0]["chain_analysis"] = json!("interrupted");
+        let scope_copy = document["scopes"][0].clone();
+        for finding in document["findings"].as_array_mut().unwrap() {
+            if finding["checked"].is_object() {
+                finding["checked"]["scope"] = scope_copy.clone();
+            }
+        }
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    shape(&altered, false);
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("chain analysis interrupted disagrees with processing stop"),
+        "{error}"
+    );
+}
+
+#[test]
+fn earlier_stop_still_records_chain_calculation_halt() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "halted",
+        PROFILE,
+        &[INPUT],
+        &[
+            "--json",
+            "--complete-output",
+            "--processing-max-work",
+            "1000",
+        ],
+    ))
+    .unwrap();
+    let bytes = fs::read(temp.path().join("halted")).unwrap();
+    assert_eq!(report["processing"]["stop"]["stage"], "classification");
+    assert_eq!(report["scopes"][0]["chain_analysis"], "interrupted");
+    assert!(
+        report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|finding| !finding["details"]["event_chain"].is_object())
+    );
+    let summary = log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
+    assert!(
+        summary.deferred_relations.iter().any(|relation| {
+            relation.contains("chain_completeness_requires_processing_stage_history")
+        }),
+        "{summary:?}"
+    );
 }
 
 #[test]
@@ -1055,7 +1211,7 @@ fn unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact
             let error = log_analyzer::investigation::validate_relations(&altered, Some(&bytes))
                 .unwrap_err();
             assert!(
-                error.reason.contains("status or reason differs"),
+                error.reason.contains("differs from replay"),
                 "{name}: {error}"
             );
         }
@@ -1085,7 +1241,7 @@ fn unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact
             let error = log_analyzer::investigation::validate_relations(&altered, Some(&bytes))
                 .unwrap_err();
             assert!(
-                error.reason.contains("differs from source"),
+                error.reason.contains("differs from replay"),
                 "{name}/{field}: {error}"
             );
         }
@@ -1254,11 +1410,7 @@ fn measured_intervals_cannot_be_hidden_by_unavailable_status_or_missing_timestam
         let error =
             log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
         assert!(
-            error.reason.contains(if hide_timestamps {
-                "timestamp differs from source"
-            } else {
-                "status or reason differs"
-            }),
+            error.reason.contains("differs from replay"),
             "{reason}: {error}"
         );
     }
@@ -1373,7 +1525,7 @@ fn retained_endpoint_names_are_checked_when_source_verification_is_unavailable()
                             )
                             .unwrap_err();
                             assert!(
-                                error.reason.contains("operation differs from source"),
+                                error.reason.contains("differs from replay"),
                                 "{status}/{field}: {error}"
                             );
                         }

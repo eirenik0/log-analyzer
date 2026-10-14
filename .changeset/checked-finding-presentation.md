@@ -30,6 +30,11 @@ completion and hidden populations. Record whether chain analysis saw a complete 
 interruption, or did not run, and compare completeness against that record.
 Explicitly defer completeness after processing cutoffs only for older artifacts
 that do not retain that record.
+Recompute checked projections from retained evidence instead of trusting the
+stored copy. Compare replayed chain and gap findings as canonical values after
+occurrence identity is normalized. A finished chain calculation is not deferred
+by a later calculation stop, and a chain halt is recorded even when an earlier
+stop is kept.
 Bind replayed chain identity, context, scope, root name and ambiguity to retained
 subjects so valid links cannot be relabeled as a different correlation subject.
 Check later-activity counts and samples against the retained same-context population.
