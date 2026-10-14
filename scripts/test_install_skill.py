@@ -192,7 +192,12 @@ def assert_links(test, skill):
                 continue
             resolved = (page.parent / target.split('#')[0]).resolve()
             with test.subTest(page=str(page), target=target):
-                test.assertTrue(resolved.is_relative_to(skill.resolve()))
+                canonical = (ROOT / '.agents/skills/analyze-logs').resolve()
+                claude = (ROOT / '.claude/skills/analyze-logs').resolve()
+                allowed = resolved.is_relative_to(skill.resolve()) or (
+                    skill.resolve() == claude and resolved.is_relative_to(canonical)
+                )
+                test.assertTrue(allowed)
                 test.assertTrue(resolved.exists())
 
 
@@ -238,7 +243,13 @@ class StandaloneSkillLinksTests(unittest.TestCase):
                 target_cache.parent.mkdir()
                 target_cache.write_bytes(b'target cache')
                 generator.sync(check=True)
+                helper = target / 'scripts/helper.py'
+                self.assertTrue(helper.is_symlink())
                 script.write_text('value = 2\n', encoding='utf-8')
+                self.assertEqual(helper.read_text(encoding='utf-8'), 'value = 2\n')
+                generator.sync(check=True)
+                helper.unlink()
+                helper.write_text('detached copy\n', encoding='utf-8')
                 with self.assertRaisesRegex(SystemExit, 'helper.py'):
                     generator.sync(check=True)
                 generator.sync()

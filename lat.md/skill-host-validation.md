@@ -23,7 +23,8 @@ a claim that every provider/model supports the workflow equally well.
 - Portable name/description metadata, optional Codex display metadata, Pi package
   paths and Claude plugin paths, and no drift in the generated Claude bundle.
 
-`python3 scripts/sync-skills.py --check` checks the materialized Claude bundle.
+`python3 scripts/sync-skills.py --check` checks the Claude wrapper and that
+shared resources remain links to `.agents/skills/analyze-logs`.
 `quick_validate.py` from Codex's skill-creator validated the canonical skill.
 The maintained `scripts/check-examples.py` checks the same executable fixtures:
 all documented commands and eight investigations passed, including unsupported
