@@ -12,6 +12,131 @@ Changing the expected snapshot, scope, identity, root or endpoints must contradi
 
 Covered by [[tests/test_investigation_runtime.rs#subject_bound_links_reject_adjacent_names_scopes_ids_and_endpoints]].
 
+## Numeric artifact replay
+
+Normal builds preserve decoded numeric payloads across artifact storage and source replay, while rejecting changed evidence.
+
+[[scripts/check-numeric-replay.py#check]] exercises synthetic classic and JSON-envelope
+records with nested decimals and a large integer. It checks publication, retained
+retrieval and rejection of adjacent-float payload edits even with refreshed hashes.
+CI and release checks run it after a normal build, before test dependencies can
+unify JSON decoder features and conceal a production-only regression.
+
+## Checked finding presentation
+
+Synthetic CLI fixtures preserve separate outcomes, counts, endpoint intervals, assurance and missing evidence in text, full JSON and bounded summaries.
+
+[[tests/test_checked_presentation.rs#maintained_example_agrees_in_text_json_and_bounded_summary]]
+checks independently specified facts in [[examples/investigations/checked/README.md]].
+[[tests/test_checked_presentation.rs#retrieved_omitted_findings_keep_checked_projection]]
+checks that an omitted finding retrieved from the artifact still has the published
+checked scope, subjects, population, and assurance.
+[[tests/test_checked_presentation.rs#checked_version_requires_metadata_on_every_displayed_finding]]
+rejects a checked report that drops `checked` from a displayed finding, with or
+without the original artifact bytes.
+[[tests/test_checked_presentation.rs#retained_checked_is_required_when_the_report_advertises_it]]
+rejects an artifact whose findings drop `checked` while the paired report still
+advertises `checked_version`.
+[[tests/test_checked_presentation.rs#replay_binds_gap_limitations]]
+rejects a rewritten limitation on a recognition or identity gap finding.
+[[tests/test_checked_presentation.rs#capture_cutoff_keeps_chain_completeness_partial]]
+rejects relabeling a chain or step complete after an input-byte cutoff whose
+prefix already contains the configured steps.
+[[tests/test_checked_presentation.rs#recorded_chain_analysis_rejects_a_forged_complete_input]]
+rejects relabeling that cutoff as `complete_input`. A completed report still
+validates through the older stage fallback after the recorded field is removed.
+[[tests/test_checked_presentation.rs#finished_calculation_is_not_deferred_by_a_calculation_stop]]
+rejects a calculation stop stamped onto a finished chain analysis. Lowering
+the limit to final usage still does not reproduce an interruption, because replay
+starts from the recorded chain-entry budget. A recorded cancellation remains valid.
+[[tests/test_checked_presentation.rs#earlier_stop_still_records_chain_calculation_halt]]
+records `interrupted` when an earlier work stop is kept and chain calculation
+still halts, instead of treating that halt as a finished partial input.
+The same test suite covers failed ends, missing ends, ambiguous starts, renamed
+identities, independent inputs, redaction, tiny budgets and rejection of mutated
+arithmetic, source citations and event subjects. Existing coverage and zero tests
+below also exercise the checked publication boundary.
+[[tests/test_checked_presentation.rs#aggregate_subject_verification_preserves_unavailable_prerequisites_when_paged]]
+keeps aggregate assurance unavailable for redaction, artifact limits and mixed
+UTF-8/non-UTF-8 input, including pages with no displayed findings.
+It rejects independently mutated uncertainty counts and assurance against retained
+artifacts while accepting older reports that omit the optional aggregate.
+[[tests/test_checked_presentation.rs#checked_assurance_rejects_levels_and_bindings_that_disagree_with_evidence]]
+rejects altered assurance levels and coordinated binding changes.
+[[tests/test_checked_presentation.rs#unavailable_intervals_reject_changed_endpoint_metadata_in_report_and_artifact]]
+rejects timestamp and operation changes in both report and artifact for ambiguous
+and negative intervals, preserving the distinction between endpoints and measurements.
+[[tests/test_checked_presentation.rs#checked_subjects_require_exact_root_outcome_and_evidence_sets]]
+rejects missing, duplicated or substituted subjects in original and redacted
+reports, while accepting reordered subjects and older reports without the projection.
+[[tests/test_checked_presentation.rs#measured_intervals_cannot_be_hidden_by_unavailable_status_or_missing_timestamps]]
+rejects unavailable-status substitutions and hidden known timestamps. Unavailable
+interval controls also check exact reasons for ambiguity, negative time and missing timestamps.
+[[tests/test_checked_presentation.rs#retained_endpoint_names_are_checked_when_source_verification_is_unavailable]]
+rejects changed or removed names for measured and unavailable intervals when stored
+source verification is unavailable, while accepting redacted reports with omitted semantics.
+[[tests/test_checked_presentation.rs#interval_cardinalities_are_checked_against_retained_chain_populations]]
+rejects forged singleton root/source/target counts that would turn ambiguous joins
+into measured intervals, and checks explicit deferral when redaction prevents replay.
+[[tests/test_checked_presentation.rs#chain_validation_honors_raised_processing_limits_before_selection]]
+checks publication and artifact validation after more than 100,000 expanded rows
+are parsed under raised limits, with only ten selected chain records retained.
+[[tests/test_checked_presentation.rs#expansion_cutoff_still_publishes_partial_chain_replay]]
+checks that exhausting the expanded-record limit still publishes a partial report
+instead of treating the parse stop as an unfinished chain replay.
+[[tests/test_checked_presentation.rs#replay_rejects_invented_completion_and_incomplete_step_results]]
+rejects fabricated join identities and mutually consistent report/artifact edits
+that invent a completion, remove steps or joins, or change labels, counts, ambiguity
+and completeness. Processing cutoffs
+explicitly defer completeness when calculation-stage history is unavailable.
+[[tests/test_checked_presentation.rs#decision_brief_requires_uncertainty_and_omission_counts]]
+rejects briefs missing either the uncertainty object or omitted-finding count.
+[[tests/test_agent_guidance.rs#brief_preserves_unread_inputs_as_unknown_coverage]]
+still publishes that object when a work cutoff leaves checked publication unset.
+[[tests/test_checked_presentation.rs#replay_checks_source_bindings_without_chain_policy]]
+rejects changed classifications, decoded record fields/messages and displayed or stored source fields for profiles
+with no investigation policy and policies with no chains, including changed query
+command metadata with consistently refreshed hashes.
+[[tests/test_checked_presentation.rs#replay_binds_timestamps_and_provenance_before_interval_validation]]
+rejects changed or removed retained timestamps and altered year/offset provenance,
+even when event sequences and interval measurements are updated consistently.
+[[tests/test_checked_presentation.rs#checked_presentation_requires_canonical_qualifications]]
+rejects empty or replaced aggregate limits, finding assurance limits and population
+rules in full and empty-page reports, with and without retained artifact bytes.
+Deleting the uncertainty object also fails schema and relational validation.
+[[tests/test_checked_presentation.rs#replay_binds_nested_excerpt_payloads_to_source]]
+rejects altered text, omitted-character counts, displayed fields and verification
+metadata in root, linked, ambiguous and later-activity excerpts with configured source fields.
+[[tests/test_checked_presentation.rs#replay_binds_chain_identity_and_context_to_retained_subjects]]
+rejects coordinated report/artifact changes to chain identities, context identities,
+scope fields, root event names and root ambiguity, even when checked projections agree.
+It also rejects hidden later activity and earlier occurrences mislabeled as later samples.
+[[tests/test_checked_presentation.rs#replay_requires_all_chain_findings_for_completed_inputs]]
+rejects deletion of one or all chains despite consistent report totals and references.
+It also rejects deleting the root record together with its chain finding.
+[[tests/test_checked_presentation.rs#independent_cutoffs_do_not_defer_unaffected_chain_completeness]]
+keeps earlier chain and step completeness checked when a later independent input
+fails parsing or exhausts its record budget.
+[[tests/test_checked_presentation.rs#artifact_write_cutoff_does_not_defer_chain_population_or_completeness]]
+rejects a relabeled complete chain and a removed chain finding when the only
+stop is artifact writing, which happens after chain calculation.
+[[tests/test_checked_presentation.rs#completed_capture_does_not_defer_chain_checks_for_a_capture_stop]]
+rejects a capture stop claimed for an input whose retained capture and progress
+are both complete, because that scope recorded `complete_input`.
+[[tests/test_checked_presentation.rs#replay_keeps_chain_gap_findings_and_join_intervals]]
+rejects deletion of a replayed chain-gap finding and deletion of a join's endpoint interval.
+[[tests/test_checked_presentation.rs#replay_binds_chain_claim_and_limitations]]
+rejects a rewritten chain claim or limitations when the replayed evidence and nested chain stay unchanged.
+[[tests/test_checked_presentation.rs#checked_uncertainty_rejects_totals_below_displayed_findings_without_artifact]]
+rejects zeroed uncertainty totals on a checked report even when no artifact bytes are supplied.
+[[tests/test_checked_presentation.rs#replay_checks_classifications_against_captured_source_and_rules]]
+rejects edited rule IDs and event semantics even when checked subject projections
+agree with the altered retained classification.
+[[tests/unit/grouped_assurance.rs#grouped_assurance_covers_every_member_and_preserves_scope_boundaries]]
+checks mixed assurance in both representative orders, explicit representative-only
+details and separation of matching dimensions across independent scopes. Configured
+view CLI tests check agreement with per-finding JSON assurance, including redaction.
+
 ## Missing join identity
 
 A missing join key leaves chain counts partial; adjacent events cannot supply the missing relationship.

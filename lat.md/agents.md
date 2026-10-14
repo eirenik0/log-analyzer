@@ -60,7 +60,8 @@ and the [host validation record](skill-host-validation.md) for tested versions
 and explicit gaps. External data handling follows the agent's configuration; see
 [local data flow](usage.md#local-data-flow-and-external-agents).
 
-To change the skill, edit `.agents/skills/analyze-logs/`, run
-`python3 scripts/sync-skills.py`, and commit the generated Claude bundle too.
-Tests reject drift. Scripted workflow checks do not measure model accuracy or
-claim token savings.
+To change the skill, edit `.agents/skills/analyze-logs/`. Shared Claude
+resources are links to that tree. `python3 scripts/sync-skills.py` regenerates
+only the Claude `SKILL.md` wrapper and `workflow.md`, and refreshes those links.
+Tests reject a detached copy. Scripted workflow checks do not measure model
+accuracy or claim token savings.

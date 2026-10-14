@@ -746,6 +746,37 @@
         "semantic_coverage": {
           "$ref": "#/$defs/semantic_coverage"
         },
+        "chain_analysis": {
+          "enum": [
+            "not_run",
+            "interrupted",
+            "partial_input",
+            "complete_input"
+          ]
+        },
+        "chain_budget": {
+          "type": "object",
+          "properties": {
+            "work_units": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "memory_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "elapsed_ms": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "work_units",
+            "memory_bytes",
+            "elapsed_ms"
+          ],
+          "additionalProperties": false
+        },
         "upstream_completeness": {
           "const": "unknown"
         }
@@ -1433,6 +1464,9 @@
                 "supporting_occurrences"
               ],
               "additionalProperties": false
+            },
+            "checked": {
+              "$ref": "#/$defs/checked_finding"
             }
           },
           "required": [
@@ -1546,6 +1580,9 @@
                 "clock_relationship"
               ],
               "additionalProperties": false
+            },
+            "checked": {
+              "$ref": "#/$defs/checked_finding"
             }
           },
           "required": [
@@ -1709,6 +1746,9 @@
                   "additionalProperties": false
                 }
               ]
+            },
+            "checked": {
+              "$ref": "#/$defs/checked_finding"
             }
           },
           "required": [
@@ -1789,6 +1829,9 @@
                 "supporting_occurrences"
               ],
               "additionalProperties": false
+            },
+            "checked": {
+              "$ref": "#/$defs/checked_finding"
             }
           },
           "required": [
@@ -1875,6 +1918,9 @@
                 "supporting_occurrences"
               ],
               "additionalProperties": false
+            },
+            "checked": {
+              "$ref": "#/$defs/checked_finding"
             }
           },
           "required": [
@@ -1958,6 +2004,9 @@
                 "supporting_occurrences"
               ],
               "additionalProperties": false
+            },
+            "checked": {
+              "$ref": "#/$defs/checked_finding"
             }
           },
           "required": [
@@ -2276,6 +2325,46 @@
         },
         "units": {
           "const": "serialized_UTF8_bytes_Unicode_scalars_and_atomic_finding_bundles"
+        },
+        "uncertainty": {
+          "type": "object",
+          "properties": {
+            "unknown_findings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "incomplete_chains": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_binding_unavailable_findings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "subject_verification": {
+              "enum": [
+                "not_requested",
+                "unavailable"
+              ]
+            },
+            "limits": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "unknown_findings",
+            "incomplete_chains",
+            "source_binding_unavailable_findings",
+            "subject_verification",
+            "limits"
+          ]
+        },
+        "checked_version": {
+          "const": 1
         }
       },
       "required": [
@@ -2291,7 +2380,21 @@
         "collections",
         "units"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "checked_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "uncertainty"
+            ]
+          }
+        }
+      ]
     },
     "artifact_retrieval": {
       "type": "object",
@@ -3253,6 +3356,105 @@
         "evidence_policy",
         "later_activity_observed_count",
         "omitted_later_activity"
+      ],
+      "additionalProperties": false
+    },
+    "checked_finding": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "identity": {
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "occurrence": {
+                "$ref": "#/$defs/occurrence"
+              },
+              "event": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "occurrence",
+              "event"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "population": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/population"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "assurance": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "enum": [
+                "relations_only",
+                "source_bound",
+                "link_exists"
+              ]
+            },
+            "source_binding": {
+              "enum": [
+                "validated",
+                "unavailable"
+              ]
+            },
+            "subject_verification": {
+              "enum": [
+                "not_requested",
+                "unavailable"
+              ]
+            },
+            "limits": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "level",
+            "source_binding",
+            "subject_verification",
+            "limits"
+          ],
+          "additionalProperties": false
+        },
+        "population_rule": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "scope",
+        "identity",
+        "subjects",
+        "population",
+        "assurance",
+        "population_rule"
       ],
       "additionalProperties": false
     }

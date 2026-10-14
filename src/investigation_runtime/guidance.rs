@@ -343,6 +343,17 @@ pub(super) fn brief(report: &Value, cli: &Cli) -> Value {
         json!([])
     };
     let mut brief = json!({"brief_version":1,"build":metadata["build"],"profile":profile,"binding":pick(&metadata["evidence"], &["snapshot_id","profile_sha256","query_sha256"]),"processing":pick(&report["processing"], &["status","stop"]),"coverage":coverage,"upstream_completeness":"unknown","assessments":assessments,"artifact":pick(&report["artifact"], &["status","location","stored_sha256","content"]),"findings":{"total":report["presentation"]["total_findings"],"displayed":items.as_array().unwrap().len(),"items":items,"collection":"/findings"},"guidance":guidance,"presentation":{"status":"complete","budget_bytes":cli.report_max_bytes,"budget_characters":cli.report_max_chars}});
+    brief["presentation"]["uncertainty"] = if report["presentation"]["uncertainty"].is_object() {
+        report["presentation"]["uncertainty"].clone()
+    } else {
+        super::checked::uncertainty(&report["findings"])
+    };
+    brief["findings"]["omitted"] = json!(
+        report["presentation"]["total_findings"]
+            .as_u64()
+            .unwrap_or(0)
+            .saturating_sub(brief["findings"]["displayed"].as_u64().unwrap_or(0))
+    );
     for _ in 0..8 {
         let text = brief.to_string();
         let bytes = text.len() + 1;

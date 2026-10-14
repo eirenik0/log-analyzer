@@ -44,6 +44,24 @@ fn check(report: &Value, artifact: &Path) {
     }
     log_analyzer::investigation::validate_relations(report, bytes.as_deref()).unwrap();
 }
+// Checked context is stored with the fact and compared separately; the retained fact stays exact.
+fn retained_fact(finding: &Value) -> Value {
+    let mut fact = finding.clone();
+    let checked = fact.as_object_mut().unwrap().remove("checked").unwrap();
+    assert_eq!(checked["version"], 1);
+    assert_eq!(checked["scope"]["id"], fact["scope_id"]);
+    fact
+}
+fn retained_facts(findings: &Value) -> Value {
+    Value::Array(
+        findings
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(retained_fact)
+            .collect(),
+    )
+}
 fn investigate(temp: &Path, extra: &[&str]) -> (Value, PathBuf) {
     let artifact = temp.join("evidence.json");
     let mut args = vec![
@@ -2993,7 +3011,10 @@ fn readable_resource_overview_groups_all_captures_and_viewports_without_changing
         "--complete-output",
     ]);
     check(&report, &json_artifact);
-    assert_eq!(report["findings"], retained["findings"]);
+    assert_eq!(
+        retained_facts(&report["findings"]),
+        retained_facts(&retained["findings"])
+    );
     let next = text
         .lines()
         .find_map(|line| line.strip_prefix("Next: "))
@@ -3159,6 +3180,8 @@ by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
         "Unavailable unit: unknown (0 measured, 3 unavailable)",
         "Actor: controller — 1 findings",
         "Actor: worker — 2 findings",
+        "Group assurance (3 findings): source_bound; source binding validated; intended subject not_requested",
+        "Representative finding only:",
     ] {
         assert!(text.contains(expected), "missing {expected}: {text}");
     }
@@ -3172,7 +3195,10 @@ by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
         "--complete-output",
     ]);
     let retained: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
-    assert_eq!(report["findings"], retained["findings"]);
+    assert_eq!(
+        retained_facts(&report["findings"]),
+        retained_facts(&retained["findings"])
+    );
     let measurements: Vec<_> = report["findings"]
         .as_array()
         .unwrap()
@@ -3180,6 +3206,17 @@ by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
         .filter(|finding| finding["kind"] == "measurement")
         .collect();
     assert_eq!(measurements.len(), 3);
+    for finding in &measurements {
+        assert_eq!(finding["checked"]["assurance"]["level"], "source_bound");
+        assert_eq!(
+            finding["checked"]["assurance"]["source_binding"],
+            "validated"
+        );
+        assert_eq!(
+            finding["checked"]["assurance"]["subject_verification"],
+            "not_requested"
+        );
+    }
     assert!(
         measurements
             .iter()
@@ -3230,6 +3267,7 @@ by = [{label = "Actor", path = "/evidence/0/fields/actor_kind"}]
     assert!(text.contains("Configured findings"), "{text}");
     assert!(!text.contains("private-config"), "{text}");
     assert!(text.contains("configured unit (3 measured"), "{text}");
+    assert!(text.contains("Group assurance (3 findings): relations_only; source binding unavailable; intended subject unavailable"), "{text}");
 }
 
 #[test]
@@ -3439,7 +3477,11 @@ fn readable_source_errors_cover_every_input_before_individual_pagination() {
     assert!(output.status.success());
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     check(&report, &json_artifact);
-    assert_eq!(report["findings"], json!(&findings[..20]));
+    let first_page = Value::Array(findings[..20].to_vec());
+    assert_eq!(
+        retained_facts(&report["findings"]),
+        retained_facts(&first_page)
+    );
     let json_stored: Value = serde_json::from_slice(&fs::read(json_artifact).unwrap()).unwrap();
     assert_eq!(json_stored["findings"], stored["findings"]);
     let redacted_artifact = temp.path().join("redacted.json");
@@ -4596,7 +4638,12 @@ fn resource_hashes_and_citations_never_cross_manifest_owners() {
                 .collect();
             assert_eq!(supporting_lines, evidence_lines);
             let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
-            assert!(retained["findings"].as_array().unwrap().contains(finding));
+            assert!(
+                retained_facts(&retained["findings"])
+                    .as_array()
+                    .unwrap()
+                    .contains(&retained_fact(finding))
+            );
         }
     }
 }
@@ -4830,7 +4877,12 @@ fn resource_evidence_retains_all_normalized_row_paths_and_deduplicates_exact_row
                 .all(|excerpt| support.contains(&excerpt["occurrence"]))
         );
         let retained: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
-        assert!(retained["findings"].as_array().unwrap().contains(finding));
+        assert!(
+            retained_facts(&retained["findings"])
+                .as_array()
+                .unwrap()
+                .contains(&retained_fact(finding))
+        );
     }
 }
 

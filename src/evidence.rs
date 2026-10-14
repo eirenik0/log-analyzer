@@ -139,6 +139,15 @@ pub(crate) struct Context {
     legacy_sanitize_records: bool,
 }
 impl Context {
+    pub(crate) fn for_investigation_replay(config: &AnalyzerConfig) -> Self {
+        Self {
+            finding_source_fields: config
+                .investigation_view
+                .as_ref()
+                .map_or_else(Vec::new, |view| view.source_fields.clone()),
+            ..Self::default()
+        }
+    }
     pub fn finding_fields_allowance(&self) -> u64 {
         (self.finding_source_fields.len() as u64).saturating_mul(4096 * 16)
     }

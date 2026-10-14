@@ -1,7 +1,9 @@
 //! Runtime orchestration; the public contract validator remains independent.
 mod artifact;
 mod auto_profile;
+pub(crate) mod chain_validation;
 pub(crate) mod chains;
+pub(crate) mod checked;
 mod claims;
 mod findings;
 mod guidance;
@@ -531,7 +533,10 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             &mut sequences,
         );
         budget.begin_stage();
-        if let Some(policy) = &config.investigation {
+        let chain_input_complete = !structural_loss && !budget.affected_scopes.contains(&ordinal);
+        let stop_before_chains = budget.stop.clone();
+        let (chain_work, chain_memory, chain_elapsed) = budget.accounting();
+        let chain_analysis = if let Some(policy) = &config.investigation {
             chains::calculate(
                 policy,
                 &config,
@@ -540,11 +545,33 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &scope_id,
                 &context,
                 &snapshot,
-                !structural_loss && budget.stop.is_none(),
+                chain_input_complete,
                 &mut budget,
                 &mut findings,
                 None,
             );
+            // Budget::stop keeps the first stop. A later checkpoint can halt chain
+            // calculation without changing that object, so the halt flag is required.
+            if budget.halted || budget.stop != stop_before_chains {
+                "interrupted"
+            } else if chain_input_complete {
+                "complete_input"
+            } else {
+                "partial_input"
+            }
+        } else {
+            "not_run"
+        };
+        let scope = scopes.last_mut().unwrap();
+        scope["chain_analysis"] = json!(chain_analysis);
+        if chain_analysis != "not_run" {
+            scope["chain_budget"] = json!({
+                "work_units": chain_work,
+                "memory_bytes": chain_memory,
+                "elapsed_ms": chain_elapsed
+            });
+        }
+        if let Some(policy) = &config.investigation {
             policy::calculate(
                 policy,
                 &config,
@@ -639,7 +666,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     for ordinal in (0..args.files.len()).filter(|ordinal| !processed_ordinals.contains(ordinal)) {
         let scope_id = format!("scope-{ordinal}");
         budget.affected_scopes.insert(ordinal);
-        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Source snapshot could not be processed","extent":"processed_population","completeness":"unavailable","analysis_completion":"not_performed","correlation_scope":[],"semantic_coverage":{"status":"not_performed","relevant_records":null,"classified_records":null,"paired_events":null,"unmatched_events":null,"ambiguous_events":null,"rejected_events":null,"reason":"Capture unavailable"},"upstream_completeness":"unknown"}));
+        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Source snapshot could not be processed","extent":"processed_population","completeness":"unavailable","analysis_completion":"not_performed","chain_analysis":"not_run","correlation_scope":[],"semantic_coverage":{"status":"not_performed","relevant_records":null,"classified_records":null,"paired_events":null,"unmatched_events":null,"ambiguous_events":null,"rejected_events":null,"reason":"Capture unavailable"},"upstream_completeness":"unknown"}));
         for goal in [
             "inspection",
             "failures",
@@ -778,6 +805,8 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "A captured byte stream is not complete UTF-8; source text verification is unavailable.",
         );
     }
+    // Retrieval resumes from these bytes, so omitted pages need the same projection.
+    checked::attach(&mut retained, true);
     let bytes = artifact::bounded_serialization(&retained, budget.limits.artifact_bytes)?;
     let mut report = artifact::report(&retained, &artifact_path, bytes.as_deref());
     if cli.redact
@@ -790,11 +819,12 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             directory.path().file_name().unwrap().to_string_lossy()
         ));
     }
-    // Validation reparses the exact stored bytes; release the construction tree first.
-    drop(retained);
+    if bytes.is_none() {
+        artifact::unavailable(&mut report, "artifact byte limit exceeded");
+    }
+    let mut report =
+        checked::CheckedResult::build(report, retained, bytes.as_deref())?.into_report();
     if let Some(bytes) = bytes {
-        // Validate calculations/cross-references against the exact bytes before publishing.
-        crate::investigation::validate_relations(&report, Some(&bytes))?;
         let saved = (|| -> Result<()> {
             temporary.write_all(&bytes)?;
             temporary.as_file().sync_all()?;
@@ -810,8 +840,6 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 "Artifact write failed; no reusable evidence artifact was published",
             );
         }
-    } else {
-        artifact::unavailable(&mut report, "artifact byte limit exceeded");
     }
     let overview = (!args.brief
         && matches!(cli.effective_format(), crate::cli::OutputFormat::Text))
@@ -829,17 +857,20 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     if report["artifact"]["status"] == "unavailable" {
         artifact::reconcile_unavailable(&mut report, cli)?;
     }
-    crate::investigation::validate_relations(&report, None)?;
-    let report = if args.brief {
-        guidance::brief(&report, cli)
+    let checked = checked::CheckedResult::page(report)?;
+    let rendered = if args.brief {
+        format!(
+            "{}\n",
+            serde_json::to_string(&guidance::brief(checked.report(), cli))?
+        )
+    } else if matches!(cli.effective_format(), crate::cli::OutputFormat::Json) {
+        format!("{}\n", serde_json::to_string(checked.report())?)
     } else {
-        report
-    };
-    let rendered = if args.brief || matches!(cli.effective_format(), crate::cli::OutputFormat::Json)
-    {
-        format!("{}\n", serde_json::to_string(&report)?)
-    } else {
-        presentation::text(&report, overview.as_ref().expect("text overview"))
+        presentation::text(
+            &checked,
+            overview.as_ref().expect("text overview"),
+            cli.verbose > 0,
+        )
     };
     if let Some(staged) = staged_report
         && let Err(error) = staged.save_text(&rendered)

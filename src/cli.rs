@@ -153,6 +153,7 @@ pub enum SearchCountBy {
 #[command(after_help = "Start with: log-analyzer investigate LOG
 Readable findings and a fresh evidence artifact are created automatically.
 Add --json for structured output, or --summary for a concise decision brief.
+Findings include scope, assurance and limits; --verbose adds recognition/join diagnostics.
 Profiles: log-analyzer profile --help
 Specialized commands: log-analyzer --help-advanced
 

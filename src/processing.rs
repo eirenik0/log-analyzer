@@ -191,6 +191,13 @@ impl Budget {
             "elapsed_ms":self.limits.elapsed_ms,"memory_bytes":self.limits.memory_bytes,
             "artifact_bytes":self.limits.artifact_bytes})
     }
+    pub fn accounting(&self) -> (u64, u64, u64) {
+        (
+            self.work_units,
+            self.memory_bytes,
+            self.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+        )
+    }
     pub fn usage_json(&self) -> Value {
         json!({"input_bytes":self.input_bytes,"records":self.records,
             "expanded_records":self.expanded_records,"work_units":self.work_units,

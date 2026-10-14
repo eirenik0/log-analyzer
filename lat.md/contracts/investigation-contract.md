@@ -111,6 +111,135 @@ are atomic. Tiny budgets retain mandatory metadata with an explicit exception;
 oversized bundles do not silently lose their required witnesses. See
 [bounded reports](bounded-reports.md) for the unchanged legacy interface.
 
+## Checked presentation
+
+[[src/investigation_runtime/checked.rs#CheckedResult|Checked results]] publish the same scoped facts to text and JSON after existing relation and source-binding checks. They do not verify intended question meaning.
+
+New reports add `checked` metadata to each finding: input scope,
+source-addressed event subjects, population definition and membership reference,
+identity rule, and assurance. That projection is stored on retained findings before
+serialization, so later retrieval pages carry the same scope, subjects, population,
+and assurance. Older artifacts without this presentation metadata remain valid.
+Consumers validating new reports must use the updated version-1 schema.
+
+Assurance separates available source binding from intended-subject verification.
+`link_exists` describes retained links; `source_bound` describes other source-bound
+facts; `relations_only` discloses unavailable source checking. None implies
+`subject_verified`. Independent expected subjects remain the responsibility of the
+existing claim verifier. Intended-subject verification is `not_requested` when
+source checking ran and `unavailable` when its prerequisites are missing.
+The aggregate is `unavailable` if any processed finding lacks those prerequisites,
+including omitted findings; otherwise it is `not_requested`. The unavailable
+finding count distinguishes mixed input assurance from wholly unavailable checking.
+Configured text groups count every member's assurance combination within its scope.
+Representative subjects, populations and limits are labeled as belonging only to
+that finding; other members' details remain available through individual findings.
+
+[[src/investigation_runtime/presentation.rs#text|Text presentation]] places coverage
+and material uncertainty before findings. Each fact retains its limits. Intervals
+name endpoints, offsets and units; missing endpoints have no measurement. Operation
+and session outcomes keep their own levels and citations. Chain counts preserve
+separate role populations and occurrence identity; no logical-attempt or network
+failure deduplication is inferred. Recognition and join samples require verbose
+text, while ambiguity and completeness remain in ordinary text.
+
+[[src/investigation.rs#validate_relations|Relation validation]] requires `checked`
+on every displayed finding when `checked_version` is present. With artifact bytes,
+every retained finding must carry that projection, and both retained and displayed
+copies must equal the projection recomputed from retained records, scopes,
+populations and the finding's own evidence. Dropping it from a later page is
+rejected. Without artifact bytes, recomputation is not possible. It then checks
+subjects against retained records, population and scope projections, and
+nested endpoint interval arithmetic, timestamp provenance and cited event names.
+Checked subjects must equal the distinct chain root and sampled outcome occurrences,
+or all evidence occurrences for other finding kinds. Missing, extra and duplicate
+subjects are rejected; ordering does not affect the set. Artifact-backed checks
+derive this set from the retained finding.
+Assurance levels must match source binding and retained joins. Present endpoint
+timestamps and names remain source-bound even when an interval is unavailable
+because its endpoints are ambiguous or their elapsed time is negative.
+Interval availability and its reason must follow endpoint cardinality, explicit
+timestamp provenance and elapsed-time validity; known timestamps cannot be omitted
+to turn a retained measurement into an unavailable interval.
+Retained classification semantics still constrain endpoint names when source
+verification is unavailable. Redaction may omit
+those semantics and keeps its source-verification limitation explicit.
+[[src/investigation_runtime/chain_validation.rs#validate|Chain cardinality validation]]
+replays retained sources for every profile, independently of chain policy. It uses
+the parser and, when configured, the chain engine on retained captures and rules to check
+root/source/target counts. Fresh classifications, timestamps and year/offset provenance must equal retained
+record metadata before interval availability or duration is trusted. Current CLI
+artifacts also bind record entity, raw text, message and decoded fields to parser output.
+[[Cargo.toml]] explicitly enables accurate JSON float round-tripping so stored
+decoded payloads equal source replay in normal builds. Comparisons remain exact;
+see [[regression-tests#Evidence regressions#Numeric artifact replay]].
+Stored filters and exact selectors reconstruct each unaffected input's complete
+selected record population; missing retained records are rejected. It reads no live
+input files. Missing profiles or captures defer this relation explicitly; exhausted
+validation work, time or memory allowances return an error rather than accepting counts.
+Replay allowances cover retained processing limits and usage, including expanded
+rows parsed before selection, so raised investigation limits also apply to validation.
+Replay also checks the complete configured step list, statuses, counts, ambiguity,
+recognition, evidence/outcome samples and join samples (including each join identity)
+against retained records. Complete top-level and nested excerpt payloads, including text, omitted
+characters, displayed fields and verification metadata, must match replay; only
+replay-specific occurrence identity is normalized. Explicit source-verification losses
+are inherited from the retained source record. Replay uses
+[[src/evidence.rs#Context#for_investigation_replay|the retained display-field policy]].
+Step labels, chain titles and evidence policy text must also match. A chain finding must match the replayed finding after occurrence identity is normalized and checked metadata is removed. The comparison is the whole canonical finding, not a field list. Recognition and identity-gap findings use that same canonical comparison. Explicit source-verification losses on the retained finding are inherited before the comparison. Non-chain
+excerpts receive the same source-field validation. Display projection permits text
+clipping with matching omission counts but requires all other excerpt fields unchanged.
+Chain identities, context identities, scope fields, root event names and root
+ambiguity must also match replay, binding links to their retained correlation subject.
+Later-activity counts and samples must match the retained same-context population
+after the chain's last linked event.
+Completeness is checked against replayed parse coverage when processing completed.
+For unaffected scopes, retained chain roots must equal the replayed set, including
+when no chain findings remain. New reports record `chain_analysis` on each scope
+at the chain-calculation call: `complete_input`, `partial_input`, `interrupted`,
+or `not_run`. Replay uses that recorded input flag, not whether the retained prefix
+parses cleanly. `complete_input` and `partial_input` compare chain and step
+completeness with replay. `interrupted` still defers completeness. `not_run`
+rejects chain and gap findings, and disagrees with a processed scope whose profile
+configures chains. `complete_input` is rejected when retained capture is incomplete
+or a pre-calculation stop lists the scope. Record population equality stays
+deferred for a parse, classification, or correlation stop, because those stages
+can leave retained records behind the capture. A recorded `complete_input` or
+`partial_input` is not deferred by a calculation or relationship stop. `interrupted`
+is recorded when chain calculation halts, including when an earlier stop is kept
+and only the halt flag changes. The scope also records `chain_budget`, the work,
+memory and elapsed counters at entry to chain calculation. A calculation stop may
+defer replay only when that interruption reproduces from those entry counters, not
+from the final usage. A recorded cancellation is its own stop and is not required
+to exhaust a numeric budget. Older artifacts omit
+`chain_analysis` and still defer completeness from the stop stage. Artifact writing
+cannot defer it, and a capture stop cannot when retained capture and progress both
+say that input was read completely. A legacy stop before chain calculation still
+requires affected chains and their steps to stay partial.
+Other inputs remain checked independently.
+Step counts, statuses and populations remain checked for retained partial chains.
+When artifact bytes are supplied, aggregate uncertainty counts and assurance must
+also agree with all retained findings, including those omitted from the page.
+Without artifact bytes, uncertainty counts must still be at least the displayed
+finding counts, and exact when no findings are omitted. A displayed finding with
+unavailable source checking forces unavailable aggregate subject verification.
+Renderers copy measurements; they do not recalculate them.
+
+Presentation retains all-finding uncertainty counts even when findings are omitted.
+[[src/investigation.rs#UNCERTAINTY_LIMITS|Aggregate uncertainty limits]],
+[[src/investigation.rs#CHECKED_ASSURANCE_LIMITS|finding assurance limits]] and the
+[[src/investigation.rs#CHECKED_POPULATION_RULE|population rule]] are canonical shared
+publication/validation values. Report-only and artifact-backed validation reject
+removed or replaced qualifications, including on pages with no displayed findings.
+New reports carry a checked-presentation version marker and require the complete
+uncertainty object on every page. Decision briefs require uncertainty and omitted
+finding counts, including when a cutoff leaves the source report without that object. Source replay does not use the mutable query command to select
+weaker record validation; legacy projected fields are individually source-checked.
+The decision brief keeps this metadata and explicit omitted-finding counts. See the
+[[examples/investigations/checked/README.md|maintained bounded example]] and
+[[regression-tests#Evidence regressions#Checked finding presentation]]. These tests
+establish deterministic CLI behavior, not improved model accuracy or verifier adoption.
+
 ## Facts and support
 
 Every finding has an ID, author, scope, material limitations, verification guarantees,

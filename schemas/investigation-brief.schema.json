@@ -307,13 +307,18 @@
           "items": {
             "type": "object"
           }
+        },
+        "omitted": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "total",
         "displayed",
         "collection",
-        "items"
+        "items",
+        "omitted"
       ],
       "additionalProperties": false
     },
@@ -437,6 +442,43 @@
         "serialized_characters": {
           "type": "integer",
           "minimum": 0
+        },
+        "uncertainty": {
+          "type": "object",
+          "properties": {
+            "unknown_findings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "incomplete_chains": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_binding_unavailable_findings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "subject_verification": {
+              "enum": [
+                "not_requested",
+                "unavailable"
+              ]
+            },
+            "limits": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "unknown_findings",
+            "incomplete_chains",
+            "source_binding_unavailable_findings",
+            "subject_verification",
+            "limits"
+          ]
         }
       },
       "required": [
@@ -444,7 +486,8 @@
         "budget_bytes",
         "budget_characters",
         "serialized_bytes",
-        "serialized_characters"
+        "serialized_characters",
+        "uncertainty"
       ],
       "additionalProperties": false
     }

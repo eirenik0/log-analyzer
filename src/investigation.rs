@@ -12,6 +12,22 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const CONTRACT_VERSION: u32 = 1;
 pub const ARTIFACT_VERSION: u32 = 1;
 
+pub(crate) const CHECKED_POPULATION_RULE: &str = "Counts retain their named population. Chain steps count distinct source occurrences (snapshot_id, input_ordinal, reference_id) within this input and chain scope; observed and linked populations are separate. No logical request or failure deduplication is inferred.";
+pub(crate) const CHECKED_ASSURANCE_LIMITS: &[&str] = &[
+    "Source binding checks retained evidence consistency, not intended question meaning or independent profile semantics. subject_verified requires independent expected subjects through claim verification.",
+];
+pub(crate) const UNCERTAINTY_LIMITS: &[&str] = &[
+    "Counts above describe all processed findings, including omitted detail. Missing endpoints remain unavailable within the selected capture. Upstream completeness, clock synchronization and causality are unknown.",
+    "An existing link does not establish intended subject meaning. Independent expected subjects are required for subject_verified assurance.",
+];
+
+pub(crate) fn endpoint_milliseconds(interval: &Value) -> Option<f64> {
+    let start = DateTime::parse_from_rfc3339(interval["start_timestamp"].as_str()?).ok()?;
+    let end = DateTime::parse_from_rfc3339(interval["end_timestamp"].as_str()?).ok()?;
+    let nanos = end.signed_duration_since(start).num_nanoseconds()?;
+    (nanos >= 0).then_some(nanos as f64 / 1_000_000.0)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationSummary {
     pub artifact_checked: bool,
@@ -61,6 +77,13 @@ fn list<'a>(v: &'a Value, p: &str) -> Result<&'a [Value], ContractError> {
 }
 fn require(ok: bool, p: &str, reason: &str) -> Result<(), ContractError> {
     if ok { Ok(()) } else { Err(error(p, reason)) }
+}
+fn canonical_checked(value: &Value) -> Value {
+    let mut checked = value.clone();
+    if let Some(subjects) = checked.get_mut("subjects").and_then(Value::as_array_mut) {
+        subjects.sort_by_key(|subject| subject.to_string());
+    }
+    checked
 }
 fn index<'a>(items: &'a [Value], p: &str) -> Result<BTreeMap<&'a str, &'a Value>, ContractError> {
     let mut result = BTreeMap::new();
@@ -619,6 +642,15 @@ pub fn validate_relations(
             )?;
         }
         let saved_findings = index(list(artifact, "/findings")?, "/artifact/findings")?;
+        if report["presentation"]["checked_version"] == 1 {
+            for saved in saved_findings.values() {
+                require(
+                    saved.get("checked").is_some_and(Value::is_object),
+                    "/artifact/findings/checked",
+                    "checked presentation requires retained finding metadata",
+                )?;
+            }
+        }
         for (id, displayed) in &findings {
             let saved = saved_findings.get(id).ok_or_else(|| {
                 error(
@@ -658,9 +690,10 @@ pub fn validate_relations(
                 let mut overflow = false;
                 for original in originals {
                     let original_text = text(original, "/text")?;
-                    if !original_text.starts_with(displayed_text)
-                        || excerpt["verification"] != original["verification"]
-                    {
+                    let mut projected = original.clone();
+                    projected["text"] = excerpt["text"].clone();
+                    projected["omitted_characters"] = excerpt["omitted_characters"].clone();
+                    if !original_text.starts_with(displayed_text) || *excerpt != projected {
                         continue;
                     }
                     let clipped =
@@ -1002,6 +1035,281 @@ pub fn validate_relations(
                 "/artifact/verification",
                 "artifact claims lost source or rule verification",
             )?;
+        }
+    }
+    if let Some(artifact) = artifact.as_ref() {
+        summary.deferred_relations.extend(
+            crate::investigation_runtime::chain_validation::validate(artifact, &original_captures)
+                .map_err(|reason| error("/findings/details/event_chain", reason))?
+                .into_iter()
+                .map(str::to_owned),
+        );
+    }
+    if report["presentation"]["checked_version"] == 1
+        || report["findings"]
+            .as_array()
+            .is_some_and(|findings| findings.iter().any(|f| f.get("checked").is_some()))
+    {
+        require(
+            report["presentation"]["uncertainty"].is_object(),
+            "/presentation/uncertainty",
+            "checked presentation requires aggregate uncertainty",
+        )?;
+    }
+    if let Some(uncertainty) = report["presentation"].get("uncertainty") {
+        require(
+            uncertainty["limits"] == serde_json::json!(UNCERTAINTY_LIMITS),
+            "/presentation/uncertainty/limits",
+            "uncertainty limits differ from the presentation contract",
+        )?;
+    }
+    if let Some(uncertainty) = report["presentation"]
+        .get("uncertainty")
+        .filter(|uncertainty| uncertainty.is_object())
+    {
+        let source_unavailable = |finding: &&&Value| {
+            if artifact.is_some() {
+                finding["verification"]["source_and_rules"] != "available"
+            } else {
+                finding["checked"]["assurance"]["source_binding"] == "unavailable"
+                    || finding.get("checked").is_none()
+                        && finding["verification"]["source_and_rules"] != "available"
+            }
+        };
+        let unavailable = findings.values().filter(source_unavailable).count();
+        let subject_unavailable = findings.values().any(|finding| {
+            if artifact.is_some() {
+                finding["verification"]["source_and_rules"] != "available"
+            } else {
+                finding["checked"]["assurance"]["subject_verification"] == "unavailable"
+                    || finding["verification"]["source_and_rules"] != "available"
+            }
+        });
+        let displayed = [
+            (
+                "unknown_findings",
+                findings.values().filter(|f| f["kind"] == "unknown").count(),
+            ),
+            (
+                "incomplete_chains",
+                findings
+                    .values()
+                    .filter(|f| {
+                        let chain = &f["details"]["event_chain"];
+                        chain.is_object()
+                            && (chain["completeness"] != "complete"
+                                || chain["steps"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .any(|s| s["status"] != "observed"))
+                    })
+                    .count(),
+            ),
+            ("source_binding_unavailable_findings", unavailable),
+        ];
+        let omitted = report["presentation"]["omitted_findings"]
+            .as_u64()
+            .unwrap_or(0);
+        let exact = artifact.is_some() || omitted == 0;
+        for (field, expected) in displayed {
+            let actual = uncertainty[field].as_u64();
+            if exact {
+                require(
+                    actual == Some(expected as u64),
+                    &format!("/presentation/uncertainty/{field}"),
+                    "uncertainty total differs from retained findings",
+                )?;
+            } else {
+                require(
+                    actual.is_some_and(|count| count >= expected as u64),
+                    &format!("/presentation/uncertainty/{field}"),
+                    "uncertainty total is below displayed findings",
+                )?;
+            }
+        }
+        if subject_unavailable || exact {
+            require(
+                uncertainty["subject_verification"]
+                    == if subject_unavailable {
+                        "unavailable"
+                    } else {
+                        "not_requested"
+                    },
+                "/presentation/uncertainty/subject_verification",
+                "aggregate subject verification differs from retained findings",
+            )?;
+        }
+    }
+    for finding in list(report, "/findings")? {
+        let scope = scopes
+            .get(text(finding, "/scope_id")?)
+            .ok_or_else(|| error("/findings/scope_id", "unknown scope"))?;
+        if report["presentation"]["checked_version"] == 1 {
+            require(
+                finding.get("checked").is_some_and(Value::is_object),
+                "/findings/checked",
+                "checked presentation requires finding metadata",
+            )?;
+        }
+        if let Some(checked) = finding.get("checked") {
+            require(
+                checked["population_rule"] == CHECKED_POPULATION_RULE,
+                "/findings/checked/population_rule",
+                "population rule differs from the presentation contract",
+            )?;
+            require(
+                checked["assurance"]["limits"] == serde_json::json!(CHECKED_ASSURANCE_LIMITS),
+                "/findings/checked/assurance/limits",
+                "assurance limits differ from the presentation contract",
+            )?;
+            require(
+                checked["scope"] == **scope,
+                "/findings/checked/scope",
+                "checked scope differs",
+            )?;
+            let population = finding["details"]["population_id"]
+                .as_str()
+                .and_then(|id| populations.get(id))
+                .copied()
+                .unwrap_or(&Value::Null);
+            require(
+                checked["population"] == *population,
+                "/findings/checked/population",
+                "checked population differs",
+            )?;
+            require(
+                checked["identity"] == finding["details"]["event_chain"]["identity"],
+                "/findings/checked/identity",
+                "checked identity differs",
+            )?;
+            require(
+                checked["assurance"]["subject_verification"]
+                    == if checked["assurance"]["source_binding"] == "validated" {
+                        "not_requested"
+                    } else {
+                        "unavailable"
+                    },
+                "/findings/checked/assurance",
+                "presentation cannot assert intended subject verification",
+            )?;
+            if checked["assurance"]["source_binding"] == "validated" {
+                require(
+                    finding["verification"]["source_and_rules"] == "available",
+                    "/findings/checked/assurance",
+                    "source binding unavailable",
+                )?;
+            }
+            if artifact.is_some() || report["artifact"]["status"] != "unavailable" {
+                require(
+                    (checked["assurance"]["source_binding"] == "validated")
+                        == (finding["verification"]["source_and_rules"] == "available"),
+                    "/findings/checked/assurance",
+                    "source binding differs from finding verification",
+                )?;
+            }
+            let has_link = finding["details"]["event_chain"]["steps"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|step| {
+                    step["join_samples"]
+                        .as_array()
+                        .is_some_and(|joins| !joins.is_empty())
+                });
+            let expected_level = if checked["assurance"]["source_binding"] != "validated" {
+                "relations_only"
+            } else if has_link {
+                "link_exists"
+            } else {
+                "source_bound"
+            };
+            require(
+                checked["assurance"]["level"] == expected_level,
+                "/findings/checked/assurance/level",
+                "assurance level differs from source binding and retained links",
+            )?;
+            let source_finding = findings
+                .get(text(finding, "/id")?)
+                .ok_or_else(|| error("/findings/checked/subjects", "finding absent"))?;
+            let chain = &source_finding["details"]["event_chain"];
+            let mut expected_subjects = BTreeSet::new();
+            if chain.is_object() {
+                expected_subjects.insert(occurrence(get(chain, "/root")?)?);
+                for step in list(chain, "/steps")? {
+                    for outcome in list(step, "/outcomes")? {
+                        expected_subjects.insert(occurrence(get(outcome, "/occurrence")?)?);
+                    }
+                }
+            } else {
+                for excerpt in list(source_finding, "/evidence")? {
+                    expected_subjects.insert(occurrence(get(excerpt, "/occurrence")?)?);
+                }
+            }
+            let subjects = list(checked, "/subjects")?;
+            let actual_subjects = subjects
+                .iter()
+                .map(|subject| occurrence(get(subject, "/occurrence")?))
+                .collect::<Result<BTreeSet<_>, _>>()?;
+            require(
+                actual_subjects == expected_subjects && actual_subjects.len() == subjects.len(),
+                "/findings/checked/subjects",
+                "checked subject set differs from finding subjects or contains duplicates",
+            )?;
+            for subject in subjects {
+                let source = get(subject, "/occurrence")?;
+                require(
+                    list(finding, "/evidence")?
+                        .iter()
+                        .any(|e| e["occurrence"] == *source),
+                    "/findings/checked/subjects",
+                    "subject has no finding witness",
+                )?;
+                if artifact.is_some() {
+                    let record = retained.get(&occurrence(source)?).ok_or_else(|| {
+                        error("/findings/checked/subjects", "subject source absent")
+                    })?;
+                    require(
+                        subject["event"] == record["fields"]["classification"]["semantics"],
+                        "/findings/checked/subjects",
+                        "subject differs from retained event",
+                    )?;
+                }
+            }
+        }
+    }
+    if report["presentation"]["checked_version"] == 1
+        && let Some(saved) = artifact.as_ref()
+    {
+        for (stored_findings, scopes, populations) in [
+            (&saved["findings"], &saved["scopes"], &saved["populations"]),
+            (
+                &report["findings"],
+                &report["scopes"],
+                &report["populations"],
+            ),
+        ] {
+            let mut projected = stored_findings.clone();
+            crate::investigation_runtime::checked::project(
+                &mut projected,
+                &saved["records"],
+                scopes,
+                populations,
+                true,
+            );
+            let (Some(stored), Some(projected)) =
+                (stored_findings.as_array(), projected.as_array())
+            else {
+                continue;
+            };
+            for (stored, projected) in stored.iter().zip(projected) {
+                require(
+                    canonical_checked(&stored["checked"])
+                        == canonical_checked(&projected["checked"]),
+                    "/artifact/findings/checked",
+                    "retained checked projection differs from recomputed evidence",
+                )?;
+            }
         }
     }
     for finding in findings.values() {
@@ -1404,6 +1712,102 @@ pub fn validate_relations(
                                 "/findings/details/event_chain/steps/join_samples",
                                 "self join",
                             )?;
+                            if let Some(interval) = join.get("endpoint_interval") {
+                                let path = "/findings/details/event_chain/steps/join_samples/endpoint_interval";
+                                // Older artifacts lack explicit interval occurrences.
+                                for side in ["source", "target"] {
+                                    if let Some(source) = interval.get(side) {
+                                        require(
+                                            *source == join[side],
+                                            path,
+                                            "interval citation differs from joined endpoint",
+                                        )?;
+                                    }
+                                }
+                                if interval["status"] == "measured" {
+                                    require(
+                                        interval["unit"] == "ms"
+                                            && endpoint_milliseconds(interval).is_some_and(
+                                                |value| interval["value"].as_f64() == Some(value),
+                                            ),
+                                        path,
+                                        "invalid endpoint interval arithmetic",
+                                    )?;
+                                    require(
+                                        join["source_count"] == 1
+                                            && join["target_count"] == 1
+                                            && chain["root_occurrences"] == 1,
+                                        path,
+                                        "ambiguous endpoints cannot establish an interval",
+                                    )?;
+                                } else {
+                                    require(
+                                        interval["status"] == "unavailable"
+                                            && interval["value"].is_null(),
+                                        path,
+                                        "unavailable interval must not have a value",
+                                    )?;
+                                }
+                                for (side, timestamp, operation) in [
+                                    ("source", "start_timestamp", "start_operation"),
+                                    ("target", "end_timestamp", "end_operation"),
+                                ] {
+                                    if let Some(record) = retained.get(&occurrence(&join[side])?) {
+                                        let expected_timestamp = if record["timestamp_year_source"]
+                                            == "source"
+                                            && record["timestamp_offset_source"] == "source"
+                                        {
+                                            &record["timestamp"]
+                                        } else {
+                                            &Value::Null
+                                        };
+                                        require(
+                                            interval[timestamp] == *expected_timestamp,
+                                            path,
+                                            "interval timestamp differs from source",
+                                        )?;
+                                        if finding["verification"]["source_and_rules"]
+                                            == "available"
+                                            || record["fields"]["classification"]["semantics"]
+                                                .is_object()
+                                        {
+                                            require(
+                                                interval[operation]
+                                                    == record["fields"]["classification"]["semantics"]
+                                                        ["name"],
+                                                path,
+                                                "interval operation differs from source",
+                                            )?;
+                                        }
+                                    }
+                                }
+                                let expected_reason = if join["source_count"] != 1
+                                    || join["target_count"] != 1
+                                    || chain["root_occurrences"] != 1
+                                {
+                                    Some("ambiguous_endpoint_population")
+                                } else if interval["start_timestamp"].is_null()
+                                    || interval["end_timestamp"].is_null()
+                                {
+                                    Some("explicit_source_timestamps_unavailable")
+                                } else if endpoint_milliseconds(interval).is_none() {
+                                    Some("negative_or_out_of_range_interval")
+                                } else {
+                                    None
+                                };
+                                require(
+                                    interval["unit"] == "ms"
+                                        && interval["status"]
+                                            == if expected_reason.is_some() {
+                                                "unavailable"
+                                            } else {
+                                                "measured"
+                                            }
+                                        && interval["reason"] == serde_json::json!(expected_reason),
+                                    path,
+                                    "interval status or reason differs from endpoint evidence",
+                                )?;
+                            }
                         }
                         for outcome in list(step, "/outcomes")? {
                             check_source(get(outcome, "/occurrence")?)?;

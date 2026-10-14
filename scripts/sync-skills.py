@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""Materialize the Claude bundle from the canonical portable skill (no symlinks)."""
+"""Generate the Claude wrapper and link its shared resources to the canonical skill."""
 import argparse
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / '.agents/skills/analyze-logs'
 TARGET = ROOT / '.claude/skills/analyze-logs'
+RENDERED = {Path('SKILL.md'), Path('workflow.md')}
 
 
 def is_resource(path):
     return path.is_file() and '__pycache__' not in path.parts and path.suffix not in {'.pyc', '.pyo'}
 
 
-def generated_files():
+def resource_link(relative):
+    return Path(os.path.relpath(SOURCE / relative, (TARGET / relative).parent)).as_posix()
+
+
+def rendered_files():
     skill = (SOURCE / 'SKILL.md').read_text(encoding='utf-8')
     front, body = skill.split('---', 2)[1:]
     description = next(line for line in front.splitlines() if line.startswith('description:'))
@@ -30,40 +36,56 @@ Read [the shared investigation workflow](workflow.md) and follow it for the
 user's request. All relative resources resolve from this installed skill folder.
 Claude permissions and fork context apply only to this wrapper.
 '''
-    files = {Path('SKILL.md'): wrapper.encode(), Path('workflow.md'): body.lstrip().encode()}
+    return {Path('SKILL.md'): wrapper.encode(), Path('workflow.md'): body.lstrip().encode()}
+
+
+def linked_files():
+    links = {}
     for path in SOURCE.rglob('*'):
         relative = path.relative_to(SOURCE)
-        if is_resource(path) and relative != Path('SKILL.md') and relative.parts[0] != 'agents':
-            files[relative] = path.read_bytes()
-    return files
+        if is_resource(path) and relative not in RENDERED and relative.parts[0] != 'agents':
+            links[relative] = resource_link(relative)
+    return links
+
+
+def matches_rendered(relative, expected):
+    destination = TARGET / relative
+    if destination.is_symlink() or not destination.is_file():
+        return False
+    actual = destination.read_bytes().replace(b'\r\n', b'\n')
+    return actual == expected
+
+
+def matches_link(relative, expected):
+    destination = TARGET / relative
+    return destination.is_symlink() and Path(os.readlink(destination)).as_posix() == expected
 
 
 def sync(check=False):
-    files = generated_files()
+    rendered = rendered_files()
+    linked = linked_files()
     existing = {p.relative_to(TARGET) for p in TARGET.rglob('*') if is_resource(p)}
-    def matches(relative, expected):
-        destination = TARGET / relative
-        if not destination.is_file():
-            return False
-        actual = destination.read_bytes()
-        # Git may convert checked-out Markdown to CRLF on Windows. Only these
-        # two rendered documents normalize newlines; copied resources stay exact.
-        if relative in (Path('SKILL.md'), Path('workflow.md')):
-            actual = actual.replace(b'\r\n', b'\n')
-        return actual == expected
-
-    changed = sorted(str(p) for p, data in files.items() if not matches(p, data))
-    stale = sorted(str(p) for p in existing - files.keys())
+    changed = sorted(str(p) for p, data in rendered.items() if not matches_rendered(p, data))
+    changed += sorted(str(p) for p, data in linked.items() if not matches_link(p, data))
+    stale = sorted(str(p) for p in existing - rendered.keys() - linked.keys())
     if check:
         if changed or stale:
             raise SystemExit('Claude bundle is stale; run python3 scripts/sync-skills.py: ' + ', '.join(changed + stale))
         return
-    for relative in existing - files.keys():
+    for relative in existing - rendered.keys() - linked.keys():
         (TARGET / relative).unlink()
-    for relative, data in files.items():
+    for relative, data in rendered.items():
         destination = TARGET / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.is_symlink() or destination.exists():
+            destination.unlink()
         destination.write_bytes(data)
+    for relative, link in linked.items():
+        destination = TARGET / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.is_symlink() or destination.exists():
+            destination.unlink()
+        destination.symlink_to(link)
 
 
 if __name__ == '__main__':

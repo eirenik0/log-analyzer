@@ -506,14 +506,7 @@ fn check(retained: &Value, assertion: &Assertion) -> (Option<bool>, Value, &'sta
         } => {
             let interval = retained.pointer(pointer);
             let measured = interval.filter(|v| v["status"] == "measured" && v["unit"] == "ms");
-            let actual = measured.and_then(|v| {
-                let start =
-                    chrono::DateTime::parse_from_rfc3339(v["start_timestamp"].as_str()?).ok()?;
-                let end =
-                    chrono::DateTime::parse_from_rfc3339(v["end_timestamp"].as_str()?).ok()?;
-                let nanos = end.signed_duration_since(start).num_nanoseconds()?;
-                (nanos >= 0).then_some(nanos as f64 / 1_000_000.0)
-            });
+            let actual = measured.and_then(crate::investigation::endpoint_milliseconds);
             (
                 actual.map(|v| (v - expected_ms).abs() < 0.000001),
                 interval.cloned().unwrap_or(Value::Null),

@@ -3,6 +3,11 @@
 These generic synthetic documents specify investigation report v1 and retained
 artifact v1.
 
+The [[examples/investigations/checked/README.md|checked presentation example]] supplies
+independent expected outcomes, named endpoints, separate send/response/cache counts
+and a bounded CLI command. Its [[regression-tests#Evidence regressions#Checked finding presentation|regressions]]
+compare text and JSON without byte truncation.
+
 Browse the [fixture files](../examples/investigation-contract/). These are
 hand-authored contract fixtures; the [[architecture#Architecture#Retained investigations|implemented runtime]]
 produces reports and artifacts through `investigate` and retrieves them through
