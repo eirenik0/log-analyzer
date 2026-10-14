@@ -1029,6 +1029,17 @@ pub fn validate_relations(
                 .map(str::to_owned),
         );
     }
+    if report["presentation"]["checked_version"] == 1
+        || report["findings"]
+            .as_array()
+            .is_some_and(|findings| findings.iter().any(|f| f.get("checked").is_some()))
+    {
+        require(
+            report["presentation"]["uncertainty"].is_object(),
+            "/presentation/uncertainty",
+            "checked presentation requires aggregate uncertainty",
+        )?;
+    }
     if let Some(uncertainty) = report["presentation"].get("uncertainty") {
         require(
             uncertainty["limits"] == serde_json::json!(UNCERTAINTY_LIMITS),

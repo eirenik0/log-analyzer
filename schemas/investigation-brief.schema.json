@@ -317,7 +317,8 @@
         "total",
         "displayed",
         "collection",
-        "items"
+        "items",
+        "omitted"
       ],
       "additionalProperties": false
     },
@@ -458,7 +459,10 @@
               "minimum": 0
             },
             "subject_verification": {
-              "enum": ["not_requested", "unavailable"]
+              "enum": [
+                "not_requested",
+                "unavailable"
+              ]
             },
             "limits": {
               "type": "array",
@@ -482,7 +486,8 @@
         "budget_bytes",
         "budget_characters",
         "serialized_bytes",
-        "serialized_characters"
+        "serialized_characters",
+        "uncertainty"
       ],
       "additionalProperties": false
     }

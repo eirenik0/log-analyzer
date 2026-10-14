@@ -197,7 +197,7 @@ pub(crate) fn validate(
         parsed
             .entries
             .retain(|entry| filter.matches(entry) && is_selected(entry, &selectors, &config));
-        if completeness_available && (has_chains || query["command"].get("Investigate").is_some()) {
+        if completeness_available {
             let source_population: BTreeSet<_> = parsed
                 .entries
                 .iter()
@@ -208,7 +208,16 @@ pub(crate) fn validate(
                     )
                 })
                 .collect();
-            if source_population != selected.keys().cloned().collect() {
+            let retained_population = selected
+                .iter()
+                .filter(|(location, record)| {
+                    source_population.contains(*location)
+                        || !(record["data_omitted"] == true
+                            && record["verification"]["source_and_rules"] == "unavailable")
+                })
+                .map(|(location, _)| location.clone())
+                .collect();
+            if source_population != retained_population {
                 return Err("retained records differ from selected captured population".into());
             }
         }
@@ -279,12 +288,33 @@ pub(crate) fn validate(
                     "retained classification differs from captured source and profile".into(),
                 );
             }
-            if query["command"].get("Investigate").is_some() {
-                let replay =
-                    source_findings::record(entry, &evidence::Context::default(), &Value::Null);
-                for field in ["entity", "raw_text", "message", "fields"] {
-                    if record[field] != replay[field] {
-                        return Err(format!("retained {field} differs from parsed record"));
+            let replay =
+                source_findings::record(entry, &evidence::Context::default(), &Value::Null);
+            for field in ["entity", "raw_text", "message"] {
+                if record[field] != replay[field] {
+                    return Err(format!("retained {field} differs from parsed record"));
+                }
+            }
+            let fields = record["fields"]
+                .as_object()
+                .ok_or("missing retained fields")?;
+            if ["level", "structured_fields", "envelope_payload", "payload"]
+                .iter()
+                .any(|key| fields.contains_key(*key))
+            {
+                if record["fields"] != replay["fields"] {
+                    return Err("retained fields differs from parsed record".into());
+                }
+            } else {
+                // Earlier contract fixtures retain a projection of source fields.
+                for (field, value) in fields {
+                    let expected = if field == "classification" {
+                        replay["fields"][field].clone()
+                    } else {
+                        crate::relationship_rules::field(entry, field).unwrap_or(Value::Null)
+                    };
+                    if *value != expected {
+                        return Err("retained fields differs from parsed record".into());
                     }
                 }
             }

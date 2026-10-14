@@ -165,6 +165,9 @@ the parser and, when configured, the chain engine on retained captures and rules
 root/source/target counts. Fresh classifications, timestamps and year/offset provenance must equal retained
 record metadata before interval availability or duration is trusted. Current CLI
 artifacts also bind record entity, raw text, message and decoded fields to parser output.
+[[Cargo.toml]] explicitly enables accurate JSON float round-tripping so stored
+decoded payloads equal source replay in normal builds. Comparisons remain exact;
+see [[regression-tests#Evidence regressions#Numeric artifact replay]].
 Stored filters and exact selectors reconstruct each unaffected input's complete
 selected record population; missing retained records are rejected. It reads no live
 input files. Missing profiles or captures defer this relation explicitly; exhausted
@@ -200,6 +203,10 @@ Presentation retains all-finding uncertainty counts even when findings are omitt
 [[src/investigation.rs#CHECKED_POPULATION_RULE|population rule]] are canonical shared
 publication/validation values. Report-only and artifact-backed validation reject
 removed or replaced qualifications, including on pages with no displayed findings.
+New reports carry a checked-presentation version marker and require the complete
+uncertainty object on every page. Decision briefs require uncertainty and omitted
+finding counts. Source replay does not use the mutable query command to select
+weaker record validation; legacy projected fields are individually source-checked.
 The decision brief keeps this metadata and explicit omitted-finding counts. See the
 [[examples/investigations/checked/README.md|maintained bounded example]] and
 [[regression-tests#Evidence regressions#Checked finding presentation]]. These tests

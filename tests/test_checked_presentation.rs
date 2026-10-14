@@ -436,12 +436,20 @@ fn aggregate_subject_verification_preserves_unavailable_prerequisites_when_paged
                     "{name}/{field}: {error}"
                 );
             }
-            let mut legacy = page;
-            legacy["presentation"]
+            let mut missing_uncertainty = page;
+            missing_uncertainty["presentation"]
                 .as_object_mut()
                 .unwrap()
                 .remove("uncertainty");
-            log_analyzer::investigation::validate_relations(&legacy, Some(&artifact)).unwrap();
+            for retained in [None, Some(artifact.as_slice())] {
+                let error =
+                    log_analyzer::investigation::validate_relations(&missing_uncertainty, retained)
+                        .unwrap_err();
+                assert!(
+                    error.reason.contains("requires aggregate uncertainty"),
+                    "{error}"
+                );
+            }
         }
         let mut summary_options = options.clone();
         summary_options.extend(["--summary", "--report-max-items", "0"]);
@@ -1778,6 +1786,27 @@ fn checked_presentation_requires_canonical_qualifications() {
         let report: Value =
             serde_json::from_str(&run(temp.path(), name, PROFILE, &[INPUT], &options)).unwrap();
         let bytes = fs::read(temp.path().join(name)).unwrap();
+        assert_eq!(report["presentation"]["checked_version"], 1);
+        let mut missing = report.clone();
+        missing["presentation"]
+            .as_object_mut()
+            .unwrap()
+            .remove("uncertainty");
+        let schema: Value =
+            serde_json::from_str(include_str!("../schemas/investigation.schema.json")).unwrap();
+        assert!(
+            !jsonschema::validator_for(&schema)
+                .unwrap()
+                .is_valid(&missing)
+        );
+        for artifact in [None, Some(bytes.as_slice())] {
+            let error =
+                log_analyzer::investigation::validate_relations(&missing, artifact).unwrap_err();
+            assert!(
+                error.reason.contains("requires aggregate uncertainty"),
+                "{error}"
+            );
+        }
         let mut paths = vec!["/presentation/uncertainty/limits"];
         if name == "full" {
             paths.extend([
@@ -1983,6 +2012,8 @@ fn replay_checks_source_bindings_without_chain_policy() {
             "stored-fields",
             "record-fields",
             "record-message",
+            "record-fields-legacy-query",
+            "record-message-legacy-query",
         ] {
             let mut altered = report.clone();
             let mut saved = artifact.clone();
@@ -1993,7 +2024,7 @@ fn replay_checks_source_bindings_without_chain_policy() {
                     .iter_mut()
                     .find(|r| r["occurrence"] == occurrence)
                     .unwrap();
-                if case == "record-fields" {
+                if case.starts_with("record-fields") {
                     record["fields"]["structured_fields"]["capture_id"] = json!("neighbor");
                 } else {
                     record["message"] = json!("fabricated completion");
@@ -2022,6 +2053,15 @@ fn replay_checks_source_bindings_without_chain_policy() {
                         json!("fabricated completion");
                 }
             }
+            if case.ends_with("legacy-query") {
+                for document in [&mut altered, &mut saved] {
+                    let metadata = &mut document["report_metadata"]["evidence"];
+                    metadata["query"]["command"] = json!({"Perf": {}});
+                    metadata["query_sha256"] = json!(log_analyzer::evidence::digest(
+                        &serde_json::to_vec(&metadata["query"]).unwrap()
+                    ));
+                }
+            }
             let bytes = serde_json::to_vec(&saved).unwrap();
             altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
             altered["presentation"]["serialized_bytes"] = Value::Null;
@@ -2032,13 +2072,40 @@ fn replay_checks_source_bindings_without_chain_policy() {
                 .unwrap_err();
             let expected = match case {
                 "classification" => "retained classification differs",
-                "record-fields" => "retained fields differs from parsed record",
-                "record-message" => "retained message differs from parsed record",
+                "record-fields" | "record-fields-legacy-query" => {
+                    "retained fields differs from parsed record"
+                }
+                "record-message" | "record-message-legacy-query" => {
+                    "retained message differs from parsed record"
+                }
                 "display-fields" => "invalid excerpt projection",
                 "stored-fields" => "finding evidence differs from replayed source",
                 _ => unreachable!(),
             };
             assert!(error.reason.contains(expected), "{name}/{case}: {error}");
         }
+    }
+}
+
+#[test]
+fn decision_brief_requires_uncertainty_and_omission_counts() {
+    let temp = tempfile::tempdir().unwrap();
+    let brief: Value = serde_json::from_str(&run(
+        temp.path(),
+        "brief-required",
+        PROFILE,
+        &[INPUT],
+        &["--summary", "--report-max-items", "0"],
+    ))
+    .unwrap();
+    let schema: Value =
+        serde_json::from_str(include_str!("../schemas/investigation-brief.schema.json")).unwrap();
+    let validator = jsonschema::validator_for(&schema).unwrap();
+    assert!(validator.is_valid(&brief));
+    assert!(brief["findings"]["omitted"].as_u64().unwrap() > 0);
+    for (parent, field) in [("findings", "omitted"), ("presentation", "uncertainty")] {
+        let mut missing = brief.clone();
+        missing[parent].as_object_mut().unwrap().remove(field);
+        assert!(!validator.is_valid(&missing), "{parent}/{field}");
     }
 }

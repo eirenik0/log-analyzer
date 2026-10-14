@@ -55,6 +55,7 @@ impl CheckedResult {
                 }
             });
         }
+        report["presentation"]["checked_version"] = json!(1);
         let findings = report["findings"].as_array().unwrap();
         report["presentation"]["uncertainty"] = json!({
             "unknown_findings":findings.iter().filter(|f| f["kind"] == "unknown").count(),

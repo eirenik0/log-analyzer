@@ -12,6 +12,16 @@ Changing the expected snapshot, scope, identity, root or endpoints must contradi
 
 Covered by [[tests/test_investigation_runtime.rs#subject_bound_links_reject_adjacent_names_scopes_ids_and_endpoints]].
 
+## Numeric artifact replay
+
+Normal builds preserve decoded numeric payloads across artifact storage and source replay, while rejecting changed evidence.
+
+[[scripts/check-numeric-replay.py#check]] exercises synthetic classic and JSON-envelope
+records with nested decimals and a large integer. It checks publication, retained
+retrieval and rejection of adjacent-float payload edits even with refreshed hashes.
+CI and release checks run it after a normal build, before test dependencies can
+unify JSON decoder features and conceal a production-only regression.
+
 ## Checked finding presentation
 
 Synthetic CLI fixtures preserve separate outcomes, counts, endpoint intervals, assurance and missing evidence in text, full JSON and bounded summaries.
@@ -52,15 +62,19 @@ rejects fabricated join identities and mutually consistent report/artifact edits
 that invent a completion, remove steps or joins, or change labels, counts, ambiguity
 and completeness. Processing cutoffs
 explicitly defer completeness when calculation-stage history is unavailable.
+[[tests/test_checked_presentation.rs#decision_brief_requires_uncertainty_and_omission_counts]]
+rejects briefs missing either the uncertainty object or omitted-finding count.
 [[tests/test_checked_presentation.rs#replay_checks_source_bindings_without_chain_policy]]
 rejects changed classifications, decoded record fields/messages and displayed or stored source fields for profiles
-with no investigation policy and policies with no chains.
+with no investigation policy and policies with no chains, including changed query
+command metadata with consistently refreshed hashes.
 [[tests/test_checked_presentation.rs#replay_binds_timestamps_and_provenance_before_interval_validation]]
 rejects changed or removed retained timestamps and altered year/offset provenance,
 even when event sequences and interval measurements are updated consistently.
 [[tests/test_checked_presentation.rs#checked_presentation_requires_canonical_qualifications]]
 rejects empty or replaced aggregate limits, finding assurance limits and population
 rules in full and empty-page reports, with and without retained artifact bytes.
+Deleting the uncertainty object also fails schema and relational validation.
 [[tests/test_checked_presentation.rs#replay_binds_nested_excerpt_payloads_to_source]]
 rejects altered text, omitted-character counts, displayed fields and verification
 metadata in root, linked, ambiguous and later-activity excerpts with configured source fields.

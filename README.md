@@ -25,6 +25,9 @@ JSON with coverage and explicit omissions. An existing link does not verify the
 intended subject. See the [synthetic checked findings example](examples/investigations/checked/README.md).
 Configured text groups count assurance across all members and label representative
 subjects and limits separately; independent input scopes remain separate groups.
+Checked JSON reports identify their presentation version and require uncertainty
+on every page; decision briefs also require the omitted-finding count.
+Retained numeric payloads round-trip exactly through JSON; source replay rejects altered values.
 
 ## Documentation
 

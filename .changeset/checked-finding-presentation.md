@@ -42,3 +42,5 @@ Check retained timestamps and year/offset provenance against parsed captures bef
 Bind top-level chain evidence, including root display fields, to complete replayed payloads.
 Replay source metadata without chain policies and verify non-chain excerpt fields in stored and displayed reports.
 Bind current CLI artifact record entities, messages and decoded fields to parser output.
+Require checked-report uncertainty and brief omission counts; query labels cannot disable source-record validation.
+Preserve floating-point payloads across artifact decoding in normal builds; retain exact source comparisons and test adjacent-value tampering outside test dependency feature unification.

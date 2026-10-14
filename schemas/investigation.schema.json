@@ -2311,7 +2311,10 @@
               "minimum": 0
             },
             "subject_verification": {
-              "enum": ["not_requested", "unavailable"]
+              "enum": [
+                "not_requested",
+                "unavailable"
+              ]
             },
             "limits": {
               "type": "array",
@@ -2328,6 +2331,9 @@
             "subject_verification",
             "limits"
           ]
+        },
+        "checked_version": {
+          "const": 1
         }
       },
       "required": [
@@ -2343,7 +2349,21 @@
         "collections",
         "units"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "checked_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "uncertainty"
+            ]
+          }
+        }
+      ]
     },
     "artifact_retrieval": {
       "type": "object",
