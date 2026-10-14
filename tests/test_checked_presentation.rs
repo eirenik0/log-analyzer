@@ -203,6 +203,98 @@ fn maintained_example_agrees_in_text_json_and_bounded_summary() {
 }
 
 #[test]
+fn retrieved_omitted_findings_keep_checked_projection() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "retrieved",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let paged: Value = serde_json::from_str(&run(
+        temp.path(),
+        "retrieved-page",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--report-max-items", "1"],
+    ))
+    .unwrap();
+    assert!(paged["presentation"]["omitted_findings"].as_u64().unwrap() > 0);
+    let shown: Vec<_> = paged["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|finding| finding["id"].clone())
+        .collect();
+    let omitted = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|finding| !shown.contains(&finding["id"]))
+        .unwrap();
+    let digest = report["artifact"]["stored_sha256"].as_str().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_log-analyzer"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "evidence",
+            temp.path().join("retrieved").to_str().unwrap(),
+            "--expected-sha256",
+            digest,
+            "--collection",
+            "/findings",
+            "--id",
+            omitted["id"].as_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let retrieved: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let item = &retrieved["artifact_retrieval"]["items"][0];
+    assert_eq!(item["id"], omitted["id"]);
+    assert_eq!(item["checked"], omitted["checked"]);
+    assert!(item["checked"]["scope"].is_object());
+    assert!(item["checked"]["subjects"].is_array());
+    assert!(item["checked"]["assurance"].is_object());
+    assert!(item["checked"].get("population").is_some());
+}
+
+#[test]
+fn checked_version_requires_metadata_on_every_displayed_finding() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "required-checked",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let bytes = fs::read(temp.path().join("required-checked")).unwrap();
+    let mut altered = report;
+    altered["findings"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("checked");
+    altered["presentation"]["serialized_bytes"] = Value::Null;
+    altered["presentation"]["serialized_characters"] = Value::Null;
+    shape(&altered, false);
+    let error =
+        log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("checked presentation requires finding metadata"),
+        "{error}"
+    );
+}
+
+#[test]
 fn checked_lifecycles_keep_failed_ends_missing_ends_and_ambiguous_starts_separate() {
     let temp = tempfile::tempdir().unwrap();
     let input = temp.path().join("events.jsonl");
@@ -828,6 +920,14 @@ fn checked_subjects_require_exact_root_outcome_and_evidence_sets() {
             log_analyzer::investigation::validate_relations(&reordered, Some(&bytes)).unwrap();
         }
         let mut legacy = report;
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .get_mut("presentation")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("checked_version");
         for finding in legacy["findings"].as_array_mut().unwrap() {
             finding.as_object_mut().unwrap().remove("checked");
         }

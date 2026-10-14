@@ -28,6 +28,12 @@ Synthetic CLI fixtures preserve separate outcomes, counts, endpoint intervals, a
 
 [[tests/test_checked_presentation.rs#maintained_example_agrees_in_text_json_and_bounded_summary]]
 checks independently specified facts in [[examples/investigations/checked/README.md]].
+[[tests/test_checked_presentation.rs#retrieved_omitted_findings_keep_checked_projection]]
+checks that an omitted finding retrieved from the artifact still has the published
+checked scope, subjects, population, and assurance.
+[[tests/test_checked_presentation.rs#checked_version_requires_metadata_on_every_displayed_finding]]
+rejects a checked report that drops `checked` from a displayed finding, including
+when the original artifact bytes are still supplied.
 The same test suite covers failed ends, missing ends, ambiguous starts, renamed
 identities, independent inputs, redaction, tiny budgets and rejection of mutated
 arithmetic, source citations and event subjects. Existing coverage and zero tests

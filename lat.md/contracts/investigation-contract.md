@@ -115,12 +115,12 @@ oversized bundles do not silently lose their required witnesses. See
 
 [[src/investigation_runtime/checked.rs#CheckedResult|Checked results]] publish the same scoped facts to text and JSON after existing relation and source-binding checks. They do not verify intended question meaning.
 
-New reports add optional `checked` metadata to each displayed finding: input scope,
+New reports add `checked` metadata to each finding: input scope,
 source-addressed event subjects, population definition and membership reference,
-identity rule, and assurance. The existing version-1 fields and retained artifact
-remain unchanged; older artifacts without this presentation metadata remain valid.
-Consumers validating new reports must use the updated version-1 schema. Retrieval
-continues to return the original retained finding shape.
+identity rule, and assurance. That projection is stored on retained findings before
+serialization, so later retrieval pages carry the same scope, subjects, population,
+and assurance. Older artifacts without this presentation metadata remain valid.
+Consumers validating new reports must use the updated version-1 schema.
 
 Assurance separates available source binding from intended-subject verification.
 `link_exists` describes retained links; `source_bound` describes other source-bound
@@ -143,8 +143,9 @@ separate role populations and occurrence identity; no logical-attempt or network
 failure deduplication is inferred. Recognition and join samples require verbose
 text, while ambiguity and completeness remain in ordinary text.
 
-[[src/investigation.rs#validate_relations|Relation validation]] also checks optional
-checked subjects against retained records, population and scope projections, and
+[[src/investigation.rs#validate_relations|Relation validation]] requires `checked`
+on every displayed finding when `checked_version` is present, then checks
+subjects against retained records, population and scope projections, and
 nested endpoint interval arithmetic, timestamp provenance and cited event names.
 Checked subjects must equal the distinct chain root and sampled outcome occurrences,
 or all evidence occurrences for other finding kinds. Missing, extra and duplicate

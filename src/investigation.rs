@@ -1098,6 +1098,13 @@ pub fn validate_relations(
         let scope = scopes
             .get(text(finding, "/scope_id")?)
             .ok_or_else(|| error("/findings/scope_id", "unknown scope"))?;
+        if report["presentation"]["checked_version"] == 1 {
+            require(
+                finding.get("checked").is_some_and(Value::is_object),
+                "/findings/checked",
+                "checked presentation requires finding metadata",
+            )?;
+        }
         if let Some(checked) = finding.get("checked") {
             require(
                 checked["population_rule"] == CHECKED_POPULATION_RULE,

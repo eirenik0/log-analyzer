@@ -443,6 +443,7 @@ pub(super) fn report(artifact: &Value, path: &Path, bytes: Option<&[u8]>) -> Val
     }
     report["retrieval"] = json!({"interface":"artifact","contract_version":1,"status":if bytes.is_some(){"available"}else{"unavailable"},"binding_sha256":hash.as_deref().map(|hash|binding(artifact,hash)),"next_cursor":null,"targets":targets,"reason":if bytes.is_some(){None}else{Some("Artifact byte limit exceeded")}});
     report["presentation"] = json!({"status":"complete","budget_bytes":null,"budget_characters":null,"budget_items":null,"serialized_bytes":null,"serialized_characters":null,"total_findings":artifact["findings"].as_array().unwrap().len(),"displayed_findings":artifact["findings"].as_array().unwrap().len(),"omitted_findings":0,"collections":[{"path":"/findings","total":artifact["findings"].as_array().unwrap().len(),"prior":0,"displayed":artifact["findings"].as_array().unwrap().len(),"remaining":0}],"units":"serialized_UTF8_bytes_Unicode_scalars_and_atomic_finding_bundles"});
+    super::checked::mark(&mut report);
     report
 }
 pub(super) fn unavailable(report: &mut Value, reason: &str) {

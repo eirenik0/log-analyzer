@@ -780,6 +780,8 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             "A captured byte stream is not complete UTF-8; source text verification is unavailable.",
         );
     }
+    // Retrieval resumes from these bytes, so omitted pages need the same projection.
+    checked::attach(&mut retained, true);
     let bytes = artifact::bounded_serialization(&retained, budget.limits.artifact_bytes)?;
     let mut report = artifact::report(&retained, &artifact_path, bytes.as_deref());
     if cli.redact
