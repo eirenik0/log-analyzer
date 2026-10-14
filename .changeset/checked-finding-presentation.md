@@ -26,8 +26,10 @@ outside the selected chain population.
 Aggregate assurance across every configured group member and label representative
 subjects and limits explicitly, preserving independent scope boundaries.
 Validate complete replayed chain step results and join samples, rejecting invented
-completion and hidden populations. Explicitly defer completeness after processing
-cutoffs when the artifact does not retain calculation-stage history.
+completion and hidden populations. Record whether chain analysis saw a complete input, a partial input, an
+interruption, or did not run, and compare completeness against that record.
+Explicitly defer completeness after processing cutoffs only for older artifacts
+that do not retain that record.
 Bind replayed chain identity, context, scope, root name and ambiguity to retained
 subjects so valid links cannot be relabeled as a different correlation subject.
 Check later-activity counts and samples against the retained same-context population.

@@ -193,13 +193,22 @@ Later-activity counts and samples must match the retained same-context populatio
 after the chain's last linked event.
 Completeness is checked against replayed parse coverage when processing completed.
 For unaffected scopes, retained chain roots must equal the replayed set, including
-when no chain findings remain. After a cutoff, missing stage history defers
-completeness only for affected scopes whose stop can interrupt chain calculation.
-Artifact writing cannot, and a capture stop cannot when retained capture and
-progress both say that input was read completely. A stop before chain calculation
-still requires affected chains and their steps to stay partial; population equality
-remains deferred. Calculation and relationship stops still defer that comparison
-because those stages can run after chain generation. Other inputs remain checked independently.
+when no chain findings remain. New reports record `chain_analysis` on each scope
+at the chain-calculation call: `complete_input`, `partial_input`, `interrupted`,
+or `not_run`. Replay uses that recorded input flag, not whether the retained prefix
+parses cleanly. `complete_input` and `partial_input` compare chain and step
+completeness with replay. `interrupted` still defers completeness. `not_run`
+rejects chain and gap findings, and disagrees with a processed scope whose profile
+configures chains. `complete_input` is rejected when retained capture is incomplete
+or a pre-calculation stop lists the scope. Record population equality stays
+deferred from the stop stage, because a parse, classification, or correlation stop
+can leave retained records behind the capture. Older artifacts omit `chain_analysis`
+and still defer completeness from the stop stage. Artifact writing cannot defer it,
+and a capture stop cannot when retained capture and progress both say that input
+was read completely. A legacy stop before chain calculation still requires affected
+chains and their steps to stay partial. Calculation and relationship stops still
+defer that legacy comparison because those stages can run after chain generation.
+Other inputs remain checked independently.
 Step counts, statuses and populations remain checked for retained partial chains.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.

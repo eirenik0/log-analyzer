@@ -533,7 +533,9 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
             &mut sequences,
         );
         budget.begin_stage();
-        if let Some(policy) = &config.investigation {
+        let chain_input_complete = !structural_loss && !budget.affected_scopes.contains(&ordinal);
+        let stop_before_chains = budget.stop.clone();
+        let chain_analysis = if let Some(policy) = &config.investigation {
             chains::calculate(
                 policy,
                 &config,
@@ -542,11 +544,23 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
                 &scope_id,
                 &context,
                 &snapshot,
-                !structural_loss && !budget.affected_scopes.contains(&ordinal),
+                chain_input_complete,
                 &mut budget,
                 &mut findings,
                 None,
             );
+            if budget.stop != stop_before_chains {
+                "interrupted"
+            } else if chain_input_complete {
+                "complete_input"
+            } else {
+                "partial_input"
+            }
+        } else {
+            "not_run"
+        };
+        scopes.last_mut().unwrap()["chain_analysis"] = json!(chain_analysis);
+        if let Some(policy) = &config.investigation {
             policy::calculate(
                 policy,
                 &config,
@@ -641,7 +655,7 @@ fn investigate(cli: &Cli, args: &InvestigateArgs) -> Result<()> {
     for ordinal in (0..args.files.len()).filter(|ordinal| !processed_ordinals.contains(ordinal)) {
         let scope_id = format!("scope-{ordinal}");
         budget.affected_scopes.insert(ordinal);
-        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Source snapshot could not be processed","extent":"processed_population","completeness":"unavailable","analysis_completion":"not_performed","correlation_scope":[],"semantic_coverage":{"status":"not_performed","relevant_records":null,"classified_records":null,"paired_events":null,"unmatched_events":null,"ambiguous_events":null,"rejected_events":null,"reason":"Capture unavailable"},"upstream_completeness":"unknown"}));
+        scopes.push(json!({"id":scope_id,"input_ordinals":[ordinal],"selection":"Source snapshot could not be processed","extent":"processed_population","completeness":"unavailable","analysis_completion":"not_performed","chain_analysis":"not_run","correlation_scope":[],"semantic_coverage":{"status":"not_performed","relevant_records":null,"classified_records":null,"paired_events":null,"unmatched_events":null,"ambiguous_events":null,"rejected_events":null,"reason":"Capture unavailable"},"upstream_completeness":"unknown"}));
         for goal in [
             "inspection",
             "failures",

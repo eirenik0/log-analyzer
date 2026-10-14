@@ -746,6 +746,14 @@
         "semantic_coverage": {
           "$ref": "#/$defs/semantic_coverage"
         },
+        "chain_analysis": {
+          "enum": [
+            "not_run",
+            "interrupted",
+            "partial_input",
+            "complete_input"
+          ]
+        },
         "upstream_completeness": {
           "const": "unknown"
         }

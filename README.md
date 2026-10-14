@@ -27,11 +27,15 @@ Configured text groups count assurance across all members and label representati
 subjects and limits separately; independent input scopes remain separate groups.
 Checked JSON reports identify their presentation version and require uncertainty
 on every page; decision briefs also require the omitted-finding count.
+Each input scope records whether chain analysis saw a complete input, a partial
+input, an interruption, or did not run.
 Retained numeric payloads round-trip exactly through JSON; source replay rejects altered values.
 
 ## Documentation
 
-Project documentation lives in the [Lat knowledge graph](lat.md/lat.md).
+Current behavior and architecture are documented in the [Lat knowledge graph](lat.md/lat.md).
+The [desired system state](lat.md/desired-system-state.md) proposes the human and
+agent experience, evidence navigation, state model and delivery sequence.
 
 - [Architecture](lat.md/architecture.md), [domain concepts](lat.md/domain.md) and [ADRs](lat.md/architecture-decisions/architecture-decisions.md) and [quality requirements](lat.md/non-functional-requirements/non-functional-requirements.md)
 - [Investigation guide](lat.md/usage.md) and [worked workflows](lat.md/investigation-workflow.md)

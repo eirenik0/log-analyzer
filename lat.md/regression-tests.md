@@ -42,6 +42,9 @@ rejects a rewritten limitation on a recognition or identity gap finding.
 [[tests/test_checked_presentation.rs#capture_cutoff_keeps_chain_completeness_partial]]
 rejects relabeling a chain or step complete after an input-byte cutoff whose
 prefix already contains the configured steps.
+[[tests/test_checked_presentation.rs#recorded_chain_analysis_rejects_a_forged_complete_input]]
+rejects relabeling that cutoff as `complete_input`. A completed report still
+validates through the older stage fallback after the recorded field is removed.
 The same test suite covers failed ends, missing ends, ambiguous starts, renamed
 identities, independent inputs, redaction, tiny budgets and rejection of mutated
 arithmetic, source citations and event subjects. Existing coverage and zero tests
@@ -111,8 +114,8 @@ fails parsing or exhausts its record budget.
 rejects a relabeled complete chain and a removed chain finding when the only
 stop is artifact writing, which happens after chain calculation.
 [[tests/test_checked_presentation.rs#completed_capture_does_not_defer_chain_checks_for_a_capture_stop]]
-rejects a relabeled complete chain when a capture stop is claimed for an input
-whose retained capture and progress are both complete.
+rejects a capture stop claimed for an input whose retained capture and progress
+are both complete, because that scope recorded `complete_input`.
 [[tests/test_checked_presentation.rs#replay_keeps_chain_gap_findings_and_join_intervals]]
 rejects deletion of a replayed chain-gap finding and deletion of a join's endpoint interval.
 [[tests/test_checked_presentation.rs#replay_binds_chain_claim_and_limitations]]

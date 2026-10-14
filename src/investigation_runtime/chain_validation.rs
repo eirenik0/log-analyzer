@@ -111,8 +111,10 @@ pub(crate) fn validate(
             .len() as u64,
     );
     let mut complete = true;
-    // Cutoff metadata does not record whether chain calculation had already completed.
-    // Artifact writing is the exception: it runs only after chain analysis.
+    // New artifacts record chain_analysis at calculation. Older artifacts still infer
+    // completeness deferral from the stop stage. Record population can differ from the
+    // retained capture after a parse, classification, or correlation stop, so that
+    // equality stays stage-keyed even when chain completeness is recorded.
     let mut completeness_deferred = false;
     for ordinal in ordinals {
         let scope = artifact["scopes"]
@@ -146,8 +148,55 @@ pub(crate) fn validate(
                 ) => true,
                 _ => false,
             };
-        let completeness_available = !chain_cutoff;
-        completeness_deferred |= has_chains && chain_cutoff;
+        let recorded = scope.get("chain_analysis").and_then(Value::as_str);
+        let population_available = !chain_cutoff;
+        let compare_completeness = match recorded {
+            Some("complete_input" | "partial_input") => true,
+            Some("interrupted" | "not_run") => false,
+            None => population_available,
+            Some(_) => return Err("chain analysis status is not recognized".into()),
+        };
+        if recorded == Some("complete_input") {
+            let pre_calculation = matches!(
+                stop["stage"].as_str(),
+                Some(
+                    "capture"
+                        | "profile_discovery"
+                        | "profile_detection"
+                        | "parse"
+                        | "classification"
+                        | "correlation"
+                )
+            );
+            if !capture_completed {
+                return Err("chain analysis complete_input disagrees with retained capture".into());
+            }
+            if listed && pre_calculation {
+                return Err("chain analysis complete_input disagrees with processing stop".into());
+            }
+        }
+        if recorded == Some("not_run") {
+            let chain_for_scope = chain_findings.iter().any(|finding| {
+                finding["details"]["event_chain"]["root"]["input_ordinal"] == ordinal
+            }) || findings.iter().any(|finding| {
+                finding["scope_id"] == scope["id"]
+                    && finding["details"]["gap_classification"].is_string()
+            });
+            if chain_for_scope {
+                return Err("chain findings remain after chain analysis did not run".into());
+            }
+            if policy.is_some_and(|policy| !policy.chains.is_empty())
+                && scope["completeness"] != "unavailable"
+            {
+                return Err("chain analysis not_run disagrees with retained profile".into());
+            }
+        }
+        completeness_deferred |= has_chains
+            && match recorded {
+                Some("interrupted") => true,
+                None => chain_cutoff,
+                _ => false,
+            };
         let Some(bytes) = captures.get(&ordinal) else {
             complete = false;
             continue;
@@ -208,16 +257,23 @@ pub(crate) fn validate(
             }
             Err(error) => return Err(format!("{error:?}")),
         };
-        let input_complete = parsed.coverage.rejected_candidates == 0
+        let parsed_complete = parsed.coverage.rejected_candidates == 0
             && parsed.coverage.normalization_diagnostics.is_empty()
             && !parsed.coverage.is_unparsed();
+        // A clean retained prefix can parse as complete after a cutoff. Replay must use
+        // the input flag recorded at calculation, not that prefix.
+        let input_complete = match recorded {
+            Some("complete_input") => true,
+            Some("partial_input") => false,
+            _ => parsed_complete,
+        };
         for entry in &mut parsed.entries {
             entry.source_input_ordinal = Some(ordinal as usize);
         }
         parsed
             .entries
             .retain(|entry| filter.matches(entry) && is_selected(entry, &selectors, &config));
-        if completeness_available {
+        if population_available {
             let source_population: BTreeSet<_> = parsed
                 .entries
                 .iter()
@@ -429,7 +485,7 @@ pub(crate) fn validate(
                 Some(((chain["id"].as_str()?, address(&chain["root"])?), f))
             })
             .collect();
-        if completeness_available {
+        if population_available {
             let retained_roots: BTreeSet<_> = chain_findings
                 .iter()
                 .filter(|f| f["details"]["event_chain"]["root"]["input_ordinal"] == ordinal)
@@ -490,9 +546,11 @@ pub(crate) fn validate(
                 return Err("retained chain gap findings differ from replayed population".into());
             }
         }
-        // Stages before chain calculation pass an incomplete input into generation, so
-        // every affected chain stays partial even when the retained prefix contains its steps.
-        let forced_partial = chain_cutoff
+        // Legacy artifacts have no chain_analysis field. A stop before calculation still
+        // requires affected chains to stay partial. Recorded partial or complete input
+        // compares completeness with replay instead.
+        let forced_partial = recorded.is_none()
+            && chain_cutoff
             && !matches!(
                 stop["stage"].as_str(),
                 Some("calculation" | "relationships")
@@ -562,7 +620,7 @@ pub(crate) fn validate(
             {
                 return Err("chain later_activity differs from retained population".into());
             }
-            if completeness_available && chain["completeness"] != replay["completeness"] {
+            if compare_completeness && chain["completeness"] != replay["completeness"] {
                 return Err("chain completeness differs from retained population".into());
             }
             let steps = chain["steps"].as_array().ok_or("missing steps")?;
@@ -599,7 +657,7 @@ pub(crate) fn validate(
                         ));
                     }
                 }
-                if completeness_available
+                if compare_completeness
                     && step["count_completeness"] != expected_step["count_completeness"]
                 {
                     return Err("chain step completeness differs from retained population".into());

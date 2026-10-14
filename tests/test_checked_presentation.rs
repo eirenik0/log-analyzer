@@ -410,6 +410,7 @@ fn capture_cutoff_keeps_chain_completeness_partial() {
     let artifact: Value =
         serde_json::from_slice(&fs::read(temp.path().join("cutoff")).unwrap()).unwrap();
     assert_eq!(report["processing"]["stop"]["stage"], "capture");
+    assert_eq!(report["scopes"][0]["chain_analysis"], "partial_input");
     let id = report["findings"]
         .as_array()
         .unwrap()
@@ -429,11 +430,11 @@ fn capture_cutoff_keeps_chain_completeness_partial() {
     for (field, reason) in [
         (
             "completeness",
-            "cutoff-affected chain completeness must stay partial",
+            "chain completeness differs from retained population",
         ),
         (
             "count_completeness",
-            "cutoff-affected chain step completeness must stay partial",
+            "chain step completeness differs from retained population",
         ),
     ] {
         let mut altered = report.clone();
@@ -460,6 +461,67 @@ fn capture_cutoff_keeps_chain_completeness_partial() {
             log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
         assert!(error.reason.contains(reason), "{field}: {error}");
     }
+}
+
+#[test]
+fn recorded_chain_analysis_rejects_a_forged_complete_input() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "forged-analysis",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output", "--input-max-bytes", "3000"],
+    ))
+    .unwrap();
+    let mut saved: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("forged-analysis")).unwrap()).unwrap();
+    for document in [&mut report, &mut saved] {
+        document["scopes"][0]["chain_analysis"] = json!("complete_input");
+    }
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    report["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    report["presentation"]["serialized_bytes"] = Value::Null;
+    report["presentation"]["serialized_characters"] = Value::Null;
+    shape(&report, false);
+    let error = log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap_err();
+    assert!(
+        error
+            .reason
+            .contains("chain analysis complete_input disagrees with retained capture"),
+        "{error}"
+    );
+    let mut report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "legacy-analysis",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let mut saved: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("legacy-analysis")).unwrap()).unwrap();
+    assert_eq!(saved["scopes"][0]["chain_analysis"], "complete_input");
+    fn strip_chain_analysis(value: &mut Value) {
+        if let Some(object) = value.as_object_mut() {
+            object.remove("chain_analysis");
+            for child in object.values_mut() {
+                strip_chain_analysis(child);
+            }
+        } else if let Some(array) = value.as_array_mut() {
+            for child in array {
+                strip_chain_analysis(child);
+            }
+        }
+    }
+    strip_chain_analysis(&mut report);
+    strip_chain_analysis(&mut saved);
+    let bytes = serde_json::to_vec(&saved).unwrap();
+    report["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+    report["presentation"]["serialized_bytes"] = Value::Null;
+    report["presentation"]["serialized_characters"] = Value::Null;
+    shape(&report, false);
+    log_analyzer::investigation::validate_relations(&report, Some(&bytes)).unwrap();
 }
 
 #[test]
@@ -1652,6 +1714,7 @@ fn replay_rejects_invented_completion_and_incomplete_step_results() {
         ],
     ))
     .unwrap();
+    assert_eq!(partial["scopes"][0]["chain_analysis"], "partial_input");
     let summary = log_analyzer::investigation::validate_relations(
         &partial,
         Some(&fs::read(temp.path().join("partial-steps")).unwrap()),
@@ -1661,7 +1724,7 @@ fn replay_rejects_invented_completion_and_incomplete_step_results() {
         summary
             .deferred_relations
             .iter()
-            .any(|r| r == "chain_completeness_requires_processing_stage_history")
+            .all(|relation| relation != "chain_completeness_requires_processing_stage_history")
     );
 }
 
@@ -2240,7 +2303,7 @@ fn completed_capture_does_not_defer_chain_checks_for_a_capture_stop() {
     assert!(
         error
             .reason
-            .contains("completeness differs from retained population"),
+            .contains("chain analysis complete_input disagrees with processing stop"),
         "{error}"
     );
 }
