@@ -2220,6 +2220,53 @@ fn replay_keeps_chain_gap_findings_and_join_intervals() {
 }
 
 #[test]
+fn replay_binds_chain_claim_and_limitations() {
+    let temp = tempfile::tempdir().unwrap();
+    let report: Value = serde_json::from_str(&run(
+        temp.path(),
+        "claim",
+        PROFILE,
+        &[INPUT],
+        &["--json", "--complete-output"],
+    ))
+    .unwrap();
+    let artifact: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("claim")).unwrap()).unwrap();
+    let id = chain(&report["findings"], "alpha")["id"].clone();
+    for (field, value, reason) in [
+        (
+            "claim",
+            json!("Completed chain with no missing outcomes."),
+            "chain claim differs from retained population",
+        ),
+        (
+            "limitations",
+            json!(["No material limitation."]),
+            "chain limitations differ from retained population",
+        ),
+    ] {
+        let mut altered = report.clone();
+        let mut saved = artifact.clone();
+        for document in [&mut altered, &mut saved] {
+            document["findings"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|finding| finding["id"] == id)
+                .unwrap()[field] = value.clone();
+        }
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        altered["artifact"]["stored_sha256"] = json!(log_analyzer::evidence::digest(&bytes));
+        altered["presentation"]["serialized_bytes"] = Value::Null;
+        altered["presentation"]["serialized_characters"] = Value::Null;
+        shape(&altered, false);
+        let error =
+            log_analyzer::investigation::validate_relations(&altered, Some(&bytes)).unwrap_err();
+        assert!(error.reason.contains(reason), "{field}: {error}");
+    }
+}
+
+#[test]
 fn replay_checks_classifications_against_captured_source_and_rules() {
     let temp = tempfile::tempdir().unwrap();
     let report: Value = serde_json::from_str(&run(

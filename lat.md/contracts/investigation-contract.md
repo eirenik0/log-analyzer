@@ -182,7 +182,7 @@ characters, displayed fields and verification metadata, must match replay; only
 replay-specific occurrence identity is normalized. Explicit source-verification losses
 are inherited from the retained source record. Replay uses
 [[src/evidence.rs#Context#for_investigation_replay|the retained display-field policy]].
-Step labels, chain titles and evidence policy text must also match. Non-chain
+Step labels, chain titles and evidence policy text must also match. A chain finding's claim and limitations must match that replayed finding. Non-chain
 excerpts receive the same source-field validation. Display projection permits text
 clipping with matching omission counts but requires all other excerpt fields unchanged.
 Chain identities, context identities, scope fields, root event names and root
@@ -211,7 +211,7 @@ publication/validation values. Report-only and artifact-backed validation reject
 removed or replaced qualifications, including on pages with no displayed findings.
 New reports carry a checked-presentation version marker and require the complete
 uncertainty object on every page. Decision briefs require uncertainty and omitted
-finding counts. Source replay does not use the mutable query command to select
+finding counts, including when a cutoff leaves the source report without that object. Source replay does not use the mutable query command to select
 weaker record validation; legacy projected fields are individually source-checked.
 The decision brief keeps this metadata and explicit omitted-finding counts. See the
 [[examples/investigations/checked/README.md|maintained bounded example]] and

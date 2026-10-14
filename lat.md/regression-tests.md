@@ -73,6 +73,8 @@ and completeness. Processing cutoffs
 explicitly defer completeness when calculation-stage history is unavailable.
 [[tests/test_checked_presentation.rs#decision_brief_requires_uncertainty_and_omission_counts]]
 rejects briefs missing either the uncertainty object or omitted-finding count.
+[[tests/test_agent_guidance.rs#brief_preserves_unread_inputs_as_unknown_coverage]]
+still publishes that object when a work cutoff leaves checked publication unset.
 [[tests/test_checked_presentation.rs#replay_checks_source_bindings_without_chain_policy]]
 rejects changed classifications, decoded record fields/messages and displayed or stored source fields for profiles
 with no investigation policy and policies with no chains, including changed query
@@ -105,6 +107,8 @@ rejects a relabeled complete chain when a capture stop is claimed for an input
 whose retained capture and progress are both complete.
 [[tests/test_checked_presentation.rs#replay_keeps_chain_gap_findings_and_join_intervals]]
 rejects deletion of a replayed chain-gap finding and deletion of a join's endpoint interval.
+[[tests/test_checked_presentation.rs#replay_binds_chain_claim_and_limitations]]
+rejects a rewritten chain claim or limitations when the replayed evidence and nested chain stay unchanged.
 [[tests/test_checked_presentation.rs#checked_uncertainty_rejects_totals_below_displayed_findings_without_artifact]]
 rejects zeroed uncertainty totals on a checked report even when no artifact bytes are supplied.
 [[tests/test_checked_presentation.rs#replay_checks_classifications_against_captured_source_and_rules]]

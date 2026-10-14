@@ -79,7 +79,7 @@ fn project(
     }
 }
 
-fn uncertainty(findings: &Value) -> Value {
+pub(super) fn uncertainty(findings: &Value) -> Value {
     let findings = findings.as_array().into_iter().flatten();
     json!({
         "unknown_findings":findings.clone().filter(|f| f["kind"] == "unknown").count(),

@@ -471,20 +471,20 @@ pub(crate) fn validate(
             let mut retained_gaps = findings
                 .iter()
                 .filter(|finding| finding["scope_id"] == scope["id"])
-                .map(|finding| gap(finding))
+                .map(&gap)
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>();
             let mut replayed_gaps = replayed
                 .iter()
-                .map(|finding| gap(finding))
+                .map(gap)
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>();
-            retained_gaps.sort_by(|left, right| left.to_string().cmp(&right.to_string()));
-            replayed_gaps.sort_by(|left, right| left.to_string().cmp(&right.to_string()));
+            retained_gaps.sort_by_key(|left| left.to_string());
+            replayed_gaps.sort_by_key(|left| left.to_string());
             if retained_gaps != replayed_gaps {
                 return Err("retained chain gap findings differ from replayed population".into());
             }
@@ -501,6 +501,12 @@ pub(crate) fn validate(
             let replay_finding = expected
                 .get(&key)
                 .ok_or("chain root absent from retained population")?;
+            if finding["claim"] != replay_finding["claim"] {
+                return Err("chain claim differs from retained population".into());
+            }
+            if finding["limitations"] != replay_finding["limitations"] {
+                return Err("chain limitations differ from retained population".into());
+            }
             if samples(&finding["evidence"], None)?
                 != samples(&replay_finding["evidence"], Some(&selected))?
             {
