@@ -112,6 +112,7 @@ pub(crate) fn validate(
     );
     let mut complete = true;
     // Cutoff metadata does not record whether chain calculation had already completed.
+    // Artifact writing is the exception: it runs only after chain analysis.
     let mut completeness_deferred = false;
     for ordinal in ordinals {
         let scope = artifact["scopes"]
@@ -124,10 +125,24 @@ pub(crate) fn validate(
                     .is_some_and(|inputs| inputs.iter().any(|input| *input == ordinal))
             })
             .ok_or("missing chain input scope")?;
-        let completeness_available = !artifact["processing"]["stop"]["scope_ids"]
+        let stop = &artifact["processing"]["stop"];
+        let chain_cutoff = matches!(
+            stop["stage"].as_str(),
+            Some(
+                "capture"
+                    | "profile_discovery"
+                    | "profile_detection"
+                    | "parse"
+                    | "classification"
+                    | "correlation"
+                    | "calculation"
+                    | "relationships"
+            )
+        ) && stop["scope_ids"]
             .as_array()
             .is_some_and(|scopes| scopes.contains(&scope["id"]));
-        completeness_deferred |= has_chains && !completeness_available;
+        let completeness_available = !chain_cutoff;
+        completeness_deferred |= has_chains && chain_cutoff;
         let Some(bytes) = captures.get(&ordinal) else {
             complete = false;
             continue;

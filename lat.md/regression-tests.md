@@ -88,6 +88,9 @@ It also rejects deleting the root record together with its chain finding.
 [[tests/test_checked_presentation.rs#independent_cutoffs_do_not_defer_unaffected_chain_completeness]]
 keeps earlier chain and step completeness checked when a later independent input
 fails parsing or exhausts its record budget.
+[[tests/test_checked_presentation.rs#artifact_write_cutoff_does_not_defer_chain_population_or_completeness]]
+rejects a relabeled complete chain and a removed chain finding when the only
+stop is artifact writing, which happens after chain calculation.
 [[tests/test_checked_presentation.rs#replay_checks_classifications_against_captured_source_and_rules]]
 rejects edited rule IDs and event semantics even when checked subject projections
 agree with the altered retained classification.

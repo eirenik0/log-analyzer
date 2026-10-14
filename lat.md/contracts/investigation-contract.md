@@ -191,7 +191,8 @@ after the chain's last linked event.
 Completeness is checked against replayed parse coverage when processing completed.
 For unaffected scopes, retained chain roots must equal the replayed set, including
 when no chain findings remain. After a cutoff, missing stage history defers
-completeness only for affected scopes; other inputs remain checked independently.
+completeness only for affected scopes whose stop can interrupt chain calculation;
+artifact writing cannot. Other inputs remain checked independently.
 Step counts, statuses and populations remain checked for retained partial chains.
 When artifact bytes are supplied, aggregate uncertainty counts and assurance must
 also agree with all retained findings, including those omitted from the page.
